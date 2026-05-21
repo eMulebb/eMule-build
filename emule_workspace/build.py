@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+import shlex
 import subprocess
 import time
 import zipfile
@@ -157,21 +158,43 @@ def build_emuleai_client(session: BuildSession, *, clean: bool) -> None:
     )
 
 
+AMULE_MSYS2_PACKAGE_SNAPSHOT = (
+    "base-devel",
+    "git",
+    "zip",
+    "mingw-w64-x86_64-gcc",
+    "mingw-w64-x86_64-cmake",
+    "mingw-w64-x86_64-make",
+    "mingw-w64-x86_64-pkgconf",
+    "mingw-w64-x86_64-wxwidgets3.2-msw",
+    "mingw-w64-x86_64-boost",
+    "mingw-w64-x86_64-crypto++",
+    "mingw-w64-x86_64-pupnp",
+    "mingw-w64-x86_64-libmaxminddb",
+    "mingw-w64-x86_64-gettext-runtime",
+    "mingw-w64-x86_64-gettext-tools",
+    "mingw-w64-x86_64-zlib",
+    "mingw-w64-x86_64-libpng",
+    "mingw-w64-x86_64-libgd",
+    "mingw-w64-x86_64-readline",
+)
+
+
 def build_amule_client(session: BuildSession, *, clean: bool) -> None:
     """Builds the aMule Windows portable client and stages daemon tools under workspace state."""
 
-    bash = find_tool(("bash.exe", "bash"))
-    if bash is None:
-        raise RuntimeError(
-            "build clients --client amule requires an MSYS2 bash on PATH. "
-            "Open an MSYS2 MINGW64 shell or add its bash.exe to PATH."
-        )
+    if session.options.platform != "x64":
+        raise RuntimeError("build clients --client amule currently supports only --platform x64 via MSYS2 MINGW64.")
+    msys2_root = resolve_msys2_root()
+    bash = msys2_root / "usr" / "bin" / "bash.exe"
     script_path = session.layout.amule_repo_root / "packaging" / "windows" / "build.sh"
     if not script_path.is_file():
         raise RuntimeError(f"aMule Windows build script was not found: {script_path}")
     if clean:
         for path in (
+            session.layout.amule_repo_root / "build-windows-x64",
             session.layout.amule_repo_root / "build-windows-x86_64",
+            session.layout.amule_repo_root / "amule-portable-x64",
             session.layout.amule_repo_root / "amule-portable-x86_64",
             session.layout.amule_repo_root / "dist",
             staged_amule_root(session.layout),
@@ -179,18 +202,23 @@ def build_amule_client(session: BuildSession, *, clean: bool) -> None:
             remove_tree_if_present(path)
 
     log_path = session.log_directory / "client-amule-build-release-x64.log"
+    build_command = build_amule_msys2_command(session.layout.amule_repo_root)
     started_at = time.monotonic()
     try:
         with log_path.open("w", encoding="utf-8", newline="\n") as stream:
-            stream.write(f"{bash} {script_path}\n\n")
+            stream.write(f"MSYS2 root: {msys2_root}\n")
+            stream.write(f"MSYS2 bash: {bash}\n")
+            stream.write(f"MSYSTEM: MINGW64\n")
+            stream.write(f"WINDOWS_MSYSTEM: MINGW64\n")
+            stream.write(f"{bash} -lc {build_command}\n\n")
             completed = subprocess.run(
-                [str(bash), str(script_path)],
-                cwd=session.layout.amule_repo_root,
+                [str(bash), "-lc", build_command],
+                cwd=msys2_root,
                 stdout=stream,
                 stderr=subprocess.STDOUT,
                 text=True,
                 check=False,
-                env={**subprocess_os_environ(), "WINDOWS_MSYSTEM": "MINGW64"},
+                env=msys2_mingw64_environment(msys2_root),
             )
         if completed.returncode != 0:
             raise RuntimeError(f"aMule Windows build failed with exit code {completed.returncode}. See {log_path}")
@@ -211,6 +239,70 @@ def build_amule_client(session: BuildSession, *, clean: bool) -> None:
             warning_count=0,
         )
         raise
+
+
+def resolve_msys2_root() -> Path:
+    """Returns the system MSYS2 root used for aMule Windows builds."""
+
+    import os
+
+    candidates: list[Path] = []
+    override = os.environ.get("EMULE_MSYS2_ROOT")
+    if override:
+        candidates.append(Path(override))
+    candidates.extend((Path("C:/msys64"), Path("C:/tools/msys64")))
+    for candidate in candidates:
+        root = candidate.resolve()
+        if (root / "usr" / "bin" / "bash.exe").is_file():
+            return root
+    checked = ", ".join(str(path) for path in candidates)
+    raise RuntimeError(
+        "build clients --client amule requires system MSYS2. "
+        f"Install MSYS2 at C:\\msys64 or set EMULE_MSYS2_ROOT. Checked: {checked}"
+    )
+
+
+def msys2_mingw64_environment(msys2_root: Path) -> dict[str, str]:
+    """Builds the environment used to launch the MSYS2 MINGW64 aMule recipe."""
+
+    env = subprocess_os_environ()
+    env["MSYSTEM"] = "MINGW64"
+    env["WINDOWS_MSYSTEM"] = "MINGW64"
+    env["CHERE_INVOKING"] = "1"
+    env["MSYS2_PATH_TYPE"] = "inherit"
+    mingw_bin = msys2_root / "mingw64" / "bin"
+    usr_bin = msys2_root / "usr" / "bin"
+    env["PATH"] = f"{mingw_bin};{usr_bin};{env.get('PATH', '')}"
+    return env
+
+
+def build_amule_msys2_command(repo_root: Path) -> str:
+    """Returns the shell command that runs the aMule Windows recipe inside MINGW64."""
+
+    package_snapshot = " ".join(shlex.quote(package) for package in AMULE_MSYS2_PACKAGE_SNAPSHOT)
+    repo = shlex.quote(windows_path_to_msys(repo_root))
+    return (
+        "set -euo pipefail; "
+        "echo '==> MSYS2 probe'; "
+        "echo \"MSYSTEM=${MSYSTEM:-unset}\"; "
+        "echo \"WINDOWS_MSYSTEM=${WINDOWS_MSYSTEM:-unset}\"; "
+        "command -v cmake; cmake --version; "
+        "command -v mingw32-make; mingw32-make --version | head -n 1; "
+        f"pacman -Q {package_snapshot}; "
+        f"cd {repo}; "
+        "./packaging/windows/build.sh"
+    )
+
+
+def windows_path_to_msys(path: Path) -> str:
+    """Converts an absolute Windows path to the /c/... form accepted by MSYS2 bash."""
+
+    resolved = path.resolve()
+    drive = resolved.drive.rstrip(":").lower()
+    if not drive:
+        raise RuntimeError(f"Cannot convert path without drive to MSYS2 form: {resolved}")
+    parts = [part for part in resolved.parts[1:]]
+    return f"/{drive}/" + "/".join(parts)
 
 
 def subprocess_os_environ() -> dict[str, str]:
