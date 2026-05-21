@@ -265,6 +265,7 @@ def _invoke_step(
                 profile_cpu=True,
                 profile_cpu_stack=True,
                 profile_memory=True,
+                admin_volume_fixtures=True,
             ),
         )
         return
@@ -347,6 +348,7 @@ def _live_options(
     profile_cpu: bool = False,
     profile_cpu_stack: bool = False,
     profile_memory: bool = False,
+    admin_volume_fixtures: bool = False,
     rest_cold_start_dump_stress_cpu_profile: bool = False,
     rest_cold_start_dump_stress_cpu_profile_stack: bool = False,
 ) -> LiveE2eOptions:
@@ -369,6 +371,7 @@ def _live_options(
         profile_cpu=profile_cpu,
         profile_cpu_stack=profile_cpu_stack,
         profile_memory=profile_memory,
+        admin_volume_fixtures=admin_volume_fixtures,
         rest_cold_start_dump_stress_cpu_profile=rest_cold_start_dump_stress_cpu_profile,
         rest_cold_start_dump_stress_cpu_profile_stack=rest_cold_start_dump_stress_cpu_profile_stack,
     )

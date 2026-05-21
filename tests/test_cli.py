@@ -78,6 +78,10 @@ def test_test_live_e2e_help_exposes_live_options() -> None:
     assert "--profile-cpu-stack" in result.output
     assert "--profile-memory" in result.output
     assert "--profile-resource-interval-seconds" in result.output
+    assert "--admin-volume-fixtures" in result.output
+    assert "--vhd-size-mb" in result.output
+    assert "--mount-root" in result.output
+    assert "--keep-admin-fixtures" in result.output
     assert "--rest-cold-start-dump-stress-cpu-profile" in result.output
     assert "--rest-cold-start-dump-stress-cpu-profile-stack" in result.output
 

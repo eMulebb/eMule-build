@@ -280,5 +280,6 @@ def test_overnight_release_steps_use_broad_live_profiles(tmp_path: Path, monkeyp
     assert captured[0].profile_cpu is True
     assert captured[0].profile_cpu_stack is True
     assert captured[0].profile_memory is True
+    assert captured[0].admin_volume_fixtures is True
     assert captured[1].profile_cpu is False
     assert captured[1].profile_memory is False

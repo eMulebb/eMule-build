@@ -348,6 +348,11 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
     _append_optional_flag(args, live_options.rest_stop_start_after_churn, "--rest-stop-start-after-churn")
     if live_options.shared_root:
         args.extend(["--shared-root", live_options.shared_root])
+    _append_optional_flag(args, live_options.admin_volume_fixtures, "--admin-volume-fixtures")
+    args.extend(["--vhd-size-mb", live_options.vhd_size_mb])
+    if live_options.mount_root:
+        args.extend(["--mount-root", live_options.mount_root])
+    _append_optional_flag(args, live_options.keep_admin_fixtures, "--keep-admin-fixtures")
     _append_optional_flag(args, live_options.preference_ui_directories_tree_stress, "--preference-ui-directories-tree-stress")
     for scenario_name in live_options.shared_files_ui_scenarios:
         args.extend(["--shared-files-ui-scenario", scenario_name])

@@ -94,6 +94,10 @@ class LiveE2eOptions(BaseModel):
     preference_ui_directories_tree_stress: bool = False
     shared_files_ui_scenarios: tuple[str, ...] = ()
     shared_files_tree_stress_churn_cycles: int = -1
+    admin_volume_fixtures: bool = False
+    vhd_size_mb: int = 256
+    mount_root: str | None = None
+    keep_admin_fixtures: bool = False
     profile_cpu: bool = False
     profile_cpu_max_file_mb: int = 512
     profile_cpu_stack: bool = False
