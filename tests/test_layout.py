@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from emule_workspace.layout import file_token, get_test_build_tag
+from emule_workspace.setup_commands import compare_root
 from emule_workspace.topology import (
     WORKSPACE_MANIFEST_SCHEMA_VERSION,
     build_workspace_manifest,
@@ -83,6 +84,13 @@ def test_canonical_topology_promotes_multi_client_forks_under_repos() -> None:
     assert tuple((remote.name, remote.url) for remote in emuleai.additional_remotes) == (
         ("upstream", "https://github.com/eMuleAI/eMuleAI.git"),
     )
+
+
+def test_compare_root_accepts_repo_targets_with_and_without_compare_subdirs(tmp_path: Path) -> None:
+    topology = canonical_topology()
+
+    assert compare_root(tmp_path, topology, "amule") == tmp_path / "repos" / "amule" / "src"
+    assert compare_root(tmp_path, topology, "mods-archive") == tmp_path / "analysis" / "mods-archive"
 
 
 def test_workspace_manifest_schema_rejects_unsupported_versions() -> None:
