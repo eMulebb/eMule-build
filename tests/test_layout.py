@@ -30,6 +30,7 @@ def test_workspace_manifest_uses_json_contract_shape() -> None:
 
     assert manifest["schema_version"] == WORKSPACE_MANIFEST_SCHEMA_VERSION
     assert manifest["workspace"]["repos"]["build"] == "..\\..\\repos\\eMule-build"
+    assert manifest["workspace"]["repos"]["ed2k_server"] == "..\\..\\repos\\emulebb-ed2k-server"
     assert manifest["workspace"]["repos"]["pages"] == "..\\..\\repos\\eMulebb-pages"
     assert manifest["workspace"]["repos"]["org_profile"] == "..\\..\\repos\\eMulebb-org-profile"
     assert manifest["workspace"]["app_repo"]["variants"][0] == {
@@ -46,6 +47,18 @@ def test_canonical_topology_materializes_web_repositories_under_repos() -> None:
     assert repos["eMulebb-pages"].relative_path == "repos\\eMulebb-pages"
     assert repos["eMulebb-org-profile"].url == "https://github.com/eMulebb/.github.git"
     assert repos["eMulebb-org-profile"].relative_path == "repos\\eMulebb-org-profile"
+
+
+def test_canonical_topology_materializes_ed2k_server_fork_under_repos() -> None:
+    repos = {repo.name: repo for repo in canonical_topology().repos}
+
+    ed2k_server = repos["emulebb-ed2k-server"]
+    assert ed2k_server.url == "https://github.com/eMulebb/emulebb-ed2k-server.git"
+    assert ed2k_server.relative_path == "repos\\emulebb-ed2k-server"
+    assert ed2k_server.branch == "master"
+    assert tuple((remote.name, remote.url) for remote in ed2k_server.additional_remotes) == (
+        ("upstream", "https://github.com/p2p-overlord/p2p-overlord-ed2k-server.git"),
+    )
 
 
 def test_canonical_topology_materializes_amule_under_analysis() -> None:

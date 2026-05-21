@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 BUILD_MANIFEST_NAME = "deps.json"
 WORKSPACE_MANIFEST_NAME = "deps.json"
-WORKSPACE_MANIFEST_SCHEMA_VERSION = 2
+WORKSPACE_MANIFEST_SCHEMA_VERSION = 3
 DEFAULT_WORKSPACE_NAME = "workspace"
 WORKSPACE_PROPS_FILE_NAME = "workspace.props"
 SETUP_LOG_FILE_NAME = "eMule-workspace.log"
@@ -141,6 +141,7 @@ class WorkspaceManifestRepos(BaseModel):
     tests: str
     tooling: str
     amutorrent: str
+    ed2k_server: str
     pages: str
     org_profile: str
     third_party: str
@@ -224,6 +225,7 @@ def build_workspace_manifest(topology: WorkspaceTopology, workspace_name: str | 
                 "tests": _workspace_relative_repo_path(repo_by_name["eMule-build-tests"]),
                 "tooling": _workspace_relative_repo_path(repo_by_name["eMule-tooling"]),
                 "amutorrent": _workspace_relative_repo_path(repo_by_name["amutorrent"]),
+                "ed2k_server": _workspace_relative_repo_path(repo_by_name["emulebb-ed2k-server"]),
                 "pages": _workspace_relative_repo_path(repo_by_name["eMulebb-pages"]),
                 "org_profile": _workspace_relative_repo_path(repo_by_name["eMulebb-org-profile"]),
                 "third_party": str(workspace_prefix / "repos" / "third_party"),
@@ -287,6 +289,15 @@ def canonical_topology() -> WorkspaceTopology:
                 relative_path="repos\\amutorrent",
                 branch="main",
                 additional_remotes=(AdditionalRemote(name="upstream", url="https://github.com/got3nks/amutorrent.git"),),
+            ),
+            ManagedRepo(
+                name="emulebb-ed2k-server",
+                url="https://github.com/eMulebb/emulebb-ed2k-server.git",
+                relative_path="repos\\emulebb-ed2k-server",
+                branch="master",
+                additional_remotes=(
+                    AdditionalRemote(name="upstream", url="https://github.com/p2p-overlord/p2p-overlord-ed2k-server.git"),
+                ),
             ),
             ManagedRepo(
                 name="eMulebb-pages",
