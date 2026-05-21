@@ -54,7 +54,7 @@ Canonical managed app variants:
 - `tracing-harness/community-0.72a`
 
 Branch roles, release intent, and baseline rules are owned by
-`EMULE_WORKSPACE_ROOT\repos\eMule-tooling\docs\WORKSPACE_POLICY.md`.
+`EMULE_WORKSPACE_ROOT\repos\eMule-tooling\docs\WORKSPACE-POLICY.md`.
 
 The active app layout and workspace repo paths are topology-driven from
 `workspaces\workspace\deps.json`, with build-specific settings kept in this repo's

@@ -24,7 +24,7 @@ from .topology import (
 from .topology import ManagedRepo
 
 ROOT_AGENTS_CONTENT = """ANALYZE THIS WORKSPACE, DIRECTORIES `repos` and `workspaces`
-ALWAYS READ AND FOLLOW EMULE_WORKSPACE_ROOT\\repos\\eMule-tooling\\docs\\WORKSPACE_POLICY.md
+ALWAYS READ AND FOLLOW EMULE_WORKSPACE_ROOT\\repos\\eMule-tooling\\docs\\WORKSPACE-POLICY.md
 """
 
 
