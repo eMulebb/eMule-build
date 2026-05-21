@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .certification import invoke_certification
+from .cleanup import CleanupFailedError, CleanupRunSummary, cleanup_summary_payload, run_pre_test_cleanup
 from .config import (
     AmutorrentPackageOptions,
     CertificationOptions,
@@ -79,9 +80,16 @@ def invoke_release_campaign(
     report_dir.mkdir(parents=True, exist_ok=False)
     started_at = datetime.now(timezone.utc)
     results: list[CampaignCommandResult] = []
+    pre_run_cleanup: CleanupRunSummary | None = None
     stop_error: ReleaseCampaignExecutionError | None = None
 
     try:
+        if campaign_options.pre_run_cleanup and not campaign_options.dry_run:
+            try:
+                pre_run_cleanup = run_pre_test_cleanup(layout)
+            except CleanupFailedError as exc:
+                pre_run_cleanup = exc.summary
+                raise
         for command_plan in plan:
             result = _run_campaign_command(
                 layout,
@@ -90,7 +98,7 @@ def invoke_release_campaign(
                 command_plan,
             )
             results.append(result)
-            _write_report(report_dir, campaign, campaign_options, started_at, plan, results, status="running")
+            _write_report(report_dir, campaign, campaign_options, started_at, plan, results, pre_run_cleanup, status="running")
             if result.status == "failed" and not campaign_options.continue_on_failure:
                 stop_error = ReleaseCampaignExecutionError(
                     f"Release campaign command failed: {result.command}: {result.error}"
@@ -98,7 +106,7 @@ def invoke_release_campaign(
                 break
 
         status = _aggregate_status(results, dry_run=campaign_options.dry_run)
-        _write_report(report_dir, campaign, campaign_options, started_at, plan, results, status=status)
+        _write_report(report_dir, campaign, campaign_options, started_at, plan, results, pre_run_cleanup, status=status)
         print("")
         print(f"Release campaign: {campaign_options.campaign}")
         print(f"Status: {status}")
@@ -110,7 +118,7 @@ def invoke_release_campaign(
             raise ReleaseCampaignExecutionError(f"Release campaign '{campaign_options.campaign}' completed with failures.")
     except Exception:
         status = _aggregate_status(results, dry_run=campaign_options.dry_run) if results else "failed"
-        _write_report(report_dir, campaign, campaign_options, started_at, plan, results, status=status)
+        _write_report(report_dir, campaign, campaign_options, started_at, plan, results, pre_run_cleanup, status=status)
         print(f"Release campaign report: {report_dir / 'result.json'}")
         raise
 
@@ -216,7 +224,7 @@ def _dispatch_workspace_command(
         validate_workspace(layout)
         return
     if tokens[:2] == ["test", "certification"]:
-        invoke_certification(layout, workspace_options, _certification_options(campaign_options, _option_value(tokens, "--profile") or "fast"))
+        invoke_certification(layout, workspace_options, _certification_options(campaign_options, tokens))
         return
     if tokens[:2] == ["test", "python"]:
         invoke_python_tests(layout, PythonTestOptions(quiet="--quiet" in tokens))
@@ -225,13 +233,24 @@ def _dispatch_workspace_command(
         invoke_protocol_parity(layout, workspace_options, VariantComparisonOptions())
         return
     if tokens[:2] == ["test", "community-core-coverage"]:
-        invoke_community_core_coverage(layout, workspace_options, CommunityCoverageOptions())
+        invoke_community_core_coverage(
+            layout,
+            workspace_options,
+            CommunityCoverageOptions(
+                rest_coverage_budget=_option_value(tokens, "--rest-coverage-budget") or "contract",
+                rest_stress_budget=_option_value(tokens, "--rest-stress-budget") or "smoke",
+            ),
+        )
         return
     if tokens[:2] == ["test", "all"]:
         invoke_test_runs(layout, workspace_options)
         return
     if tokens[:2] == ["test", "live-e2e"]:
-        invoke_live_e2e_suite(layout, _workspace_options_from_tokens(workspace_options, tokens), _live_options_from_tokens(campaign_options, tokens))
+        invoke_live_e2e_suite(
+            layout,
+            _workspace_options_from_tokens(workspace_options, tokens),
+            _live_options_from_tokens(campaign_options, tokens),
+        )
         return
     if tokens and tokens[0] == "package-release":
         create_release_package(
@@ -250,16 +269,24 @@ def _dispatch_workspace_command(
     raise ValueError(f"Unsupported emule_workspace release campaign command: {' '.join(tokens)}")
 
 
-def _certification_options(campaign_options: ReleaseCampaignOptions, profile: str) -> CertificationOptions:
+def _certification_options(campaign_options: ReleaseCampaignOptions, tokens: list[str]) -> CertificationOptions:
     return CertificationOptions(
-        profile=profile,
+        profile=_option_value(tokens, "--profile") or "fast",
+        pre_run_cleanup=False,
         continue_on_failure=campaign_options.continue_on_failure,
+        live_wire_inputs_file=_option_value(tokens, "--live-wire-inputs-file"),
+        radarr_movie_root=_option_value(tokens, "--radarr-movie-root"),
+        sonarr_series_root=_option_value(tokens, "--sonarr-series-root"),
+        acquisition_timeout_minutes=_option_float(tokens, "--acquisition-timeout-minutes"),
+        p2p_bind_interface_name=_option_value(tokens, "--p2p-bind-interface-name") or "hide.me",
+        skip_live_seed_refresh="--skip-live-seed-refresh" in tokens,
     )
 
 
 def _live_options_from_tokens(campaign_options: ReleaseCampaignOptions, tokens: list[str]) -> LiveE2eOptions:
     return LiveE2eOptions(
         profile=_option_value(tokens, "--profile") or "default",
+        pre_run_cleanup=False,
         fail_fast="--fail-fast" in tokens,
         live_wire_inputs_file=_option_value(tokens, "--live-wire-inputs-file"),
     )
@@ -279,6 +306,13 @@ def _option_value(tokens: list[str], option: str) -> str | None:
         if token == option:
             return tokens[index + 1]
     return None
+
+
+def _option_float(tokens: list[str], option: str) -> float | None:
+    value = _option_value(tokens, option)
+    if value is None:
+        return None
+    return float(value)
 
 
 def _assert_supported_command(command: str) -> None:
@@ -325,6 +359,7 @@ def _write_report(
     started_at: datetime,
     plan: tuple[CampaignCommandPlan, ...],
     results: list[CampaignCommandResult],
+    pre_run_cleanup: CleanupRunSummary | None,
     *,
     status: str,
 ) -> None:
@@ -340,7 +375,9 @@ def _write_report(
             "includeNonblocking": campaign_options.include_nonblocking,
             "continueOnFailure": campaign_options.continue_on_failure,
             "dryRun": campaign_options.dry_run,
+            "preRunCleanup": campaign_options.pre_run_cleanup,
         },
+        "preRunCleanup": cleanup_summary_payload(pre_run_cleanup),
         "plannedCommands": [
             {
                 "command": item.command,

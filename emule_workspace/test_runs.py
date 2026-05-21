@@ -17,6 +17,7 @@ from .config import (
     VariantComparisonOptions,
     WorkspaceOptions,
 )
+from .cleanup import run_pre_test_cleanup
 from .layout import WorkspaceLayout, get_test_build_tag
 from .process import get_python_invocation, run_native
 
@@ -228,6 +229,8 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
     """Runs the aggregate live E2E suite."""
 
     _assert_test_execution_platform_supported(options)
+    if live_options.pre_run_cleanup:
+        run_pre_test_cleanup(layout)
     app_root = layout.get_app_variant(layout.test_targets.test_run_variant).path
     script_path = layout.tests_repo_root / "scripts" / "run-live-e2e-suite.py"
     if not script_path.is_file():

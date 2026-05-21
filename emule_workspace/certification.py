@@ -11,14 +11,17 @@ from pathlib import Path
 
 from .build import build_apps
 from .build_tests import invoke_build_tests
+from .cleanup import CleanupFailedError, CleanupRunSummary, cleanup_summary_payload, run_pre_test_cleanup
 from .config import (
     AmutorrentCleanStartupOptions,
     AmutorrentEmulebbUiOptions,
     AmutorrentResilienceOptions,
     BuildTestsOptions,
     CertificationOptions,
+    CommunityCoverageOptions,
     LiveE2eOptions,
     PythonTestOptions,
+    VariantComparisonOptions,
     WorkspaceOptions,
 )
 from .layout import WorkspaceLayout
@@ -27,7 +30,9 @@ from .test_runs import (
     invoke_amutorrent_clean_startup,
     invoke_amutorrent_emulebb_ui,
     invoke_amutorrent_resilience,
+    invoke_community_core_coverage,
     invoke_live_e2e_suite,
+    invoke_protocol_parity,
     invoke_test_runs,
 )
 from .validation import validate_workspace
@@ -67,8 +72,11 @@ FAST_STEP_PLAN = (
 )
 
 OVERNIGHT_EXTRA_STEP_PLAN = (
+    CertificationStepPlan("protocol-parity", "protocol"),
+    CertificationStepPlan("community-core-coverage", "protocol"),
     CertificationStepPlan("live-controller-surface", "live"),
-    CertificationStepPlan("live-full-release", "live"),
+    CertificationStepPlan("live-release-expanded", "live"),
+    CertificationStepPlan("live-ui-resource-depth", "live"),
     CertificationStepPlan("live-stabilization-stress", "stress"),
     CertificationStepPlan("amutorrent-clean-startup", "amutorrent"),
     CertificationStepPlan("amutorrent-emulebb-ui", "amutorrent"),
@@ -92,11 +100,18 @@ def invoke_certification(layout: WorkspaceLayout, options: WorkspaceOptions, cer
     report_dir = _new_report_dir(layout, certification_options.profile)
     report_dir.mkdir(parents=True, exist_ok=False)
     steps: list[CertificationStepResult] = []
+    pre_run_cleanup: CleanupRunSummary | None = None
     started_at = datetime.now(timezone.utc)
     status = "passed"
     stop_error: RuntimeError | None = None
 
     try:
+        if certification_options.pre_run_cleanup:
+            try:
+                pre_run_cleanup = run_pre_test_cleanup(layout)
+            except CleanupFailedError as exc:
+                pre_run_cleanup = exc.summary
+                raise
         for step_plan in get_certification_step_plan(certification_options.profile):
             step_result = _run_step(
                 layout,
@@ -105,7 +120,7 @@ def invoke_certification(layout: WorkspaceLayout, options: WorkspaceOptions, cer
                 step_plan,
             )
             steps.append(step_result)
-            _write_report(report_dir, layout, options, certification_options, started_at, steps, status="running")
+            _write_report(report_dir, layout, options, certification_options, started_at, steps, pre_run_cleanup, status="running")
             if step_result.status != "passed":
                 if not certification_options.continue_on_failure:
                     stop_error = RuntimeError(f"Certification step '{step_result.name}' {step_result.status}: {step_result.error}")
@@ -120,11 +135,11 @@ def invoke_certification(layout: WorkspaceLayout, options: WorkspaceOptions, cer
             status = "failed"
         else:
             status = _aggregate_status(steps)
-        _write_report(report_dir, layout, options, certification_options, started_at, steps, status=status)
+        _write_report(report_dir, layout, options, certification_options, started_at, steps, pre_run_cleanup, status=status)
         print(f"Certification report: {report_dir / 'result.json'}")
         raise
 
-    _write_report(report_dir, layout, options, certification_options, started_at, steps, status=status)
+    _write_report(report_dir, layout, options, certification_options, started_at, steps, pre_run_cleanup, status=status)
     print("")
     print(f"Certification profile: {certification_options.profile}")
     print(f"Status: {status}")
@@ -215,6 +230,16 @@ def _invoke_step(
     if name == "test-all-release-x64":
         invoke_test_runs(layout, _step_options(options, configuration="Release", platform="x64"))
         return
+    if name == "protocol-parity":
+        invoke_protocol_parity(layout, _step_options(options, configuration="Release", platform="x64"), VariantComparisonOptions())
+        return
+    if name == "community-core-coverage":
+        invoke_community_core_coverage(
+            layout,
+            _step_options(options, configuration="Release", platform="x64"),
+            CommunityCoverageOptions(rest_coverage_budget="contract", rest_stress_budget="smoke"),
+        )
+        return
     if name == "live-fast-ui-rest":
         invoke_live_e2e_suite(
             layout,
@@ -229,17 +254,22 @@ def _invoke_step(
             _live_options(certification_options, profile="controller-surface", fail_fast=True),
         )
         return
-    if name == "live-full-release":
+    if name == "live-release-expanded":
         invoke_live_e2e_suite(
             layout,
             _step_options(options, configuration="Release", platform="x64"),
             _live_options(
                 certification_options,
-                profile="default",
-                preference_ui_directories_tree_stress=True,
-                search_ui_search_rounds=2,
-                search_ui_download_lifecycle_count=2,
+                profile="release-expanded",
+                fail_fast=True,
             ),
+        )
+        return
+    if name == "live-ui-resource-depth":
+        invoke_live_e2e_suite(
+            layout,
+            _step_options(options, configuration="Release", platform="x64"),
+            _live_options(certification_options, profile="ui-resource-depth", fail_fast=True),
         )
         return
     if name == "live-stabilization-stress":
@@ -314,6 +344,7 @@ def _live_options(
     return LiveE2eOptions(
         suites=suites,
         profile=profile,
+        pre_run_cleanup=False,
         fail_fast=fail_fast,
         skip_live_seed_refresh=certification_options.skip_live_seed_refresh,
         preference_ui_directories_tree_stress=preference_ui_directories_tree_stress,
@@ -403,6 +434,7 @@ def _write_report(
     certification_options: CertificationOptions,
     started_at: datetime,
     steps: list[CertificationStepResult],
+    pre_run_cleanup: CleanupRunSummary | None,
     *,
     status: str,
 ) -> None:
@@ -417,6 +449,7 @@ def _write_report(
         "duration_seconds": round((completed_at - started_at).total_seconds(), 3),
         "commits": _workspace_commits(layout),
         "options": {
+            "pre_run_cleanup": certification_options.pre_run_cleanup,
             "continue_on_failure": certification_options.continue_on_failure,
             "p2p_bind_interface_name": certification_options.p2p_bind_interface_name,
             "live_wire_inputs_file": certification_options.live_wire_inputs_file or "",
@@ -425,6 +458,7 @@ def _write_report(
             "acquisition_timeout_minutes": certification_options.acquisition_timeout_minutes,
             "skip_live_seed_refresh": certification_options.skip_live_seed_refresh,
         },
+        "pre_run_cleanup": cleanup_summary_payload(pre_run_cleanup),
         "steps": [
             {
                 "name": step.name,

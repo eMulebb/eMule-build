@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 from collections import defaultdict
 from dataclasses import dataclass
@@ -49,7 +50,29 @@ class CleanupCandidate:
     estimated: bool = False
 
 
-def cleanup_workspace(layout: WorkspaceLayout, options: CleanupOptions) -> None:
+@dataclass(frozen=True)
+class CleanupRunSummary:
+    """Machine-readable summary of one generated-artifact cleanup pass."""
+
+    profile: str
+    apply: bool
+    status: str
+    candidates: int
+    bytes: int
+    files: int
+    categories: dict[str, dict[str, int]]
+    error: str = ""
+
+
+class CleanupFailedError(RuntimeError):
+    """Raised when a cleanup pass fails after producing a summary."""
+
+    def __init__(self, summary: CleanupRunSummary) -> None:
+        super().__init__(summary.error)
+        self.summary = summary
+
+
+def cleanup_workspace(layout: WorkspaceLayout, options: CleanupOptions) -> CleanupRunSummary:
     """Plans or applies generated-artifact cleanup for one workspace."""
 
     candidates = plan_cleanup(layout, options)
@@ -58,10 +81,39 @@ def cleanup_workspace(layout: WorkspaceLayout, options: CleanupOptions) -> None:
     _print_cleanup_summary(layout, candidates)
     if not options.apply:
         print("Dry run only. Re-run with --apply to delete the listed generated artifacts.")
-        return
-    for candidate in candidates:
-        _delete_candidate(candidate)
+        return _cleanup_summary(options, candidates, status="planned")
+    try:
+        for candidate in candidates:
+            _delete_candidate(candidate)
+    except Exception as exc:
+        summary = _cleanup_summary(options, candidates, status="failed", error=str(exc))
+        print(f"Cleanup failed: {exc}")
+        raise CleanupFailedError(summary) from exc
     print(f"Cleanup applied. Removed {_format_bytes(sum(candidate.bytes for candidate in candidates))}.")
+    return _cleanup_summary(options, candidates, status="passed")
+
+
+def run_pre_test_cleanup(layout: WorkspaceLayout) -> CleanupRunSummary:
+    """Prunes old generated outcomes before broad test orchestration starts."""
+
+    return cleanup_workspace(layout, CleanupOptions(apply=True, profile="routine"))
+
+
+def cleanup_summary_payload(summary: CleanupRunSummary | None) -> dict[str, object] | None:
+    """Returns a JSON-friendly cleanup summary payload."""
+
+    if summary is None:
+        return None
+    return {
+        "profile": summary.profile,
+        "apply": summary.apply,
+        "status": summary.status,
+        "candidates": summary.candidates,
+        "bytes": summary.bytes,
+        "files": summary.files,
+        "categories": summary.categories,
+        "error": summary.error,
+    }
 
 
 def plan_cleanup(layout: WorkspaceLayout, options: CleanupOptions) -> list[CleanupCandidate]:
@@ -300,12 +352,47 @@ def _file_candidate(path: Path, category: str, reason: str) -> CleanupCandidate:
 
 
 def _delete_candidate(candidate: CleanupCandidate) -> None:
+    path = _delete_path(candidate.path)
     if candidate.kind == "directory":
-        shutil.rmtree(candidate.path)
+        shutil.rmtree(path)
     elif candidate.kind == "file":
-        candidate.path.unlink()
+        os.unlink(path)
     else:
         raise RuntimeError(f"Unsupported cleanup candidate kind: {candidate.kind}")
+
+
+def _delete_path(path: Path) -> str:
+    resolved = str(path.resolve())
+    if os.name != "nt" or resolved.startswith("\\\\?\\"):
+        return resolved
+    if resolved.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + resolved[2:]
+    return "\\\\?\\" + resolved
+
+
+def _cleanup_summary(
+    options: CleanupOptions,
+    candidates: list[CleanupCandidate],
+    *,
+    status: str,
+    error: str = "",
+) -> CleanupRunSummary:
+    categories: dict[str, dict[str, int]] = defaultdict(lambda: {"items": 0, "files": 0, "bytes": 0})
+    for candidate in candidates:
+        category = categories[candidate.category]
+        category["items"] += 1
+        category["files"] += candidate.files
+        category["bytes"] += candidate.bytes
+    return CleanupRunSummary(
+        profile=options.profile,
+        apply=options.apply,
+        status=status,
+        candidates=len(candidates),
+        bytes=sum(candidate.bytes for candidate in candidates),
+        files=sum(candidate.files for candidate in candidates),
+        categories=dict(categories),
+        error=error,
+    )
 
 
 def _print_cleanup_summary(layout: WorkspaceLayout, candidates: list[CleanupCandidate]) -> None:

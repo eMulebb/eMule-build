@@ -304,6 +304,25 @@ def test_live_e2e_forwards_profile_only_when_configured(tmp_path: Path, monkeypa
     assert option_values(command, "--profile") == ["ui-resource-depth"]
 
 
+def test_live_e2e_runs_pre_run_cleanup_when_requested(tmp_path: Path, monkeypatch) -> None:
+    calls: list[str] = []
+
+    def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
+        calls.append("run")
+
+    layout = make_layout(tmp_path)
+    monkeypatch.setattr(test_runs, "run_pre_test_cleanup", lambda _layout: calls.append("cleanup"))
+    monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+
+    test_runs.invoke_live_e2e_suite(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+        LiveE2eOptions(profile="release-expanded", pre_run_cleanup=True),
+    )
+
+    assert calls == ["cleanup", "run"]
+
+
 def test_live_e2e_forwards_live_wire_inputs_file_only_when_configured(tmp_path: Path, monkeypatch) -> None:
     captured: dict[str, object] = {}
 

@@ -23,6 +23,12 @@ LiveE2eProfile = Literal[
     "ui-resource-depth",
 ]
 CertificationProfile = Literal["fast", "overnight"]
+BROAD_LIVE_E2E_PRE_RUN_CLEANUP_PROFILES: tuple[LiveE2eProfile, ...] = (
+    "controller-surface",
+    "release-expanded",
+    "stabilization-stress",
+    "ui-resource-depth",
+)
 
 
 class WorkspaceOptions(BaseModel):
@@ -80,6 +86,7 @@ class LiveE2eOptions(BaseModel):
 
     suites: tuple[str, ...] = ()
     profile: LiveE2eProfile = "default"
+    pre_run_cleanup: bool = False
     fail_fast: bool = False
     skip_live_seed_refresh: bool = False
     startup_trace_mode: str = "required"
@@ -228,6 +235,7 @@ class ReleaseCampaignOptions(BaseModel):
     include_nonblocking: bool = False
     continue_on_failure: bool = False
     dry_run: bool = False
+    pre_run_cleanup: bool = True
 
 
 class CertificationOptions(BaseModel):
@@ -236,6 +244,7 @@ class CertificationOptions(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     profile: CertificationProfile = "fast"
+    pre_run_cleanup: bool = True
     continue_on_failure: bool = False
     live_wire_inputs_file: str | None = None
     radarr_movie_root: str | None = None

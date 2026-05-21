@@ -61,7 +61,11 @@ def test_certification_step_plan_is_two_tier() -> None:
         "live-fast-ui-rest",
     ]
     assert [step.name for step in overnight[: len(fast)]] == [step.name for step in fast]
+    assert "protocol-parity" in [step.name for step in overnight]
+    assert "community-core-coverage" in [step.name for step in overnight]
     assert "live-stabilization-stress" in [step.name for step in overnight]
+    assert "live-release-expanded" in [step.name for step in overnight]
+    assert "live-ui-resource-depth" in [step.name for step in overnight]
     assert "amutorrent-clean-startup" in [step.name for step in overnight]
     assert "amutorrent-emulebb-ui" in [step.name for step in overnight]
     assert "amutorrent-resilience" in [step.name for step in overnight]
@@ -87,6 +91,32 @@ def test_certification_writes_single_passing_report(tmp_path: Path, monkeypatch:
     assert report["profile"] == "fast"
     assert calls == [step.name for step in certification.get_certification_step_plan("fast")]
     assert [step["status"] for step in report["steps"]] == ["passed"] * len(calls)
+    assert report["options"]["pre_run_cleanup"] is True
+    assert report["pre_run_cleanup"]["status"] == "passed"
+
+
+def test_certification_records_pre_run_cleanup_before_first_step(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    layout = make_layout(tmp_path)
+    calls: list[str] = []
+
+    def fake_cleanup(_layout):
+        calls.append("cleanup")
+        return certification.CleanupRunSummary("routine", True, "passed", 0, 0, 0, {})
+
+    def fake_invoke_step(_layout, _options, _certification_options, name):
+        calls.append(name)
+
+    monkeypatch.setattr(certification, "run_pre_test_cleanup", fake_cleanup)
+    monkeypatch.setattr(certification, "_invoke_step", fake_invoke_step)
+
+    certification.invoke_certification(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+        CertificationOptions(profile="fast"),
+    )
+
+    assert calls[0] == "cleanup"
+    assert calls[1:] == [step.name for step in certification.get_certification_step_plan("fast")]
 
 
 def test_certification_records_failed_step(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -222,3 +252,25 @@ def test_overnight_stress_step_enables_cpu_profile(tmp_path: Path, monkeypatch: 
     assert live_options.fail_fast is True
     assert live_options.rest_cold_start_dump_stress_cpu_profile is True
     assert live_options.rest_cold_start_dump_stress_cpu_profile_stack is True
+
+
+def test_overnight_release_steps_use_broad_live_profiles(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    layout = make_layout(tmp_path)
+    captured: list[object] = []
+
+    def fake_live_e2e(_layout, _options, live_options):
+        captured.append(live_options)
+
+    monkeypatch.setattr(certification, "invoke_live_e2e_suite", fake_live_e2e)
+
+    for step_name in ("live-release-expanded", "live-ui-resource-depth"):
+        certification._invoke_step(
+            layout,
+            WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+            CertificationOptions(profile="overnight"),
+            step_name,
+        )
+
+    assert [item.profile for item in captured] == ["release-expanded", "ui-resource-depth"]
+    assert [item.fail_fast for item in captured] == [True, True]
+    assert [item.pre_run_cleanup for item in captured] == [False, False]

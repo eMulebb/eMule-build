@@ -19,6 +19,7 @@ from .config import (
     AmutorrentEmulebbUiOptions,
     AmutorrentResilienceOptions,
     AmutorrentSessionOptions,
+    BROAD_LIVE_E2E_PRE_RUN_CLEANUP_PROFILES,
     BuildTestsOptions,
     CertificationOptions,
     CleanupOptions,
@@ -203,10 +204,19 @@ def _live_e2e_options(function: F) -> F:
         default=True,
         show_default=True,
     )
+    @click.option(
+        "--pre-run-cleanup/--skip-pre-run-cleanup",
+        default=None,
+        help="Prune old generated outcomes before broad live E2E profiles.",
+    )
     @click.option("--rest-cold-start-dump-stress-skip-dumps", is_flag=True)
     @wraps(function)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
-        live_options = LiveE2eOptions(**{key: kwargs.pop(key) for key in LiveE2eOptions.model_fields})
+        pre_run_cleanup = kwargs.pop("pre_run_cleanup")
+        values = {key: kwargs.pop(key) for key in LiveE2eOptions.model_fields if key != "pre_run_cleanup"}
+        if pre_run_cleanup is None:
+            pre_run_cleanup = values["profile"] in BROAD_LIVE_E2E_PRE_RUN_CLEANUP_PROFILES
+        live_options = LiveE2eOptions(**values, pre_run_cleanup=pre_run_cleanup)
         return function(*args, live_options=live_options, **kwargs)
 
     return wrapper  # type: ignore[return-value]
@@ -604,6 +614,7 @@ def test_live_e2e(
 @click.option("--include-nonblocking", is_flag=True, help="Include nonblocking optional campaign scenarios during execution.")
 @click.option("--continue-on-failure", is_flag=True, help="Run remaining campaign commands after a failure.")
 @click.option("--dry-run", is_flag=True, help="Write an execution plan report without running campaign commands.")
+@click.option("--skip-pre-run-cleanup", is_flag=True, help="Do not prune old generated outcomes before executing campaign commands.")
 def test_release_campaign(
     *,
     campaign: str,
@@ -614,6 +625,7 @@ def test_release_campaign(
     include_nonblocking: bool,
     continue_on_failure: bool,
     dry_run: bool,
+    skip_pre_run_cleanup: bool,
     workspace_options: WorkspaceOptions,
     layout,
 ) -> None:
@@ -628,6 +640,7 @@ def test_release_campaign(
         include_nonblocking=include_nonblocking,
         continue_on_failure=continue_on_failure,
         dry_run=dry_run,
+        pre_run_cleanup=not skip_pre_run_cleanup,
     )
     _locked(
         "test release-campaign",
@@ -645,6 +658,7 @@ def test_release_campaign(
 @click.option("--p2p-bind-interface-name", default="hide.me", show_default=True)
 @click.option("--skip-live-seed-refresh", is_flag=True, help="Reuse the existing live seed state.")
 @click.option("--continue-on-failure", is_flag=True, help="Run remaining certification steps after a failed or inconclusive step.")
+@click.option("--skip-pre-run-cleanup", is_flag=True, help="Do not prune old generated outcomes before the certification run.")
 def test_certification(
     *,
     profile: str,
@@ -655,6 +669,7 @@ def test_certification(
     p2p_bind_interface_name: str,
     skip_live_seed_refresh: bool,
     continue_on_failure: bool,
+    skip_pre_run_cleanup: bool,
     workspace_options: WorkspaceOptions,
     layout,
 ) -> None:
@@ -662,6 +677,7 @@ def test_certification(
 
     certification_options = CertificationOptions(
         profile=profile,
+        pre_run_cleanup=not skip_pre_run_cleanup,
         continue_on_failure=continue_on_failure,
         live_wire_inputs_file=live_wire_inputs_file,
         radarr_movie_root=radarr_movie_root,

@@ -143,6 +143,11 @@ def test_campaign_execute_dispatches_supported_commands(tmp_path: Path, monkeypa
     calls: list[str] = []
 
     monkeypatch.setattr(release_campaign_runner, "validate_workspace", lambda _layout: calls.append("validate"))
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "run_pre_test_cleanup",
+        lambda _layout: calls.append("cleanup") or release_campaign_runner.CleanupRunSummary("routine", True, "passed", 0, 0, 0, {}),
+    )
     monkeypatch.setattr(release_campaign_runner, "invoke_python_tests", lambda _layout, _options: calls.append("python"))
     monkeypatch.setattr(
         release_campaign_runner,
@@ -156,7 +161,39 @@ def test_campaign_execute_dispatches_supported_commands(tmp_path: Path, monkeypa
         ReleaseCampaignOptions(campaign="test-campaign", execute=True),
     )
 
-    assert calls == ["validate", "python", "live:controller-surface"]
+    assert calls == ["cleanup", "validate", "python", "live:controller-surface"]
+
+
+def test_campaign_execute_records_pre_run_cleanup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    layout = make_layout(tmp_path)
+    write_campaign(layout, campaign_payload())
+
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "run_pre_test_cleanup",
+        lambda _layout: release_campaign_runner.CleanupRunSummary(
+            "routine",
+            True,
+            "passed",
+            2,
+            128,
+            4,
+            {"report-run": {"items": 2, "files": 4, "bytes": 128}},
+        ),
+    )
+    monkeypatch.setattr(release_campaign_runner, "_dispatch_supported_command", lambda *_args: None)
+
+    release_campaign_runner.invoke_release_campaign(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path),
+        ReleaseCampaignOptions(campaign="test-campaign", execute=True),
+    )
+
+    reports = sorted((layout.workspace_root / "state" / "release-campaign-runs").glob("*/result.json"))
+    payload = json.loads(reports[-1].read_text(encoding="utf-8"))
+    assert payload["options"]["preRunCleanup"] is True
+    assert payload["preRunCleanup"]["status"] == "passed"
+    assert payload["preRunCleanup"]["categories"]["report-run"]["items"] == 2
 
 
 def test_campaign_execution_rejects_shell_commands() -> None:

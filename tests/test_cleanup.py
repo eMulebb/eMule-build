@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from types import SimpleNamespace
 
+from emule_workspace import cleanup
 from emule_workspace.cleanup import plan_cleanup
 from emule_workspace.config import CleanupOptions
 
@@ -42,6 +43,22 @@ def test_release_state_cleanup_is_explicit(tmp_path: Path) -> None:
 
     assert current_release.parent not in candidate_paths
     assert rehearsal_release.parent in candidate_paths
+
+
+def test_delete_candidate_uses_windows_long_path_prefix(tmp_path: Path, monkeypatch) -> None:
+    layout = make_layout(tmp_path)
+    edge_path = layout.tests_repo_root / "reports" / "shared-directories-rest" / "20260501-run" / "shared-rest-exact-names. "
+    candidate = cleanup.CleanupCandidate(edge_path, "directory", "report-run", "windows path edge case", 10, 1)
+    removed_paths: list[str] = []
+
+    monkeypatch.setattr(cleanup.os, "name", "nt")
+    monkeypatch.setattr(cleanup.shutil, "rmtree", lambda path: removed_paths.append(path))
+
+    cleanup._delete_candidate(candidate)
+
+    assert removed_paths
+    assert removed_paths[0].startswith("\\\\?\\")
+    assert "shared-rest-exact-names. " in removed_paths[0]
 
 
 def write_file(path: Path, size: int) -> Path:

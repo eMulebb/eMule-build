@@ -68,6 +68,8 @@ def test_test_live_e2e_help_exposes_live_options() -> None:
     assert "ui-resource-depth" in result.output
     assert "--p2p-bind-interface-name" in result.output
     assert "--live-wire-inputs-file" in result.output
+    assert "--pre-run-cleanup" in result.output
+    assert "--skip-pre-run-cleanup" in result.output
     assert "--search-ui-search-rounds" in result.output
     assert "--search-ui-download-lifecycle-count" in result.output
     assert "--radarr-movie-root" in result.output
@@ -89,6 +91,7 @@ def test_test_certification_help_exposes_release_gate_options() -> None:
     assert "--sonarr-series-root" in result.output
     assert "--p2p-bind-interface-name" in result.output
     assert "--continue-on-failure" in result.output
+    assert "--skip-pre-run-cleanup" in result.output
 
 
 def test_test_release_campaign_help_exposes_report_options() -> None:
@@ -105,6 +108,7 @@ def test_test_release_campaign_help_exposes_report_options() -> None:
     assert "--include-nonblocking" in result.output
     assert "--continue-on-failure" in result.output
     assert "--dry-run" in result.output
+    assert "--skip-pre-run-cleanup" in result.output
 
 
 def test_amutorrent_clean_startup_help_exposes_live_options() -> None:
