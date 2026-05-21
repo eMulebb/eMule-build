@@ -15,9 +15,11 @@ def test_routine_cleanup_selects_old_generated_artifacts(tmp_path: Path) -> None
     recent_payload = write_file(layout.tests_repo_root / "reports" / "rest-api-smoke-latest" / "temp" / "001.part", 10)
     old_build_log = write_file(layout.workspace_root / "state" / "build-logs" / "20260401-120000" / "summary.json", 10)
     old_arr_output = write_file(layout.workspace_root / "state" / "arr-acquisition" / "radarr" / "movie.mkv", 10)
+    old_live_artifact = write_file(layout.workspace_root / "state" / "live-e2e-artifacts" / "20260501-120000-100-release" / "result.json", 10)
+    recent_live_artifact = write_file(layout.workspace_root / "state" / "live-e2e-artifacts" / "20260521-120000-100-release" / "result.json", 10)
     cache_file = write_file(layout.build_repo_root / ".pytest_cache" / "README.md", 10)
     release_rehearsal = write_file(layout.workspace_root / "state" / "release" / "emule-bb-v1.0.1" / "package.zip", 10)
-    for path in (old_payload, old_build_log, old_arr_output, cache_file, release_rehearsal):
+    for path in (old_payload, old_build_log, old_arr_output, old_live_artifact, cache_file, release_rehearsal):
         make_old(path, tmp_path)
 
     candidates = plan_cleanup(layout, CleanupOptions(report_run_retention_days=3650.0, keep_build_log_runs=0))
@@ -28,9 +30,11 @@ def test_routine_cleanup_selects_old_generated_artifacts(tmp_path: Path) -> None
     assert recent_payload.parent not in candidate_paths
     assert old_build_log.parent in candidate_paths
     assert old_arr_output.parent in candidate_paths
+    assert old_live_artifact.parent in candidate_paths
+    assert recent_live_artifact.parent not in candidate_paths
     assert cache_file.parent in candidate_paths
     assert release_rehearsal.parent not in candidate_paths
-    assert categories == {"arr-acquisition", "build-logs", "caches", "report-payload"}
+    assert categories == {"arr-acquisition", "build-logs", "caches", "live-e2e-artifacts", "report-payload"}
 
 
 def test_release_state_cleanup_is_explicit(tmp_path: Path) -> None:

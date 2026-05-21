@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import time
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -236,12 +238,16 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
     if not script_path.is_file():
         raise RuntimeError(f"Missing live E2E suite runner: {script_path}")
 
+    artifacts_label = f"{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}-{options.configuration.lower()}"
+    artifacts_dir = layout.workspace_root / "state" / "live-e2e-artifacts" / artifacts_label
     args: list[str | Path | int | float] = [
         script_path,
         "--app-root",
         app_root,
         "--configuration",
         options.configuration,
+        "--artifacts-dir",
+        artifacts_dir,
         "--startup-trace-mode",
         live_options.startup_trace_mode,
         "--profile-cpu-max-file-mb",

@@ -366,6 +366,30 @@ def test_live_e2e_runs_pre_run_cleanup_when_requested(tmp_path: Path, monkeypatc
     assert calls == ["cleanup", "run"]
 
 
+def test_live_e2e_uses_workspace_state_artifacts_dir(tmp_path: Path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
+        captured["command"] = list(command)
+
+    layout = make_layout(tmp_path)
+    monkeypatch.setattr(test_runs.time, "strftime", lambda _format: "20260521-120000")
+    monkeypatch.setattr(test_runs.os, "getpid", lambda: 4242)
+    monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+
+    test_runs.invoke_live_e2e_suite(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+        LiveE2eOptions(suites=("disk-space-guard-live",)),
+    )
+
+    command = captured["command"]
+    assert isinstance(command, list)
+    assert option_values(command, "--artifacts-dir") == [
+        str(layout.workspace_root / "state" / "live-e2e-artifacts" / "20260521-120000-4242-release")
+    ]
+
+
 def test_live_e2e_forwards_live_wire_inputs_file_only_when_configured(tmp_path: Path, monkeypatch) -> None:
     captured: dict[str, object] = {}
 

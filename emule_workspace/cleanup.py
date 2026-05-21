@@ -121,6 +121,7 @@ def plan_cleanup(layout: WorkspaceLayout, options: CleanupOptions) -> list[Clean
 
     now = datetime.now()
     candidates: list[CleanupCandidate] = []
+    candidates.extend(_live_e2e_artifact_candidates(layout, options, now))
     candidates.extend(_report_payload_candidates(layout, options, now))
     candidates.extend(_old_report_run_candidates(layout, options, now))
     candidates.extend(_arr_acquisition_candidates(layout, options, now))
@@ -131,6 +132,25 @@ def plan_cleanup(layout: WorkspaceLayout, options: CleanupOptions) -> list[Clean
     if options.include_release_state:
         candidates.extend(_release_state_candidates(layout))
     return _dedupe_candidates(candidates)
+
+
+def _live_e2e_artifact_candidates(layout: WorkspaceLayout, options: CleanupOptions, now: datetime) -> list[CleanupCandidate]:
+    root = layout.workspace_root / "state" / "live-e2e-artifacts"
+    cutoff = now - timedelta(hours=options.report_payload_retention_hours)
+    if not root.is_dir():
+        return []
+    candidates: list[CleanupCandidate] = []
+    for run_dir in _child_directories(root):
+        if run_dir.stat().st_mtime >= cutoff.timestamp():
+            continue
+        candidates.append(
+            _directory_candidate(
+                run_dir,
+                "live-e2e-artifacts",
+                f"live E2E source artifact run older than {options.report_payload_retention_hours:g}h",
+            )
+        )
+    return candidates
 
 
 def _report_payload_candidates(layout: WorkspaceLayout, options: CleanupOptions, now: datetime) -> list[CleanupCandidate]:
