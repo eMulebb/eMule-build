@@ -31,6 +31,8 @@ def test_workspace_manifest_uses_json_contract_shape() -> None:
     assert manifest["schema_version"] == WORKSPACE_MANIFEST_SCHEMA_VERSION
     assert manifest["workspace"]["repos"]["build"] == "..\\..\\repos\\eMule-build"
     assert manifest["workspace"]["repos"]["ed2k_server"] == "..\\..\\repos\\emulebb-ed2k-server"
+    assert manifest["workspace"]["repos"]["amule"] == "..\\..\\repos\\amule"
+    assert manifest["workspace"]["repos"]["emuleai"] == "..\\..\\repos\\eMuleAI"
     assert manifest["workspace"]["repos"]["pages"] == "..\\..\\repos\\eMulebb-pages"
     assert manifest["workspace"]["repos"]["org_profile"] == "..\\..\\repos\\eMulebb-org-profile"
     assert manifest["workspace"]["app_repo"]["variants"][0] == {
@@ -61,13 +63,26 @@ def test_canonical_topology_materializes_ed2k_server_fork_under_repos() -> None:
     )
 
 
-def test_canonical_topology_materializes_amule_under_analysis() -> None:
-    analysis_repos = {repo.name: repo for repo in canonical_topology().analysis_repos}
+def test_canonical_topology_promotes_multi_client_forks_under_repos() -> None:
+    repos = {repo.name: repo for repo in canonical_topology().repos}
 
-    assert analysis_repos["amule"].url == "https://github.com/amule-project/amule.git"
-    assert analysis_repos["amule"].relative_path == "analysis\\amule"
-    assert analysis_repos["amule"].branch == "master"
-    assert analysis_repos["amule"].compare_subdir == "src"
+    amule = repos["amule"]
+    assert amule.url == "https://github.com/eMulebb/amule.git"
+    assert amule.relative_path == "repos\\amule"
+    assert amule.branch == "main"
+    assert amule.compare_subdir == "src"
+    assert tuple((remote.name, remote.url) for remote in amule.additional_remotes) == (
+        ("upstream", "https://github.com/amule-project/amule.git"),
+    )
+
+    emuleai = repos["emuleai"]
+    assert emuleai.url == "https://github.com/eMulebb/eMuleAI.git"
+    assert emuleai.relative_path == "repos\\eMuleAI"
+    assert emuleai.branch == "main"
+    assert emuleai.compare_subdir == "srchybrid"
+    assert tuple((remote.name, remote.url) for remote in emuleai.additional_remotes) == (
+        ("upstream", "https://github.com/eMuleAI/eMuleAI.git"),
+    )
 
 
 def test_workspace_manifest_schema_rejects_unsupported_versions() -> None:

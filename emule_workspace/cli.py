@@ -10,6 +10,7 @@ import click
 
 from .build_tests import invoke_build_tests
 from .build import build_apps as invoke_build_apps
+from .build import build_clients as invoke_build_clients
 from .build import build_libs as invoke_build_libs
 from .certification import invoke_certification
 from .cleanup import cleanup_workspace
@@ -20,6 +21,7 @@ from .config import (
     AmutorrentResilienceOptions,
     AmutorrentSessionOptions,
     BROAD_LIVE_E2E_PRE_RUN_CLEANUP_PROFILES,
+    BuildClientsOptions,
     BuildTestsOptions,
     CertificationOptions,
     CleanupOptions,
@@ -438,6 +440,32 @@ def build_tests(
     _locked(
         "build tests",
         lambda **kwargs: invoke_build_tests(kwargs["layout"], kwargs["workspace_options"], build_options),
+    )(workspace_options=workspace_options, layout=layout)
+
+
+@build.command("clients")
+@_common_options
+@click.option("--clean", is_flag=True, help="Clean selected client outputs before building.")
+@click.option(
+    "--client",
+    "clients",
+    multiple=True,
+    type=click.Choice(["emuleai", "amule"]),
+    help="Optional P2P client to build. Defaults to all clients.",
+)
+def build_clients(
+    *,
+    clean: bool,
+    clients: tuple[str, ...],
+    workspace_options: WorkspaceOptions,
+    layout,
+) -> None:
+    """Build opt-in third-party P2P clients for local multi-client tests."""
+
+    build_options = BuildClientsOptions(clean=clean, clients=clients)
+    _locked(
+        "build clients",
+        lambda **kwargs: invoke_build_clients(kwargs["layout"], kwargs["workspace_options"], build_options),
     )(workspace_options=workspace_options, layout=layout)
 
 

@@ -166,12 +166,10 @@ def compare_root(root: Path, topology: WorkspaceTopology, name: str) -> Path:
     local_targets = {target.name: target for target in local_variant_compare_targets(root, topology)}
     if name in local_targets:
         return local_targets[name].path
-    analysis_repo = next((repo for repo in topology.analysis_repos if repo.name == name), None)
-    if analysis_repo is None:
+    compare_repo = next((repo for repo in (*topology.repos, *topology.analysis_repos) if repo.name == name and repo.compare_subdir), None)
+    if compare_repo is None:
         raise RuntimeError(f"Unknown compare target: {name}")
-    path = root / analysis_repo.relative_path
-    if analysis_repo.compare_subdir:
-        path /= analysis_repo.compare_subdir
+    path = root / compare_repo.relative_path / str(compare_repo.compare_subdir)
     return path
 
 

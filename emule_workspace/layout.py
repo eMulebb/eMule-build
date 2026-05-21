@@ -49,6 +49,8 @@ class WorkspaceLayout:
     tests_repo_root: Path
     tooling_repo_root: Path
     ed2k_server_repo_root: Path
+    amule_repo_root: Path
+    emuleai_repo_root: Path
     seed_repo_path: Path
     seed_repo_branch: str
     dependencies: tuple[Dependency, ...]
@@ -133,6 +135,8 @@ def load_layout(emule_workspace_root: Path, workspace_name: str | None = None) -
         tests_repo_root=_resolve_workspace_manifest_path(workspace_root, repos["tests"]),
         tooling_repo_root=_resolve_workspace_manifest_path(workspace_root, repos["tooling"]),
         ed2k_server_repo_root=_resolve_workspace_manifest_path(workspace_root, repos["ed2k_server"]),
+        amule_repo_root=_resolve_workspace_manifest_path(workspace_root, repos["amule"]),
+        emuleai_repo_root=_resolve_workspace_manifest_path(workspace_root, repos["emuleai"]),
         seed_repo_path=_resolve_workspace_manifest_path(workspace_root, seed_repo["path"]),
         seed_repo_branch=str(seed_repo["branch"]),
         dependencies=dependencies,

@@ -142,6 +142,8 @@ class WorkspaceManifestRepos(BaseModel):
     tooling: str
     amutorrent: str
     ed2k_server: str
+    amule: str
+    emuleai: str
     pages: str
     org_profile: str
     third_party: str
@@ -226,6 +228,8 @@ def build_workspace_manifest(topology: WorkspaceTopology, workspace_name: str | 
                 "tooling": _workspace_relative_repo_path(repo_by_name["eMule-tooling"]),
                 "amutorrent": _workspace_relative_repo_path(repo_by_name["amutorrent"]),
                 "ed2k_server": _workspace_relative_repo_path(repo_by_name["emulebb-ed2k-server"]),
+                "amule": _workspace_relative_repo_path(repo_by_name["amule"]),
+                "emuleai": _workspace_relative_repo_path(repo_by_name["emuleai"]),
                 "pages": _workspace_relative_repo_path(repo_by_name["eMulebb-pages"]),
                 "org_profile": _workspace_relative_repo_path(repo_by_name["eMulebb-org-profile"]),
                 "third_party": str(workspace_prefix / "repos" / "third_party"),
@@ -300,6 +304,22 @@ def canonical_topology() -> WorkspaceTopology:
                 ),
             ),
             ManagedRepo(
+                name="amule",
+                url="https://github.com/eMulebb/amule.git",
+                relative_path="repos\\amule",
+                branch="main",
+                compare_subdir="src",
+                additional_remotes=(AdditionalRemote(name="upstream", url="https://github.com/amule-project/amule.git"),),
+            ),
+            ManagedRepo(
+                name="emuleai",
+                url="https://github.com/eMulebb/eMuleAI.git",
+                relative_path="repos\\eMuleAI",
+                branch="main",
+                compare_subdir="srchybrid",
+                additional_remotes=(AdditionalRemote(name="upstream", url="https://github.com/eMuleAI/eMuleAI.git"),),
+            ),
+            ManagedRepo(
                 name="eMulebb-pages",
                 url="https://github.com/eMulebb/eMulebb.github.io.git",
                 relative_path="repos\\eMulebb-pages",
@@ -313,20 +333,6 @@ def canonical_topology() -> WorkspaceTopology:
             ),
         ),
         analysis_repos=(
-            ManagedRepo(
-                name="emuleai",
-                url="https://github.com/eMuleAI/eMuleAI.git",
-                relative_path="analysis\\emuleai",
-                branch="master",
-                compare_subdir="srchybrid",
-            ),
-            ManagedRepo(
-                name="amule",
-                url="https://github.com/amule-project/amule.git",
-                relative_path="analysis\\amule",
-                branch="master",
-                compare_subdir="src",
-            ),
             ManagedRepo(
                 name="community-0.60",
                 url="https://github.com/irwir/eMule.git",

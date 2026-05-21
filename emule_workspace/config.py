@@ -11,8 +11,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 BuildConfiguration = Literal["Debug", "Release"]
 BuildPlatform = Literal["x64", "ARM64"]
 BuildOutputMode = Literal["Full", "Warnings", "ErrorsOnly"]
+ClientBuildTarget = Literal["emuleai", "amule"]
 LiveE2eProfile = Literal[
     "default",
+    "multi-client-p2p",
     "protocol-parity",
     "beta-green",
     "controller-surface",
@@ -48,6 +50,15 @@ class WorkspaceOptions(BaseModel):
         """Stores the workspace root as an absolute path."""
 
         return value.expanduser().resolve()
+
+
+class BuildClientsOptions(BaseModel):
+    """Options for building opt-in third-party P2P client fixtures."""
+
+    model_config = ConfigDict(frozen=True)
+
+    clean: bool = False
+    clients: tuple[ClientBuildTarget, ...] = ()
 
 
 class PythonTestOptions(BaseModel):

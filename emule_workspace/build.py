@@ -5,14 +5,16 @@ from __future__ import annotations
 import shutil
 import subprocess
 import time
+import zipfile
 from pathlib import Path
 
 from .build_state import BuildSession
 from .cmake import invoke_cmake_dependency_build, remove_tree_if_present, static_msvc_runtime_cmake_arguments
-from .config import WorkspaceOptions
+from .config import BuildClientsOptions, WorkspaceOptions
 from .git import repo_branch, test_app_branch_allowed
 from .layout import WorkspaceLayout
 from .msbuild import env_override, invoke_msbuild_project
+from .process import find_tool
 from .toolchain import get_cmake_path, get_dumpbin_path, get_perl_path
 
 
@@ -119,6 +121,152 @@ def build_apps(
                 )
     finally:
         session.write_recap()
+
+
+def build_clients(layout: WorkspaceLayout, options: WorkspaceOptions, build_options: BuildClientsOptions) -> None:
+    """Builds opt-in third-party P2P clients used by live multi-client tests."""
+
+    session = BuildSession(layout=layout, options=options, command_name="build clients", clean=build_options.clean)
+    try:
+        selected_clients = tuple(dict.fromkeys(build_options.clients or ("emuleai", "amule")))
+        for client in selected_clients:
+            if client == "emuleai":
+                build_emuleai_client(session, clean=build_options.clean)
+            elif client == "amule":
+                build_amule_client(session, clean=build_options.clean)
+            else:
+                raise RuntimeError(f"Unsupported client build target: {client}")
+    finally:
+        session.write_recap()
+
+
+def build_emuleai_client(session: BuildSession, *, clean: bool) -> None:
+    """Builds the eMuleAI fork using the workspace MSBuild entrypoint."""
+
+    target = "Rebuild" if clean else "Build"
+    extra_properties = []
+    override = env_override(session.layout.toolset_override_variable)
+    if override:
+        extra_properties.append(f"/p:PlatformToolset={override}")
+    invoke_msbuild_project(
+        session,
+        project_path=session.layout.emuleai_repo_root / "eMuleAI.sln",
+        extra_properties=extra_properties,
+        target=target,
+        step_name="CLIENT eMuleAI",
+    )
+
+
+def build_amule_client(session: BuildSession, *, clean: bool) -> None:
+    """Builds the aMule Windows portable client and stages daemon tools under workspace state."""
+
+    bash = find_tool(("bash.exe", "bash"))
+    if bash is None:
+        raise RuntimeError(
+            "build clients --client amule requires an MSYS2 bash on PATH. "
+            "Open an MSYS2 MINGW64 shell or add its bash.exe to PATH."
+        )
+    script_path = session.layout.amule_repo_root / "packaging" / "windows" / "build.sh"
+    if not script_path.is_file():
+        raise RuntimeError(f"aMule Windows build script was not found: {script_path}")
+    if clean:
+        for path in (
+            session.layout.amule_repo_root / "build-windows-x86_64",
+            session.layout.amule_repo_root / "amule-portable-x86_64",
+            session.layout.amule_repo_root / "dist",
+            staged_amule_root(session.layout),
+        ):
+            remove_tree_if_present(path)
+
+    log_path = session.log_directory / "client-amule-build-release-x64.log"
+    started_at = time.monotonic()
+    try:
+        with log_path.open("w", encoding="utf-8", newline="\n") as stream:
+            stream.write(f"{bash} {script_path}\n\n")
+            completed = subprocess.run(
+                [str(bash), str(script_path)],
+                cwd=session.layout.amule_repo_root,
+                stdout=stream,
+                stderr=subprocess.STDOUT,
+                text=True,
+                check=False,
+                env={**subprocess_os_environ(), "WINDOWS_MSYSTEM": "MINGW64"},
+            )
+        if completed.returncode != 0:
+            raise RuntimeError(f"aMule Windows build failed with exit code {completed.returncode}. See {log_path}")
+        stage_amule_runtime(session.layout)
+        session.add_step(
+            name="CLIENT aMule",
+            succeeded=True,
+            log_path=log_path,
+            duration_seconds=time.monotonic() - started_at,
+            warning_count=0,
+        )
+    except Exception:
+        session.add_step(
+            name="CLIENT aMule",
+            succeeded=False,
+            log_path=log_path,
+            duration_seconds=time.monotonic() - started_at,
+            warning_count=0,
+        )
+        raise
+
+
+def subprocess_os_environ() -> dict[str, str]:
+    """Returns a mutable environment dictionary without importing `os` at call sites."""
+
+    import os
+
+    return os.environ.copy()
+
+
+def staged_amule_root(layout: WorkspaceLayout) -> Path:
+    """Returns the workspace-state aMule runtime staging root."""
+
+    return layout.workspace_root / "state" / "tools" / "amule"
+
+
+def stage_amule_runtime(layout: WorkspaceLayout) -> None:
+    """Stages the latest aMule portable runtime below the workspace state tree."""
+
+    source_root = find_amule_portable_root(layout.amule_repo_root)
+    target_root = staged_amule_root(layout)
+    remove_tree_if_present(target_root)
+    shutil.copytree(source_root, target_root)
+    for required in ("bin/amuled.exe", "bin/amulecmd.exe"):
+        if not (target_root / required).is_file():
+            raise RuntimeError(f"Staged aMule runtime is missing required file: {target_root / required}")
+
+
+def find_amule_portable_root(repo_root: Path) -> Path:
+    """Finds or extracts the portable aMule runtime built by the Windows recipe."""
+
+    candidates = sorted(
+        (
+            path.parent.parent
+            for path in repo_root.glob("**/bin/amuled.exe")
+            if "amule-portable" in str(path.parent.parent).lower() or "dist" in str(path.parent.parent).lower()
+        ),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    for candidate in candidates:
+        if (candidate / "bin" / "amulecmd.exe").is_file():
+            return candidate
+
+    zip_candidates = sorted((repo_root / "dist").glob("*.zip"), key=lambda path: path.stat().st_mtime, reverse=True)
+    if not zip_candidates:
+        raise RuntimeError(f"aMule build did not produce a portable runtime or zip under {repo_root}")
+    extract_root = repo_root / "dist" / "_workspace-extracted"
+    remove_tree_if_present(extract_root)
+    with zipfile.ZipFile(zip_candidates[0]) as archive:
+        archive.extractall(extract_root)
+    extracted = sorted((path.parent.parent for path in extract_root.glob("**/bin/amuled.exe")), key=lambda path: str(path))
+    for candidate in extracted:
+        if (candidate / "bin" / "amulecmd.exe").is_file():
+            return candidate
+    raise RuntimeError(f"aMule zip does not contain bin/amuled.exe and bin/amulecmd.exe: {zip_candidates[0]}")
 
 
 def selected_app_variants(layout: WorkspaceLayout, names: tuple[str, ...]):
