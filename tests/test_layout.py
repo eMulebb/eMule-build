@@ -31,7 +31,7 @@ def test_workspace_manifest_uses_json_contract_shape() -> None:
 
     assert manifest["schema_version"] == WORKSPACE_MANIFEST_SCHEMA_VERSION
     assert manifest["workspace"]["repos"]["build"] == "..\\..\\repos\\eMule-build"
-    assert manifest["workspace"]["repos"]["ed2k_server"] == "..\\..\\repos\\emulebb-ed2k-server"
+    assert manifest["workspace"]["repos"]["ed2k_server"] == "..\\..\\repos\\goed2k-server"
     assert manifest["workspace"]["repos"]["amule"] == "..\\..\\repos\\amule"
     assert manifest["workspace"]["repos"]["emuleai"] == "..\\..\\repos\\eMuleAI"
     assert manifest["workspace"]["repos"]["pages"] == "..\\..\\repos\\eMulebb-pages"
@@ -55,12 +55,12 @@ def test_canonical_topology_materializes_web_repositories_under_repos() -> None:
 def test_canonical_topology_materializes_ed2k_server_fork_under_repos() -> None:
     repos = {repo.name: repo for repo in canonical_topology().repos}
 
-    ed2k_server = repos["emulebb-ed2k-server"]
-    assert ed2k_server.url == "https://github.com/eMulebb/emulebb-ed2k-server.git"
-    assert ed2k_server.relative_path == "repos\\emulebb-ed2k-server"
+    ed2k_server = repos["goed2k-server"]
+    assert ed2k_server.url == "https://github.com/eMulebb/goed2k-server.git"
+    assert ed2k_server.relative_path == "repos\\goed2k-server"
     assert ed2k_server.branch == "master"
     assert tuple((remote.name, remote.url) for remote in ed2k_server.additional_remotes) == (
-        ("upstream", "https://github.com/p2p-overlord/p2p-overlord-ed2k-server.git"),
+        ("upstream", "https://github.com/chenjia404/goed2k-server.git"),
     )
 
 
@@ -70,7 +70,7 @@ def test_canonical_topology_promotes_multi_client_forks_under_repos() -> None:
     amule = repos["amule"]
     assert amule.url == "https://github.com/eMulebb/amule.git"
     assert amule.relative_path == "repos\\amule"
-    assert amule.branch == "main"
+    assert amule.branch == "master"
     assert amule.compare_subdir == "src"
     assert tuple((remote.name, remote.url) for remote in amule.additional_remotes) == (
         ("upstream", "https://github.com/amule-project/amule.git"),
@@ -79,7 +79,7 @@ def test_canonical_topology_promotes_multi_client_forks_under_repos() -> None:
     emuleai = repos["emuleai"]
     assert emuleai.url == "https://github.com/eMulebb/eMuleAI.git"
     assert emuleai.relative_path == "repos\\eMuleAI"
-    assert emuleai.branch == "main"
+    assert emuleai.branch == "master"
     assert emuleai.compare_subdir == "srchybrid"
     assert tuple((remote.name, remote.url) for remote in emuleai.additional_remotes) == (
         ("upstream", "https://github.com/eMuleAI/eMuleAI.git"),
