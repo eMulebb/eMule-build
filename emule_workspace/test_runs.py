@@ -244,6 +244,12 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
         options.configuration,
         "--startup-trace-mode",
         live_options.startup_trace_mode,
+        "--profile-cpu-max-file-mb",
+        live_options.profile_cpu_max_file_mb,
+        "--profile-cpu-stack-min-hits",
+        live_options.profile_cpu_stack_min_hits,
+        "--profile-resource-interval-seconds",
+        live_options.profile_resource_interval_seconds,
         "--rest-server-search-count",
         live_options.rest_server_search_count,
         "--rest-kad-search-count",
@@ -315,6 +321,11 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
         "--rest-cold-start-dump-stress-cpu-profile-stack-min-hits",
         live_options.rest_cold_start_dump_stress_cpu_profile_stack_min_hits,
     ]
+    _append_optional_flag(args, live_options.profile_cpu, "--profile-cpu")
+    _append_optional_flag(args, live_options.profile_cpu_stack, "--profile-cpu-stack")
+    if not live_options.profile_symbols_required:
+        args.append("--no-profile-symbols-required")
+    _append_optional_flag(args, live_options.profile_memory, "--profile-memory")
     _append_optional_flag(args, live_options.rest_cold_start_dump_stress_enable_umdh, "--rest-cold-start-dump-stress-enable-umdh")
     _append_optional_flag(args, live_options.rest_cold_start_dump_stress_cpu_profile, "--rest-cold-start-dump-stress-cpu-profile")
     _append_optional_flag(args, live_options.rest_cold_start_dump_stress_cpu_profile_stack, "--rest-cold-start-dump-stress-cpu-profile-stack")

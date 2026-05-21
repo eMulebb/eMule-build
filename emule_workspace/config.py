@@ -94,6 +94,13 @@ class LiveE2eOptions(BaseModel):
     preference_ui_directories_tree_stress: bool = False
     shared_files_ui_scenarios: tuple[str, ...] = ()
     shared_files_tree_stress_churn_cycles: int = -1
+    profile_cpu: bool = False
+    profile_cpu_max_file_mb: int = 512
+    profile_cpu_stack: bool = False
+    profile_cpu_stack_min_hits: int = 10
+    profile_symbols_required: bool = True
+    profile_memory: bool = False
+    profile_resource_interval_seconds: float = 2.0
     live_wire_inputs_file: str | None = None
     radarr_movie_root: str | None = None
     sonarr_series_root: str | None = None

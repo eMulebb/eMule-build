@@ -57,6 +57,13 @@ def test_live_e2e_forwards_cold_stress_cpu_profile_options(tmp_path: Path, monke
         WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
         LiveE2eOptions(
             suites=("rest-cold-start-dump-stress",),
+            profile_cpu=True,
+            profile_cpu_max_file_mb=96,
+            profile_cpu_stack=True,
+            profile_cpu_stack_min_hits=15,
+            profile_symbols_required=False,
+            profile_memory=True,
+            profile_resource_interval_seconds=1.5,
             rest_cold_start_dump_stress_enable_umdh=True,
             rest_cold_start_dump_stress_cpu_profile=True,
             rest_cold_start_dump_stress_cpu_profile_max_file_mb=64,
@@ -76,6 +83,13 @@ def test_live_e2e_forwards_cold_stress_cpu_profile_options(tmp_path: Path, monke
 
     command = captured["command"]
     assert isinstance(command, list)
+    assert "--profile-cpu" in command
+    assert option_values(command, "--profile-cpu-max-file-mb") == ["96"]
+    assert "--profile-cpu-stack" in command
+    assert option_values(command, "--profile-cpu-stack-min-hits") == ["15"]
+    assert "--no-profile-symbols-required" in command
+    assert "--profile-memory" in command
+    assert option_values(command, "--profile-resource-interval-seconds") == ["1.5"]
     assert "--rest-cold-start-dump-stress-enable-umdh" in command
     assert "--rest-cold-start-dump-stress-cpu-profile" in command
     assert option_values(command, "--rest-cold-start-dump-stress-cpu-profile-max-file-mb") == ["64"]

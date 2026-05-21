@@ -262,6 +262,9 @@ def _invoke_step(
                 certification_options,
                 profile="release-expanded",
                 fail_fast=True,
+                profile_cpu=True,
+                profile_cpu_stack=True,
+                profile_memory=True,
             ),
         )
         return
@@ -280,6 +283,9 @@ def _invoke_step(
                 certification_options,
                 profile="stabilization-stress",
                 fail_fast=True,
+                profile_cpu=True,
+                profile_cpu_stack=True,
+                profile_memory=True,
                 rest_cold_start_dump_stress_cpu_profile=True,
                 rest_cold_start_dump_stress_cpu_profile_stack=True,
             ),
@@ -338,6 +344,9 @@ def _live_options(
     preference_ui_directories_tree_stress: bool = False,
     search_ui_search_rounds: int = 1,
     search_ui_download_lifecycle_count: int = 1,
+    profile_cpu: bool = False,
+    profile_cpu_stack: bool = False,
+    profile_memory: bool = False,
     rest_cold_start_dump_stress_cpu_profile: bool = False,
     rest_cold_start_dump_stress_cpu_profile_stack: bool = False,
 ) -> LiveE2eOptions:
@@ -357,6 +366,9 @@ def _live_options(
         rest_stress_budget="smoke",
         search_ui_search_rounds=search_ui_search_rounds,
         search_ui_download_lifecycle_count=search_ui_download_lifecycle_count,
+        profile_cpu=profile_cpu,
+        profile_cpu_stack=profile_cpu_stack,
+        profile_memory=profile_memory,
         rest_cold_start_dump_stress_cpu_profile=rest_cold_start_dump_stress_cpu_profile,
         rest_cold_start_dump_stress_cpu_profile_stack=rest_cold_start_dump_stress_cpu_profile_stack,
     )
