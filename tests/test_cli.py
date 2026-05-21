@@ -63,6 +63,7 @@ def test_test_live_e2e_help_exposes_live_options() -> None:
     assert result.exit_code == 0
     assert "--suite" in result.output
     assert "--profile" in result.output
+    assert "multi-client-p2p" in result.output
     assert "release-expanded" in result.output
     assert "stabilization-stress" in result.output
     assert "ui-resource-depth" in result.output

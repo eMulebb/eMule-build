@@ -132,6 +132,7 @@ def _live_e2e_options(function: F) -> F:
         "--profile",
         type=click.Choice([
             "default",
+            "multi-client-p2p",
             "protocol-parity",
             "beta-green",
             "controller-surface",
