@@ -165,7 +165,8 @@ def _run_step(
 ) -> CertificationStepResult:
     """Runs one certification step and captures report directories touched by it."""
 
-    before_reports = _report_directory_snapshot(layout.tests_repo_root / "reports")
+    reports_root = _test_reports_root(layout)
+    before_reports = _report_directory_snapshot(reports_root)
     started = time.monotonic()
     error = ""
     status = "passed"
@@ -174,7 +175,7 @@ def _run_step(
     except Exception as exc:
         error = str(exc)
     duration = time.monotonic() - started
-    report_paths = _changed_report_paths(layout.tests_repo_root / "reports", before_reports)
+    report_paths = _changed_report_paths(reports_root, before_reports)
     if error:
         status = _failure_status_from_child_reports(report_paths)
     return CertificationStepResult(
@@ -404,6 +405,10 @@ def _amutorrent_resilience_options(certification_options: CertificationOptions) 
 def _new_report_dir(layout: WorkspaceLayout, profile: str) -> Path:
     stamp = time.strftime("%Y%m%d-%H%M%S")
     return layout.workspace_root / "state" / "certification" / f"{stamp}-{profile}"
+
+
+def _test_reports_root(layout: WorkspaceLayout) -> Path:
+    return layout.workspace_root / "state" / "test-reports"
 
 
 def _report_directory_snapshot(reports_root: Path) -> dict[Path, float]:

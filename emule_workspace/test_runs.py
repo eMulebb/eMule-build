@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-import time
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -38,6 +36,8 @@ def invoke_test_runs(layout: WorkspaceLayout, options: WorkspaceOptions) -> None
                 layout.tests_repo_root / "scripts" / "run-native-coverage.py",
                 "--test-repo-root",
                 layout.tests_repo_root,
+                "--workspace-root",
+                layout.workspace_root,
                 "--app-root",
                 app_root,
                 "--configuration",
@@ -103,6 +103,10 @@ def invoke_live_diff_runs(
                 layout.tests_repo_root / "scripts" / "run-live-diff.py",
                 "--test-repo-root",
                 layout.tests_repo_root,
+                "--test-run-workspace-root",
+                layout.workspace_root,
+                "--baseline-workspace-root",
+                layout.workspace_root,
                 "--test-run-app-root",
                 test_run_app_root,
                 "--baseline-app-root",
@@ -169,6 +173,10 @@ def invoke_protocol_parity(
                 layout.tests_repo_root / "scripts" / "run-live-diff.py",
                 "--test-repo-root",
                 layout.tests_repo_root,
+                "--test-run-workspace-root",
+                layout.workspace_root,
+                "--baseline-workspace-root",
+                layout.workspace_root,
                 "--test-run-app-root",
                 test_run_app_root,
                 "--baseline-app-root",
@@ -206,6 +214,8 @@ def invoke_community_core_coverage(
                 layout.tests_repo_root / "scripts" / "run-community-core-coverage.py",
                 "--test-repo-root",
                 layout.tests_repo_root,
+                "--workspace-root",
+                layout.workspace_root,
                 "--main-app-root",
                 test_run_app_root,
                 "--community-app-root",
@@ -238,16 +248,14 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
     if not script_path.is_file():
         raise RuntimeError(f"Missing live E2E suite runner: {script_path}")
 
-    artifacts_label = f"{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}-{options.configuration.lower()}"
-    artifacts_dir = layout.workspace_root / "state" / "live-e2e-artifacts" / artifacts_label
     args: list[str | Path | int | float] = [
         script_path,
+        "--workspace-root",
+        layout.workspace_root,
         "--app-root",
         app_root,
         "--configuration",
         options.configuration,
-        "--artifacts-dir",
-        artifacts_dir,
         "--startup-trace-mode",
         live_options.startup_trace_mode,
         "--profile-cpu-max-file-mb",
@@ -441,6 +449,8 @@ def invoke_amutorrent_interactive_session(
 
     args: list[str | Path] = [
         script_path,
+        "--workspace-root",
+        layout.workspace_root,
         "--app-root",
         app_root,
         "--configuration",
@@ -471,6 +481,8 @@ def invoke_fake_kad_trust_soak(
 
     args: list[str | Path | float | int] = [
         script_path,
+        "--workspace-root",
+        layout.workspace_root,
         "--app-root",
         app_root,
         "--configuration",
@@ -523,6 +535,8 @@ def invoke_amutorrent_clean_startup(
 
     args: list[str | Path | float] = [
         script_path,
+        "--workspace-root",
+        layout.workspace_root,
         "--app-root",
         app_root,
         "--configuration",
@@ -564,6 +578,8 @@ def invoke_amutorrent_resilience(
 
     args: list[str | Path | float] = [
         script_path,
+        "--workspace-root",
+        layout.workspace_root,
         "--app-root",
         app_root,
         "--configuration",
@@ -607,6 +623,8 @@ def invoke_amutorrent_emulebb_ui(
 
     args: list[str | Path | float] = [
         script_path,
+        "--workspace-root",
+        layout.workspace_root,
         "--app-root",
         app_root,
         "--configuration",

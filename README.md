@@ -139,11 +139,13 @@ python -m emule_workspace cleanup
 python -m emule_workspace cleanup --apply
 ```
 
-The default `routine` profile targets old live-test payload directories under
-`repos\eMule-build-tests\reports`, timestamped report runs older than the
-retention window, old `workspaces\workspace\state\build-logs` runs, and Python test
-caches. Build outputs and superseded release rehearsal state require explicit
-flags:
+The default `routine` profile targets old scratch artifacts under
+`workspaces\workspace\state\test-artifacts`, heavyweight payloads and
+timestamped reports under `workspaces\workspace\state\test-reports`, old
+`workspaces\workspace\state\build-logs` runs, and Python test caches. Legacy
+`workspaces\workspace\state\live-e2e-artifacts` runs are also pruned when they
+age out, but new harness output should not be written there. Build outputs and
+superseded release rehearsal state require explicit flags:
 
 ```powershell
 python -m emule_workspace cleanup --include-build-outputs

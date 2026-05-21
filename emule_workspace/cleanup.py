@@ -27,6 +27,9 @@ MEDIA_SUFFIXES = {
 HEAVY_SUFFIXES = MEDIA_SUFFIXES | {".part", ".dmp", ".etl", ".zip"}
 CACHE_DIRECTORY_NAMES = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
 CACHE_SCAN_PRUNE_NAMES = {".git", "build", "node_modules", "reports", "tools"}
+TEST_ARTIFACTS_DIR_NAME = "test-artifacts"
+TEST_REPORTS_DIR_NAME = "test-reports"
+LEGACY_LIVE_E2E_ARTIFACTS_DIR_NAME = "live-e2e-artifacts"
 REPORT_PAYLOAD_DIRECTORY_NAMES = {
     "dumps",
     "incoming",
@@ -121,7 +124,8 @@ def plan_cleanup(layout: WorkspaceLayout, options: CleanupOptions) -> list[Clean
 
     now = datetime.now()
     candidates: list[CleanupCandidate] = []
-    candidates.extend(_live_e2e_artifact_candidates(layout, options, now))
+    candidates.extend(_test_artifact_candidates(layout, options, now))
+    candidates.extend(_legacy_live_e2e_artifact_candidates(layout, options, now))
     candidates.extend(_report_payload_candidates(layout, options, now))
     candidates.extend(_old_report_run_candidates(layout, options, now))
     candidates.extend(_arr_acquisition_candidates(layout, options, now))
@@ -134,8 +138,28 @@ def plan_cleanup(layout: WorkspaceLayout, options: CleanupOptions) -> list[Clean
     return _dedupe_candidates(candidates)
 
 
-def _live_e2e_artifact_candidates(layout: WorkspaceLayout, options: CleanupOptions, now: datetime) -> list[CleanupCandidate]:
-    root = layout.workspace_root / "state" / "live-e2e-artifacts"
+def _test_artifact_candidates(layout: WorkspaceLayout, options: CleanupOptions, now: datetime) -> list[CleanupCandidate]:
+    root = _test_artifacts_root(layout)
+    cutoff = now - timedelta(hours=options.report_payload_retention_hours)
+    if not root.is_dir():
+        return []
+    candidates: list[CleanupCandidate] = []
+    for suite_dir in _child_directories(root):
+        for run_dir in _child_directories(suite_dir):
+            if run_dir.stat().st_mtime >= cutoff.timestamp():
+                continue
+            candidates.append(
+                _directory_candidate(
+                    run_dir,
+                    TEST_ARTIFACTS_DIR_NAME,
+                    f"test artifact run older than {options.report_payload_retention_hours:g}h",
+                )
+            )
+    return candidates
+
+
+def _legacy_live_e2e_artifact_candidates(layout: WorkspaceLayout, options: CleanupOptions, now: datetime) -> list[CleanupCandidate]:
+    root = layout.workspace_root / "state" / LEGACY_LIVE_E2E_ARTIFACTS_DIR_NAME
     cutoff = now - timedelta(hours=options.report_payload_retention_hours)
     if not root.is_dir():
         return []
@@ -146,15 +170,15 @@ def _live_e2e_artifact_candidates(layout: WorkspaceLayout, options: CleanupOptio
         candidates.append(
             _directory_candidate(
                 run_dir,
-                "live-e2e-artifacts",
-                f"live E2E source artifact run older than {options.report_payload_retention_hours:g}h",
+                "legacy-live-e2e-artifacts",
+                f"legacy live E2E source artifact run older than {options.report_payload_retention_hours:g}h",
             )
         )
     return candidates
 
 
 def _report_payload_candidates(layout: WorkspaceLayout, options: CleanupOptions, now: datetime) -> list[CleanupCandidate]:
-    reports_root = layout.tests_repo_root / "reports"
+    reports_root = _test_reports_root(layout)
     cutoff = now - timedelta(hours=options.report_payload_retention_hours)
     candidates: list[CleanupCandidate] = []
     if not reports_root.is_dir():
@@ -195,7 +219,7 @@ def _direct_heavy_file_candidates(scope: Path, cutoff: datetime, retention_hours
 
 
 def _old_report_run_candidates(layout: WorkspaceLayout, options: CleanupOptions, now: datetime) -> list[CleanupCandidate]:
-    reports_root = layout.tests_repo_root / "reports"
+    reports_root = _test_reports_root(layout)
     cutoff = now - timedelta(days=options.report_run_retention_days)
     candidates: list[CleanupCandidate] = []
     if not reports_root.is_dir():
@@ -214,6 +238,14 @@ def _old_report_run_candidates(layout: WorkspaceLayout, options: CleanupOptions,
                 )
             )
     return candidates
+
+
+def _test_artifacts_root(layout: WorkspaceLayout) -> Path:
+    return layout.workspace_root / "state" / TEST_ARTIFACTS_DIR_NAME
+
+
+def _test_reports_root(layout: WorkspaceLayout) -> Path:
+    return layout.workspace_root / "state" / TEST_REPORTS_DIR_NAME
 
 
 def _arr_acquisition_candidates(layout: WorkspaceLayout, options: CleanupOptions, now: datetime) -> list[CleanupCandidate]:

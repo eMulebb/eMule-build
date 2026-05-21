@@ -16,7 +16,7 @@ def make_layout(tmp_path: Path) -> WorkspaceLayout:
     tests_repo_root = emule_workspace_root / "repos" / "eMule-build-tests"
     app_root = workspace_root / "app" / "eMule-main"
     for path in (
-        tests_repo_root / "reports",
+        workspace_root / "state" / "test-reports",
         app_root,
         emule_workspace_root / "repos" / "eMule-build",
         emule_workspace_root / "repos" / "eMule-tooling",
@@ -178,7 +178,7 @@ def test_certification_preserves_inconclusive_child_status(tmp_path: Path, monke
 
     def fake_invoke_step(_layout, _options, _certification_options, name):
         if name == "live-fast-ui-rest":
-            child_report = layout.tests_repo_root / "reports" / "live-e2e-suite-latest"
+            child_report = layout.workspace_root / "state" / "test-reports" / "live-e2e-suite-latest"
             child_report.mkdir(parents=True)
             (child_report / "result.json").write_text(
                 json.dumps({"status": "inconclusive", "has_inconclusive_suites": True}) + "\n",

@@ -11,12 +11,12 @@ from emule_workspace.config import CleanupOptions
 
 def test_routine_cleanup_selects_old_generated_artifacts(tmp_path: Path) -> None:
     layout = make_layout(tmp_path)
-    old_payload = write_file(layout.tests_repo_root / "reports" / "rest-api-smoke" / "20260501-run" / "temp" / "001.part", 10)
-    recent_payload = write_file(layout.tests_repo_root / "reports" / "rest-api-smoke-latest" / "temp" / "001.part", 10)
+    old_payload = write_file(layout.workspace_root / "state" / "test-reports" / "rest-api-smoke" / "20260501-run" / "temp" / "001.part", 10)
+    recent_payload = write_file(layout.workspace_root / "state" / "test-reports" / "rest-api-smoke-latest" / "temp" / "001.part", 10)
     old_build_log = write_file(layout.workspace_root / "state" / "build-logs" / "20260401-120000" / "summary.json", 10)
     old_arr_output = write_file(layout.workspace_root / "state" / "arr-acquisition" / "radarr" / "movie.mkv", 10)
-    old_live_artifact = write_file(layout.workspace_root / "state" / "live-e2e-artifacts" / "20260501-120000-100-release" / "result.json", 10)
-    recent_live_artifact = write_file(layout.workspace_root / "state" / "live-e2e-artifacts" / "20260521-120000-100-release" / "result.json", 10)
+    old_live_artifact = write_file(layout.workspace_root / "state" / "test-artifacts" / "live-e2e-suite" / "20260501-120000-100-release" / "result.json", 10)
+    recent_live_artifact = write_file(layout.workspace_root / "state" / "test-artifacts" / "live-e2e-suite" / "20260521-120000-100-release" / "result.json", 10)
     cache_file = write_file(layout.build_repo_root / ".pytest_cache" / "README.md", 10)
     release_rehearsal = write_file(layout.workspace_root / "state" / "release" / "emule-bb-v1.0.1" / "package.zip", 10)
     for path in (old_payload, old_build_log, old_arr_output, old_live_artifact, cache_file, release_rehearsal):
@@ -34,7 +34,7 @@ def test_routine_cleanup_selects_old_generated_artifacts(tmp_path: Path) -> None
     assert recent_live_artifact.parent not in candidate_paths
     assert cache_file.parent in candidate_paths
     assert release_rehearsal.parent not in candidate_paths
-    assert categories == {"arr-acquisition", "build-logs", "caches", "live-e2e-artifacts", "report-payload"}
+    assert categories == {"arr-acquisition", "build-logs", "caches", "report-payload", "test-artifacts"}
 
 
 def test_release_state_cleanup_is_explicit(tmp_path: Path) -> None:
@@ -51,7 +51,7 @@ def test_release_state_cleanup_is_explicit(tmp_path: Path) -> None:
 
 def test_delete_candidate_uses_windows_long_path_prefix(tmp_path: Path, monkeypatch) -> None:
     layout = make_layout(tmp_path)
-    edge_path = layout.tests_repo_root / "reports" / "shared-directories-rest" / "20260501-run" / "shared-rest-exact-names. "
+    edge_path = layout.workspace_root / "state" / "test-reports" / "shared-directories-rest" / "20260501-run" / "shared-rest-exact-names. "
     candidate = cleanup.CleanupCandidate(edge_path, "directory", "report-run", "windows path edge case", 10, 1)
     removed_paths: list[str] = []
 
