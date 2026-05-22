@@ -128,6 +128,51 @@ def test_package_release_requires_main_app_source_branch(
         release._assert_release_source_branch(app_variant)
 
 
+def test_package_build_disables_startup_profiling(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app_root = tmp_path / "app"
+    captured: dict[str, object] = {}
+    session = SimpleNamespace(
+        layout=SimpleNamespace(toolset_override_variable="EMULE_TEST_TOOLSET"),
+        options=SimpleNamespace(configuration="Release", platform="x64"),
+    )
+
+    monkeypatch.setattr(release, "ensure_app_dependency_artifacts", lambda _layout, _options, *, clean: None)
+    monkeypatch.setattr(release, "app_property_overrides", lambda _layout, _platform: ("/p:DependencyRoot=test",))
+    monkeypatch.setattr(release, "env_override", lambda _name: None)
+    monkeypatch.setattr(release, "app_binary_path", lambda root, configuration, platform: root / platform / configuration / "emule.exe")
+    monkeypatch.setattr(release, "verify_app_control_flow_guard", lambda *_args, **_kwargs: None)
+
+    def fake_invoke_msbuild_project(*_args, **kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(release, "invoke_msbuild_project", fake_invoke_msbuild_project)
+
+    release._build_package_app(session, app_root, clean=True)
+
+    assert captured["project_path"] == app_root / "srchybrid" / "emule.vcxproj"
+    assert captured["target"] == "Rebuild"
+    assert "/p:DependencyRoot=test" in captured["extra_properties"]
+    assert "/p:EnableStartupProfiling=false" in captured["extra_properties"]
+
+
+def test_release_package_rejects_startup_profiling_binary_marker(tmp_path: Path) -> None:
+    exe_path = tmp_path / "emule.exe"
+    exe_path.write_bytes(_pe_payload(0x8664) + "startup-profile.trace.json".encode("utf-16le"))
+
+    with pytest.raises(RuntimeError, match="startup profiling support"):
+        release._assert_startup_profiling_not_compiled(exe_path)
+
+
+def test_release_package_accepts_binary_without_startup_profiling_marker(tmp_path: Path) -> None:
+    exe_path = tmp_path / "emule.exe"
+    exe_path.write_bytes(_pe_payload(0x8664) + b"regular release payload")
+
+    release._assert_startup_profiling_not_compiled(exe_path)
+
+
 def test_release_manifest_records_explicit_source_provenance(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

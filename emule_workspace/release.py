@@ -21,6 +21,12 @@ from .layout import AppVariant, WorkspaceLayout
 from .msbuild import env_override, invoke_msbuild_project
 
 PE_MACHINES = {"x64": 0x8664, "ARM64": 0xAA64}
+STARTUP_PROFILING_BINARY_MARKERS = (
+    b"startup-profile.trace.json",
+    "startup-profile.trace.json".encode("utf-16le"),
+    b"EMULE_STARTUP_PROFILE",
+    "EMULE_STARTUP_PROFILE".encode("utf-16le"),
+)
 AMUTORRENT_NODE_VERSION = "v24.15.0"
 AMUTORRENT_NODE_ARCHIVES = {
     "x64": (
@@ -157,6 +163,7 @@ def create_release_package(
         if not required_path.exists():
             raise RuntimeError(f"Cannot package missing release runtime path: {required_path}")
     _assert_pe_machine(exe_path, workspace_options.platform)
+    _assert_startup_profiling_not_compiled(exe_path)
 
     asset_arch = "arm64" if workspace_options.platform == "ARM64" else "x64"
     release_root = layout.workspace_root / "state" / "release" / f"emule-bb-v{package_options.release_version}"
@@ -683,6 +690,7 @@ def _build_package_app(session: BuildSession, app_root: Path, clean: bool) -> No
     target = "Rebuild" if clean else "Build"
     ensure_app_dependency_artifacts(session.layout, session.options, clean=clean)
     extra_properties = [*app_property_overrides(session.layout, session.options.platform)]
+    extra_properties.append("/p:EnableStartupProfiling=false")
     override = env_override(session.layout.toolset_override_variable)
     if override:
         extra_properties.append(f"/p:PlatformToolset={override}")
@@ -1183,6 +1191,18 @@ def _assert_pe_machine(path: Path, platform: str) -> None:
 
     if _pe_machine(path.read_bytes(), str(path)) != PE_MACHINES[platform]:
         raise RuntimeError(f"PE architecture mismatch for {path}: expected {platform}.")
+
+
+def _assert_startup_profiling_not_compiled(path: Path) -> None:
+    """Rejects release package binaries that still include startup profiling support."""
+
+    payload = path.read_bytes()
+    for marker in STARTUP_PROFILING_BINARY_MARKERS:
+        if marker in payload:
+            raise RuntimeError(
+                "Release package binary still contains startup profiling support; "
+                f"rebuild {path} with /p:EnableStartupProfiling=false."
+            )
 
 
 def _assert_pe_machine_bytes(payload: bytes, platform: str, label: str) -> None:
