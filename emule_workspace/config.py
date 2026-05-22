@@ -120,12 +120,13 @@ class LiveE2eOptions(BaseModel):
     radarr_movie_root: str | None = None
     sonarr_series_root: str | None = None
     acquisition_timeout_minutes: float | None = None
+    arr_download_proof_mode: str = "complete"
     p2p_bind_interface_name: str = "hide.me"
     rest_server_search_count: int = 6
     rest_kad_search_count: int = 6
     rest_download_trigger_count: int = 1
     rest_search_method_override: str = ""
-    rest_webserver_scheme: str = "http"
+    rest_webserver_scheme: str = "https"
     local_kad_bootstrap_mode: str = "rest"
     local_kad_nodes_dat_fixture_mode: str = "valid"
     rest_coverage_budget: str = "contract"

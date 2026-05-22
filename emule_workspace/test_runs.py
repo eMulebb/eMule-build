@@ -380,6 +380,7 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
         args.extend(["--sonarr-series-root", live_options.sonarr_series_root])
     if live_options.acquisition_timeout_minutes is not None:
         args.extend(["--media-acquisition-timeout-minutes", live_options.acquisition_timeout_minutes])
+    args.extend(["--arr-download-proof-mode", live_options.arr_download_proof_mode])
     if live_options.rest_search_method_override:
         args.extend(["--rest-search-method-override", live_options.rest_search_method_override])
     args.extend(["--rest-webserver-scheme", live_options.rest_webserver_scheme])
