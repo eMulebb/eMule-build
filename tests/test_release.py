@@ -142,20 +142,35 @@ def test_package_build_disables_startup_profiling(
     monkeypatch.setattr(release, "ensure_app_dependency_artifacts", lambda _layout, _options, *, clean: None)
     monkeypatch.setattr(release, "app_property_overrides", lambda _layout, _platform: ("/p:DependencyRoot=test",))
     monkeypatch.setattr(release, "env_override", lambda _name: None)
-    monkeypatch.setattr(release, "app_binary_path", lambda root, configuration, platform: root / platform / configuration / "emule.exe")
-    monkeypatch.setattr(release, "verify_app_control_flow_guard", lambda *_args, **_kwargs: None)
+    package_app_output_root = tmp_path / "state" / "package-build" / "emule-bb-v0.7.3" / "x64" / "app"
+    package_app_intermediate_root = tmp_path / "state" / "package-build" / "emule-bb-v0.7.3" / "x64" / "app-obj"
+    cfg_checks: list[Path] = []
+
+    def fake_verify_app_control_flow_guard(*_args, **kwargs):
+        cfg_checks.append(kwargs["binary_path"])
+
+    monkeypatch.setattr(release, "verify_app_control_flow_guard", fake_verify_app_control_flow_guard)
 
     def fake_invoke_msbuild_project(*_args, **kwargs):
         captured.update(kwargs)
 
     monkeypatch.setattr(release, "invoke_msbuild_project", fake_invoke_msbuild_project)
 
-    release._build_package_app(session, app_root, clean=True)
+    release._build_package_app(
+        session,
+        app_root,
+        package_app_output_root=package_app_output_root,
+        package_app_intermediate_root=package_app_intermediate_root,
+        clean=True,
+    )
 
     assert captured["project_path"] == app_root / "srchybrid" / "emule.vcxproj"
     assert captured["target"] == "Rebuild"
     assert "/p:DependencyRoot=test" in captured["extra_properties"]
     assert "/p:EnableStartupProfiling=false" in captured["extra_properties"]
+    assert f"/p:OutDir={release.with_trailing_separator(package_app_output_root)}" in captured["extra_properties"]
+    assert f"/p:IntDir={release.with_trailing_separator(package_app_intermediate_root)}" in captured["extra_properties"]
+    assert cfg_checks == [package_app_output_root / "emule.exe"]
 
 
 def test_release_package_rejects_startup_profiling_binary_marker(tmp_path: Path) -> None:

@@ -332,6 +332,9 @@ def _build_output_candidates(layout: WorkspaceLayout) -> list[CleanupCandidate]:
     tests_build = layout.tests_repo_root / "build"
     if tests_build.is_dir():
         candidates.append(_directory_candidate(tests_build, "build-output", "native test build output"))
+    package_build = layout.workspace_root / "state" / "package-build"
+    if package_build.is_dir():
+        candidates.append(_directory_candidate(package_build, "build-output", "release package app build output"))
     for dependency in layout.dependencies:
         root = layout.emule_workspace_root / dependency.path
         for child_name in ("x64", "ARM64", "Debug", "Release", "build"):

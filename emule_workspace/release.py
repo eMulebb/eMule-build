@@ -13,7 +13,7 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .build import app_binary_path, app_property_overrides, ensure_app_dependency_artifacts, verify_app_control_flow_guard
+from .build import app_property_overrides, ensure_app_dependency_artifacts, verify_app_control_flow_guard, with_trailing_separator
 from .build_state import BuildSession
 from .config import AmutorrentPackageOptions, ReleasePackageOptions, WorkspaceOptions
 from .git import git_output, repo_branch, repo_head, repo_status_lines
@@ -141,6 +141,15 @@ def create_release_package(
     _assert_clean_release_inputs(layout, app_root)
     _assert_package_version_matches_app(app_root, package_options.release_version)
 
+    asset_arch = _release_asset_arch(workspace_options.platform)
+    release_root = _release_root(layout, package_options)
+    package_build_root = _package_build_root(layout, package_options, workspace_options.platform)
+    package_app_output_root = package_build_root / "app"
+    package_app_intermediate_root = package_build_root / "app-obj"
+    _assert_path_under_root(package_build_root, layout.workspace_root / "state", "release package build path")
+    if package_options.clean and package_build_root.exists():
+        shutil.rmtree(package_build_root)
+
     session = BuildSession(
         layout=layout,
         options=workspace_options,
@@ -149,24 +158,27 @@ def create_release_package(
         stamp=time.strftime("%Y%m%d-%H%M%S"),
     )
     try:
-        _build_package_app(session, app_root, package_options.clean)
+        _build_package_app(
+            session,
+            app_root,
+            package_app_output_root=package_app_output_root,
+            package_app_intermediate_root=package_app_intermediate_root,
+            clean=package_options.clean,
+        )
         _build_language_resources(session, app_root, package_options.clean)
     finally:
         session.write_recap()
 
-    build_output_root = app_root / "srchybrid" / workspace_options.platform / workspace_options.configuration
-    exe_path = build_output_root / "emule.exe"
+    exe_path = package_app_output_root / "emule.exe"
     expected_language_dlls = _expected_language_dlls(layout.tooling_repo_root)
     lang_path = _package_language_path(app_root, workspace_options.platform, expected_language_dlls)
-    webserver_path = _package_webserver_path(app_root, build_output_root)
+    webserver_path = _package_webserver_path(app_root, package_app_output_root)
     for required_path in (exe_path, lang_path, webserver_path):
         if not required_path.exists():
             raise RuntimeError(f"Cannot package missing release runtime path: {required_path}")
     _assert_pe_machine(exe_path, workspace_options.platform)
     _assert_startup_profiling_not_compiled(exe_path)
 
-    asset_arch = "arm64" if workspace_options.platform == "ARM64" else "x64"
-    release_root = layout.workspace_root / "state" / "release" / f"emule-bb-v{package_options.release_version}"
     staging_root = release_root / "staging" / asset_arch
     package_root = staging_root / "eMule"
     zip_path = release_root / f"eMule-broadband-{package_options.release_version}-{asset_arch}.zip"
@@ -686,11 +698,38 @@ def ensure_canonical_app_anchor(layout: WorkspaceLayout) -> None:
     git_output(canonical_repo_path, "checkout", "--detach", expected_revision)
 
 
-def _build_package_app(session: BuildSession, app_root: Path, clean: bool) -> None:
+def _release_asset_arch(platform: str) -> str:
+    """Returns the release asset architecture token for one build platform."""
+
+    return "arm64" if platform == "ARM64" else "x64"
+
+
+def _release_root(layout: WorkspaceLayout, package_options: ReleasePackageOptions) -> Path:
+    """Returns the release artifact root for one package version."""
+
+    return layout.workspace_root / "state" / "release" / f"emule-bb-v{package_options.release_version}"
+
+
+def _package_build_root(layout: WorkspaceLayout, package_options: ReleasePackageOptions, platform: str) -> Path:
+    """Returns the package-only app build output root for one release asset."""
+
+    return layout.workspace_root / "state" / "package-build" / f"emule-bb-v{package_options.release_version}" / _release_asset_arch(platform)
+
+
+def _build_package_app(
+    session: BuildSession,
+    app_root: Path,
+    *,
+    package_app_output_root: Path,
+    package_app_intermediate_root: Path,
+    clean: bool,
+) -> None:
     target = "Rebuild" if clean else "Build"
     ensure_app_dependency_artifacts(session.layout, session.options, clean=clean)
     extra_properties = [*app_property_overrides(session.layout, session.options.platform)]
     extra_properties.append("/p:EnableStartupProfiling=false")
+    extra_properties.append(f"/p:OutDir={with_trailing_separator(package_app_output_root)}")
+    extra_properties.append(f"/p:IntDir={with_trailing_separator(package_app_intermediate_root)}")
     override = env_override(session.layout.toolset_override_variable)
     if override:
         extra_properties.append(f"/p:PlatformToolset={override}")
@@ -703,7 +742,7 @@ def _build_package_app(session: BuildSession, app_root: Path, clean: bool) -> No
     )
     verify_app_control_flow_guard(
         session,
-        binary_path=app_binary_path(app_root, session.options.configuration, session.options.platform),
+        binary_path=package_app_output_root / "emule.exe",
         step_name="APP main package binary CFG",
     )
 

@@ -49,6 +49,17 @@ def test_release_state_cleanup_is_explicit(tmp_path: Path) -> None:
     assert rehearsal_release.parent in candidate_paths
 
 
+def test_package_build_outputs_are_explicit_build_output_cleanup(tmp_path: Path) -> None:
+    layout = make_layout(tmp_path)
+    package_build_output = write_file(layout.workspace_root / "state" / "package-build" / "emule-bb-v0.7.3" / "x64" / "app" / "emule.exe", 10)
+
+    routine_candidates = plan_cleanup(layout, CleanupOptions())
+    build_candidates = plan_cleanup(layout, CleanupOptions(include_build_outputs=True))
+
+    assert package_build_output.parents[3] not in {candidate.path for candidate in routine_candidates}
+    assert package_build_output.parents[3] in {candidate.path for candidate in build_candidates}
+
+
 def test_delete_candidate_uses_windows_long_path_prefix(tmp_path: Path, monkeypatch) -> None:
     layout = make_layout(tmp_path)
     edge_path = layout.workspace_root / "state" / "test-reports" / "shared-directories-rest" / "20260501-run" / "shared-rest-exact-names. "
