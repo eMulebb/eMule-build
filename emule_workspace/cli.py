@@ -241,7 +241,7 @@ def _live_e2e_options(function: F) -> F:
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
 def main() -> None:
-    """Build, validate, test, and package an eMule BB workspace."""
+    """Build, validate, test, and package an eMuleBB workspace."""
 
 
 @main.command()
@@ -649,9 +649,9 @@ def test_live_e2e(
 
 @test.command("release-campaign")
 @_common_options
-@click.option("--campaign", default="emule-bb-0.7.3", show_default=True, help="Release campaign manifest id.")
+@click.option("--campaign", default="emulebb-0.7.3", show_default=True, help="Release campaign manifest id.")
 @click.option("--phase", default=None, help="Optional strict taxonomy phase id to show.")
-@click.option("--template", "show_template", is_flag=True, help="Show the generic eMule BB release campaign template.")
+@click.option("--template", "show_template", is_flag=True, help="Show the generic eMuleBB release campaign template.")
 @click.option("--json", "json_output", is_flag=True, help="Emit machine-readable JSON instead of a terminal table.")
 @click.option("--execute", is_flag=True, help="Run the selected campaign commands instead of only reporting evidence.")
 @click.option("--include-nonblocking", is_flag=True, help="Include nonblocking optional campaign scenarios during execution.")
@@ -892,7 +892,7 @@ def test_amutorrent_resilience(
 @_common_options
 @click.option("--live-wire-inputs-file", default=None, help="Runtime live-wire search/download input JSON.")
 @click.option("--rest-webserver-scheme", type=click.Choice(["http", "https"]), default="https", show_default=True)
-@click.option("--keep-artifacts", is_flag=True, help="Keep source artifacts after the eMule BB UI run.")
+@click.option("--keep-artifacts", is_flag=True, help="Keep source artifacts after the eMuleBB UI run.")
 @click.option("--ready-timeout-seconds", default=60.0, show_default=True, type=float)
 @click.option("--network-ready-timeout-seconds", default=180.0, show_default=True, type=float)
 @click.option("--search-observation-timeout-seconds", default=120.0, show_default=True, type=float)
@@ -909,7 +909,7 @@ def test_amutorrent_emulebb_ui(
     workspace_options: WorkspaceOptions,
     layout,
 ) -> None:
-    """Run the automated aMuTorrent eMule BB UI live proof."""
+    """Run the automated aMuTorrent eMuleBB UI live proof."""
 
     ui_options = AmutorrentEmulebbUiOptions(
         live_wire_inputs_file=live_wire_inputs_file,

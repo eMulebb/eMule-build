@@ -18,7 +18,7 @@ def test_routine_cleanup_selects_old_generated_artifacts(tmp_path: Path) -> None
     old_live_artifact = write_file(layout.workspace_root / "state" / "test-artifacts" / "live-e2e-suite" / "20260501-120000-100-release" / "result.json", 10)
     recent_live_artifact = write_file(layout.workspace_root / "state" / "test-artifacts" / "live-e2e-suite" / "20260521-120000-100-release" / "result.json", 10)
     cache_file = write_file(layout.build_repo_root / ".pytest_cache" / "README.md", 10)
-    release_rehearsal = write_file(layout.workspace_root / "state" / "release" / "emule-bb-v1.0.1" / "package.zip", 10)
+    release_rehearsal = write_file(layout.workspace_root / "state" / "release" / "emulebb-v1.0.1" / "package.zip", 10)
     for path in (old_payload, old_build_log, old_arr_output, old_live_artifact, cache_file, release_rehearsal):
         make_old(path, tmp_path)
 
@@ -39,8 +39,8 @@ def test_routine_cleanup_selects_old_generated_artifacts(tmp_path: Path) -> None
 
 def test_release_state_cleanup_is_explicit(tmp_path: Path) -> None:
     layout = make_layout(tmp_path)
-    current_release = write_file(layout.workspace_root / "state" / "release" / "emule-bb-v0.7.3" / "package.zip", 10)
-    rehearsal_release = write_file(layout.workspace_root / "state" / "release" / "emule-bb-v1.0.1" / "package.zip", 10)
+    current_release = write_file(layout.workspace_root / "state" / "release" / "emulebb-v0.7.3" / "package.zip", 10)
+    rehearsal_release = write_file(layout.workspace_root / "state" / "release" / "emulebb-v1.0.1" / "package.zip", 10)
 
     candidates = plan_cleanup(layout, CleanupOptions(include_release_state=True))
     candidate_paths = {candidate.path for candidate in candidates}
@@ -51,7 +51,7 @@ def test_release_state_cleanup_is_explicit(tmp_path: Path) -> None:
 
 def test_package_build_outputs_are_explicit_build_output_cleanup(tmp_path: Path) -> None:
     layout = make_layout(tmp_path)
-    package_build_output = write_file(layout.workspace_root / "state" / "package-build" / "emule-bb-v0.7.3" / "x64" / "app" / "emule.exe", 10)
+    package_build_output = write_file(layout.workspace_root / "state" / "package-build" / "emulebb-v0.7.3" / "x64" / "app" / "emulebb.exe", 10)
 
     routine_candidates = plan_cleanup(layout, CleanupOptions())
     build_candidates = plan_cleanup(layout, CleanupOptions(include_build_outputs=True))

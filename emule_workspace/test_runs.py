@@ -406,7 +406,7 @@ def invoke_release_campaign_report(
     layout: WorkspaceLayout,
     campaign_options: ReleaseCampaignOptions,
 ) -> None:
-    """Shows the eMule BB release campaign matrix and latest evidence status."""
+    """Shows the eMuleBB release campaign matrix and latest evidence status."""
 
     script_path = layout.tests_repo_root / "scripts" / "show-release-campaigns.py"
     if not script_path.is_file():
@@ -620,13 +620,13 @@ def invoke_amutorrent_emulebb_ui(
     options: WorkspaceOptions,
     ui_options: AmutorrentEmulebbUiOptions,
 ) -> None:
-    """Runs the automated aMuTorrent eMule BB UI live E2E proof."""
+    """Runs the automated aMuTorrent eMuleBB UI live E2E proof."""
 
     _assert_test_execution_platform_supported(options)
     app_root = layout.get_app_variant(layout.test_targets.test_run_variant).path
     script_path = layout.tests_repo_root / "scripts" / "amutorrent-emulebb-ui-live.py"
     if not script_path.is_file():
-        raise RuntimeError(f"Missing aMuTorrent eMule BB UI live runner: {script_path}")
+        raise RuntimeError(f"Missing aMuTorrent eMuleBB UI live runner: {script_path}")
 
     args: list[str | Path | float] = [
         script_path,
@@ -654,7 +654,7 @@ def invoke_amutorrent_emulebb_ui(
     python = get_python_invocation()
     run_native(
         python.command(args),
-        label="aMuTorrent eMule BB UI live",
+        label="aMuTorrent eMuleBB UI live",
         cwd=layout.emule_workspace_root,
         env={"EMULE_WORKSPACE_ROOT": layout.emule_workspace_root},
     )

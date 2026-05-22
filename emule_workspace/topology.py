@@ -243,7 +243,7 @@ def validate_workspace_manifest_contract(payload: dict[str, Any]) -> WorkspaceMa
 
 
 def canonical_topology() -> WorkspaceTopology:
-    """Returns the canonical eMule BB workspace topology."""
+    """Returns the canonical eMuleBB workspace topology."""
 
     return WorkspaceTopology(
         root_directories=("analysis", "archives", "repos", "repos\\third_party", "workspaces"),

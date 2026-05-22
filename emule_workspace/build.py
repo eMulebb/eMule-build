@@ -18,6 +18,8 @@ from .msbuild import env_override, invoke_msbuild_project
 from .process import find_tool
 from .toolchain import get_cmake_path, get_dumpbin_path, get_perl_path
 
+APP_EXE_NAME = "emulebb.exe"
+
 
 def build_libs(layout: WorkspaceLayout, options: WorkspaceOptions, *, clean: bool) -> None:
     """Builds the workspace-owned third-party dependency set."""
@@ -526,9 +528,9 @@ def verify_app_control_flow_guard(session: BuildSession, *, binary_path: Path, s
 
 
 def app_binary_path(app_root: Path, configuration: str, platform: str) -> Path:
-    """Returns the built eMule executable path."""
+    """Returns the built eMuleBB executable path."""
 
-    return app_root / "srchybrid" / platform / configuration / "emule.exe"
+    return app_root / "srchybrid" / platform / configuration / APP_EXE_NAME
 
 
 def mbedtls_project_path(layout: WorkspaceLayout) -> Path:

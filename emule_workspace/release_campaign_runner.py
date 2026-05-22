@@ -1,4 +1,4 @@
-"""First-class release campaign execution for eMule BB."""
+"""First-class release campaign execution for eMuleBB."""
 
 from __future__ import annotations
 

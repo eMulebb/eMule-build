@@ -13,7 +13,7 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .build import app_property_overrides, ensure_app_dependency_artifacts, verify_app_control_flow_guard, with_trailing_separator
+from .build import APP_EXE_NAME, app_property_overrides, ensure_app_dependency_artifacts, verify_app_control_flow_guard, with_trailing_separator
 from .build_state import BuildSession
 from .config import AmutorrentPackageOptions, ReleasePackageOptions, WorkspaceOptions
 from .git import git_output, repo_branch, repo_head, repo_status_lines
@@ -68,12 +68,12 @@ def create_amutorrent_package(
     _build_amutorrent_webapp(amutorrent_root, package_options.clean)
 
     asset_arch = "arm64" if workspace_options.platform == "ARM64" else "x64"
-    release_root = layout.workspace_root / "state" / "release" / f"emule-bb-v{package_options.release_version}"
+    release_root = layout.workspace_root / "state" / "release" / f"emulebb-v{package_options.release_version}"
     staging_root = release_root / "staging" / f"amutorrent-{asset_arch}"
     package_root = staging_root / "aMuTorrent"
-    zip_path = release_root / f"eMule-broadband-{package_options.release_version}-amutorrent-{asset_arch}.zip"
-    manifest_path = release_root / f"eMule-broadband-{package_options.release_version}-amutorrent-{asset_arch}.manifest.json"
-    sbom_path = release_root / f"eMule-broadband-{package_options.release_version}-amutorrent-{asset_arch}.sbom.spdx.json"
+    zip_path = release_root / f"emulebb-{package_options.release_version}-amutorrent-{asset_arch}.zip"
+    manifest_path = release_root / f"emulebb-{package_options.release_version}-amutorrent-{asset_arch}.manifest.json"
+    sbom_path = release_root / f"emulebb-{package_options.release_version}-amutorrent-{asset_arch}.sbom.spdx.json"
     for path_to_check in (staging_root, package_root, zip_path, manifest_path, sbom_path):
         _assert_path_under_root(path_to_check, release_root, "aMuTorrent package path")
 
@@ -169,7 +169,7 @@ def create_release_package(
     finally:
         session.write_recap()
 
-    exe_path = package_app_output_root / "emule.exe"
+    exe_path = package_app_output_root / APP_EXE_NAME
     expected_language_dlls = _expected_language_dlls(layout.tooling_repo_root)
     lang_path = _package_language_path(app_root, workspace_options.platform, expected_language_dlls)
     webserver_path = _package_webserver_path(app_root, package_app_output_root)
@@ -181,16 +181,16 @@ def create_release_package(
 
     staging_root = release_root / "staging" / asset_arch
     package_root = staging_root / "eMule"
-    zip_path = release_root / f"eMule-broadband-{package_options.release_version}-{asset_arch}.zip"
-    manifest_path = release_root / f"eMule-broadband-{package_options.release_version}-{asset_arch}.manifest.json"
-    sbom_path = release_root / f"eMule-broadband-{package_options.release_version}-{asset_arch}.sbom.spdx.json"
+    zip_path = release_root / f"emulebb-{package_options.release_version}-{asset_arch}.zip"
+    manifest_path = release_root / f"emulebb-{package_options.release_version}-{asset_arch}.manifest.json"
+    sbom_path = release_root / f"emulebb-{package_options.release_version}-{asset_arch}.sbom.spdx.json"
     for path_to_check in (staging_root, package_root, zip_path, manifest_path, sbom_path):
         _assert_path_under_root(path_to_check, release_root, "release package path")
 
     if staging_root.exists():
         shutil.rmtree(staging_root)
     package_root.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(exe_path, package_root / "emule.exe")
+    shutil.copy2(exe_path, package_root / APP_EXE_NAME)
     _copy_directory_contents(lang_path, package_root / "lang")
     _copy_directory_contents(webserver_path, package_root / "webserver")
     _write_package_readme(package_root, package_options.release_version, workspace_options.platform)
@@ -277,9 +277,9 @@ def _build_release_manifest(
 
     return {
         "product": "eMule broadband edition",
-        "compactName": "eMule BB",
+        "compactName": "eMuleBB",
         "version": package_options.release_version,
-        "tag": f"emule-bb-v{package_options.release_version}",
+        "tag": f"emulebb-v{package_options.release_version}",
         "configuration": workspace_options.configuration,
         "platform": workspace_options.platform,
         "asset": zip_path.name,
@@ -288,7 +288,7 @@ def _build_release_manifest(
         "sbomFormat": "SPDX-2.3 JSON",
         "sbomPath": sbom_path.relative_to(release_root).as_posix(),
         "sbomSha256": sbom_hash,
-        "emuleExeSha256": exe_hash,
+        "emulebbExeSha256": exe_hash,
         "languageDllCount": len(expected_language_dlls),
         "languageDlls": list(expected_language_dlls),
         "packageFileSha256": package_file_hashes,
@@ -303,7 +303,7 @@ def _build_release_manifest(
         "toolingCommit": repo_head(layout.tooling_repo_root),
         "generatedAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "includedPaths": [
-            "eMule/emule.exe",
+            f"eMule/{APP_EXE_NAME}",
             "eMule/lang",
             "eMule/webserver",
             "eMule/README.md",
@@ -337,10 +337,10 @@ def _build_amutorrent_manifest(
     node_archive_name, node_archive_sha256 = AMUTORRENT_NODE_ARCHIVES[workspace_options.platform]
     return {
         "product": "eMule broadband edition",
-        "compactName": "eMule BB",
+        "compactName": "eMuleBB",
         "package": "aMuTorrent optional controller",
         "version": package_options.release_version,
-        "tag": f"emule-bb-v{package_options.release_version}",
+        "tag": f"emulebb-v{package_options.release_version}",
         "configuration": workspace_options.configuration,
         "platform": workspace_options.platform,
         "asset": zip_path.name,
@@ -400,16 +400,16 @@ def _write_release_sbom(
     sbom_path = package_root / "SBOM.spdx.json"
     _assert_path_under_root(sbom_path, package_root, "release package SBOM")
     components = [
-        _repo_spdx_package("eMule BB app source", app_root, declared_license="GPL-2.0-or-later"),
+        _repo_spdx_package("eMuleBB app source", app_root, declared_license="GPL-2.0-or-later"),
         _repo_spdx_package("eMule build orchestration", layout.build_repo_root),
         _repo_spdx_package("eMule build tests", layout.tests_repo_root),
         _repo_spdx_package("eMule tooling docs", layout.tooling_repo_root),
     ]
     components.extend(_third_party_spdx_packages())
     document = _build_spdx_sbom(
-        name=f"eMule BB {package_options.release_version} {workspace_options.platform} release package",
-        namespace=f"https://github.com/eMulebb/eMule/releases/download/emule-bb-v{package_options.release_version}/{asset_name}.sbom",
-        package_name=f"eMule-broadband-{package_options.release_version}-{workspace_options.platform}",
+        name=f"eMuleBB {package_options.release_version} {workspace_options.platform} release package",
+        namespace=f"https://github.com/eMulebb/eMule/releases/download/emulebb-v{package_options.release_version}/{asset_name}.sbom",
+        package_name=f"emulebb-{package_options.release_version}-{workspace_options.platform}",
         package_version=package_options.release_version,
         package_license="GPL-2.0-or-later",
         package_comment=f"Main app release package built from app variant {app_variant.name}.",
@@ -449,9 +449,9 @@ def _write_amutorrent_sbom(
         ),
     ]
     document = _build_spdx_sbom(
-        name=f"eMule BB aMuTorrent {package_options.release_version} {workspace_options.platform} package",
-        namespace=f"https://github.com/eMulebb/eMule/releases/download/emule-bb-v{package_options.release_version}/{asset_name}.sbom",
-        package_name=f"eMule-broadband-{package_options.release_version}-amutorrent-{workspace_options.platform}",
+        name=f"eMuleBB aMuTorrent {package_options.release_version} {workspace_options.platform} package",
+        namespace=f"https://github.com/eMulebb/eMule/releases/download/emulebb-v{package_options.release_version}/{asset_name}.sbom",
+        package_name=f"emulebb-{package_options.release_version}-amutorrent-{workspace_options.platform}",
         package_version=package_options.release_version,
         package_license="NOASSERTION",
         package_comment="Optional aMuTorrent controller package.",
@@ -707,13 +707,13 @@ def _release_asset_arch(platform: str) -> str:
 def _release_root(layout: WorkspaceLayout, package_options: ReleasePackageOptions) -> Path:
     """Returns the release artifact root for one package version."""
 
-    return layout.workspace_root / "state" / "release" / f"emule-bb-v{package_options.release_version}"
+    return layout.workspace_root / "state" / "release" / f"emulebb-v{package_options.release_version}"
 
 
 def _package_build_root(layout: WorkspaceLayout, package_options: ReleasePackageOptions, platform: str) -> Path:
     """Returns the package-only app build output root for one release asset."""
 
-    return layout.workspace_root / "state" / "package-build" / f"emule-bb-v{package_options.release_version}" / _release_asset_arch(platform)
+    return layout.workspace_root / "state" / "package-build" / f"emulebb-v{package_options.release_version}" / _release_asset_arch(platform)
 
 
 def _build_package_app(
@@ -742,7 +742,7 @@ def _build_package_app(
     )
     verify_app_control_flow_guard(
         session,
-        binary_path=package_app_output_root / "emule.exe",
+        binary_path=package_app_output_root / APP_EXE_NAME,
         step_name="APP main package binary CFG",
     )
 
@@ -948,7 +948,7 @@ def _write_package_readme(package_root: Path, release_version: str, platform: st
                 f"Version: {release_version}",
                 f"Architecture: {asset_arch}",
                 "",
-                "Run `emule.exe` from this directory. The package is portable and keeps the",
+                f"Run `{APP_EXE_NAME}` from this directory. The package is portable and keeps the",
                 "stock eMule language DLLs under `lang/` and the legacy web template under",
                 "`webserver/`.",
                 "",
@@ -958,7 +958,7 @@ def _write_package_readme(package_root: Path, release_version: str, platform: st
                 "components in SPDX 2.3 JSON format.",
                 "",
                 "MediaInfo integration remains optional. To enable audio/video metadata,",
-                "install a compatible external `MediaInfo.dll` next to `emule.exe`; it is not",
+                f"install a compatible external `MediaInfo.dll` next to `{APP_EXE_NAME}`; it is not",
                 "bundled in this ZIP.",
                 "",
                 "This ZIP is not code-signed and does not include debug symbols.",
@@ -981,7 +981,7 @@ def _write_package_release_notes(package_root: Path, release_version: str) -> No
                 "# Release Notes",
                 "",
                 f"eMule broadband edition {release_version} is the first public beta line",
-                "for eMule BB.",
+                "for eMuleBB.",
                 "",
                 "- Preserves stock eD2K/Kad protocol compatibility.",
                 "- Ships x64 and ARM64 portable ZIP assets.",
@@ -1004,10 +1004,10 @@ def _write_package_license_notice(package_root: Path) -> None:
         "\n".join(
             (
                 "eMule broadband edition contains eMule-derived application code licensed under GPL-2.0-or-later.",
-                "The source tree retains the per-file GPL notices from the original eMule project and eMule BB changes.",
+                "The source tree retains the per-file GPL notices from the original eMule project and eMuleBB changes.",
                 "Third-party libraries are linked from the canonical workspace dependency pins and retain their upstream licenses.",
                 "See GPL-2.0-or-later.txt and THIRD-PARTY-NOTICES.txt in this package.",
-                "For complete corresponding source, use the eMule BB source repositories "
+                "For complete corresponding source, use the eMuleBB source repositories "
                 "at the app commit recorded in the package manifest.",
             )
         )
@@ -1042,7 +1042,7 @@ def _write_package_third_party_notices(package_root: Path) -> None:
                 "- nlohmann/json: MIT license",
                 "",
                 "Complete corresponding source and full upstream license files are available",
-                "from the eMule BB source repositories at the commits recorded in the",
+                "from the eMuleBB source repositories at the commits recorded in the",
                 "release manifest.",
             )
         )
@@ -1124,7 +1124,7 @@ def _assert_release_package_contents(zip_path: Path, expected_language_dlls: tup
         entry_names = [name.replace("\\", "/") for name in archive.namelist()]
         entry_set = set(entry_names)
         required_entries = (
-            "eMule/emule.exe",
+            f"eMule/{APP_EXE_NAME}",
             "eMule/README.md",
             "eMule/RELEASE-NOTES.md",
             "eMule/LICENSE-NOTICE.txt",
@@ -1146,7 +1146,7 @@ def _assert_release_package_contents(zip_path: Path, expected_language_dlls: tup
             raise RuntimeError("Release package is missing language DLLs:\n" + "\n".join(missing_language_entries))
         if extra_language_entries:
             raise RuntimeError("Release package contains unexpected language DLLs:\n" + "\n".join(extra_language_entries))
-        for entry_name in ("eMule/emule.exe", *language_dlls):
+        for entry_name in (f"eMule/{APP_EXE_NAME}", *language_dlls):
             _assert_pe_machine_bytes(archive.read(entry_name), platform, entry_name)
         webserver_files = [name for name in entry_names if re.fullmatch(r"eMule/webserver/.+[^/]", name)]
         if not webserver_files:

@@ -1,4 +1,4 @@
-"""Workspace orchestration package for the canonical eMule BB workspace."""
+"""Workspace orchestration package for the canonical eMuleBB workspace."""
 
 from __future__ import annotations
 

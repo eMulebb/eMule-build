@@ -24,7 +24,7 @@ def _pe_payload(machine: int) -> bytes:
 
 def _write_release_zip(path: Path, *, language_payloads: dict[str, bytes] | None = None, extra_entries: dict[str, bytes] | None = None) -> None:
     entries = {
-        "eMule/emule.exe": _pe_payload(0x8664),
+        "eMule/emulebb.exe": _pe_payload(0x8664),
         "eMule/README.md": b"readme\n",
         "eMule/RELEASE-NOTES.md": b"notes\n",
         "eMule/LICENSE-NOTICE.txt": b"notice\n",
@@ -142,8 +142,8 @@ def test_package_build_disables_startup_profiling(
     monkeypatch.setattr(release, "ensure_app_dependency_artifacts", lambda _layout, _options, *, clean: None)
     monkeypatch.setattr(release, "app_property_overrides", lambda _layout, _platform: ("/p:DependencyRoot=test",))
     monkeypatch.setattr(release, "env_override", lambda _name: None)
-    package_app_output_root = tmp_path / "state" / "package-build" / "emule-bb-v0.7.3" / "x64" / "app"
-    package_app_intermediate_root = tmp_path / "state" / "package-build" / "emule-bb-v0.7.3" / "x64" / "app-obj"
+    package_app_output_root = tmp_path / "state" / "package-build" / "emulebb-v0.7.3" / "x64" / "app"
+    package_app_intermediate_root = tmp_path / "state" / "package-build" / "emulebb-v0.7.3" / "x64" / "app-obj"
     cfg_checks: list[Path] = []
 
     def fake_verify_app_control_flow_guard(*_args, **kwargs):
@@ -170,11 +170,11 @@ def test_package_build_disables_startup_profiling(
     assert "/p:EnableStartupProfiling=false" in captured["extra_properties"]
     assert f"/p:OutDir={release.with_trailing_separator(package_app_output_root)}" in captured["extra_properties"]
     assert f"/p:IntDir={release.with_trailing_separator(package_app_intermediate_root)}" in captured["extra_properties"]
-    assert cfg_checks == [package_app_output_root / "emule.exe"]
+    assert cfg_checks == [package_app_output_root / "emulebb.exe"]
 
 
 def test_release_package_rejects_startup_profiling_binary_marker(tmp_path: Path) -> None:
-    exe_path = tmp_path / "emule.exe"
+    exe_path = tmp_path / "emulebb.exe"
     exe_path.write_bytes(_pe_payload(0x8664) + "startup-profile.trace.json".encode("utf-16le"))
 
     with pytest.raises(RuntimeError, match="startup profiling support"):
@@ -182,7 +182,7 @@ def test_release_package_rejects_startup_profiling_binary_marker(tmp_path: Path)
 
 
 def test_release_package_accepts_binary_without_startup_profiling_marker(tmp_path: Path) -> None:
-    exe_path = tmp_path / "emule.exe"
+    exe_path = tmp_path / "emulebb.exe"
     exe_path.write_bytes(_pe_payload(0x8664) + b"regular release payload")
 
     release._assert_startup_profiling_not_compiled(exe_path)
@@ -225,8 +225,8 @@ def test_release_manifest_records_explicit_source_provenance(
     build_root = tmp_path / "repos" / "eMule-build"
     tests_root = tmp_path / "repos" / "eMule-build-tests"
     tooling_root = tmp_path / "repos" / "eMule-tooling"
-    release_root = tmp_path / "workspaces" / "workspace" / "state" / "release" / "emule-bb-v0.7.3"
-    zip_path = release_root / "eMule-broadband-0.7.3-x64.zip"
+    release_root = tmp_path / "workspaces" / "workspace" / "state" / "release" / "emulebb-v0.7.3"
+    zip_path = release_root / "emulebb-0.7.3-x64.zip"
     for path in (app_root, build_root, tests_root, tooling_root, release_root):
         path.mkdir(parents=True)
 
@@ -258,11 +258,11 @@ def test_release_manifest_records_explicit_source_provenance(
         zip_path=zip_path,
         release_root=release_root,
         zip_hash="zip-sha",
-        sbom_path=release_root / "eMule-broadband-0.7.3-x64.sbom.spdx.json",
+        sbom_path=release_root / "emulebb-0.7.3-x64.sbom.spdx.json",
         sbom_hash="sbom-sha",
         exe_hash="exe-sha",
         expected_language_dlls=("de_DE.dll", "fr_FR.dll"),
-        package_file_hashes={"eMule/emule.exe": "exe-entry-sha"},
+        package_file_hashes={"eMule/emulebb.exe": "exe-entry-sha"},
     )
 
     assert manifest["appVariant"] == "main"
@@ -276,9 +276,9 @@ def test_release_manifest_records_explicit_source_provenance(
     assert manifest["toolingCommit"] == "tools12"
     assert manifest["languageDllCount"] == 2
     assert manifest["languageDlls"] == ["de_DE.dll", "fr_FR.dll"]
-    assert manifest["packageFileSha256"] == {"eMule/emule.exe": "exe-entry-sha"}
+    assert manifest["packageFileSha256"] == {"eMule/emulebb.exe": "exe-entry-sha"}
     assert manifest["sbomFormat"] == "SPDX-2.3 JSON"
-    assert manifest["sbomPath"] == "eMule-broadband-0.7.3-x64.sbom.spdx.json"
+    assert manifest["sbomPath"] == "emulebb-0.7.3-x64.sbom.spdx.json"
     assert manifest["sbomSha256"] == "sbom-sha"
     assert "eMule/SBOM.spdx.json" in manifest["includedPaths"]
 
@@ -296,17 +296,17 @@ def test_expected_language_dlls_uses_release_language_manifest(tmp_path: Path) -
 
 
 def test_spdx_sbom_describes_staged_package_files_without_self_reference(tmp_path: Path) -> None:
-    release_root = tmp_path / "state" / "release" / "emule-bb-v0.7.3"
+    release_root = tmp_path / "state" / "release" / "emulebb-v0.7.3"
     package_root = release_root / "staging" / "x64" / "eMule"
     (package_root / "webserver").mkdir(parents=True)
-    (package_root / "emule.exe").write_bytes(b"exe")
+    (package_root / "emulebb.exe").write_bytes(b"exe")
     (package_root / "webserver" / "eMule.tmpl").write_bytes(b"template")
     (package_root / "SBOM.spdx.json").write_text("old\n", encoding="utf-8")
 
     document = release._build_spdx_sbom(
         name="test sbom",
         namespace="https://example.invalid/sbom",
-        package_name="eMule-broadband-0.7.3-x64",
+        package_name="emulebb-0.7.3-x64",
         package_version="0.7.3",
         package_license="GPL-2.0-or-later",
         package_comment="test package",
@@ -326,7 +326,7 @@ def test_spdx_sbom_describes_staged_package_files_without_self_reference(tmp_pat
     assert document["spdxVersion"] == "SPDX-2.3"
     assert document["documentDescribes"] == ["SPDXRef-Package"]
     assert document["packages"][0]["packageVerificationCode"]["packageVerificationCodeValue"]
-    assert "eMule/emule.exe" in file_names
+    assert "eMule/emulebb.exe" in file_names
     assert "eMule/webserver/eMule.tmpl" in file_names
     assert "eMule/SBOM.spdx.json" not in file_names
     assert any(package["name"] == "component" for package in document["packages"])
@@ -388,8 +388,8 @@ def test_amutorrent_manifest_records_runtime_policy_and_source_provenance(
     build_root = tmp_path / "repos" / "eMule-build"
     tests_root = tmp_path / "repos" / "eMule-build-tests"
     tooling_root = tmp_path / "repos" / "eMule-tooling"
-    release_root = tmp_path / "state" / "release" / "emule-bb-v0.7.3"
-    zip_path = release_root / "eMule-broadband-0.7.3-amutorrent-arm64.zip"
+    release_root = tmp_path / "state" / "release" / "emulebb-v0.7.3"
+    zip_path = release_root / "emulebb-0.7.3-amutorrent-arm64.zip"
     for path in (amutorrent_root, build_root, tests_root, tooling_root, release_root):
         path.mkdir(parents=True)
 
@@ -420,7 +420,7 @@ def test_amutorrent_manifest_records_runtime_policy_and_source_provenance(
         zip_path=zip_path,
         release_root=release_root,
         zip_hash="zip-sha",
-        sbom_path=release_root / "eMule-broadband-0.7.3-amutorrent-arm64.sbom.spdx.json",
+        sbom_path=release_root / "emulebb-0.7.3-amutorrent-arm64.sbom.spdx.json",
         sbom_hash="sbom-sha",
         package_file_hashes={"aMuTorrent/installer/windows/amutorrent.ps1": "script-sha"},
     )
@@ -435,7 +435,7 @@ def test_amutorrent_manifest_records_runtime_policy_and_source_provenance(
     assert manifest["runtimePolicy"]["spacesInInstallPathAllowed"] is False
     assert manifest["packageFileSha256"] == {"aMuTorrent/installer/windows/amutorrent.ps1": "script-sha"}
     assert manifest["sbomFormat"] == "SPDX-2.3 JSON"
-    assert manifest["sbomPath"] == "eMule-broadband-0.7.3-amutorrent-arm64.sbom.spdx.json"
+    assert manifest["sbomPath"] == "emulebb-0.7.3-amutorrent-arm64.sbom.spdx.json"
     assert manifest["sbomSha256"] == "sbom-sha"
     assert "aMuTorrent/SBOM.spdx.json" in manifest["includedPaths"]
 

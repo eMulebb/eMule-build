@@ -215,7 +215,7 @@ class AmutorrentCleanStartupOptions(BaseModel):
 
 
 class AmutorrentEmulebbUiOptions(BaseModel):
-    """Options forwarded to the aMuTorrent eMule BB UI live E2E runner."""
+    """Options forwarded to the aMuTorrent eMuleBB UI live E2E runner."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -255,7 +255,7 @@ class ReleaseCampaignOptions(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    campaign: str = "emule-bb-0.7.3"
+    campaign: str = "emulebb-0.7.3"
     phase: str | None = None
     show_template: bool = False
     json_output: bool = False

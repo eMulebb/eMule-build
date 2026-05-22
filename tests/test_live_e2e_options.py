@@ -505,7 +505,7 @@ def test_release_campaign_report_forwards_campaign_phase_and_json_options(tmp_pa
     test_runs.invoke_release_campaign_report(
         layout,
         ReleaseCampaignOptions(
-            campaign="emule-bb-0.7.3",
+            campaign="emulebb-0.7.3",
             phase="live-wire-release",
             json_output=True,
         ),
@@ -514,7 +514,7 @@ def test_release_campaign_report_forwards_campaign_phase_and_json_options(tmp_pa
     command = captured["command"]
     assert isinstance(command, list)
     assert captured["label"] == "release campaign report"
-    assert option_values(command, "--campaign") == ["emule-bb-0.7.3"]
+    assert option_values(command, "--campaign") == ["emulebb-0.7.3"]
     assert option_values(command, "--phase") == ["live-wire-release"]
     assert option_values(command, "--test-repo-root") == [str(layout.tests_repo_root)]
     assert option_values(command, "--workspace-state-root") == [str(layout.workspace_root / "state")]

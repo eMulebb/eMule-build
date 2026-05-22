@@ -111,7 +111,7 @@ Command behavior:
 - `test live-diff` runs parity and divergence comparison directly against any two configured app variants.
 - `test protocol-parity` runs the focused Kad/eD2K gate: protocol surface diff, protocol oracle golden validation, and `protocol-parity` native live-diff.
 - `test live-e2e` runs the aggregate UI, REST API, and live-wire E2E suite from `eMule-build-tests`.
-- `test amutorrent-session` starts a disposable interactive aMuTorrent session against eMule BB REST and leaves both processes running for operator testing.
+- `test amutorrent-session` starts a disposable interactive aMuTorrent session against eMuleBB REST and leaves both processes running for operator testing.
 - `test community-core-coverage` runs community-core coverage checks with live REST E2E coverage enabled.
 - `build all` runs `build libs`, `build app`, and `build tests`.
 - `full` runs `build all`, then `test all`, then prints a workspace summary.
@@ -200,7 +200,7 @@ Live E2E examples:
 
 Interactive aMuTorrent example:
 
-- `amutorrent-session -Config Debug -Platform x64 -LiveNetwork` launches Debug x64 eMule BB with a disposable profile, starts aMuTorrent against the eMule BB REST API, opens the aMuTorrent URL, and writes a `stop-session.cmd` helper into the session report directory.
+- `amutorrent-session -Config Debug -Platform x64 -LiveNetwork` launches Debug x64 eMuleBB with a disposable profile, starts aMuTorrent against the eMuleBB REST API, opens the aMuTorrent URL, and writes a `stop-session.cmd` helper into the session report directory.
 
 Python test examples:
 

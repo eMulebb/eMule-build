@@ -1,7 +1,7 @@
 [project]
 name = "emule-workspace"
 version = "0.0.0"
-description = "Python workspace orchestration for the canonical eMule BB workspace."
+description = "Python workspace orchestration for the canonical eMuleBB workspace."
 requires-python = ">=3.11"
 dependencies = [
     "click>=8.1",

@@ -66,7 +66,7 @@ def test_amutorrent_emulebb_ui_forwards_live_options(tmp_path: Path, monkeypatch
     command = captured["command"]
     assert isinstance(command, list)
     assert command[1].endswith("amutorrent-emulebb-ui-live.py")
-    assert captured["label"] == "aMuTorrent eMule BB UI live"
+    assert captured["label"] == "aMuTorrent eMuleBB UI live"
     assert option_values(command, "--live-wire-inputs-file") == ["inputs.json"]
     assert option_values(command, "--rest-webserver-scheme") == ["https"]
     assert option_values(command, "--ready-timeout-seconds") == ["11.0"]
