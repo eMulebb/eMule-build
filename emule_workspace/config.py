@@ -205,6 +205,7 @@ class AmutorrentCleanStartupOptions(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     live_wire_inputs_file: str | None = None
+    rest_webserver_scheme: str = "https"
     keep_artifacts: bool = False
     ready_timeout_seconds: float = 60.0
     network_ready_timeout_seconds: float = 180.0
@@ -218,6 +219,7 @@ class AmutorrentEmulebbUiOptions(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     live_wire_inputs_file: str | None = None
+    rest_webserver_scheme: str = "https"
     keep_artifacts: bool = False
     ready_timeout_seconds: float = 60.0
     network_ready_timeout_seconds: float = 180.0
@@ -231,6 +233,7 @@ class AmutorrentResilienceOptions(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     live_wire_inputs_file: str | None = None
+    rest_webserver_scheme: str = "https"
     keep_artifacts: bool = False
     ready_timeout_seconds: float = 60.0
     network_ready_timeout_seconds: float = 180.0

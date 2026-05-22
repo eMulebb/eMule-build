@@ -127,6 +127,7 @@ def test_amutorrent_clean_startup_help_exposes_live_options() -> None:
 
     assert result.exit_code == 0
     assert "--live-wire-inputs-file" in result.output
+    assert "--rest-webserver-scheme" in result.output
     assert "--p2p-bind-interface-name" in result.output
     assert "--search-observation-timeout-seconds" in result.output
 
@@ -138,6 +139,7 @@ def test_amutorrent_resilience_help_exposes_live_options() -> None:
 
     assert result.exit_code == 0
     assert "--live-wire-inputs-file" in result.output
+    assert "--rest-webserver-scheme" in result.output
     assert "--p2p-bind-interface-name" in result.output
     assert "--search-observation-timeout-seconds" in result.output
     assert "--reconnect-timeout-seconds" in result.output
@@ -150,6 +152,7 @@ def test_amutorrent_emulebb_ui_help_exposes_live_options() -> None:
 
     assert result.exit_code == 0
     assert "--live-wire-inputs-file" in result.output
+    assert "--rest-webserver-scheme" in result.output
     assert "--p2p-bind-interface-name" in result.output
     assert "--search-observation-timeout-seconds" in result.output
     assert "--keep-artifacts" in result.output

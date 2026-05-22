@@ -811,6 +811,7 @@ def test_fake_kad_trust_soak(
 @test.command("amutorrent-clean-startup")
 @_common_options
 @click.option("--live-wire-inputs-file", default=None, help="Runtime live-wire search/download input JSON.")
+@click.option("--rest-webserver-scheme", type=click.Choice(["http", "https"]), default="https", show_default=True)
 @click.option("--keep-artifacts", is_flag=True, help="Keep source artifacts after the clean-startup run.")
 @click.option("--ready-timeout-seconds", default=60.0, show_default=True, type=float)
 @click.option("--network-ready-timeout-seconds", default=180.0, show_default=True, type=float)
@@ -819,6 +820,7 @@ def test_fake_kad_trust_soak(
 def test_amutorrent_clean_startup(
     *,
     live_wire_inputs_file: str | None,
+    rest_webserver_scheme: str,
     keep_artifacts: bool,
     ready_timeout_seconds: float,
     network_ready_timeout_seconds: float,
@@ -831,6 +833,7 @@ def test_amutorrent_clean_startup(
 
     clean_options = AmutorrentCleanStartupOptions(
         live_wire_inputs_file=live_wire_inputs_file,
+        rest_webserver_scheme=rest_webserver_scheme,
         keep_artifacts=keep_artifacts,
         ready_timeout_seconds=ready_timeout_seconds,
         network_ready_timeout_seconds=network_ready_timeout_seconds,
@@ -846,6 +849,7 @@ def test_amutorrent_clean_startup(
 @test.command("amutorrent-resilience")
 @_common_options
 @click.option("--live-wire-inputs-file", default=None, help="Runtime live-wire search/download input JSON.")
+@click.option("--rest-webserver-scheme", type=click.Choice(["http", "https"]), default="https", show_default=True)
 @click.option("--keep-artifacts", is_flag=True, help="Keep source artifacts after the resilience run.")
 @click.option("--ready-timeout-seconds", default=60.0, show_default=True, type=float)
 @click.option("--network-ready-timeout-seconds", default=180.0, show_default=True, type=float)
@@ -855,6 +859,7 @@ def test_amutorrent_clean_startup(
 def test_amutorrent_resilience(
     *,
     live_wire_inputs_file: str | None,
+    rest_webserver_scheme: str,
     keep_artifacts: bool,
     ready_timeout_seconds: float,
     network_ready_timeout_seconds: float,
@@ -868,6 +873,7 @@ def test_amutorrent_resilience(
 
     resilience_options = AmutorrentResilienceOptions(
         live_wire_inputs_file=live_wire_inputs_file,
+        rest_webserver_scheme=rest_webserver_scheme,
         keep_artifacts=keep_artifacts,
         ready_timeout_seconds=ready_timeout_seconds,
         network_ready_timeout_seconds=network_ready_timeout_seconds,
@@ -884,6 +890,7 @@ def test_amutorrent_resilience(
 @test.command("amutorrent-emulebb-ui")
 @_common_options
 @click.option("--live-wire-inputs-file", default=None, help="Runtime live-wire search/download input JSON.")
+@click.option("--rest-webserver-scheme", type=click.Choice(["http", "https"]), default="https", show_default=True)
 @click.option("--keep-artifacts", is_flag=True, help="Keep source artifacts after the eMule BB UI run.")
 @click.option("--ready-timeout-seconds", default=60.0, show_default=True, type=float)
 @click.option("--network-ready-timeout-seconds", default=180.0, show_default=True, type=float)
@@ -892,6 +899,7 @@ def test_amutorrent_resilience(
 def test_amutorrent_emulebb_ui(
     *,
     live_wire_inputs_file: str | None,
+    rest_webserver_scheme: str,
     keep_artifacts: bool,
     ready_timeout_seconds: float,
     network_ready_timeout_seconds: float,
@@ -904,6 +912,7 @@ def test_amutorrent_emulebb_ui(
 
     ui_options = AmutorrentEmulebbUiOptions(
         live_wire_inputs_file=live_wire_inputs_file,
+        rest_webserver_scheme=rest_webserver_scheme,
         keep_artifacts=keep_artifacts,
         ready_timeout_seconds=ready_timeout_seconds,
         network_ready_timeout_seconds=network_ready_timeout_seconds,

@@ -381,6 +381,7 @@ def _live_options(
 def _amutorrent_clean_options(certification_options: CertificationOptions) -> AmutorrentCleanStartupOptions:
     return AmutorrentCleanStartupOptions(
         live_wire_inputs_file=certification_options.live_wire_inputs_file,
+        rest_webserver_scheme="https",
         keep_artifacts=True,
         p2p_bind_interface_name=certification_options.p2p_bind_interface_name,
     )
@@ -389,6 +390,7 @@ def _amutorrent_clean_options(certification_options: CertificationOptions) -> Am
 def _amutorrent_ui_options(certification_options: CertificationOptions) -> AmutorrentEmulebbUiOptions:
     return AmutorrentEmulebbUiOptions(
         live_wire_inputs_file=certification_options.live_wire_inputs_file,
+        rest_webserver_scheme="https",
         keep_artifacts=True,
         p2p_bind_interface_name=certification_options.p2p_bind_interface_name,
     )
@@ -397,6 +399,7 @@ def _amutorrent_ui_options(certification_options: CertificationOptions) -> Amuto
 def _amutorrent_resilience_options(certification_options: CertificationOptions) -> AmutorrentResilienceOptions:
     return AmutorrentResilienceOptions(
         live_wire_inputs_file=certification_options.live_wire_inputs_file,
+        rest_webserver_scheme="https",
         keep_artifacts=True,
         p2p_bind_interface_name=certification_options.p2p_bind_interface_name,
     )

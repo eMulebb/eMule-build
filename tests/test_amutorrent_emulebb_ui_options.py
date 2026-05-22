@@ -54,6 +54,7 @@ def test_amutorrent_emulebb_ui_forwards_live_options(tmp_path: Path, monkeypatch
         WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
         AmutorrentEmulebbUiOptions(
             live_wire_inputs_file="inputs.json",
+            rest_webserver_scheme="https",
             keep_artifacts=True,
             ready_timeout_seconds=11.0,
             network_ready_timeout_seconds=22.0,
@@ -67,6 +68,7 @@ def test_amutorrent_emulebb_ui_forwards_live_options(tmp_path: Path, monkeypatch
     assert command[1].endswith("amutorrent-emulebb-ui-live.py")
     assert captured["label"] == "aMuTorrent eMule BB UI live"
     assert option_values(command, "--live-wire-inputs-file") == ["inputs.json"]
+    assert option_values(command, "--rest-webserver-scheme") == ["https"]
     assert option_values(command, "--ready-timeout-seconds") == ["11.0"]
     assert option_values(command, "--network-ready-timeout-seconds") == ["22.0"]
     assert option_values(command, "--search-observation-timeout-seconds") == ["33.0"]
@@ -92,4 +94,5 @@ def test_amutorrent_emulebb_ui_omits_optional_inputs_by_default(tmp_path: Path, 
     command = captured["command"]
     assert isinstance(command, list)
     assert "--live-wire-inputs-file" not in command
+    assert option_values(command, "--rest-webserver-scheme") == ["https"]
     assert "--keep-artifacts" not in command
