@@ -383,6 +383,7 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
     if live_options.rest_search_method_override:
         args.extend(["--rest-search-method-override", live_options.rest_search_method_override])
     args.extend(["--rest-webserver-scheme", live_options.rest_webserver_scheme])
+    args.extend(["--local-kad-bootstrap-mode", live_options.local_kad_bootstrap_mode])
     if live_options.profile != "default":
         args.extend(["--profile", live_options.profile])
     for suite_name in live_options.suites:
