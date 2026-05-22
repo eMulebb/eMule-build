@@ -175,6 +175,7 @@ def _live_e2e_options(function: F) -> F:
     @click.option("--rest-search-method-override", type=click.Choice(["", "automatic", "server", "global", "kad"]), default="")
     @click.option("--rest-webserver-scheme", type=click.Choice(["http", "https"]), default="http", show_default=True)
     @click.option("--local-kad-bootstrap-mode", type=click.Choice(["rest", "preseed", "both"]), default="rest", show_default=True)
+    @click.option("--local-kad-nodes-dat-fixture-mode", type=click.Choice(["valid", "truncated", "stale"]), default="valid", show_default=True)
     @click.option("--rest-coverage-budget", type=click.Choice(["smoke", "contract", "contract-stress"]), default="contract")
     @click.option("--rest-stress-budget", type=click.Choice(["off", "smoke", "soak"]), default="smoke")
     @click.option("--rest-stress-duration-seconds", default=30.0, show_default=True, type=float)

@@ -127,6 +127,7 @@ class LiveE2eOptions(BaseModel):
     rest_search_method_override: str = ""
     rest_webserver_scheme: str = "http"
     local_kad_bootstrap_mode: str = "rest"
+    local_kad_nodes_dat_fixture_mode: str = "valid"
     rest_coverage_budget: str = "contract"
     rest_stress_budget: str = "smoke"
     rest_stress_duration_seconds: float = 30.0

@@ -148,12 +148,17 @@ def test_live_e2e_forwards_local_kad_bootstrap_mode(tmp_path: Path, monkeypatch)
     test_runs.invoke_live_e2e_suite(
         layout,
         WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
-        LiveE2eOptions(suites=("local-kad-swarm",), local_kad_bootstrap_mode="preseed"),
+        LiveE2eOptions(
+            suites=("local-kad-swarm",),
+            local_kad_bootstrap_mode="preseed",
+            local_kad_nodes_dat_fixture_mode="stale",
+        ),
     )
 
     command = captured["command"]
     assert isinstance(command, list)
     assert option_values(command, "--local-kad-bootstrap-mode") == ["preseed"]
+    assert option_values(command, "--local-kad-nodes-dat-fixture-mode") == ["stale"]
 
 
 def test_live_e2e_forwards_admin_volume_fixture_options(tmp_path: Path, monkeypatch) -> None:
