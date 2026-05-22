@@ -166,6 +166,41 @@ def test_campaign_execute_dispatches_supported_commands(tmp_path: Path, monkeypa
     assert calls == ["cleanup", "validate", "python", "live:controller-surface"]
 
 
+def test_campaign_execute_forwards_live_e2e_suite_selection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    layout = make_layout(tmp_path)
+    campaign = campaign_payload()
+    campaign["phases"][1]["scenarios"] = [
+        {
+            "id": "live-monitor",
+            "command": "python -m emule_workspace test live-e2e --suite live-process-monitor --fail-fast",
+            "blocking": True,
+        }
+    ]
+    write_campaign(layout, campaign)
+    calls: list[tuple[str, tuple[str, ...], bool]] = []
+
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "run_pre_test_cleanup",
+        lambda _layout: release_campaign_runner.CleanupRunSummary("routine", True, "passed", 0, 0, 0, {}),
+    )
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "invoke_live_e2e_suite",
+        lambda _layout, _workspace_options, live_options: calls.append(
+            (live_options.profile, live_options.suites, live_options.fail_fast)
+        ),
+    )
+
+    release_campaign_runner.invoke_release_campaign(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path),
+        ReleaseCampaignOptions(campaign="test-campaign", phase="controller-surface", execute=True),
+    )
+
+    assert calls == [("default", ("live-process-monitor",), True)]
+
+
 def test_campaign_execute_records_pre_run_cleanup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     layout = make_layout(tmp_path)
     write_campaign(layout, campaign_payload())

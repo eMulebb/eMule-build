@@ -286,6 +286,7 @@ def _certification_options(campaign_options: ReleaseCampaignOptions, tokens: lis
 def _live_options_from_tokens(campaign_options: ReleaseCampaignOptions, tokens: list[str]) -> LiveE2eOptions:
     return LiveE2eOptions(
         profile=_option_value(tokens, "--profile") or "default",
+        suites=tuple(_option_values(tokens, "--suite")),
         pre_run_cleanup=False,
         fail_fast="--fail-fast" in tokens,
         live_wire_inputs_file=_option_value(tokens, "--live-wire-inputs-file"),
@@ -306,6 +307,10 @@ def _option_value(tokens: list[str], option: str) -> str | None:
         if token == option:
             return tokens[index + 1]
     return None
+
+
+def _option_values(tokens: list[str], option: str) -> list[str]:
+    return [tokens[index + 1] for index, token in enumerate(tokens[:-1]) if token == option]
 
 
 def _option_float(tokens: list[str], option: str) -> float | None:
