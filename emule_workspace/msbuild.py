@@ -21,6 +21,7 @@ def invoke_msbuild_project(
     configuration: str | None = None,
     platform: str | None = None,
     environment_overrides: Mapping[str, str] | None = None,
+    max_cpu_count: int | None = None,
     step_name: str | None = None,
 ) -> None:
     """Invokes MSBuild for one project and records a build step."""
@@ -36,7 +37,7 @@ def invoke_msbuild_project(
     )
     arguments = [
         project_path,
-        "/m",
+        f"/m:{max_cpu_count}" if max_cpu_count is not None else "/m",
         "/nologo",
         f"/t:{target}",
         f"/p:Configuration={active_configuration}",

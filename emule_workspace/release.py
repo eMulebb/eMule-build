@@ -719,6 +719,7 @@ def _build_language_resources(session: BuildSession, app_root: Path, clean: bool
         configuration="Dynamic",
         platform=session.options.platform,
         extra_properties=(_default_platform_toolset_property(session.layout),),
+        max_cpu_count=1,
         target=target,
         step_name="APP main language resources",
     )

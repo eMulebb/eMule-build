@@ -173,6 +173,35 @@ def test_release_package_accepts_binary_without_startup_profiling_marker(tmp_pat
     release._assert_startup_profiling_not_compiled(exe_path)
 
 
+def test_package_language_resources_rebuild_serializes_msbuild(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app_root = tmp_path / "app"
+    language_solution = app_root / "srchybrid" / "lang" / "lang.sln"
+    language_solution.parent.mkdir(parents=True)
+    language_solution.write_text("solution\n", encoding="utf-8")
+    captured: dict[str, object] = {}
+    session = SimpleNamespace(
+        layout=SimpleNamespace(toolset_override_variable="EMULE_TEST_TOOLSET"),
+        options=SimpleNamespace(configuration="Release", platform="x64"),
+    )
+
+    monkeypatch.setattr(release, "_default_platform_toolset_property", lambda _layout: "/p:PlatformToolset=vTest")
+
+    def fake_invoke_msbuild_project(*_args, **kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(release, "invoke_msbuild_project", fake_invoke_msbuild_project)
+
+    release._build_language_resources(session, app_root, clean=True)
+
+    assert captured["project_path"] == language_solution
+    assert captured["configuration"] == "Dynamic"
+    assert captured["target"] == "Rebuild"
+    assert captured["max_cpu_count"] == 1
+
+
 def test_release_manifest_records_explicit_source_provenance(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
