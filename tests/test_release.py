@@ -30,6 +30,7 @@ def _write_release_zip(path: Path, *, language_payloads: dict[str, bytes] | None
         "eMule/LICENSE-NOTICE.txt": b"notice\n",
         "eMule/GPL-2.0-or-later.txt": b"gpl\n",
         "eMule/THIRD-PARTY-NOTICES.txt": b"third party\n",
+        "eMule/SBOM.spdx.json": b'{"spdxVersion":"SPDX-2.3"}\n',
         "eMule/docs/REST-API-CONTRACT.md": b"contract\n",
         "eMule/docs/REST-API-OPENAPI.yaml": b"openapi\n",
         "eMule/docs/REST-API-PARITY-INVENTORY.md": b"parity\n",
@@ -59,6 +60,7 @@ def _write_amutorrent_zip(path: Path, *, extra_entries: dict[str, bytes] | None 
     entries = {
         "aMuTorrent/README.md": b"readme\n",
         "aMuTorrent/LICENSE-aMuTorrent.txt": b"license\n",
+        "aMuTorrent/SBOM.spdx.json": b'{"spdxVersion":"SPDX-2.3"}\n',
         "aMuTorrent/installer/windows/amutorrent.ps1": script_payload or _amutorrent_script(),
         "aMuTorrent/server/server.js": b"server\n",
         "aMuTorrent/server/package.json": b"{}\n",
@@ -167,6 +169,8 @@ def test_release_manifest_records_explicit_source_provenance(
         zip_path=zip_path,
         release_root=release_root,
         zip_hash="zip-sha",
+        sbom_path=release_root / "eMule-broadband-0.7.3-x64.sbom.spdx.json",
+        sbom_hash="sbom-sha",
         exe_hash="exe-sha",
         expected_language_dlls=("de_DE.dll", "fr_FR.dll"),
         package_file_hashes={"eMule/emule.exe": "exe-entry-sha"},
@@ -184,6 +188,10 @@ def test_release_manifest_records_explicit_source_provenance(
     assert manifest["languageDllCount"] == 2
     assert manifest["languageDlls"] == ["de_DE.dll", "fr_FR.dll"]
     assert manifest["packageFileSha256"] == {"eMule/emule.exe": "exe-entry-sha"}
+    assert manifest["sbomFormat"] == "SPDX-2.3 JSON"
+    assert manifest["sbomPath"] == "eMule-broadband-0.7.3-x64.sbom.spdx.json"
+    assert manifest["sbomSha256"] == "sbom-sha"
+    assert "eMule/SBOM.spdx.json" in manifest["includedPaths"]
 
 
 def test_expected_language_dlls_uses_release_language_manifest(tmp_path: Path) -> None:
@@ -196,6 +204,44 @@ def test_expected_language_dlls_uses_release_language_manifest(tmp_path: Path) -
     )
 
     assert release._expected_language_dlls(tooling_root) == ("de_DE.dll", "fr_FR.dll")
+
+
+def test_spdx_sbom_describes_staged_package_files_without_self_reference(tmp_path: Path) -> None:
+    release_root = tmp_path / "state" / "release" / "emule-bb-v0.7.3"
+    package_root = release_root / "staging" / "x64" / "eMule"
+    (package_root / "webserver").mkdir(parents=True)
+    (package_root / "emule.exe").write_bytes(b"exe")
+    (package_root / "webserver" / "eMule.tmpl").write_bytes(b"template")
+    (package_root / "SBOM.spdx.json").write_text("old\n", encoding="utf-8")
+
+    document = release._build_spdx_sbom(
+        name="test sbom",
+        namespace="https://example.invalid/sbom",
+        package_name="eMule-broadband-0.7.3-x64",
+        package_version="0.7.3",
+        package_license="GPL-2.0-or-later",
+        package_comment="test package",
+        package_root=package_root,
+        release_root=release_root,
+        components=[
+            release._component_spdx_package(
+                name="component",
+                declared_license="MIT",
+                version="abc123",
+                download_location="https://example.invalid/component.git",
+            )
+        ],
+    )
+
+    file_names = {entry["fileName"] for entry in document["files"]}
+    assert document["spdxVersion"] == "SPDX-2.3"
+    assert document["documentDescribes"] == ["SPDXRef-Package"]
+    assert document["packages"][0]["packageVerificationCode"]["packageVerificationCodeValue"]
+    assert "eMule/emule.exe" in file_names
+    assert "eMule/webserver/eMule.tmpl" in file_names
+    assert "eMule/SBOM.spdx.json" not in file_names
+    assert any(package["name"] == "component" for package in document["packages"])
+    assert any(relationship["relationshipType"] == "DEPENDS_ON" for relationship in document["relationships"])
 
 
 def test_release_package_contents_require_exact_language_set(tmp_path: Path) -> None:
@@ -242,6 +288,7 @@ def test_release_package_contents_accept_full_bundle_and_hash_entries(tmp_path: 
     hashes = release._zip_entry_hashes(zip_path)
     assert hashes["eMule/README.md"] == hashlib.sha256(b"readme\n").hexdigest()
     assert "eMule/THIRD-PARTY-NOTICES.txt" in hashes
+    assert "eMule/SBOM.spdx.json" in hashes
 
 
 def test_amutorrent_manifest_records_runtime_policy_and_source_provenance(
@@ -284,6 +331,8 @@ def test_amutorrent_manifest_records_runtime_policy_and_source_provenance(
         zip_path=zip_path,
         release_root=release_root,
         zip_hash="zip-sha",
+        sbom_path=release_root / "eMule-broadband-0.7.3-amutorrent-arm64.sbom.spdx.json",
+        sbom_hash="sbom-sha",
         package_file_hashes={"aMuTorrent/installer/windows/amutorrent.ps1": "script-sha"},
     )
 
@@ -296,6 +345,10 @@ def test_amutorrent_manifest_records_runtime_policy_and_source_provenance(
     assert manifest["runtimePolicy"]["localAppDataUsed"] is False
     assert manifest["runtimePolicy"]["spacesInInstallPathAllowed"] is False
     assert manifest["packageFileSha256"] == {"aMuTorrent/installer/windows/amutorrent.ps1": "script-sha"}
+    assert manifest["sbomFormat"] == "SPDX-2.3 JSON"
+    assert manifest["sbomPath"] == "eMule-broadband-0.7.3-amutorrent-arm64.sbom.spdx.json"
+    assert manifest["sbomSha256"] == "sbom-sha"
+    assert "aMuTorrent/SBOM.spdx.json" in manifest["includedPaths"]
 
 
 def test_amutorrent_package_contents_accept_runtime_bundle(tmp_path: Path) -> None:
@@ -307,6 +360,7 @@ def test_amutorrent_package_contents_accept_runtime_bundle(tmp_path: Path) -> No
     hashes = release._zip_entry_hashes(zip_path)
     assert hashes["aMuTorrent/README.md"] == hashlib.sha256(b"readme\n").hexdigest()
     assert "aMuTorrent/installer/windows/amutorrent.ps1" in hashes
+    assert "aMuTorrent/SBOM.spdx.json" in hashes
 
 
 def test_amutorrent_package_contents_reject_generated_state_and_source_maps(tmp_path: Path) -> None:

@@ -453,7 +453,7 @@ def build_tests(
     "--client",
     "clients",
     multiple=True,
-    type=click.Choice(["emuleai", "amule"]),
+    type=click.Choice(["amule"]),
     help="Optional P2P client to build. Defaults to all clients.",
 )
 def build_clients(

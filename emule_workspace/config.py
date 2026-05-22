@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 BuildConfiguration = Literal["Debug", "Release"]
 BuildPlatform = Literal["x64", "ARM64"]
 BuildOutputMode = Literal["Full", "Warnings", "ErrorsOnly"]
-ClientBuildTarget = Literal["emuleai", "amule"]
+ClientBuildTarget = Literal["amule"]
 LiveE2eProfile = Literal[
     "default",
     "multi-client-p2p",

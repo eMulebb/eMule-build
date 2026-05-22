@@ -129,33 +129,14 @@ def build_clients(layout: WorkspaceLayout, options: WorkspaceOptions, build_opti
 
     session = BuildSession(layout=layout, options=options, command_name="build clients", clean=build_options.clean)
     try:
-        selected_clients = tuple(dict.fromkeys(build_options.clients or ("emuleai", "amule")))
+        selected_clients = tuple(dict.fromkeys(build_options.clients or ("amule",)))
         for client in selected_clients:
-            if client == "emuleai":
-                build_emuleai_client(session, clean=build_options.clean)
-            elif client == "amule":
+            if client == "amule":
                 build_amule_client(session, clean=build_options.clean)
             else:
                 raise RuntimeError(f"Unsupported client build target: {client}")
     finally:
         session.write_recap()
-
-
-def build_emuleai_client(session: BuildSession, *, clean: bool) -> None:
-    """Builds the eMuleAI fork using the workspace MSBuild entrypoint."""
-
-    target = "Rebuild" if clean else "Build"
-    extra_properties = []
-    override = env_override(session.layout.toolset_override_variable)
-    if override:
-        extra_properties.append(f"/p:PlatformToolset={override}")
-    invoke_msbuild_project(
-        session,
-        project_path=session.layout.emuleai_repo_root / "eMuleAI.sln",
-        extra_properties=extra_properties,
-        target=target,
-        step_name="CLIENT eMuleAI",
-    )
 
 
 AMULE_MSYS2_PACKAGE_SNAPSHOT = (

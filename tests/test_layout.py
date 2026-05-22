@@ -33,7 +33,7 @@ def test_workspace_manifest_uses_json_contract_shape() -> None:
     assert manifest["workspace"]["repos"]["build"] == "..\\..\\repos\\eMule-build"
     assert manifest["workspace"]["repos"]["ed2k_server"] == "..\\..\\repos\\goed2k-server"
     assert manifest["workspace"]["repos"]["amule"] == "..\\..\\repos\\amule"
-    assert manifest["workspace"]["repos"]["emuleai"] == "..\\..\\repos\\eMuleAI"
+    assert "emuleai" not in manifest["workspace"]["repos"]
     assert manifest["workspace"]["repos"]["pages"] == "..\\..\\repos\\eMulebb-pages"
     assert manifest["workspace"]["repos"]["org_profile"] == "..\\..\\repos\\eMulebb-org-profile"
     assert manifest["workspace"]["app_repo"]["variants"][0] == {
@@ -64,8 +64,9 @@ def test_canonical_topology_materializes_ed2k_server_fork_under_repos() -> None:
     )
 
 
-def test_canonical_topology_promotes_multi_client_forks_under_repos() -> None:
+def test_canonical_topology_materializes_client_references_in_active_and_analysis_roots() -> None:
     repos = {repo.name: repo for repo in canonical_topology().repos}
+    analysis_repos = {repo.name: repo for repo in canonical_topology().analysis_repos}
 
     amule = repos["amule"]
     assert amule.url == "https://github.com/eMulebb/amule.git"
@@ -76,9 +77,10 @@ def test_canonical_topology_promotes_multi_client_forks_under_repos() -> None:
         ("upstream", "https://github.com/amule-project/amule.git"),
     )
 
-    emuleai = repos["emuleai"]
+    assert "emuleai" not in repos
+    emuleai = analysis_repos["emuleai"]
     assert emuleai.url == "https://github.com/eMulebb/eMuleAI.git"
-    assert emuleai.relative_path == "repos\\eMuleAI"
+    assert emuleai.relative_path == "analysis\\eMuleAI"
     assert emuleai.branch == "master"
     assert emuleai.compare_subdir == "srchybrid"
     assert tuple((remote.name, remote.url) for remote in emuleai.additional_remotes) == (

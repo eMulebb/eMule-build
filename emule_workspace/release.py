@@ -32,6 +32,16 @@ AMUTORRENT_NODE_ARCHIVES = {
         "c9eb7402eda26e2ba7e44b6727fc85a8de56c5095b1f71ebd3062892211aa116",
     ),
 }
+RELEASE_THIRD_PARTY_COMPONENTS = (
+    ("Crypto++", "Boost-1.0"),
+    ("id3lib", "LGPL-2.0-only"),
+    ("miniupnpc", "BSD-3-Clause"),
+    ("libpcpnatpmp", "NOASSERTION"),
+    ("ResizableLib", "Artistic-2.0"),
+    ("zlib", "Zlib"),
+    ("Mbed TLS / TF-PSA-Crypto", "Apache-2.0 OR GPL-2.0-or-later"),
+    ("nlohmann/json", "MIT"),
+)
 
 
 def create_amutorrent_package(
@@ -57,7 +67,8 @@ def create_amutorrent_package(
     package_root = staging_root / "aMuTorrent"
     zip_path = release_root / f"eMule-broadband-{package_options.release_version}-amutorrent-{asset_arch}.zip"
     manifest_path = release_root / f"eMule-broadband-{package_options.release_version}-amutorrent-{asset_arch}.manifest.json"
-    for path_to_check in (staging_root, package_root, zip_path, manifest_path):
+    sbom_path = release_root / f"eMule-broadband-{package_options.release_version}-amutorrent-{asset_arch}.sbom.spdx.json"
+    for path_to_check in (staging_root, package_root, zip_path, manifest_path, sbom_path):
         _assert_path_under_root(path_to_check, release_root, "aMuTorrent package path")
 
     if staging_root.exists():
@@ -66,6 +77,15 @@ def create_amutorrent_package(
     _copy_amutorrent_runtime(amutorrent_root, package_root)
     _write_amutorrent_readme(package_root, package_options.release_version, workspace_options.platform)
     _copy_package_file(amutorrent_root / "LICENSE", package_root, Path("LICENSE-aMuTorrent.txt"))
+    _write_amutorrent_sbom(
+        layout=layout,
+        workspace_options=workspace_options,
+        package_options=package_options,
+        amutorrent_root=amutorrent_root,
+        package_root=package_root,
+        release_root=release_root,
+        asset_name=zip_path.name,
+    )
 
     if zip_path.exists():
         zip_path.unlink()
@@ -75,6 +95,8 @@ def create_amutorrent_package(
 
     zip_hash = _sha256(zip_path)
     package_file_hashes = _zip_entry_hashes(zip_path)
+    shutil.copy2(package_root / "SBOM.spdx.json", sbom_path)
+    sbom_hash = _sha256(sbom_path)
     manifest = _build_amutorrent_manifest(
         layout=layout,
         workspace_options=workspace_options,
@@ -83,11 +105,14 @@ def create_amutorrent_package(
         zip_path=zip_path,
         release_root=release_root,
         zip_hash=zip_hash,
+        sbom_path=sbom_path,
+        sbom_hash=sbom_hash,
         package_file_hashes=package_file_hashes,
     )
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8", newline="\n")
     print(f"aMuTorrent package: {zip_path}")
     print(f"aMuTorrent manifest: {manifest_path}")
+    print(f"aMuTorrent SBOM: {sbom_path}")
     print(f"SHA256: {zip_hash}")
 
 
@@ -139,7 +164,8 @@ def create_release_package(
     package_root = staging_root / "eMule"
     zip_path = release_root / f"eMule-broadband-{package_options.release_version}-{asset_arch}.zip"
     manifest_path = release_root / f"eMule-broadband-{package_options.release_version}-{asset_arch}.manifest.json"
-    for path_to_check in (staging_root, package_root, zip_path, manifest_path):
+    sbom_path = release_root / f"eMule-broadband-{package_options.release_version}-{asset_arch}.sbom.spdx.json"
+    for path_to_check in (staging_root, package_root, zip_path, manifest_path, sbom_path):
         _assert_path_under_root(path_to_check, release_root, "release package path")
 
     if staging_root.exists():
@@ -168,6 +194,16 @@ def create_release_package(
         package_root,
         Path("docs/REST-API-PARITY-INVENTORY.md"),
     )
+    _write_release_sbom(
+        layout=layout,
+        workspace_options=workspace_options,
+        package_options=package_options,
+        app_variant=app_variant,
+        app_root=app_root,
+        package_root=package_root,
+        release_root=release_root,
+        asset_name=zip_path.name,
+    )
 
     if zip_path.exists():
         zip_path.unlink()
@@ -178,6 +214,8 @@ def create_release_package(
     zip_hash = _sha256(zip_path)
     exe_hash = _sha256(exe_path)
     package_file_hashes = _zip_entry_hashes(zip_path)
+    shutil.copy2(package_root / "SBOM.spdx.json", sbom_path)
+    sbom_hash = _sha256(sbom_path)
     manifest = _build_release_manifest(
         layout=layout,
         workspace_options=workspace_options,
@@ -187,6 +225,8 @@ def create_release_package(
         zip_path=zip_path,
         release_root=release_root,
         zip_hash=zip_hash,
+        sbom_path=sbom_path,
+        sbom_hash=sbom_hash,
         exe_hash=exe_hash,
         expected_language_dlls=expected_language_dlls,
         package_file_hashes=package_file_hashes,
@@ -194,6 +234,7 @@ def create_release_package(
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8", newline="\n")
     print(f"Release package: {zip_path}")
     print(f"Release manifest: {manifest_path}")
+    print(f"Release SBOM: {sbom_path}")
     print(f"SHA256: {zip_hash}")
 
 
@@ -207,6 +248,8 @@ def _build_release_manifest(
     zip_path: Path,
     release_root: Path,
     zip_hash: str,
+    sbom_path: Path,
+    sbom_hash: str,
     exe_hash: str,
     expected_language_dlls: tuple[str, ...],
     package_file_hashes: dict[str, str],
@@ -223,6 +266,9 @@ def _build_release_manifest(
         "asset": zip_path.name,
         "assetPath": zip_path.relative_to(release_root).as_posix(),
         "sha256": zip_hash,
+        "sbomFormat": "SPDX-2.3 JSON",
+        "sbomPath": sbom_path.relative_to(release_root).as_posix(),
+        "sbomSha256": sbom_hash,
         "emuleExeSha256": exe_hash,
         "languageDllCount": len(expected_language_dlls),
         "languageDlls": list(expected_language_dlls),
@@ -246,6 +292,7 @@ def _build_release_manifest(
             "eMule/LICENSE-NOTICE.txt",
             "eMule/GPL-2.0-or-later.txt",
             "eMule/THIRD-PARTY-NOTICES.txt",
+            "eMule/SBOM.spdx.json",
             "eMule/docs/REST-API-CONTRACT.md",
             "eMule/docs/REST-API-OPENAPI.yaml",
             "eMule/docs/REST-API-PARITY-INVENTORY.md",
@@ -262,6 +309,8 @@ def _build_amutorrent_manifest(
     zip_path: Path,
     release_root: Path,
     zip_hash: str,
+    sbom_path: Path,
+    sbom_hash: str,
     package_file_hashes: dict[str, str],
 ) -> dict[str, object]:
     """Builds the provenance manifest for one optional aMuTorrent asset."""
@@ -278,6 +327,9 @@ def _build_amutorrent_manifest(
         "asset": zip_path.name,
         "assetPath": zip_path.relative_to(release_root).as_posix(),
         "sha256": zip_hash,
+        "sbomFormat": "SPDX-2.3 JSON",
+        "sbomPath": sbom_path.relative_to(release_root).as_posix(),
+        "sbomSha256": sbom_hash,
         "packageFileSha256": package_file_hashes,
         "runtimePolicy": {
             "minimumPathNodeMajor": 24,
@@ -308,8 +360,248 @@ def _build_amutorrent_manifest(
             "aMuTorrent/installer/windows/amutorrent.ps1",
             "aMuTorrent/README.md",
             "aMuTorrent/LICENSE-aMuTorrent.txt",
+            "aMuTorrent/SBOM.spdx.json",
         ],
     }
+
+
+def _write_release_sbom(
+    *,
+    layout: WorkspaceLayout,
+    workspace_options: WorkspaceOptions,
+    package_options: ReleasePackageOptions,
+    app_variant: AppVariant,
+    app_root: Path,
+    package_root: Path,
+    release_root: Path,
+    asset_name: str,
+) -> None:
+    """Writes a package-local SPDX SBOM for the main release asset."""
+
+    sbom_path = package_root / "SBOM.spdx.json"
+    _assert_path_under_root(sbom_path, package_root, "release package SBOM")
+    components = [
+        _repo_spdx_package("eMule BB app source", app_root, declared_license="GPL-2.0-or-later"),
+        _repo_spdx_package("eMule build orchestration", layout.build_repo_root),
+        _repo_spdx_package("eMule build tests", layout.tests_repo_root),
+        _repo_spdx_package("eMule tooling docs", layout.tooling_repo_root),
+    ]
+    components.extend(_third_party_spdx_packages())
+    document = _build_spdx_sbom(
+        name=f"eMule BB {package_options.release_version} {workspace_options.platform} release package",
+        namespace=f"https://github.com/eMulebb/eMule/releases/download/emule-bb-v{package_options.release_version}/{asset_name}.sbom",
+        package_name=f"eMule-broadband-{package_options.release_version}-{workspace_options.platform}",
+        package_version=package_options.release_version,
+        package_license="GPL-2.0-or-later",
+        package_comment=f"Main app release package built from app variant {app_variant.name}.",
+        package_root=package_root,
+        release_root=release_root,
+        components=components,
+    )
+    sbom_path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8", newline="\n")
+
+
+def _write_amutorrent_sbom(
+    *,
+    layout: WorkspaceLayout,
+    workspace_options: WorkspaceOptions,
+    package_options: AmutorrentPackageOptions,
+    amutorrent_root: Path,
+    package_root: Path,
+    release_root: Path,
+    asset_name: str,
+) -> None:
+    """Writes a package-local SPDX SBOM for the optional aMuTorrent asset."""
+
+    node_archive_name, node_archive_sha256 = AMUTORRENT_NODE_ARCHIVES[workspace_options.platform]
+    sbom_path = package_root / "SBOM.spdx.json"
+    _assert_path_under_root(sbom_path, package_root, "aMuTorrent package SBOM")
+    components = [
+        _repo_spdx_package("aMuTorrent source", amutorrent_root),
+        _repo_spdx_package("eMule build orchestration", layout.build_repo_root),
+        _repo_spdx_package("eMule build tests", layout.tests_repo_root),
+        _repo_spdx_package("eMule tooling docs", layout.tooling_repo_root),
+        _component_spdx_package(
+            name=f"Node.js runtime fallback {AMUTORRENT_NODE_VERSION}",
+            declared_license="MIT",
+            version=AMUTORRENT_NODE_VERSION,
+            download_location=f"https://nodejs.org/dist/{AMUTORRENT_NODE_VERSION}/{node_archive_name}",
+            checksums=[{"algorithm": "SHA256", "checksumValue": node_archive_sha256}],
+        ),
+    ]
+    document = _build_spdx_sbom(
+        name=f"eMule BB aMuTorrent {package_options.release_version} {workspace_options.platform} package",
+        namespace=f"https://github.com/eMulebb/eMule/releases/download/emule-bb-v{package_options.release_version}/{asset_name}.sbom",
+        package_name=f"eMule-broadband-{package_options.release_version}-amutorrent-{workspace_options.platform}",
+        package_version=package_options.release_version,
+        package_license="NOASSERTION",
+        package_comment="Optional aMuTorrent controller package.",
+        package_root=package_root,
+        release_root=release_root,
+        components=components,
+    )
+    sbom_path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8", newline="\n")
+
+
+def _build_spdx_sbom(
+    *,
+    name: str,
+    namespace: str,
+    package_name: str,
+    package_version: str,
+    package_license: str,
+    package_comment: str,
+    package_root: Path,
+    release_root: Path,
+    components: list[dict[str, object]],
+) -> dict[str, object]:
+    """Builds a compact SPDX 2.3 JSON document for one staged package."""
+
+    root_package = _component_spdx_package(
+        name=package_name,
+        declared_license=package_license,
+        version=package_version,
+        comment=package_comment,
+    )
+    root_package["SPDXID"] = "SPDXRef-Package"
+    root_package["filesAnalyzed"] = True
+
+    files = []
+    relationships = [
+        {
+            "spdxElementId": "SPDXRef-DOCUMENT",
+            "relationshipType": "DESCRIBES",
+            "relatedSpdxElement": root_package["SPDXID"],
+        }
+    ]
+    file_sha1s = []
+    for relative_name, digest in _staged_package_file_hashes(package_root).items():
+        file_id = _spdx_ref("File", relative_name)
+        sha1_digest = _sha1(package_root.parent / relative_name)
+        file_sha1s.append(sha1_digest)
+        files.append(
+            {
+                "SPDXID": file_id,
+                "fileName": relative_name,
+                "checksums": [
+                    {"algorithm": "SHA1", "checksumValue": sha1_digest},
+                    {"algorithm": "SHA256", "checksumValue": digest},
+                ],
+                "licenseConcluded": "NOASSERTION",
+                "copyrightText": "NOASSERTION",
+            }
+        )
+        relationships.append(
+            {
+                "spdxElementId": root_package["SPDXID"],
+                "relationshipType": "CONTAINS",
+                "relatedSpdxElement": file_id,
+            }
+        )
+
+    root_package["packageVerificationCode"] = {
+        "packageVerificationCodeValue": hashlib.sha1("".join(sorted(file_sha1s)).encode("ascii")).hexdigest()
+    }
+    packages = [root_package, *components]
+    for component in components:
+        relationships.append(
+            {
+                "spdxElementId": root_package["SPDXID"],
+                "relationshipType": "DEPENDS_ON",
+                "relatedSpdxElement": component["SPDXID"],
+            }
+        )
+
+    return {
+        "spdxVersion": "SPDX-2.3",
+        "dataLicense": "CC0-1.0",
+        "SPDXID": "SPDXRef-DOCUMENT",
+        "name": name,
+        "documentNamespace": namespace,
+        "creationInfo": {
+            "created": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "creators": ["Tool: emule_workspace.release"],
+        },
+        "packages": packages,
+        "files": files,
+        "relationships": relationships,
+        "documentDescribes": [root_package["SPDXID"]],
+        "comment": f"Generated from staged package files under {release_root.name}.",
+    }
+
+
+def _staged_package_file_hashes(package_root: Path) -> dict[str, str]:
+    """Returns SHA-256 hashes for staged package files, excluding the SBOM itself."""
+
+    hashes: dict[str, str] = {}
+    staging_root = package_root.parent
+    for path in sorted(package_root.rglob("*")):
+        if not path.is_file() or path.name == "SBOM.spdx.json":
+            continue
+        hashes[path.relative_to(staging_root).as_posix()] = _sha256(path)
+    return hashes
+
+
+def _repo_spdx_package(name: str, repo_path: Path, *, declared_license: str = "NOASSERTION") -> dict[str, object]:
+    package = _component_spdx_package(
+        name=name,
+        declared_license=declared_license,
+        version=_git_value(repo_path, "rev-parse", "HEAD"),
+        download_location=_git_value(repo_path, "config", "--get", "remote.origin.url") or "NOASSERTION",
+    )
+    try:
+        branch = repo_branch(repo_path)
+    except Exception:
+        branch = ""
+    if branch:
+        package["comment"] = f"Git branch: {branch}"
+    return package
+
+
+def _third_party_spdx_packages() -> list[dict[str, object]]:
+    return [
+        _component_spdx_package(name=name, declared_license=declared_license)
+        for name, declared_license in RELEASE_THIRD_PARTY_COMPONENTS
+    ]
+
+
+def _component_spdx_package(
+    *,
+    name: str,
+    declared_license: str,
+    version: str | None = None,
+    download_location: str = "NOASSERTION",
+    checksums: list[dict[str, str]] | None = None,
+    comment: str | None = None,
+) -> dict[str, object]:
+    package: dict[str, object] = {
+        "name": name,
+        "SPDXID": _spdx_ref("Package", name),
+        "downloadLocation": download_location,
+        "filesAnalyzed": False,
+        "licenseConcluded": "NOASSERTION",
+        "licenseDeclared": declared_license,
+        "copyrightText": "NOASSERTION",
+    }
+    if version:
+        package["versionInfo"] = version
+    if checksums:
+        package["checksums"] = checksums
+    if comment:
+        package["comment"] = comment
+    return package
+
+
+def _git_value(repo_path: Path, *args: str) -> str:
+    try:
+        return git_output(repo_path, *args).strip()
+    except Exception:
+        return ""
+
+
+def _spdx_ref(prefix: str, value: str) -> str:
+    suffix = re.sub(r"[^A-Za-z0-9.-]+", "-", value).strip(".-")
+    return f"SPDXRef-{prefix}-{suffix or 'unknown'}"
 
 
 def _assert_release_source_branch(app_variant: AppVariant) -> None:
@@ -614,6 +906,8 @@ def _write_package_readme(package_root: Path, release_version: str, platform: st
                 "",
                 "REST API documentation is included under `docs/`. Language DLLs are built",
                 "from the stock eMule language resource set and are architecture-specific.",
+                "`SBOM.spdx.json` records the package files and source/dependency",
+                "components in SPDX 2.3 JSON format.",
                 "",
                 "MediaInfo integration remains optional. To enable audio/video metadata,",
                 "install a compatible external `MediaInfo.dll` next to `emule.exe`; it is not",
@@ -645,6 +939,7 @@ def _write_package_release_notes(package_root: Path, release_version: str) -> No
                 "- Ships x64 and ARM64 portable ZIP assets.",
                 "- Bundles the full stock language DLL set for the selected architecture.",
                 "- Includes the in-process REST API documentation used by controller integrations.",
+                "- Includes an SPDX 2.3 JSON SBOM in the package root.",
                 "- Does not bundle optional external MediaInfo runtime DLLs.",
             )
         )
@@ -749,6 +1044,8 @@ def _write_amutorrent_readme(package_root: Path, release_version: str, platform:
                 "",
                 "The runner uses Node 24 or newer from PATH when available. Otherwise it",
                 f"downloads the pinned {AMUTORRENT_NODE_VERSION} Windows runtime into `runtime\\node`.",
+                "`SBOM.spdx.json` records the packaged controller files and runtime",
+                "components in SPDX 2.3 JSON format.",
                 "Persistent mode is optional and uses PM2 only when PM2 is already on PATH",
                 "or after you explicitly run the `Install-Pm2` command.",
                 "",
@@ -785,6 +1082,7 @@ def _assert_release_package_contents(zip_path: Path, expected_language_dlls: tup
             "eMule/LICENSE-NOTICE.txt",
             "eMule/GPL-2.0-or-later.txt",
             "eMule/THIRD-PARTY-NOTICES.txt",
+            "eMule/SBOM.spdx.json",
             "eMule/docs/REST-API-CONTRACT.md",
             "eMule/docs/REST-API-OPENAPI.yaml",
             "eMule/docs/REST-API-PARITY-INVENTORY.md",
@@ -826,6 +1124,7 @@ def _assert_amutorrent_package_contents(zip_path: Path) -> None:
         required_entries = (
             "aMuTorrent/README.md",
             "aMuTorrent/LICENSE-aMuTorrent.txt",
+            "aMuTorrent/SBOM.spdx.json",
             "aMuTorrent/installer/windows/amutorrent.ps1",
             "aMuTorrent/server/server.js",
             "aMuTorrent/server/package.json",
@@ -944,6 +1243,14 @@ def _assert_path_under_root(path: Path, root: Path, label: str) -> None:
 
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _sha1(path: Path) -> str:
+    digest = hashlib.sha1()
     with path.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
