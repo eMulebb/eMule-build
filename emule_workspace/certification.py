@@ -262,11 +262,8 @@ def _invoke_step(
             _step_options(options, configuration="Release", platform="x64"),
             _live_options(
                 certification_options,
-                profile="release-expanded",
+                profile="release-expanded-quick",
                 fail_fast=True,
-                profile_cpu=True,
-                profile_cpu_stack=True,
-                profile_memory=True,
                 admin_volume_fixtures=True,
             ),
         )
@@ -284,13 +281,8 @@ def _invoke_step(
             _step_options(options, configuration="Release", platform="x64"),
             _live_options(
                 certification_options,
-                profile="stabilization-stress",
+                profile="stabilization-stress-quick",
                 fail_fast=True,
-                profile_cpu=True,
-                profile_cpu_stack=True,
-                profile_memory=True,
-                rest_cold_start_dump_stress_cpu_profile=True,
-                rest_cold_start_dump_stress_cpu_profile_stack=True,
             ),
         )
         return

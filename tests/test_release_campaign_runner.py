@@ -202,6 +202,78 @@ def test_campaign_execute_forwards_live_e2e_suite_selection(tmp_path: Path, monk
     assert calls == [("default", ("live-process-monitor",), True)]
 
 
+def test_campaign_execute_dispatches_amutorrent_live_commands(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    layout = make_layout(tmp_path)
+    campaign = campaign_payload()
+    campaign["phases"][1]["scenarios"] = [
+        {
+            "id": "clean",
+            "command": (
+                "python -m emule_workspace test amutorrent-clean-startup "
+                "--live-wire-inputs-file inputs.json --rest-webserver-scheme https --keep-artifacts"
+            ),
+            "blocking": True,
+        },
+        {
+            "id": "ui",
+            "command": (
+                "python -m emule_workspace test amutorrent-emulebb-ui "
+                "--live-wire-inputs-file inputs.json --rest-webserver-scheme https --keep-artifacts"
+            ),
+            "blocking": True,
+        },
+        {
+            "id": "resilience",
+            "command": (
+                "python -m emule_workspace test amutorrent-resilience "
+                "--live-wire-inputs-file inputs.json --rest-webserver-scheme https --keep-artifacts"
+            ),
+            "blocking": True,
+        },
+    ]
+    write_campaign(layout, campaign)
+    calls: list[tuple[str, str | None, str, bool]] = []
+
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "run_pre_test_cleanup",
+        lambda _layout: release_campaign_runner.CleanupRunSummary("routine", True, "passed", 0, 0, 0, {}),
+    )
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "invoke_amutorrent_clean_startup",
+        lambda _layout, _workspace_options, options: calls.append(
+            ("clean", options.live_wire_inputs_file, options.rest_webserver_scheme, options.keep_artifacts)
+        ),
+    )
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "invoke_amutorrent_emulebb_ui",
+        lambda _layout, _workspace_options, options: calls.append(
+            ("ui", options.live_wire_inputs_file, options.rest_webserver_scheme, options.keep_artifacts)
+        ),
+    )
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "invoke_amutorrent_resilience",
+        lambda _layout, _workspace_options, options: calls.append(
+            ("resilience", options.live_wire_inputs_file, options.rest_webserver_scheme, options.keep_artifacts)
+        ),
+    )
+
+    release_campaign_runner.invoke_release_campaign(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path),
+        ReleaseCampaignOptions(campaign="test-campaign", phase="controller-surface", execute=True),
+    )
+
+    assert calls == [
+        ("clean", "inputs.json", "https", True),
+        ("ui", "inputs.json", "https", True),
+        ("resilience", "inputs.json", "https", True),
+    ]
+
+
 def test_campaign_execute_records_pre_run_cleanup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     layout = make_layout(tmp_path)
     write_campaign(layout, campaign_payload())

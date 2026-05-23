@@ -179,8 +179,7 @@ def create_release_package(
     exe_path = package_app_output_root / APP_EXE_NAME
     expected_language_dlls = _expected_language_dlls(layout.tooling_repo_root)
     lang_path = _package_language_path(app_root, workspace_options.platform, expected_language_dlls)
-    webserver_path = _package_webserver_path(app_root, package_app_output_root)
-    for required_path in (exe_path, lang_path, webserver_path):
+    for required_path in (exe_path, lang_path):
         if not required_path.exists():
             raise RuntimeError(f"Cannot package missing release runtime path: {required_path}")
     _assert_pe_machine(exe_path, workspace_options.platform)
@@ -199,7 +198,6 @@ def create_release_package(
     package_root.mkdir(parents=True, exist_ok=True)
     shutil.copy2(exe_path, package_root / APP_EXE_NAME)
     _copy_directory_contents(lang_path, package_root / "lang")
-    _copy_directory_contents(webserver_path, package_root / "webserver")
     _write_package_readme(package_root, package_options.release_version, workspace_options.platform)
     _write_package_release_notes(package_root, package_options.release_version)
     _write_package_license_notice(package_root)
@@ -312,7 +310,6 @@ def _build_release_manifest(
         "includedPaths": [
             f"eMule/{APP_EXE_NAME}",
             "eMule/lang",
-            "eMule/webserver",
             "eMule/README.md",
             "eMule/RELEASE-NOTES.md",
             "eMule/LICENSE-NOTICE.txt",
@@ -898,13 +895,6 @@ def _package_language_path(app_root: Path, platform: str, expected_language_dlls
     return lang_path
 
 
-def _package_webserver_path(app_root: Path, build_output_root: Path) -> Path:
-    webserver_path = build_output_root / "webserver"
-    if webserver_path.is_dir() and any(path.is_file() for path in webserver_path.rglob("*")):
-        return webserver_path
-    return app_root / "srchybrid" / "webinterface"
-
-
 def _copy_package_file(source_path: Path, package_root: Path, relative_destination_path: Path) -> None:
     if not source_path.is_file():
         raise RuntimeError(f"Cannot package missing file: {source_path}")
@@ -956,8 +946,7 @@ def _write_package_readme(package_root: Path, release_version: str, platform: st
                 f"Architecture: {asset_arch}",
                 "",
                 f"Run `{APP_EXE_NAME}` from this directory. The package is portable and keeps the",
-                "stock eMule language DLLs under `lang/` and the legacy web template under",
-                "`webserver/`.",
+                "stock eMule language DLLs under `lang/`.",
                 "",
                 "REST API documentation is included under `docs/`. Language DLLs are built",
                 "from the stock eMule language resource set and are architecture-specific.",
@@ -1156,8 +1145,11 @@ def _assert_release_package_contents(zip_path: Path, expected_language_dlls: tup
         for entry_name in (f"eMule/{APP_EXE_NAME}", *language_dlls):
             _assert_pe_machine_bytes(archive.read(entry_name), platform, entry_name)
         webserver_files = [name for name in entry_names if re.fullmatch(r"eMule/webserver/.+[^/]", name)]
-        if not webserver_files:
-            raise RuntimeError(f"Release package has no webserver payload under eMule/webserver: {zip_path}")
+        if webserver_files:
+            raise RuntimeError(
+                "Release package contains legacy webserver payload that is not shipped in RC assets:\n"
+                + "\n".join(webserver_files[:20])
+            )
         forbidden_entries = [
             name
             for name in entry_names

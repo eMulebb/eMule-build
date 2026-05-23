@@ -14,7 +14,10 @@ from .artifact_names import release_campaign_result_file_name, utc_run_id
 from .certification import invoke_certification
 from .cleanup import CleanupFailedError, CleanupRunSummary, cleanup_summary_payload, run_pre_test_cleanup
 from .config import (
+    AmutorrentCleanStartupOptions,
+    AmutorrentEmulebbUiOptions,
     AmutorrentPackageOptions,
+    AmutorrentResilienceOptions,
     CertificationOptions,
     CommunityCoverageOptions,
     LiveE2eOptions,
@@ -29,6 +32,9 @@ from .process import get_python_invocation, run_native
 from .python_tests import invoke_python_tests
 from .release import create_amutorrent_package, create_release_package
 from .test_runs import (
+    invoke_amutorrent_clean_startup,
+    invoke_amutorrent_emulebb_ui,
+    invoke_amutorrent_resilience,
     invoke_community_core_coverage,
     invoke_live_e2e_suite,
     invoke_protocol_parity,
@@ -253,6 +259,27 @@ def _dispatch_workspace_command(
             _live_options_from_tokens(campaign_options, tokens),
         )
         return
+    if tokens[:2] == ["test", "amutorrent-clean-startup"]:
+        invoke_amutorrent_clean_startup(
+            layout,
+            _workspace_options_from_tokens(workspace_options, tokens),
+            _amutorrent_clean_options_from_tokens(tokens),
+        )
+        return
+    if tokens[:2] == ["test", "amutorrent-emulebb-ui"]:
+        invoke_amutorrent_emulebb_ui(
+            layout,
+            _workspace_options_from_tokens(workspace_options, tokens),
+            _amutorrent_ui_options_from_tokens(tokens),
+        )
+        return
+    if tokens[:2] == ["test", "amutorrent-resilience"]:
+        invoke_amutorrent_resilience(
+            layout,
+            _workspace_options_from_tokens(workspace_options, tokens),
+            _amutorrent_resilience_options_from_tokens(tokens),
+        )
+        return
     if tokens and tokens[0] == "package-release":
         create_release_package(
             layout,
@@ -291,6 +318,43 @@ def _live_options_from_tokens(campaign_options: ReleaseCampaignOptions, tokens: 
         pre_run_cleanup=False,
         fail_fast="--fail-fast" in tokens,
         live_wire_inputs_file=_option_value(tokens, "--live-wire-inputs-file"),
+    )
+
+
+def _amutorrent_clean_options_from_tokens(tokens: list[str]) -> AmutorrentCleanStartupOptions:
+    return AmutorrentCleanStartupOptions(
+        live_wire_inputs_file=_option_value(tokens, "--live-wire-inputs-file"),
+        rest_webserver_scheme=_option_value(tokens, "--rest-webserver-scheme") or "https",
+        keep_artifacts="--keep-artifacts" in tokens,
+        ready_timeout_seconds=_option_float(tokens, "--ready-timeout-seconds") or 60.0,
+        network_ready_timeout_seconds=_option_float(tokens, "--network-ready-timeout-seconds") or 180.0,
+        search_observation_timeout_seconds=_option_float(tokens, "--search-observation-timeout-seconds") or 120.0,
+        p2p_bind_interface_name=_option_value(tokens, "--p2p-bind-interface-name") or "hide.me",
+    )
+
+
+def _amutorrent_ui_options_from_tokens(tokens: list[str]) -> AmutorrentEmulebbUiOptions:
+    return AmutorrentEmulebbUiOptions(
+        live_wire_inputs_file=_option_value(tokens, "--live-wire-inputs-file"),
+        rest_webserver_scheme=_option_value(tokens, "--rest-webserver-scheme") or "https",
+        keep_artifacts="--keep-artifacts" in tokens,
+        ready_timeout_seconds=_option_float(tokens, "--ready-timeout-seconds") or 60.0,
+        network_ready_timeout_seconds=_option_float(tokens, "--network-ready-timeout-seconds") or 180.0,
+        search_observation_timeout_seconds=_option_float(tokens, "--search-observation-timeout-seconds") or 120.0,
+        p2p_bind_interface_name=_option_value(tokens, "--p2p-bind-interface-name") or "hide.me",
+    )
+
+
+def _amutorrent_resilience_options_from_tokens(tokens: list[str]) -> AmutorrentResilienceOptions:
+    return AmutorrentResilienceOptions(
+        live_wire_inputs_file=_option_value(tokens, "--live-wire-inputs-file"),
+        rest_webserver_scheme=_option_value(tokens, "--rest-webserver-scheme") or "https",
+        keep_artifacts="--keep-artifacts" in tokens,
+        ready_timeout_seconds=_option_float(tokens, "--ready-timeout-seconds") or 60.0,
+        network_ready_timeout_seconds=_option_float(tokens, "--network-ready-timeout-seconds") or 180.0,
+        search_observation_timeout_seconds=_option_float(tokens, "--search-observation-timeout-seconds") or 120.0,
+        reconnect_timeout_seconds=_option_float(tokens, "--reconnect-timeout-seconds") or 120.0,
+        p2p_bind_interface_name=_option_value(tokens, "--p2p-bind-interface-name") or "hide.me",
     )
 
 

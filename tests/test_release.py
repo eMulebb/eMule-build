@@ -34,7 +34,6 @@ def _write_release_zip(path: Path, *, language_payloads: dict[str, bytes] | None
         "eMule/docs/REST-API-CONTRACT.md": b"contract\n",
         "eMule/docs/REST-API-OPENAPI.yaml": b"openapi\n",
         "eMule/docs/REST-API-PARITY-INVENTORY.md": b"parity\n",
-        "eMule/webserver/eMule.tmpl": b"template\n",
     }
     for name, payload in (language_payloads or {"de_DE.dll": _pe_payload(0x8664)}).items():
         entries[f"eMule/lang/{name}"] = payload
@@ -281,6 +280,7 @@ def test_release_manifest_records_explicit_source_provenance(
     assert manifest["sbomPath"] == "emulebb-0.7.3-rc.1-x64.sbom.spdx.json"
     assert manifest["sbomSha256"] == "sbom-sha"
     assert "eMule/SBOM.spdx.json" in manifest["includedPaths"]
+    assert "eMule/webserver" not in manifest["includedPaths"]
 
 
 def test_expected_language_dlls_uses_release_language_manifest(tmp_path: Path) -> None:
@@ -298,9 +298,8 @@ def test_expected_language_dlls_uses_release_language_manifest(tmp_path: Path) -
 def test_spdx_sbom_describes_staged_package_files_without_self_reference(tmp_path: Path) -> None:
     release_root = tmp_path / "state" / "release" / "emulebb-v0.7.3-rc.1"
     package_root = release_root / "staging" / "x64" / "eMule"
-    (package_root / "webserver").mkdir(parents=True)
+    package_root.mkdir(parents=True)
     (package_root / "emulebb.exe").write_bytes(b"exe")
-    (package_root / "webserver" / "eMule.tmpl").write_bytes(b"template")
     (package_root / "SBOM.spdx.json").write_text("old\n", encoding="utf-8")
 
     document = release._build_spdx_sbom(
@@ -327,7 +326,6 @@ def test_spdx_sbom_describes_staged_package_files_without_self_reference(tmp_pat
     assert document["documentDescribes"] == ["SPDXRef-Package"]
     assert document["packages"][0]["packageVerificationCode"]["packageVerificationCodeValue"]
     assert "eMule/emulebb.exe" in file_names
-    assert "eMule/webserver/eMule.tmpl" in file_names
     assert "eMule/SBOM.spdx.json" not in file_names
     assert any(package["name"] == "component" for package in document["packages"])
     assert any(relationship["relationshipType"] == "DEPENDS_ON" for relationship in document["relationships"])
@@ -365,6 +363,14 @@ def test_release_package_contents_reject_forbidden_artifacts(tmp_path: Path) -> 
     _write_release_zip(zip_path, extra_entries={"eMule/build/emule.pdb": b"symbols"})
 
     with pytest.raises(RuntimeError, match="build/source artifacts"):
+        release._assert_release_package_contents(zip_path, ("de_DE.dll",), "x64")
+
+
+def test_release_package_contents_reject_legacy_webserver_payload(tmp_path: Path) -> None:
+    zip_path = tmp_path / "package.zip"
+    _write_release_zip(zip_path, extra_entries={"eMule/webserver/eMule.tmpl": b"template\n"})
+
+    with pytest.raises(RuntimeError, match="legacy webserver payload"):
         release._assert_release_package_contents(zip_path, ("de_DE.dll",), "x64")
 
 

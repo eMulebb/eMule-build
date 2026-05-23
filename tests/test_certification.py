@@ -251,13 +251,13 @@ def test_overnight_stress_step_enables_cpu_profile(tmp_path: Path, monkeypatch: 
     )
 
     live_options = captured["live_options"]
-    assert live_options.profile == "stabilization-stress"
+    assert live_options.profile == "stabilization-stress-quick"
     assert live_options.fail_fast is True
-    assert live_options.profile_cpu is True
-    assert live_options.profile_cpu_stack is True
-    assert live_options.profile_memory is True
-    assert live_options.rest_cold_start_dump_stress_cpu_profile is True
-    assert live_options.rest_cold_start_dump_stress_cpu_profile_stack is True
+    assert live_options.profile_cpu is False
+    assert live_options.profile_cpu_stack is False
+    assert live_options.profile_memory is False
+    assert live_options.rest_cold_start_dump_stress_cpu_profile is False
+    assert live_options.rest_cold_start_dump_stress_cpu_profile_stack is False
 
 
 def test_overnight_release_steps_use_broad_live_profiles(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -277,12 +277,12 @@ def test_overnight_release_steps_use_broad_live_profiles(tmp_path: Path, monkeyp
             step_name,
         )
 
-    assert [item.profile for item in captured] == ["release-expanded", "ui-resource-depth"]
+    assert [item.profile for item in captured] == ["release-expanded-quick", "ui-resource-depth"]
     assert [item.fail_fast for item in captured] == [True, True]
     assert [item.pre_run_cleanup for item in captured] == [False, False]
-    assert captured[0].profile_cpu is True
-    assert captured[0].profile_cpu_stack is True
-    assert captured[0].profile_memory is True
+    assert captured[0].profile_cpu is False
+    assert captured[0].profile_cpu_stack is False
+    assert captured[0].profile_memory is False
     assert captured[0].admin_volume_fixtures is True
     assert captured[1].profile_cpu is False
     assert captured[1].profile_memory is False
