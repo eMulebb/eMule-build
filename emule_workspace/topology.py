@@ -257,16 +257,16 @@ def canonical_topology() -> WorkspaceTopology:
             relative_path="repos\\emulebb",
             branch="main",
             worktrees=(
-                AppWorktree(name="main", branch="main", relative_path="workspaces\\workspace\\app\\eMule-main"),
+                AppWorktree(name="main", branch="main", relative_path="workspaces\\workspace\\app\\emulebb-main"),
                 AppWorktree(
                     name="community",
                     branch="baseline/community-0.72a",
-                    relative_path="workspaces\\workspace\\app\\eMule-community-baseline",
+                    relative_path="workspaces\\workspace\\app\\emulebb-community-baseline",
                 ),
                 AppWorktree(
                     name="tracing-harness",
                     branch="tracing-harness/community-0.72a",
-                    relative_path="workspaces\\workspace\\app\\eMule-community-tracing-harness",
+                    relative_path="workspaces\\workspace\\app\\emulebb-community-tracing-harness",
                 ),
             ),
         ),

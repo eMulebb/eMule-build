@@ -26,10 +26,10 @@ def make_layout(tmp_path: Path) -> WorkspaceLayout:
         seed_repo_branch="main",
         dependencies=(),
         app_variants=(
-            AppVariant(name="main", path=workspace_root / "app" / "eMule-main", branch="main"),
+            AppVariant(name="main", path=workspace_root / "app" / "emulebb-main", branch="main"),
             AppVariant(
                 name="community",
-                path=workspace_root / "app" / "eMule-community-baseline",
+                path=workspace_root / "app" / "emulebb-community-baseline",
                 branch="baseline/community-0.72a",
             ),
         ),

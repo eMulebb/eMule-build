@@ -82,7 +82,7 @@ def test_package_release_dirty_guard_reports_all_provenance_inputs(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    app_root = tmp_path / "workspaces" / "workspace" / "app" / "eMule-main"
+    app_root = tmp_path / "workspaces" / "workspace" / "app" / "emulebb-main"
     build_root = tmp_path / "repos" / "emulebb-build"
     tests_root = tmp_path / "repos" / "emulebb-build-tests"
     tooling_root = tmp_path / "repos" / "emulebb-tooling"
@@ -119,7 +119,7 @@ def test_package_release_requires_main_app_source_branch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    app_root = tmp_path / "workspaces" / "workspace" / "app" / "eMule-main"
+    app_root = tmp_path / "workspaces" / "workspace" / "app" / "emulebb-main"
     app_root.mkdir(parents=True)
     app_variant = AppVariant(name="main", path=app_root, branch="main")
     monkeypatch.setattr(release, "repo_branch", lambda repo: "feature/release-drift")
@@ -221,7 +221,7 @@ def test_release_manifest_records_explicit_source_provenance(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    app_root = tmp_path / "workspaces" / "workspace" / "app" / "eMule-main"
+    app_root = tmp_path / "workspaces" / "workspace" / "app" / "emulebb-main"
     build_root = tmp_path / "repos" / "emulebb-build"
     tests_root = tmp_path / "repos" / "emulebb-build-tests"
     tooling_root = tmp_path / "repos" / "emulebb-tooling"

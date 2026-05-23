@@ -15,8 +15,8 @@ def test_routine_cleanup_selects_old_generated_artifacts(tmp_path: Path) -> None
     recent_payload = write_file(layout.workspace_root / "state" / "test-reports" / "rest-api-smoke" / "latest" / "temp" / "001.part", 10)
     old_build_log = write_file(layout.workspace_root / "state" / "build-logs" / "20260401T120000Z-build-app" / "build-result.json", 10)
     old_arr_output = write_file(layout.workspace_root / "state" / "arr-acquisition" / "radarr" / "movie.mkv", 10)
-    old_live_artifact = write_file(layout.workspace_root / "state" / "test-artifacts" / "live-e2e-suite" / "20260501T120000Z-eMule-main-release-pid100" / "live-e2e-suite-result.json", 10)
-    recent_live_artifact = write_file(layout.workspace_root / "state" / "test-artifacts" / "live-e2e-suite" / "20260521T120000Z-eMule-main-release-pid100" / "live-e2e-suite-result.json", 10)
+    old_live_artifact = write_file(layout.workspace_root / "state" / "test-artifacts" / "live-e2e-suite" / "20260501T120000Z-emulebb-main-release-pid100" / "live-e2e-suite-result.json", 10)
+    recent_live_artifact = write_file(layout.workspace_root / "state" / "test-artifacts" / "live-e2e-suite" / "20260521T120000Z-emulebb-main-release-pid100" / "live-e2e-suite-result.json", 10)
     cache_file = write_file(layout.build_repo_root / ".pytest_cache" / "README.md", 10)
     release_rehearsal = write_file(layout.workspace_root / "state" / "release" / "emulebb-v1.0.1" / "package.zip", 10)
     for path in (old_payload, old_build_log, old_arr_output, old_live_artifact, cache_file, release_rehearsal):

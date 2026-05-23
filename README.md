@@ -38,14 +38,14 @@ In practice this repo needs:
 - `repos\emulebb-pages`
 - `repos\emulebb-org-profile`
 - `repos\third_party\...`
-- `workspaces\workspace\app\eMule-main`
-- `workspaces\workspace\app\eMule-community-baseline`
-- `workspaces\workspace\app\eMule-community-tracing-harness`
+- `workspaces\workspace\app\emulebb-main`
+- `workspaces\workspace\app\emulebb-community-baseline`
+- `workspaces\workspace\app\emulebb-community-tracing-harness`
 
 `repos\emulebb` is not a normal development checkout. Python materialization owns
 it as the canonical app anchor, and it is expected to stay detached at
 `origin/main`. Active app development belongs in the managed worktrees under
-`workspaces\workspace\app\...`, especially `eMule-main` for the mainline branch.
+`workspaces\workspace\app\...`, especially `emulebb-main` for the mainline branch.
 
 Canonical managed app variants use short variant keys in
 `python -m emule_workspace` commands. The worktree folder and branch names stay
@@ -53,9 +53,9 @@ descriptive, but they are not CLI variant keys:
 
 | Variant key | Worktree | Branch |
 | --- | --- | --- |
-| `main` | `workspaces\workspace\app\eMule-main` | `main` |
-| `community` | `workspaces\workspace\app\eMule-community-baseline` | `baseline/community-0.72a` |
-| `tracing-harness` | `workspaces\workspace\app\eMule-community-tracing-harness` | `tracing-harness/community-0.72a` |
+| `main` | `workspaces\workspace\app\emulebb-main` | `main` |
+| `community` | `workspaces\workspace\app\emulebb-community-baseline` | `baseline/community-0.72a` |
+| `tracing-harness` | `workspaces\workspace\app\emulebb-community-tracing-harness` | `tracing-harness/community-0.72a` |
 
 Branch roles, release intent, and baseline rules are owned by
 `EMULE_WORKSPACE_ROOT\repos\emulebb-tooling\docs\WORKSPACE-POLICY.md`.

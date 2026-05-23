@@ -13,7 +13,7 @@ def make_layout(tmp_path: Path) -> WorkspaceLayout:
     emule_workspace_root = tmp_path
     workspace_root = emule_workspace_root / "workspaces" / "workspace"
     tests_repo_root = emule_workspace_root / "repos" / "emulebb-build-tests"
-    app_root = workspace_root / "app" / "eMule-main"
+    app_root = workspace_root / "app" / "emulebb-main"
     (tests_repo_root / "scripts").mkdir(parents=True)
     (tests_repo_root / "scripts" / "run-live-e2e-suite.py").write_text("# test runner\n", encoding="utf-8")
     (tests_repo_root / "scripts" / "show-release-campaigns.py").write_text("# campaign reporter\n", encoding="utf-8")

@@ -62,7 +62,7 @@ def test_build_clients_rejects_emuleai_target(tmp_path: Path) -> None:
 def make_layout(tmp_path: Path) -> WorkspaceLayout:
     emule_workspace_root = tmp_path / "workspace-root"
     workspace_root = emule_workspace_root / "workspaces" / "workspace"
-    app_root = workspace_root / "app" / "eMule-main"
+    app_root = workspace_root / "app" / "emulebb-main"
     return WorkspaceLayout(
         emule_workspace_root=emule_workspace_root,
         workspace_name="workspace",

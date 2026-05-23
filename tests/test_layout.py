@@ -17,9 +17,9 @@ from emule_workspace.topology import (
 
 def test_get_test_build_tag_matches_existing_harness_shape(tmp_path: Path) -> None:
     workspace_root = tmp_path / "owner" / "workspaces" / "workspace"
-    app_root = workspace_root / "app" / "eMule-main"
+    app_root = workspace_root / "app" / "emulebb-main"
 
-    assert get_test_build_tag(workspace_root, app_root) == "owner-workspace-eMule-main"
+    assert get_test_build_tag(workspace_root, app_root) == "owner-workspace-emulebb-main"
 
 
 def test_file_token_matches_legacy_filename_sanitization() -> None:
@@ -40,7 +40,7 @@ def test_workspace_manifest_uses_json_contract_shape() -> None:
     assert manifest["workspace"]["repos"]["p2p_overlord_be"] == "..\\..\\repos\\p2p-overlord-be"
     assert manifest["workspace"]["app_repo"]["variants"][0] == {
         "name": "main",
-        "path": "app\\eMule-main",
+        "path": "app\\emulebb-main",
         "branch": "main",
     }
 
@@ -136,10 +136,10 @@ def test_get_app_variant_error_lists_keys_paths_and_branches(tmp_path: Path) -> 
         seed_repo_branch="main",
         dependencies=(),
         app_variants=(
-            AppVariant(name="main", path=workspace_root / "app" / "eMule-main", branch="main"),
+            AppVariant(name="main", path=workspace_root / "app" / "emulebb-main", branch="main"),
             AppVariant(
                 name="community",
-                path=workspace_root / "app" / "eMule-community-baseline",
+                path=workspace_root / "app" / "emulebb-community-baseline",
                 branch="baseline/community-0.72a",
             ),
         ),
@@ -152,5 +152,5 @@ def test_get_app_variant_error_lists_keys_paths_and_branches(tmp_path: Path) -> 
 
     message = str(exc_info.value)
     assert "Use a configured variant key, not the worktree folder name." in message
-    assert "main -> app\\eMule-main (main)" in message
-    assert "community -> app\\eMule-community-baseline (baseline/community-0.72a)" in message
+    assert "main -> app\\emulebb-main (main)" in message
+    assert "community -> app\\emulebb-community-baseline (baseline/community-0.72a)" in message
