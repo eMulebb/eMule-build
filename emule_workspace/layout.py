@@ -68,7 +68,16 @@ class WorkspaceLayout:
         for variant in self.app_variants:
             if variant.name == name:
                 return variant
-        raise RuntimeError(f"App variant '{name}' is not defined in {WORKSPACE_MANIFEST_NAME}.")
+        variant_lines = [
+            f"{variant.name} -> {variant.path.relative_to(self.workspace_root)} ({variant.branch})"
+            for variant in self.app_variants
+        ]
+        raise RuntimeError(
+            f"App variant '{name}' is not defined in {WORKSPACE_MANIFEST_NAME}. "
+            "Use a configured variant key, not the worktree folder name. "
+            "Available variants: "
+            + "; ".join(variant_lines)
+        )
 
     def build_log_directory(self, stamp: str) -> Path:
         """Returns and creates the workspace build-log directory for one session."""

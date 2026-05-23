@@ -47,11 +47,15 @@ it as the canonical app anchor, and it is expected to stay detached at
 `origin/main`. Active app development belongs in the managed worktrees under
 `workspaces\workspace\app\...`, especially `eMule-main` for the mainline branch.
 
-Canonical managed app variants:
+Canonical managed app variants use short variant keys in
+`python -m emule_workspace` commands. The worktree folder and branch names stay
+descriptive, but they are not CLI variant keys:
 
-- `main`
-- `baseline/community-0.72a`
-- `tracing-harness/community-0.72a`
+| Variant key | Worktree | Branch |
+| --- | --- | --- |
+| `main` | `workspaces\workspace\app\eMule-main` | `main` |
+| `community` | `workspaces\workspace\app\eMule-community-baseline` | `baseline/community-0.72a` |
+| `tracing-harness` | `workspaces\workspace\app\eMule-community-tracing-harness` | `tracing-harness/community-0.72a` |
 
 Branch roles, release intent, and baseline rules are owned by
 `EMULE_WORKSPACE_ROOT\repos\eMule-tooling\docs\WORKSPACE-POLICY.md`.

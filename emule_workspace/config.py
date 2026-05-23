@@ -20,15 +20,20 @@ LiveE2eProfile = Literal[
     "controller-surface",
     "beta-release",
     "release-expanded",
+    "release-expanded-quick",
     "stabilization-stress",
+    "stabilization-stress-quick",
     "cpu-heavy",
+    "cpu-heavy-quick",
     "ui-resource-depth",
 ]
 CertificationProfile = Literal["fast", "overnight"]
 BROAD_LIVE_E2E_PRE_RUN_CLEANUP_PROFILES: tuple[LiveE2eProfile, ...] = (
     "controller-surface",
     "release-expanded",
+    "release-expanded-quick",
     "stabilization-stress",
+    "stabilization-stress-quick",
     "ui-resource-depth",
 )
 

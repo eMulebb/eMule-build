@@ -60,6 +60,11 @@ from .validation import validate_workspace
 
 F = TypeVar("F", bound=Callable[..., Any])
 
+APP_VARIANT_HELP = "Configured app variant key (for example: main, community). This is not the worktree folder name."
+APP_VARIANT_BUILD_HELP = f"{APP_VARIANT_HELP} Defaults to all variants."
+TEST_RUN_VARIANT_HELP = f"{APP_VARIANT_HELP} Defaults to the workspace test-run variant."
+BASELINE_VARIANT_HELP = f"{APP_VARIANT_HELP} Defaults to the workspace baseline variant."
+
 
 def _common_options(function: F) -> F:
     @click.option("--workspace-root", envvar="EMULE_WORKSPACE_ROOT", help="Canonical EMULE_WORKSPACE_ROOT.")
@@ -113,8 +118,8 @@ def _locked(command_name: str, function: F) -> F:
 
 
 def _comparison_options(function: F) -> F:
-    @click.option("--test-run-variant", default=None, help="App variant to run as the test target.")
-    @click.option("--baseline-variant", default=None, help="App variant to use as the comparison baseline.")
+    @click.option("--test-run-variant", default=None, help=TEST_RUN_VARIANT_HELP)
+    @click.option("--baseline-variant", default=None, help=BASELINE_VARIANT_HELP)
     @wraps(function)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         comparison_options = VariantComparisonOptions(
@@ -138,8 +143,11 @@ def _live_e2e_options(function: F) -> F:
             "controller-surface",
             "beta-release",
             "release-expanded",
+            "release-expanded-quick",
             "stabilization-stress",
+            "stabilization-stress-quick",
             "cpu-heavy",
+            "cpu-heavy-quick",
             "ui-resource-depth",
         ]),
         default="default",
@@ -406,7 +414,7 @@ def build_libs(
 @build.command("app")
 @_common_options
 @click.option("--clean", is_flag=True, help="Clean selected app outputs before building.")
-@click.option("--variant", "app_variants", multiple=True, help="App variant to build. Defaults to all variants.")
+@click.option("--variant", "app_variants", multiple=True, help=APP_VARIANT_BUILD_HELP)
 def build_app(
     *,
     clean: bool,
@@ -430,7 +438,7 @@ def build_app(
 @build.command("tests")
 @_common_options
 @click.option("--clean", is_flag=True, help="Clean native test intermediates before building.")
-@click.option("--test-run-variant", default=None, help="App variant used as the native-test build target.")
+@click.option("--test-run-variant", default=None, help=TEST_RUN_VARIANT_HELP)
 def build_tests(
     *,
     clean: bool,
@@ -476,8 +484,8 @@ def build_clients(
 @build.command("all")
 @_common_options
 @click.option("--clean", is_flag=True, help="Clean selected build outputs before building.")
-@click.option("--variant", "app_variants", multiple=True, help="App variant to build. Defaults to all variants.")
-@click.option("--test-run-variant", default=None, help="App variant used as the native-test build target.")
+@click.option("--variant", "app_variants", multiple=True, help=APP_VARIANT_BUILD_HELP)
+@click.option("--test-run-variant", default=None, help=TEST_RUN_VARIANT_HELP)
 def build_all(
     *,
     clean: bool,
@@ -534,7 +542,7 @@ def test_python(
 
 @test.command("native")
 @_common_options
-@click.option("--test-run-variant", default=None, help="App variant used as the native-test target.")
+@click.option("--test-run-variant", default=None, help=TEST_RUN_VARIANT_HELP)
 @click.option("--suite-name", multiple=True, help="Native doctest suite to run. Defaults to parity and web_api.")
 def test_native(
     *,
@@ -603,8 +611,8 @@ def test_protocol_parity(
 
 @test.command("community-core-coverage")
 @_common_options
-@click.option("--test-run-variant", default=None, help="App variant to run as the test target.")
-@click.option("--baseline-variant", default=None, help="App variant to use as the comparison baseline.")
+@click.option("--test-run-variant", default=None, help=TEST_RUN_VARIANT_HELP)
+@click.option("--baseline-variant", default=None, help=BASELINE_VARIANT_HELP)
 @click.option("--rest-coverage-budget", type=click.Choice(["smoke", "contract", "contract-stress"]), default="contract")
 @click.option("--rest-stress-budget", type=click.Choice(["off", "smoke", "soak"]), default="smoke")
 def test_community_core_coverage(
@@ -929,8 +937,8 @@ def test_amutorrent_emulebb_ui(
 @main.command()
 @_common_options
 @click.option("--clean", is_flag=True, help="Clean selected build outputs before building.")
-@click.option("--variant", "app_variants", multiple=True, help="App variant to build. Defaults to all variants.")
-@click.option("--test-run-variant", default=None, help="App variant used as the native-test build target.")
+@click.option("--variant", "app_variants", multiple=True, help=APP_VARIANT_BUILD_HELP)
+@click.option("--test-run-variant", default=None, help=TEST_RUN_VARIANT_HELP)
 def full(
     *,
     clean: bool,

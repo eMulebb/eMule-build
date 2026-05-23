@@ -366,6 +366,16 @@ def test_live_e2e_forwards_profile_only_when_configured(tmp_path: Path, monkeypa
     test_runs.invoke_live_e2e_suite(
         layout,
         WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+        LiveE2eOptions(profile="release-expanded-quick"),
+    )
+
+    command = captured["command"]
+    assert isinstance(command, list)
+    assert option_values(command, "--profile") == ["release-expanded-quick"]
+
+    test_runs.invoke_live_e2e_suite(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
         LiveE2eOptions(profile="stabilization-stress"),
     )
 
@@ -376,12 +386,32 @@ def test_live_e2e_forwards_profile_only_when_configured(tmp_path: Path, monkeypa
     test_runs.invoke_live_e2e_suite(
         layout,
         WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+        LiveE2eOptions(profile="stabilization-stress-quick"),
+    )
+
+    command = captured["command"]
+    assert isinstance(command, list)
+    assert option_values(command, "--profile") == ["stabilization-stress-quick"]
+
+    test_runs.invoke_live_e2e_suite(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
         LiveE2eOptions(profile="cpu-heavy"),
     )
 
     command = captured["command"]
     assert isinstance(command, list)
     assert option_values(command, "--profile") == ["cpu-heavy"]
+
+    test_runs.invoke_live_e2e_suite(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+        LiveE2eOptions(profile="cpu-heavy-quick"),
+    )
+
+    command = captured["command"]
+    assert isinstance(command, list)
+    assert option_values(command, "--profile") == ["cpu-heavy-quick"]
 
     test_runs.invoke_live_e2e_suite(
         layout,

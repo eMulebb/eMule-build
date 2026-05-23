@@ -23,6 +23,10 @@ def test_build_tests_help_exposes_clean_architecture_command() -> None:
 
     assert result.exit_code == 0
     assert "--test-run-variant" in result.output
+    assert "Configured app variant key" in result.output
+    assert "worktree" in result.output
+    assert "folder" in result.output
+    assert "name" in result.output
     assert "--build-output-mode" in result.output
 
 
@@ -33,6 +37,7 @@ def test_build_app_help_exposes_variant_selection() -> None:
 
     assert result.exit_code == 0
     assert "--variant" in result.output
+    assert "Configured app variant key" in result.output
     assert "--clean" in result.output
 
 
@@ -65,7 +70,10 @@ def test_test_live_e2e_help_exposes_live_options() -> None:
     assert "--profile" in result.output
     assert "multi-client-p2p" in result.output
     assert "release-expanded" in result.output
+    assert "release-expanded-quick" in result.output
     assert "stabilization-stress" in result.output
+    assert "stabilization-stress-quick" in result.output
+    assert "cpu-heavy-quick" in result.output
     assert "ui-resource-depth" in result.output
     assert "--p2p-bind-interface-name" in result.output
     assert "--live-wire-inputs-file" in result.output
@@ -167,6 +175,7 @@ def test_build_all_help_exposes_composed_build_options() -> None:
     assert result.exit_code == 0
     assert "--variant" in result.output
     assert "--test-run-variant" in result.output
+    assert "Configured app variant key" in result.output
 
 
 def test_dep_status_help_is_available() -> None:
