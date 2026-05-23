@@ -127,6 +127,9 @@ def test_test_release_campaign_help_exposes_report_options() -> None:
     assert "--continue-on-failure" in result.output
     assert "--dry-run" in result.output
     assert "--skip-pre-run-cleanup" in result.output
+    assert "--live-wire-inputs-file" in result.output
+    assert "--radarr-movie-root" in result.output
+    assert "--sonarr-series-root" in result.output
 
 
 def test_amutorrent_clean_startup_help_exposes_live_options() -> None:

@@ -202,6 +202,80 @@ def test_campaign_execute_forwards_live_e2e_suite_selection(tmp_path: Path, monk
     assert calls == [("default", ("live-process-monitor",), True)]
 
 
+def test_campaign_execute_applies_campaign_runtime_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    layout = make_layout(tmp_path)
+    campaign = campaign_payload()
+    campaign["phases"][1]["scenarios"] = [
+        {
+            "id": "live",
+            "command": "python -m emule_workspace test live-e2e --profile controller-surface",
+            "blocking": True,
+        },
+        {
+            "id": "cert",
+            "command": "python -m emule_workspace test certification --profile overnight",
+            "blocking": True,
+        },
+    ]
+    write_campaign(layout, campaign)
+    live_calls: list[tuple[str | None, str | None, str | None, float | None, str, bool]] = []
+    certification_calls: list[tuple[str | None, str | None, str | None, float | None, str, bool]] = []
+
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "run_pre_test_cleanup",
+        lambda _layout: release_campaign_runner.CleanupRunSummary("routine", True, "passed", 0, 0, 0, {}),
+    )
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "invoke_live_e2e_suite",
+        lambda _layout, _workspace_options, options: live_calls.append(
+            (
+                options.live_wire_inputs_file,
+                options.radarr_movie_root,
+                options.sonarr_series_root,
+                options.acquisition_timeout_minutes,
+                options.p2p_bind_interface_name,
+                options.skip_live_seed_refresh,
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "invoke_certification",
+        lambda _layout, _workspace_options, options: certification_calls.append(
+            (
+                options.live_wire_inputs_file,
+                options.radarr_movie_root,
+                options.sonarr_series_root,
+                options.acquisition_timeout_minutes,
+                options.p2p_bind_interface_name,
+                options.skip_live_seed_refresh,
+            )
+        ),
+    )
+
+    release_campaign_runner.invoke_release_campaign(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path),
+        ReleaseCampaignOptions(
+            campaign="test-campaign",
+            phase="controller-surface",
+            execute=True,
+            live_wire_inputs_file="inputs.local.json",
+            radarr_movie_root="R:/movies",
+            sonarr_series_root="S:/series",
+            acquisition_timeout_minutes=12.5,
+            p2p_bind_interface_name="hide.me",
+            skip_live_seed_refresh=True,
+        ),
+    )
+
+    expected = [("inputs.local.json", "R:/movies", "S:/series", 12.5, "hide.me", True)]
+    assert live_calls == expected
+    assert certification_calls == expected
+
+
 def test_campaign_execute_dispatches_amutorrent_live_commands(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     layout = make_layout(tmp_path)
     campaign = campaign_payload()

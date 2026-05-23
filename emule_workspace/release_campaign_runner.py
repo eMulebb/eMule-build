@@ -263,21 +263,21 @@ def _dispatch_workspace_command(
         invoke_amutorrent_clean_startup(
             layout,
             _workspace_options_from_tokens(workspace_options, tokens),
-            _amutorrent_clean_options_from_tokens(tokens),
+            _amutorrent_clean_options_from_tokens(campaign_options, tokens),
         )
         return
     if tokens[:2] == ["test", "amutorrent-emulebb-ui"]:
         invoke_amutorrent_emulebb_ui(
             layout,
             _workspace_options_from_tokens(workspace_options, tokens),
-            _amutorrent_ui_options_from_tokens(tokens),
+            _amutorrent_ui_options_from_tokens(campaign_options, tokens),
         )
         return
     if tokens[:2] == ["test", "amutorrent-resilience"]:
         invoke_amutorrent_resilience(
             layout,
             _workspace_options_from_tokens(workspace_options, tokens),
-            _amutorrent_resilience_options_from_tokens(tokens),
+            _amutorrent_resilience_options_from_tokens(campaign_options, tokens),
         )
         return
     if tokens and tokens[0] == "package-release":
@@ -302,12 +302,13 @@ def _certification_options(campaign_options: ReleaseCampaignOptions, tokens: lis
         profile=_option_value(tokens, "--profile") or "fast",
         pre_run_cleanup=False,
         continue_on_failure=campaign_options.continue_on_failure,
-        live_wire_inputs_file=_option_value(tokens, "--live-wire-inputs-file"),
-        radarr_movie_root=_option_value(tokens, "--radarr-movie-root"),
-        sonarr_series_root=_option_value(tokens, "--sonarr-series-root"),
-        acquisition_timeout_minutes=_option_float(tokens, "--acquisition-timeout-minutes"),
-        p2p_bind_interface_name=_option_value(tokens, "--p2p-bind-interface-name") or "hide.me",
-        skip_live_seed_refresh="--skip-live-seed-refresh" in tokens,
+        live_wire_inputs_file=_option_value(tokens, "--live-wire-inputs-file") or campaign_options.live_wire_inputs_file,
+        radarr_movie_root=_option_value(tokens, "--radarr-movie-root") or campaign_options.radarr_movie_root,
+        sonarr_series_root=_option_value(tokens, "--sonarr-series-root") or campaign_options.sonarr_series_root,
+        acquisition_timeout_minutes=_option_float(tokens, "--acquisition-timeout-minutes")
+        or campaign_options.acquisition_timeout_minutes,
+        p2p_bind_interface_name=_option_value(tokens, "--p2p-bind-interface-name") or campaign_options.p2p_bind_interface_name,
+        skip_live_seed_refresh="--skip-live-seed-refresh" in tokens or campaign_options.skip_live_seed_refresh,
     )
 
 
@@ -317,44 +318,59 @@ def _live_options_from_tokens(campaign_options: ReleaseCampaignOptions, tokens: 
         suites=tuple(_option_values(tokens, "--suite")),
         pre_run_cleanup=False,
         fail_fast="--fail-fast" in tokens,
-        live_wire_inputs_file=_option_value(tokens, "--live-wire-inputs-file"),
+        live_wire_inputs_file=_option_value(tokens, "--live-wire-inputs-file") or campaign_options.live_wire_inputs_file,
+        radarr_movie_root=_option_value(tokens, "--radarr-movie-root") or campaign_options.radarr_movie_root,
+        sonarr_series_root=_option_value(tokens, "--sonarr-series-root") or campaign_options.sonarr_series_root,
+        acquisition_timeout_minutes=_option_float(tokens, "--acquisition-timeout-minutes")
+        or campaign_options.acquisition_timeout_minutes,
+        p2p_bind_interface_name=_option_value(tokens, "--p2p-bind-interface-name") or campaign_options.p2p_bind_interface_name,
+        skip_live_seed_refresh="--skip-live-seed-refresh" in tokens or campaign_options.skip_live_seed_refresh,
     )
 
 
-def _amutorrent_clean_options_from_tokens(tokens: list[str]) -> AmutorrentCleanStartupOptions:
+def _amutorrent_clean_options_from_tokens(
+    campaign_options: ReleaseCampaignOptions,
+    tokens: list[str],
+) -> AmutorrentCleanStartupOptions:
     return AmutorrentCleanStartupOptions(
-        live_wire_inputs_file=_option_value(tokens, "--live-wire-inputs-file"),
+        live_wire_inputs_file=_option_value(tokens, "--live-wire-inputs-file") or campaign_options.live_wire_inputs_file,
         rest_webserver_scheme=_option_value(tokens, "--rest-webserver-scheme") or "https",
         keep_artifacts="--keep-artifacts" in tokens,
         ready_timeout_seconds=_option_float(tokens, "--ready-timeout-seconds") or 60.0,
         network_ready_timeout_seconds=_option_float(tokens, "--network-ready-timeout-seconds") or 180.0,
         search_observation_timeout_seconds=_option_float(tokens, "--search-observation-timeout-seconds") or 120.0,
-        p2p_bind_interface_name=_option_value(tokens, "--p2p-bind-interface-name") or "hide.me",
+        p2p_bind_interface_name=_option_value(tokens, "--p2p-bind-interface-name") or campaign_options.p2p_bind_interface_name,
     )
 
 
-def _amutorrent_ui_options_from_tokens(tokens: list[str]) -> AmutorrentEmulebbUiOptions:
+def _amutorrent_ui_options_from_tokens(
+    campaign_options: ReleaseCampaignOptions,
+    tokens: list[str],
+) -> AmutorrentEmulebbUiOptions:
     return AmutorrentEmulebbUiOptions(
-        live_wire_inputs_file=_option_value(tokens, "--live-wire-inputs-file"),
+        live_wire_inputs_file=_option_value(tokens, "--live-wire-inputs-file") or campaign_options.live_wire_inputs_file,
         rest_webserver_scheme=_option_value(tokens, "--rest-webserver-scheme") or "https",
         keep_artifacts="--keep-artifacts" in tokens,
         ready_timeout_seconds=_option_float(tokens, "--ready-timeout-seconds") or 60.0,
         network_ready_timeout_seconds=_option_float(tokens, "--network-ready-timeout-seconds") or 180.0,
         search_observation_timeout_seconds=_option_float(tokens, "--search-observation-timeout-seconds") or 120.0,
-        p2p_bind_interface_name=_option_value(tokens, "--p2p-bind-interface-name") or "hide.me",
+        p2p_bind_interface_name=_option_value(tokens, "--p2p-bind-interface-name") or campaign_options.p2p_bind_interface_name,
     )
 
 
-def _amutorrent_resilience_options_from_tokens(tokens: list[str]) -> AmutorrentResilienceOptions:
+def _amutorrent_resilience_options_from_tokens(
+    campaign_options: ReleaseCampaignOptions,
+    tokens: list[str],
+) -> AmutorrentResilienceOptions:
     return AmutorrentResilienceOptions(
-        live_wire_inputs_file=_option_value(tokens, "--live-wire-inputs-file"),
+        live_wire_inputs_file=_option_value(tokens, "--live-wire-inputs-file") or campaign_options.live_wire_inputs_file,
         rest_webserver_scheme=_option_value(tokens, "--rest-webserver-scheme") or "https",
         keep_artifacts="--keep-artifacts" in tokens,
         ready_timeout_seconds=_option_float(tokens, "--ready-timeout-seconds") or 60.0,
         network_ready_timeout_seconds=_option_float(tokens, "--network-ready-timeout-seconds") or 180.0,
         search_observation_timeout_seconds=_option_float(tokens, "--search-observation-timeout-seconds") or 120.0,
         reconnect_timeout_seconds=_option_float(tokens, "--reconnect-timeout-seconds") or 120.0,
-        p2p_bind_interface_name=_option_value(tokens, "--p2p-bind-interface-name") or "hide.me",
+        p2p_bind_interface_name=_option_value(tokens, "--p2p-bind-interface-name") or campaign_options.p2p_bind_interface_name,
     )
 
 

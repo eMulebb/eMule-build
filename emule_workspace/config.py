@@ -269,6 +269,12 @@ class ReleaseCampaignOptions(BaseModel):
     continue_on_failure: bool = False
     dry_run: bool = False
     pre_run_cleanup: bool = True
+    live_wire_inputs_file: str | None = None
+    radarr_movie_root: str | None = None
+    sonarr_series_root: str | None = None
+    acquisition_timeout_minutes: float | None = None
+    p2p_bind_interface_name: str = "hide.me"
+    skip_live_seed_refresh: bool = False
 
 
 class CertificationOptions(BaseModel):

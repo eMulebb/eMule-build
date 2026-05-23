@@ -670,6 +670,12 @@ def test_live_e2e(
 @click.option("--continue-on-failure", is_flag=True, help="Run remaining campaign commands after a failure.")
 @click.option("--dry-run", is_flag=True, help="Write an execution plan report without running campaign commands.")
 @click.option("--skip-pre-run-cleanup", is_flag=True, help="Do not prune old generated outcomes before executing campaign commands.")
+@click.option("--live-wire-inputs-file", default=None, help="Runtime live-wire search/download input JSON for campaign commands.")
+@click.option("--radarr-movie-root", default=None, help="Radarr-visible movie root for campaign live checks.")
+@click.option("--sonarr-series-root", default=None, help="Sonarr-visible series root for campaign live checks.")
+@click.option("--acquisition-timeout-minutes", default=None, type=float, help="Arr acquisition timeout forwarded to campaign live checks.")
+@click.option("--p2p-bind-interface-name", default="hide.me", show_default=True)
+@click.option("--skip-live-seed-refresh", is_flag=True, help="Reuse the existing live seed state in campaign live checks.")
 def test_release_campaign(
     *,
     campaign: str,
@@ -681,6 +687,12 @@ def test_release_campaign(
     continue_on_failure: bool,
     dry_run: bool,
     skip_pre_run_cleanup: bool,
+    live_wire_inputs_file: str | None,
+    radarr_movie_root: str | None,
+    sonarr_series_root: str | None,
+    acquisition_timeout_minutes: float | None,
+    p2p_bind_interface_name: str,
+    skip_live_seed_refresh: bool,
     workspace_options: WorkspaceOptions,
     layout,
 ) -> None:
@@ -696,6 +708,12 @@ def test_release_campaign(
         continue_on_failure=continue_on_failure,
         dry_run=dry_run,
         pre_run_cleanup=not skip_pre_run_cleanup,
+        live_wire_inputs_file=live_wire_inputs_file,
+        radarr_movie_root=radarr_movie_root,
+        sonarr_series_root=sonarr_series_root,
+        acquisition_timeout_minutes=acquisition_timeout_minutes,
+        p2p_bind_interface_name=p2p_bind_interface_name,
+        skip_live_seed_refresh=skip_live_seed_refresh,
     )
     _locked(
         "test release-campaign",
