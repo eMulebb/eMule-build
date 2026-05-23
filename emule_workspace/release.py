@@ -48,7 +48,10 @@ RELEASE_THIRD_PARTY_COMPONENTS = (
     ("Mbed TLS / TF-PSA-Crypto", "Apache-2.0 OR GPL-2.0-or-later"),
     ("nlohmann/json", "MIT"),
 )
-RELEASE_VERSION_PATTERN = re.compile(r"\d+\.\d+\.\d+(?:-(?:rc|beta)\.\d+)?")
+RELEASE_VERSION_PATTERN = re.compile(
+    r"\d+\.\d+\.\d+(?:-(?:(?:rc|beta)\.\d+|nightly\.\d{8}\.[0-9a-f]{7,40}))?"
+)
+RELEASE_VERSION_FORMAT = "MAJOR.MINOR.PATCH[-rc.N|-beta.N|-nightly.YYYYMMDD.SHA]"
 
 
 def create_amutorrent_package(
@@ -62,8 +65,7 @@ def create_amutorrent_package(
         raise RuntimeError("package amutorrent requires --config Release.")
     if not _is_release_version(package_options.release_version):
         raise RuntimeError(
-            "Release version must use MAJOR.MINOR.PATCH[-rc.N|-beta.N] format: "
-            f"{package_options.release_version}"
+            f"Release version must use {RELEASE_VERSION_FORMAT} format: {package_options.release_version}"
         )
 
     amutorrent_root = layout.resolve_workspace_path("repos/amutorrent")
@@ -137,8 +139,7 @@ def create_release_package(
         raise RuntimeError("package release requires --config Release.")
     if not _is_release_version(package_options.release_version):
         raise RuntimeError(
-            "Release version must use MAJOR.MINOR.PATCH[-rc.N|-beta.N] format: "
-            f"{package_options.release_version}"
+            f"Release version must use {RELEASE_VERSION_FORMAT} format: {package_options.release_version}"
         )
 
     ensure_canonical_app_anchor(layout)

@@ -13,6 +13,34 @@ from emule_workspace import release
 from emule_workspace.layout import AppVariant
 
 
+@pytest.mark.parametrize(
+    "release_version",
+    [
+        "0.7.3",
+        "0.7.3-rc.1",
+        "0.7.3-beta.2",
+        "0.7.3-nightly.20260524.ae562c1",
+        "0.7.3-nightly.20260524.0123456789abcdef",
+    ],
+)
+def test_release_version_accepts_public_and_nightly_formats(release_version: str) -> None:
+    assert release._is_release_version(release_version)
+
+
+@pytest.mark.parametrize(
+    "release_version",
+    [
+        "0.7",
+        "0.7.3-nightly",
+        "0.7.3-nightly.2026052.ae562c1",
+        "0.7.3-nightly.20260524.zzzzzzz",
+        "0.7.3-alpha.1",
+    ],
+)
+def test_release_version_rejects_unknown_formats(release_version: str) -> None:
+    assert not release._is_release_version(release_version)
+
+
 def _pe_payload(machine: int) -> bytes:
     payload = bytearray(128)
     payload[0:2] = b"MZ"

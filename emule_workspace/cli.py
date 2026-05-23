@@ -990,7 +990,7 @@ def full(
     "--release-version",
     default="0.7.3-rc.1",
     show_default=True,
-    help="Release version in MAJOR.MINOR.PATCH[-rc.N|-beta.N] form.",
+    help="Release version in MAJOR.MINOR.PATCH[-rc.N|-beta.N|-nightly.YYYYMMDD.SHA] form.",
 )
 def package_release(
     *,
@@ -1015,7 +1015,7 @@ def package_release(
     "--release-version",
     default="0.7.3-rc.1",
     show_default=True,
-    help="Release version in MAJOR.MINOR.PATCH[-rc.N|-beta.N] form.",
+    help="Release version in MAJOR.MINOR.PATCH[-rc.N|-beta.N|-nightly.YYYYMMDD.SHA] form.",
 )
 def package_amutorrent(
     *,
