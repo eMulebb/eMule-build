@@ -15,6 +15,7 @@ from .build import build_libs as invoke_build_libs
 from .certification import invoke_certification
 from .cleanup import cleanup_workspace
 from .config import (
+    AmulePackageOptions,
     AmutorrentPackageOptions,
     AmutorrentCleanStartupOptions,
     AmutorrentEmulebbUiOptions,
@@ -36,6 +37,7 @@ from .config import (
     WorkspaceOptions,
     resolve_workspace_options,
 )
+from .amule_release import create_amule_package
 from .layout import load_layout
 from .locks import WorkspaceLock
 from .materialize import materialize_workspace, sync_workspace
@@ -1000,6 +1002,31 @@ def package_amutorrent(
     _locked(
         "package amutorrent",
         lambda **kwargs: create_amutorrent_package(kwargs["layout"], kwargs["workspace_options"], package_options),
+    )(workspace_options=workspace_options, layout=layout)
+
+
+@main.command("package-amule")
+@_common_options
+@click.option("--clean", is_flag=True, help="Clean selected package build outputs before building.")
+@click.option(
+    "--release-version",
+    default="3.0.0-emulebb.1",
+    show_default=True,
+    help="aMule release version in MAJOR.MINOR.PATCH-emulebb.N form.",
+)
+def package_amule(
+    *,
+    clean: bool,
+    release_version: str,
+    workspace_options: WorkspaceOptions,
+    layout,
+) -> None:
+    """Build the optional aMule Windows package artifact."""
+
+    package_options = AmulePackageOptions(release_version=release_version, clean=clean)
+    _locked(
+        "package amule",
+        lambda **kwargs: create_amule_package(kwargs["layout"], kwargs["workspace_options"], package_options),
     )(workspace_options=workspace_options, layout=layout)
 
 
