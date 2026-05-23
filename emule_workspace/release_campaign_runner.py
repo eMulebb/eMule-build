@@ -202,7 +202,7 @@ def _dispatch_supported_command(
     if tokens[:3] == ["python", "-m", "emule_workspace"]:
         _dispatch_workspace_command(layout, workspace_options, campaign_options, tokens[3:])
         return
-    if len(tokens) == 2 and tokens[0] == "python" and tokens[1].replace("/", "\\") == r"repos\eMule-tooling\ci\check-clean-worktree.py":
+    if len(tokens) == 2 and tokens[0] == "python" and tokens[1].replace("/", "\\") == r"repos\emulebb-tooling\ci\check-clean-worktree.py":
         python = get_python_invocation()
         run_native(
             python.command([layout.emule_workspace_root / tokens[1]]),
@@ -324,7 +324,7 @@ def _assert_supported_command(command: str) -> None:
     _dispatch_shape = _parse_command(command)
     if _dispatch_shape[:3] == ["python", "-m", "emule_workspace"]:
         return
-    if len(_dispatch_shape) == 2 and _dispatch_shape[0] == "python" and _dispatch_shape[1].replace("/", "\\") == r"repos\eMule-tooling\ci\check-clean-worktree.py":
+    if len(_dispatch_shape) == 2 and _dispatch_shape[0] == "python" and _dispatch_shape[1].replace("/", "\\") == r"repos\emulebb-tooling\ci\check-clean-worktree.py":
         return
     raise ValueError(f"Unsupported release campaign command: {command}")
 

@@ -24,17 +24,17 @@ from .topology import (
 from .topology import ManagedRepo
 
 ROOT_AGENTS_CONTENT = """ANALYZE THIS WORKSPACE, DIRECTORIES `repos` and `workspaces`
-ALWAYS READ AND FOLLOW EMULE_WORKSPACE_ROOT\\repos\\eMule-tooling\\docs\\WORKSPACE-POLICY.md
+ALWAYS READ AND FOLLOW EMULE_WORKSPACE_ROOT\\repos\\emulebb-tooling\\docs\\WORKSPACE-POLICY.md
 """
 
 
 def derive_workspace_root_from_build_repo() -> Path:
-    """Returns EMULE_WORKSPACE_ROOT from the required repos/eMule-build clone layout."""
+    """Returns EMULE_WORKSPACE_ROOT from the required repos/emulebb-build clone layout."""
 
     repo_root = build_repo_root().resolve()
-    if repo_root.name != "eMule-build" or repo_root.parent.name != "repos":
+    if repo_root.name != "emulebb-build" or repo_root.parent.name != "repos":
         raise RuntimeError(
-            "eMule-build must be cloned as <EMULE_WORKSPACE_ROOT>\\repos\\eMule-build "
+            "emulebb-build must be cloned as <EMULE_WORKSPACE_ROOT>\\repos\\emulebb-build "
             f"for materialization. Current path: {repo_root}"
         )
     return repo_root.parent.parent.resolve()
@@ -52,10 +52,10 @@ def resolve_setup_workspace_root(workspace_root: str | None) -> Path:
 
 def _assert_build_repo_matches_root(root: Path) -> None:
     repo_root = build_repo_root().resolve()
-    expected = (root / "repos" / "eMule-build").resolve()
+    expected = (root / "repos" / "emulebb-build").resolve()
     if repo_root != expected:
         raise RuntimeError(
-            "eMule-build must be the clone at <EMULE_WORKSPACE_ROOT>\\repos\\eMule-build. "
+            "emulebb-build must be the clone at <EMULE_WORKSPACE_ROOT>\\repos\\emulebb-build. "
             f"Expected {expected}, current package is {repo_root}."
         )
 
@@ -66,7 +66,7 @@ def materialize_workspace(
     workspace_name: str | None = None,
     artifacts_seed_root: str | None = None,
 ) -> None:
-    """Materializes a new workspace around the required repos/eMule-build clone."""
+    """Materializes a new workspace around the required repos/emulebb-build clone."""
 
     root = resolve_setup_workspace_root(workspace_root)
     topology = canonical_topology()
@@ -139,7 +139,7 @@ def assert_materialize_bootstrap_root(root: Path) -> None:
     if unexpected:
         details = "\n".join(str(path) for path in unexpected)
         raise RuntimeError(
-            f"Materialize expects an empty workspace root containing only repos\\eMule-build. "
+            f"Materialize expects an empty workspace root containing only repos\\emulebb-build. "
             f"Refusing populated root '{root}'. Use sync for an existing workspace.\n{details}"
         )
 
@@ -454,11 +454,11 @@ def write_workspace_props(root: Path) -> None:
     <WorkspaceRoot>$([MSBuild]::EnsureTrailingSlash('$(WorkspaceRoot)'))</WorkspaceRoot>
     <ReposRoot>$(WorkspaceRoot)repos\\</ReposRoot>
     <ThirdPartyRoot>$(ReposRoot)third_party\\</ThirdPartyRoot>
-    <NlohmannJsonRoot>$(ThirdPartyRoot)eMule-nlohmann-json\\single_include\\</NlohmannJsonRoot>
+    <NlohmannJsonRoot>$(ThirdPartyRoot)emulebb-nlohmann-json\\single_include\\</NlohmannJsonRoot>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
-      <AdditionalIncludeDirectories>$(NlohmannJsonRoot);$(ThirdPartyRoot)eMule-cryptopp;$(ThirdPartyRoot)eMule-ResizableLib;$(ThirdPartyRoot)eMule-zlib;$(ThirdPartyRoot)eMule-miniupnp;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(NlohmannJsonRoot);$(ThirdPartyRoot)emulebb-cryptopp;$(ThirdPartyRoot)emulebb-resizablelib;$(ThirdPartyRoot)emulebb-zlib;$(ThirdPartyRoot)emulebb-miniupnp;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
   </ItemDefinitionGroup>
 </Project>
@@ -499,10 +499,10 @@ def write_compare_launchers(root: Path) -> None:
 def install_workspace_hooks(root: Path, topology: WorkspaceTopology) -> None:
     """Configures workspace repos and worktrees to use the shared hook path."""
 
-    hooks_path = root / "repos" / "eMule-tooling" / "hooks"
+    hooks_path = root / "repos" / "emulebb-tooling" / "hooks"
     if not (hooks_path / "pre-commit").is_file():
         raise RuntimeError(f"Shared pre-commit hook is missing: {hooks_path / 'pre-commit'}")
-    hook_repo_names = {"eMule-build", "eMule-build-tests", "eMule-tooling"}
+    hook_repo_names = {"emulebb-build", "emulebb-build-tests", "emulebb-tooling"}
     targets = [root / repo.relative_path for repo in topology.repos if repo.name in hook_repo_names]
     targets.extend(root / worktree.relative_path for worktree in topology.app_repo.worktrees if worktree.active)
     for target in targets:

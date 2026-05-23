@@ -12,7 +12,7 @@ def make_layout(tmp_path: Path) -> WorkspaceLayout:
 
     emule_workspace_root = tmp_path
     workspace_root = emule_workspace_root / "workspaces" / "workspace"
-    tests_repo_root = emule_workspace_root / "repos" / "eMule-build-tests"
+    tests_repo_root = emule_workspace_root / "repos" / "emulebb-build-tests"
     app_root = workspace_root / "app" / "eMule-main"
     (tests_repo_root / "scripts").mkdir(parents=True)
     (tests_repo_root / "scripts" / "run-live-e2e-suite.py").write_text("# test runner\n", encoding="utf-8")
@@ -22,12 +22,12 @@ def make_layout(tmp_path: Path) -> WorkspaceLayout:
         emule_workspace_root=emule_workspace_root,
         workspace_name="workspace",
         workspace_root=workspace_root,
-        build_repo_root=emule_workspace_root / "repos" / "eMule-build",
+        build_repo_root=emule_workspace_root / "repos" / "emulebb-build",
         tests_repo_root=tests_repo_root,
-        tooling_repo_root=emule_workspace_root / "repos" / "eMule-tooling",
+        tooling_repo_root=emule_workspace_root / "repos" / "emulebb-tooling",
         ed2k_server_repo_root=emule_workspace_root / "repos" / "goed2k-server",
         amule_repo_root=emule_workspace_root / "repos" / "amule",
-        seed_repo_path=emule_workspace_root / "repos" / "eMule",
+        seed_repo_path=emule_workspace_root / "repos" / "emulebb",
         seed_repo_branch="main",
         dependencies=(),
         app_variants=(AppVariant(name="main", path=app_root, branch="main"),),
@@ -483,7 +483,7 @@ def test_live_e2e_forwards_live_wire_inputs_file_only_when_configured(tmp_path: 
     assert isinstance(command, list)
     assert "--live-wire-inputs-file" not in command
 
-    live_wire_inputs_file = str(tmp_path / "repos" / "eMule-build-tests" / "live-wire-inputs.local.json")
+    live_wire_inputs_file = str(tmp_path / "repos" / "emulebb-build-tests" / "live-wire-inputs.local.json")
     test_runs.invoke_live_e2e_suite(
         layout,
         WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
@@ -511,7 +511,7 @@ def test_live_e2e_resolves_existing_workspace_relative_live_wire_inputs_file(tmp
         WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
         LiveE2eOptions(
             suites=("rest-api",),
-            live_wire_inputs_file=r"repos\eMule-build-tests\live-wire-inputs.local.json",
+            live_wire_inputs_file=r"repos\emulebb-build-tests\live-wire-inputs.local.json",
         ),
     )
 

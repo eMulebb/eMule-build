@@ -14,43 +14,43 @@
     "dependencies": [
       {
         "name": "cryptopp",
-        "path": "repos\\third_party\\eMule-cryptopp",
+        "path": "repos\\third_party\\emulebb-cryptopp",
         "project": "cryptlib.vcxproj"
       },
       {
         "name": "id3lib",
-        "path": "repos\\third_party\\eMule-id3lib",
+        "path": "repos\\third_party\\emulebb-id3lib",
         "project": "libprj\\id3lib.vcxproj"
       },
       {
         "name": "libpcpnatpmp",
-        "path": "repos\\third_party\\eMule-libpcpnatpmp",
+        "path": "repos\\third_party\\emulebb-libpcpnatpmp",
         "project": "CMakeLists.txt"
       },
       {
         "name": "miniupnp",
-        "path": "repos\\third_party\\eMule-miniupnp",
+        "path": "repos\\third_party\\emulebb-miniupnp",
         "project": "miniupnpc\\msvc\\miniupnpc.vcxproj"
       },
       {
         "name": "ResizableLib",
-        "path": "repos\\third_party\\eMule-ResizableLib",
+        "path": "repos\\third_party\\emulebb-resizablelib",
         "project": "ResizableLib\\ResizableLib.vcxproj"
       },
       {
         "name": "nlohmann-json",
-        "path": "repos\\third_party\\eMule-nlohmann-json",
+        "path": "repos\\third_party\\emulebb-nlohmann-json",
         "project": "single_include\\nlohmann\\json.hpp",
         "header_only": true
       },
       {
         "name": "zlib",
-        "path": "repos\\third_party\\eMule-zlib",
+        "path": "repos\\third_party\\emulebb-zlib",
         "project": "contrib\\vstudio\\vc\\zlib.vcxproj"
       },
       {
         "name": "mbedtls",
-        "path": "repos\\third_party\\eMule-mbedtls",
+        "path": "repos\\third_party\\emulebb-mbedtls",
         "project": "visualc\\VS2017\\mbedTLS.vcxproj"
       }
     ]

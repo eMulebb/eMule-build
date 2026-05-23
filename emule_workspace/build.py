@@ -33,7 +33,7 @@ def build_libs(layout: WorkspaceLayout, options: WorkspaceOptions, *, clean: boo
 
         invoke_msbuild_project(
             session,
-            project_path=third_party / "eMule-cryptopp" / "cryptlib.vcxproj",
+            project_path=third_party / "emulebb-cryptopp" / "cryptlib.vcxproj",
             extra_properties=crypto_pp_properties(layout, options.platform),
             environment_overrides=crypto_pp_environment(options.platform),
             target=target,
@@ -41,14 +41,14 @@ def build_libs(layout: WorkspaceLayout, options: WorkspaceOptions, *, clean: boo
         )
         invoke_msbuild_project(
             session,
-            project_path=third_party / "eMule-id3lib" / "libprj" / "id3lib.vcxproj",
+            project_path=third_party / "emulebb-id3lib" / "libprj" / "id3lib.vcxproj",
             extra_properties=id3lib_properties(options.configuration, options.platform),
             target=target,
             step_name="DEP id3lib",
         )
         invoke_msbuild_project(
             session,
-            project_path=third_party / "eMule-miniupnp" / "miniupnpc" / "msvc" / "miniupnpc.vcxproj",
+            project_path=third_party / "emulebb-miniupnp" / "miniupnpc" / "msvc" / "miniupnpc.vcxproj",
             target=target,
             step_name="DEP miniupnp",
         )
@@ -56,7 +56,7 @@ def build_libs(layout: WorkspaceLayout, options: WorkspaceOptions, *, clean: boo
             remove_tree_if_present(libpcpnatpmp_build_root(layout, options.platform))
         invoke_cmake_dependency_build(
             session,
-            source_directory=third_party / "eMule-libpcpnatpmp",
+            source_directory=third_party / "emulebb-libpcpnatpmp",
             build_directory=libpcpnatpmp_build_root(layout, options.platform),
             target_name="pcpnatpmp",
             step_name="DEP libpcpnatpmp",
@@ -64,16 +64,16 @@ def build_libs(layout: WorkspaceLayout, options: WorkspaceOptions, *, clean: boo
         )
         invoke_msbuild_project(
             session,
-            project_path=third_party / "eMule-ResizableLib" / "ResizableLib" / "ResizableLib.vcxproj",
+            project_path=third_party / "emulebb-resizablelib" / "ResizableLib" / "ResizableLib.vcxproj",
             target=target,
             step_name="DEP ResizableLib",
         )
         if clean and options.configuration == "Debug" and options.platform == "x64":
-            remove_stale_generated_artifacts(third_party / "eMule-zlib", "zlib")
-            remove_stale_generated_artifacts(third_party / "eMule-mbedtls", "mbedtls")
+            remove_stale_generated_artifacts(third_party / "emulebb-zlib", "zlib")
+            remove_stale_generated_artifacts(third_party / "emulebb-mbedtls", "mbedtls")
         invoke_msbuild_project(
             session,
-            project_path=third_party / "eMule-zlib" / "contrib" / "vstudio" / "vc" / "zlib.vcxproj",
+            project_path=third_party / "emulebb-zlib" / "contrib" / "vstudio" / "vc" / "zlib.vcxproj",
             extra_properties=(f"/p:WorkspaceCMakeExe={get_cmake_path()}",),
             target=target,
             step_name="DEP zlib",
@@ -395,12 +395,12 @@ def app_dependency_artifacts(layout: WorkspaceLayout, configuration: str, platfo
     third_party = layout.resolve_workspace_path("repos/third_party")
     mbedtls_root = mbedtls_library_root(layout, platform)
     return (
-        ("cryptopp", third_party / "eMule-cryptopp" / platform / "Output" / configuration / "cryptlib.lib"),
-        ("id3lib", third_party / "eMule-id3lib" / "libprj" / platform / configuration / "id3lib.lib"),
-        ("miniupnp", third_party / "eMule-miniupnp" / "miniupnpc" / "msvc" / platform / configuration / "miniupnpc.lib"),
+        ("cryptopp", third_party / "emulebb-cryptopp" / platform / "Output" / configuration / "cryptlib.lib"),
+        ("id3lib", third_party / "emulebb-id3lib" / "libprj" / platform / configuration / "id3lib.lib"),
+        ("miniupnp", third_party / "emulebb-miniupnp" / "miniupnpc" / "msvc" / platform / configuration / "miniupnpc.lib"),
         ("libpcpnatpmp", libpcpnatpmp_library_path(layout, configuration, platform)),
-        ("ResizableLib", third_party / "eMule-ResizableLib" / "ResizableLib" / platform / configuration / "ResizableLib.lib"),
-        ("zlib", third_party / "eMule-zlib" / "contrib" / "vstudio" / "vc" / platform / configuration / "zlib.lib"),
+        ("ResizableLib", third_party / "emulebb-resizablelib" / "ResizableLib" / platform / configuration / "ResizableLib.lib"),
+        ("zlib", third_party / "emulebb-zlib" / "contrib" / "vstudio" / "vc" / platform / configuration / "zlib.lib"),
         ("mbedtls", mbedtls_root / configuration / "mbedtls.lib"),
         ("mbedx509", mbedtls_root / configuration / "mbedx509.lib"),
         ("tfpsacrypto", mbedtls_root.parent / "tf-psa-crypto" / "core" / configuration / "tfpsacrypto.lib"),
@@ -413,16 +413,16 @@ def app_property_overrides(layout: WorkspaceLayout, platform: str) -> tuple[str,
     third_party = layout.resolve_workspace_path("repos/third_party")
     return (
         f"/p:WorkspaceRoot={with_trailing_separator(layout.emule_workspace_root)}",
-        f"/p:CryptoPpRoot={with_trailing_separator(third_party / 'eMule-cryptopp')}",
-        f"/p:Id3libRoot={with_trailing_separator(third_party / 'eMule-id3lib')}",
-        f"/p:MbedTlsRoot={with_trailing_separator(third_party / 'eMule-mbedtls')}",
+        f"/p:CryptoPpRoot={with_trailing_separator(third_party / 'emulebb-cryptopp')}",
+        f"/p:Id3libRoot={with_trailing_separator(third_party / 'emulebb-id3lib')}",
+        f"/p:MbedTlsRoot={with_trailing_separator(third_party / 'emulebb-mbedtls')}",
         f"/p:MbedTlsLibRoot={with_trailing_separator(mbedtls_library_root(layout, platform))}",
-        f"/p:MiniUpnpRoot={with_trailing_separator(third_party / 'eMule-miniupnp')}",
-        f"/p:NlohmannJsonRoot={with_trailing_separator(third_party / 'eMule-nlohmann-json' / 'single_include')}",
-        f"/p:PcpNatPmpRoot={with_trailing_separator(third_party / 'eMule-libpcpnatpmp')}",
+        f"/p:MiniUpnpRoot={with_trailing_separator(third_party / 'emulebb-miniupnp')}",
+        f"/p:NlohmannJsonRoot={with_trailing_separator(third_party / 'emulebb-nlohmann-json' / 'single_include')}",
+        f"/p:PcpNatPmpRoot={with_trailing_separator(third_party / 'emulebb-libpcpnatpmp')}",
         f"/p:PcpNatPmpLibRoot={with_trailing_separator(libpcpnatpmp_build_root(layout, platform) / 'lib')}",
-        f"/p:ResizableLibRoot={with_trailing_separator(third_party / 'eMule-ResizableLib')}",
-        f"/p:ZlibRoot={with_trailing_separator(third_party / 'eMule-zlib')}",
+        f"/p:ResizableLibRoot={with_trailing_separator(third_party / 'emulebb-resizablelib')}",
+        f"/p:ZlibRoot={with_trailing_separator(third_party / 'emulebb-zlib')}",
     )
 
 
@@ -536,19 +536,19 @@ def app_binary_path(app_root: Path, configuration: str, platform: str) -> Path:
 def mbedtls_project_path(layout: WorkspaceLayout) -> Path:
     """Returns the mbedTLS Visual Studio project path."""
 
-    return layout.resolve_workspace_path("repos/third_party/eMule-mbedtls") / "visualc" / "VS2017" / "mbedTLS.vcxproj"
+    return layout.resolve_workspace_path("repos/third_party/emulebb-mbedtls") / "visualc" / "VS2017" / "mbedTLS.vcxproj"
 
 
 def mbedtls_library_root(layout: WorkspaceLayout, platform: str) -> Path:
     """Returns the mbedTLS library output root for a target platform."""
 
-    return layout.resolve_workspace_path("repos/third_party/eMule-mbedtls") / "visualc" / f"VS2017-{platform}" / "library"
+    return layout.resolve_workspace_path("repos/third_party/emulebb-mbedtls") / "visualc" / f"VS2017-{platform}" / "library"
 
 
 def libpcpnatpmp_build_root(layout: WorkspaceLayout, platform: str) -> Path:
     """Returns the libpcpnatpmp CMake build root."""
 
-    return layout.resolve_workspace_path("repos/third_party/eMule-libpcpnatpmp") / f"cmake-build-{platform.lower()}"
+    return layout.resolve_workspace_path("repos/third_party/emulebb-libpcpnatpmp") / f"cmake-build-{platform.lower()}"
 
 
 def libpcpnatpmp_library_path(layout: WorkspaceLayout, configuration: str, platform: str) -> Path:

@@ -13,7 +13,7 @@ def test_policy_audits_receive_workspace_root_through_environment(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    tooling_root = tmp_path / "repos" / "eMule-tooling"
+    tooling_root = tmp_path / "repos" / "emulebb-tooling"
     audit_path = tooling_root / "ci" / "check-workspace-policy.py"
     audit_path.parent.mkdir(parents=True, exist_ok=True)
     audit_path.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
@@ -40,7 +40,7 @@ def test_validation_reanchors_clean_canonical_app_anchor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    canonical_repo = tmp_path / "repos" / "eMule"
+    canonical_repo = tmp_path / "repos" / "emulebb"
     canonical_repo.mkdir(parents=True)
     calls: list[tuple[str, ...]] = []
 
@@ -69,7 +69,7 @@ def test_validation_refuses_dirty_canonical_app_anchor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    canonical_repo = tmp_path / "repos" / "eMule"
+    canonical_repo = tmp_path / "repos" / "emulebb"
     canonical_repo.mkdir(parents=True)
     calls: list[tuple[str, ...]] = []
 
@@ -99,10 +99,10 @@ def test_required_workspace_paths_include_topology_managed_repos(
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("", encoding="utf-8")
     for path in (
-        tmp_path / "repos" / "eMule",
-        tmp_path / "repos" / "eMule-build-tests",
-        tmp_path / "repos" / "eMule-tooling",
-        tmp_path / "repos" / "eMule-build",
+        tmp_path / "repos" / "emulebb",
+        tmp_path / "repos" / "emulebb-build-tests",
+        tmp_path / "repos" / "emulebb-tooling",
+        tmp_path / "repos" / "emulebb-build",
         tmp_path / "analysis" / "compare",
         workspace_root,
     ):
@@ -114,15 +114,15 @@ def test_required_workspace_paths_include_topology_managed_repos(
         lambda: SimpleNamespace(
             repos=(
                 ManagedRepo(
-                    name="eMule-build",
+                    name="emulebb-build",
                     url="https://example.invalid/build.git",
-                    relative_path="repos\\eMule-build",
+                    relative_path="repos\\emulebb-build",
                     branch="main",
                 ),
                 ManagedRepo(
-                    name="eMulebb-pages",
+                    name="emulebb-pages",
                     url="https://example.invalid/pages.git",
-                    relative_path="repos\\eMulebb-pages",
+                    relative_path="repos\\emulebb-pages",
                     branch="main",
                 ),
             )
@@ -131,13 +131,13 @@ def test_required_workspace_paths_include_topology_managed_repos(
     layout = SimpleNamespace(
         emule_workspace_root=tmp_path,
         workspace_root=workspace_root,
-        seed_repo_path=tmp_path / "repos" / "eMule",
-        tests_repo_root=tmp_path / "repos" / "eMule-build-tests",
-        tooling_repo_root=tmp_path / "repos" / "eMule-tooling",
+        seed_repo_path=tmp_path / "repos" / "emulebb",
+        tests_repo_root=tmp_path / "repos" / "emulebb-build-tests",
+        tooling_repo_root=tmp_path / "repos" / "emulebb-tooling",
         dependencies=(),
         app_variants=(),
         resolve_workspace_path=lambda relative_path: tmp_path / relative_path,
     )
 
-    with pytest.raises(RuntimeError, match="eMulebb-pages"):
+    with pytest.raises(RuntimeError, match="emulebb-pages"):
         validation.assert_required_workspace_paths(layout)

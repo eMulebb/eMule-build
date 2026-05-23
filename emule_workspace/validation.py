@@ -116,10 +116,10 @@ def assert_workspace_hooks_installed(layout: WorkspaceLayout) -> None:
     """Checks that editable workspace repos use the shared hook path."""
 
     topology = canonical_topology()
-    expected_hooks_path = (layout.emule_workspace_root / "repos" / "eMule-tooling" / "hooks").resolve()
+    expected_hooks_path = (layout.emule_workspace_root / "repos" / "emulebb-tooling" / "hooks").resolve()
     if not (expected_hooks_path / "pre-commit").is_file():
         raise RuntimeError(f"Shared pre-commit hook is missing: {expected_hooks_path / 'pre-commit'}")
-    hook_repo_names = {"eMule-build", "eMule-build-tests", "eMule-tooling"}
+    hook_repo_names = {"emulebb-build", "emulebb-build-tests", "emulebb-tooling"}
     targets = [layout.emule_workspace_root / repo.relative_path for repo in topology.repos if repo.name in hook_repo_names]
     targets.extend(layout.emule_workspace_root / worktree.relative_path for worktree in topology.app_repo.worktrees if worktree.active)
     for target in targets:
@@ -184,7 +184,7 @@ def ensure_canonical_app_anchor(layout: WorkspaceLayout) -> None:
 
 
 def run_policy_audits(layout: WorkspaceLayout) -> None:
-    """Runs the centralized workspace policy audits owned by eMule-tooling."""
+    """Runs the centralized workspace policy audits owned by emulebb-tooling."""
 
     audit_names = (
         ("build policy audit", "build-policy"),

@@ -408,7 +408,7 @@ def _write_release_sbom(
     components.extend(_third_party_spdx_packages())
     document = _build_spdx_sbom(
         name=f"eMuleBB {package_options.release_version} {workspace_options.platform} release package",
-        namespace=f"https://github.com/eMulebb/eMule/releases/download/emulebb-v{package_options.release_version}/{asset_name}.sbom",
+        namespace=f"https://github.com/emulebb/emulebb/releases/download/emulebb-v{package_options.release_version}/{asset_name}.sbom",
         package_name=f"emulebb-{package_options.release_version}-{workspace_options.platform}",
         package_version=package_options.release_version,
         package_license="GPL-2.0-or-later",
@@ -450,7 +450,7 @@ def _write_amutorrent_sbom(
     ]
     document = _build_spdx_sbom(
         name=f"eMuleBB aMuTorrent {package_options.release_version} {workspace_options.platform} package",
-        namespace=f"https://github.com/eMulebb/eMule/releases/download/emulebb-v{package_options.release_version}/{asset_name}.sbom",
+        namespace=f"https://github.com/emulebb/emulebb/releases/download/emulebb-v{package_options.release_version}/{asset_name}.sbom",
         package_name=f"emulebb-{package_options.release_version}-amutorrent-{workspace_options.platform}",
         package_version=package_options.release_version,
         package_license="NOASSERTION",
@@ -1055,7 +1055,7 @@ def _write_package_third_party_notices(package_root: Path) -> None:
 def _write_package_gpl_text(layout: WorkspaceLayout, package_root: Path) -> None:
     """Writes the GPL-2.0-or-later license text from a pinned local dependency."""
 
-    license_path = layout.resolve_workspace_path("repos/third_party/eMule-mbedtls/LICENSE")
+    license_path = layout.resolve_workspace_path("repos/third_party/emulebb-mbedtls/LICENSE")
     if not license_path.is_file():
         raise RuntimeError(f"Cannot package missing GPL license source: {license_path}")
     text = license_path.read_text(encoding="utf-8", errors="replace")

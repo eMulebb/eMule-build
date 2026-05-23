@@ -1,22 +1,22 @@
-# eMule-build
+# emulebb-build
 
-`eMule-build` is the canonical build and test orchestration layer for the
+`emulebb-build` is the canonical build and test orchestration layer for the
 workspace rooted at `EMULE_WORKSPACE_ROOT`.
 
-`eMule-build` owns workspace materialization, generated workspace topology, and
+`emulebb-build` owns workspace materialization, generated workspace topology, and
 build/test orchestration. It is responsible for:
 
 - canonical repo and worktree materialization
 - dependency builds under `repos\third_party`
 - app builds for the canonical workspace app worktrees
-- shared test builds from `repos\eMule-build-tests`
+- shared test builds from `repos\emulebb-build-tests`
 - parity, coverage, and live-diff execution against the canonical app variants
 
 `python -m emule_workspace` is the authoritative orchestration surface.
 
 ## Purpose
 
-Clone this repo as `<workspace-root>\repos\eMule-build`, then use the supported
+Clone this repo as `<workspace-root>\repos\emulebb-build`, then use the supported
 `emule_workspace` command to materialize and operate the workspace. The package
 owns typed command parsing, workspace topology loading, locking, subprocess
 routing, build/test execution, live-test wrapping, and release packaging.
@@ -30,19 +30,19 @@ layout contract. A materialized workspace uses the standard
 
 In practice this repo needs:
 
-- `repos\eMule`
-- `repos\eMule-build`
-- `repos\eMule-build-tests`
-- `repos\eMule-tooling`
+- `repos\emulebb`
+- `repos\emulebb-build`
+- `repos\emulebb-build-tests`
+- `repos\emulebb-tooling`
 - `repos\amutorrent`
-- `repos\eMulebb-pages`
-- `repos\eMulebb-org-profile`
+- `repos\emulebb-pages`
+- `repos\emulebb-org-profile`
 - `repos\third_party\...`
 - `workspaces\workspace\app\eMule-main`
 - `workspaces\workspace\app\eMule-community-baseline`
 - `workspaces\workspace\app\eMule-community-tracing-harness`
 
-`repos\eMule` is not a normal development checkout. Python materialization owns
+`repos\emulebb` is not a normal development checkout. Python materialization owns
 it as the canonical app anchor, and it is expected to stay detached at
 `origin/main`. Active app development belongs in the managed worktrees under
 `workspaces\workspace\app\...`, especially `eMule-main` for the mainline branch.
@@ -58,7 +58,7 @@ descriptive, but they are not CLI variant keys:
 | `tracing-harness` | `workspaces\workspace\app\eMule-community-tracing-harness` | `tracing-harness/community-0.72a` |
 
 Branch roles, release intent, and baseline rules are owned by
-`EMULE_WORKSPACE_ROOT\repos\eMule-tooling\docs\WORKSPACE-POLICY.md`.
+`EMULE_WORKSPACE_ROOT\repos\emulebb-tooling\docs\WORKSPACE-POLICY.md`.
 
 The active app layout and workspace repo paths are topology-driven from
 `workspaces\workspace\deps.json`, with build-specific settings kept in this repo's
@@ -102,19 +102,19 @@ Command behavior:
 - `help` prints supported commands and common options.
 - `env-check` verifies the core toolchain discovery for Git, Visual Studio, and MSBuild.
 - `dep-status` reports branch and worktree status for the dependency repos and canonical app worktrees that exist locally.
-- `validate` verifies required workspace paths, canonical app worktree presence, branch alignment, required test helper scripts, modified tracked-file editorconfig compliance, the PowerShell boundary, and the shared static policy audits from `eMule-tooling\ci`.
+- `validate` verifies required workspace paths, canonical app worktree presence, branch alignment, required test helper scripts, modified tracked-file editorconfig compliance, the PowerShell boundary, and the shared static policy audits from `emulebb-tooling\ci`.
 - `cleanup` dry-runs generated artifact pruning by default. Use `--apply` only after reviewing the candidate summary.
-- The Python `package-release` command may reanchor a clean `repos\eMule`
+- The Python `package-release` command may reanchor a clean `repos\emulebb`
   checkout back to detached `origin/main` before building package artifacts.
 - `build libs` builds the shared dependency set for the selected `--config` and `--platform`.
 - `build libs` includes the CMake-built `libpcpnatpmp` static library, and the current `main` app build now links it for the PCP/NAT-PMP NAT-mapping backend.
 - `build app` builds all canonical app variants for the selected `--config` and `--platform`.
 - `build tests` builds the shared test harness against the configured build variant.
-- `test python` runs the fast pytest harness suite from `eMule-build-tests`; use `--path`, `--expression`, and `--quiet` to narrow the pytest selection.
+- `test python` runs the fast pytest harness suite from `emulebb-build-tests`; use `--path`, `--expression`, and `--quiet` to narrow the pytest selection.
 - `test all` runs parity tests, native coverage, and live diff using the configured test target variants.
 - `test live-diff` runs parity and divergence comparison directly against any two configured app variants.
 - `test protocol-parity` runs the focused Kad/eD2K gate: protocol surface diff, protocol oracle golden validation, and `protocol-parity` native live-diff.
-- `test live-e2e` runs the aggregate UI, REST API, and live-wire E2E suite from `eMule-build-tests`.
+- `test live-e2e` runs the aggregate UI, REST API, and live-wire E2E suite from `emulebb-build-tests`.
 - `test amutorrent-session` starts a disposable interactive aMuTorrent session against eMuleBB REST and leaves both processes running for operator testing.
 - `test community-core-coverage` runs community-core coverage checks with live REST E2E coverage enabled.
 - `build all` runs `build libs`, `build app`, and `build tests`.
@@ -218,24 +218,24 @@ Python test examples:
 - missing `repos` or `workspaces` roots
 - missing dependency repos
 - missing canonical app worktrees
-- stale canonical app anchor state in `repos\eMule`
+- stale canonical app anchor state in `repos\emulebb`
 - app worktrees checked out on the wrong branches
 - dependency repos not aligned with their active local `origin/HEAD` pins
 - active documentation hardcoding machine-specific absolute paths
 - active workflow docs/scripts drifting back to `.sln` / `.slnx` entrypoints
 - active warning suppressions drifting beyond the approved narrow third-party exceptions
 - modified tracked text files drifting from repo `.editorconfig` / `.gitattributes`
-- tracked PowerShell files outside the approved `repos\eMule-tooling\scripts` release/admin boundary
+- tracked PowerShell files outside the approved `repos\emulebb-tooling\scripts` release/admin boundary
 - missing shared test helper scripts
 
 Tracked-file cleanliness is intentionally a separate explicit audit via
-`repos\eMule-tooling\ci\check-clean-worktree.py`, so in-progress feature work
+`repos\emulebb-tooling\ci\check-clean-worktree.py`, so in-progress feature work
 does not get blocked by routine `validate`.
 
 The setup/build contract is intentionally narrow:
 
-- `eMule-build` owns workspace topology, managed app worktree creation, and full `sync` reconciliation.
-- `eMule-build` assumes that topology exists and only self-heals the clean setup-owned `repos\eMule` anchor when validation needs it to match current `origin/main`.
+- `emulebb-build` owns workspace topology, managed app worktree creation, and full `sync` reconciliation.
+- `emulebb-build` assumes that topology exists and only self-heals the clean setup-owned `repos\emulebb` anchor when validation needs it to match current `origin/main`.
 
 The test flows use the manifest-configured app variants:
 

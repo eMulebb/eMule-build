@@ -253,11 +253,11 @@ def main() -> None:
 
 
 @main.command()
-@click.option("--workspace-root", default=None, help="Canonical EMULE_WORKSPACE_ROOT. Defaults from repos/eMule-build layout.")
+@click.option("--workspace-root", default=None, help="Canonical EMULE_WORKSPACE_ROOT. Defaults from repos/emulebb-build layout.")
 @click.option("--workspace-name", default=None, help="Workspace name. Defaults to canonical topology.")
 @click.option("--artifacts-seed-root", default=None, help="Optional third-party artifact seed root.")
 def materialize(*, workspace_root: str | None, workspace_name: str | None, artifacts_seed_root: str | None) -> None:
-    """Materialize a new canonical workspace around this eMule-build clone."""
+    """Materialize a new canonical workspace around this emulebb-build clone."""
 
     try:
         materialize_workspace(
@@ -514,7 +514,7 @@ def test() -> None:
 @test.command("python", context_settings={"ignore_unknown_options": True, "allow_extra_args": True})
 @_common_options
 @click.option("--quiet", "-q", is_flag=True, help="Pass -q to pytest.")
-@click.option("--path", "paths", multiple=True, help="Pytest path to run, relative to eMule-build-tests.")
+@click.option("--path", "paths", multiple=True, help="Pytest path to run, relative to emulebb-build-tests.")
 @click.option("--expression", "-k", default=None, help="Pytest -k expression.")
 @click.argument("extra_args", nargs=-1, type=click.UNPROCESSED)
 def test_python(

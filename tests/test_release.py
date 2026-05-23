@@ -83,9 +83,9 @@ def test_package_release_dirty_guard_reports_all_provenance_inputs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     app_root = tmp_path / "workspaces" / "workspace" / "app" / "eMule-main"
-    build_root = tmp_path / "repos" / "eMule-build"
-    tests_root = tmp_path / "repos" / "eMule-build-tests"
-    tooling_root = tmp_path / "repos" / "eMule-tooling"
+    build_root = tmp_path / "repos" / "emulebb-build"
+    tests_root = tmp_path / "repos" / "emulebb-build-tests"
+    tooling_root = tmp_path / "repos" / "emulebb-tooling"
     for path in (app_root, build_root, tests_root, tooling_root):
         path.mkdir(parents=True)
 
@@ -222,9 +222,9 @@ def test_release_manifest_records_explicit_source_provenance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     app_root = tmp_path / "workspaces" / "workspace" / "app" / "eMule-main"
-    build_root = tmp_path / "repos" / "eMule-build"
-    tests_root = tmp_path / "repos" / "eMule-build-tests"
-    tooling_root = tmp_path / "repos" / "eMule-tooling"
+    build_root = tmp_path / "repos" / "emulebb-build"
+    tests_root = tmp_path / "repos" / "emulebb-build-tests"
+    tooling_root = tmp_path / "repos" / "emulebb-tooling"
     release_root = tmp_path / "workspaces" / "workspace" / "state" / "release" / "emulebb-v0.7.3"
     zip_path = release_root / "emulebb-0.7.3-x64.zip"
     for path in (app_root, build_root, tests_root, tooling_root, release_root):
@@ -284,7 +284,7 @@ def test_release_manifest_records_explicit_source_provenance(
 
 
 def test_expected_language_dlls_uses_release_language_manifest(tmp_path: Path) -> None:
-    tooling_root = tmp_path / "repos" / "eMule-tooling"
+    tooling_root = tmp_path / "repos" / "emulebb-tooling"
     manifest_path = tooling_root / "helpers" / "rc-release-languages.json"
     manifest_path.parent.mkdir(parents=True)
     manifest_path.write_text(
@@ -385,9 +385,9 @@ def test_amutorrent_manifest_records_runtime_policy_and_source_provenance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     amutorrent_root = tmp_path / "repos" / "amutorrent"
-    build_root = tmp_path / "repos" / "eMule-build"
-    tests_root = tmp_path / "repos" / "eMule-build-tests"
-    tooling_root = tmp_path / "repos" / "eMule-tooling"
+    build_root = tmp_path / "repos" / "emulebb-build"
+    tests_root = tmp_path / "repos" / "emulebb-build-tests"
+    tooling_root = tmp_path / "repos" / "emulebb-tooling"
     release_root = tmp_path / "state" / "release" / "emulebb-v0.7.3"
     zip_path = release_root / "emulebb-0.7.3-amutorrent-arm64.zip"
     for path in (amutorrent_root, build_root, tests_root, tooling_root, release_root):

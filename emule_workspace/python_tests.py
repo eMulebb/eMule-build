@@ -1,4 +1,4 @@
-"""Python test command orchestration for eMule-build-tests."""
+"""Python test command orchestration for emulebb-build-tests."""
 
 from __future__ import annotations
 

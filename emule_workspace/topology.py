@@ -13,7 +13,7 @@ WORKSPACE_MANIFEST_NAME = "deps.json"
 WORKSPACE_MANIFEST_SCHEMA_VERSION = 5
 DEFAULT_WORKSPACE_NAME = "workspace"
 WORKSPACE_PROPS_FILE_NAME = "workspace.props"
-SETUP_LOG_FILE_NAME = "eMule-workspace.log"
+SETUP_LOG_FILE_NAME = "emulebb-workspace.log"
 
 
 class AdditionalRemote(BaseModel):
@@ -224,14 +224,14 @@ def build_workspace_manifest(topology: WorkspaceTopology, workspace_name: str | 
                 ],
             },
             "repos": {
-                "build": _workspace_relative_repo_path(repo_by_name["eMule-build"]),
-                "tests": _workspace_relative_repo_path(repo_by_name["eMule-build-tests"]),
-                "tooling": _workspace_relative_repo_path(repo_by_name["eMule-tooling"]),
+                "build": _workspace_relative_repo_path(repo_by_name["emulebb-build"]),
+                "tests": _workspace_relative_repo_path(repo_by_name["emulebb-build-tests"]),
+                "tooling": _workspace_relative_repo_path(repo_by_name["emulebb-tooling"]),
                 "amutorrent": _workspace_relative_repo_path(repo_by_name["amutorrent"]),
                 "ed2k_server": _workspace_relative_repo_path(repo_by_name["goed2k-server"]),
                 "amule": _workspace_relative_repo_path(repo_by_name["amule"]),
-                "pages": _workspace_relative_repo_path(repo_by_name["eMulebb-pages"]),
-                "org_profile": _workspace_relative_repo_path(repo_by_name["eMulebb-org-profile"]),
+                "pages": _workspace_relative_repo_path(repo_by_name["emulebb-pages"]),
+                "org_profile": _workspace_relative_repo_path(repo_by_name["emulebb-org-profile"]),
                 "p2p_overlord_agents": _workspace_relative_repo_path(repo_by_name["p2p-overlord-agents"]),
                 "p2p_overlord_be": _workspace_relative_repo_path(repo_by_name["p2p-overlord-be"]),
                 "third_party": str(workspace_prefix / "repos" / "third_party"),
@@ -252,9 +252,9 @@ def canonical_topology() -> WorkspaceTopology:
     return WorkspaceTopology(
         root_directories=("analysis", "archives", "repos", "repos\\third_party", "workspaces"),
         app_repo=AppRepo(
-            name="eMule",
-            url="https://github.com/eMulebb/eMule.git",
-            relative_path="repos\\eMule",
+            name="emulebb",
+            url="https://github.com/emulebb/emulebb.git",
+            relative_path="repos\\emulebb",
             branch="main",
             worktrees=(
                 AppWorktree(name="main", branch="main", relative_path="workspaces\\workspace\\app\\eMule-main"),
@@ -272,33 +272,33 @@ def canonical_topology() -> WorkspaceTopology:
         ),
         repos=(
             ManagedRepo(
-                name="eMule-build",
-                url="https://github.com/eMulebb/eMule-build.git",
-                relative_path="repos\\eMule-build",
+                name="emulebb-build",
+                url="https://github.com/emulebb/emulebb-build.git",
+                relative_path="repos\\emulebb-build",
                 branch="main",
             ),
             ManagedRepo(
-                name="eMule-build-tests",
-                url="https://github.com/eMulebb/eMule-build-tests.git",
-                relative_path="repos\\eMule-build-tests",
+                name="emulebb-build-tests",
+                url="https://github.com/emulebb/emulebb-build-tests.git",
+                relative_path="repos\\emulebb-build-tests",
                 branch="main",
             ),
             ManagedRepo(
-                name="eMule-tooling",
-                url="https://github.com/eMulebb/eMule-tooling.git",
-                relative_path="repos\\eMule-tooling",
+                name="emulebb-tooling",
+                url="https://github.com/emulebb/emulebb-tooling.git",
+                relative_path="repos\\emulebb-tooling",
                 branch="main",
             ),
             ManagedRepo(
                 name="amutorrent",
-                url="https://github.com/eMulebb/amutorrent.git",
+                url="https://github.com/emulebb/amutorrent.git",
                 relative_path="repos\\amutorrent",
                 branch="main",
                 additional_remotes=(AdditionalRemote(name="upstream", url="https://github.com/got3nks/amutorrent.git"),),
             ),
             ManagedRepo(
                 name="goed2k-server",
-                url="https://github.com/eMulebb/goed2k-server.git",
+                url="https://github.com/emulebb/goed2k-server.git",
                 relative_path="repos\\goed2k-server",
                 branch="master",
                 additional_remotes=(
@@ -307,33 +307,33 @@ def canonical_topology() -> WorkspaceTopology:
             ),
             ManagedRepo(
                 name="amule",
-                url="https://github.com/eMulebb/amule.git",
+                url="https://github.com/emulebb/amule.git",
                 relative_path="repos\\amule",
                 branch="master",
                 compare_subdir="src",
                 additional_remotes=(AdditionalRemote(name="upstream", url="https://github.com/amule-project/amule.git"),),
             ),
             ManagedRepo(
-                name="eMulebb-pages",
-                url="https://github.com/eMulebb/eMulebb.github.io.git",
-                relative_path="repos\\eMulebb-pages",
+                name="emulebb-pages",
+                url="https://github.com/emulebb/emulebb.github.io.git",
+                relative_path="repos\\emulebb-pages",
                 branch="main",
             ),
             ManagedRepo(
-                name="eMulebb-org-profile",
-                url="https://github.com/eMulebb/.github.git",
-                relative_path="repos\\eMulebb-org-profile",
+                name="emulebb-org-profile",
+                url="https://github.com/emulebb/.github.git",
+                relative_path="repos\\emulebb-org-profile",
                 branch="main",
             ),
             ManagedRepo(
                 name="p2p-overlord-agents",
-                url="https://github.com/eMulebb/p2p-overlord-agents.git",
+                url="https://github.com/emulebb/p2p-overlord-agents.git",
                 relative_path="repos\\p2p-overlord-agents",
                 branch="develop",
             ),
             ManagedRepo(
                 name="p2p-overlord-be",
-                url="https://github.com/eMulebb/p2p-overlord-be.git",
+                url="https://github.com/emulebb/p2p-overlord-be.git",
                 relative_path="repos\\p2p-overlord-be",
                 branch="develop",
             ),
@@ -355,22 +355,22 @@ def canonical_topology() -> WorkspaceTopology:
             ),
             ManagedRepo(
                 name="mods-archive",
-                url="https://github.com/eMulebb/eMule-mods-archive.git",
+                url="https://github.com/emulebb/emulebb-mods-archive.git",
                 relative_path="analysis\\mods-archive",
                 branch="main",
                 branch_optional=True,
             ),
             ManagedRepo(
                 name="stale-v0.72a-experimental-clean",
-                url="https://github.com/eMulebb/eMule.git",
+                url="https://github.com/emulebb/emulebb.git",
                 relative_path="analysis\\stale-v0.72a-experimental-clean",
                 branch="stale/v0.72a-experimental-clean",
                 compare_subdir="srchybrid",
             ),
             ManagedRepo(
                 name="emuleai",
-                url="https://github.com/eMulebb/eMuleAI.git",
-                relative_path="analysis\\eMuleAI",
+                url="https://github.com/emulebb/emulebb-ai.git",
+                relative_path="analysis\\emuleai",
                 branch="master",
                 compare_subdir="srchybrid",
                 additional_remotes=(AdditionalRemote(name="upstream", url="https://github.com/eMuleAI/eMuleAI.git"),),
@@ -378,9 +378,9 @@ def canonical_topology() -> WorkspaceTopology:
         ),
         third_party_repos=(
             ManagedRepo(
-                name="eMule-cryptopp",
-                url="https://github.com/eMulebb/eMule-cryptopp.git",
-                relative_path="repos\\third_party\\eMule-cryptopp",
+                name="emulebb-cryptopp",
+                url="https://github.com/emulebb/emulebb-cryptopp.git",
+                relative_path="repos\\third_party\\emulebb-cryptopp",
                 branch="CRYPTOPP_8_4_0-pristine",
                 update_policy=UpdatePolicy(
                     upstream_url="https://github.com/weidai11/cryptopp.git",
@@ -390,9 +390,9 @@ def canonical_topology() -> WorkspaceTopology:
                 ),
             ),
             ManagedRepo(
-                name="eMule-id3lib",
-                url="https://github.com/eMulebb/eMule-id3lib.git",
-                relative_path="repos\\third_party\\eMule-id3lib",
+                name="emulebb-id3lib",
+                url="https://github.com/emulebb/emulebb-id3lib.git",
+                relative_path="repos\\third_party\\emulebb-id3lib",
                 branch="id3lib-v3.9.1-emule",
                 update_policy=UpdatePolicy(
                     tracking_mode="none",
@@ -401,9 +401,9 @@ def canonical_topology() -> WorkspaceTopology:
                 ),
             ),
             ManagedRepo(
-                name="eMule-mbedtls",
-                url="https://github.com/eMulebb/eMule-mbedtls.git",
-                relative_path="repos\\third_party\\eMule-mbedtls",
+                name="emulebb-mbedtls",
+                url="https://github.com/emulebb/emulebb-mbedtls.git",
+                relative_path="repos\\third_party\\emulebb-mbedtls",
                 branch="mbedtls-v4.1.0-emule",
                 has_submodules=True,
                 update_policy=UpdatePolicy(
@@ -424,9 +424,9 @@ def canonical_topology() -> WorkspaceTopology:
                 ),
             ),
             ManagedRepo(
-                name="eMule-miniupnp",
-                url="https://github.com/eMulebb/eMule-miniupnp.git",
-                relative_path="repos\\third_party\\eMule-miniupnp",
+                name="emulebb-miniupnp",
+                url="https://github.com/emulebb/emulebb-miniupnp.git",
+                relative_path="repos\\third_party\\emulebb-miniupnp",
                 branch="miniupnpc-master-emule",
                 update_policy=UpdatePolicy(
                     upstream_url="https://github.com/miniupnp/miniupnp.git",
@@ -436,9 +436,9 @@ def canonical_topology() -> WorkspaceTopology:
                 ),
             ),
             ManagedRepo(
-                name="eMule-libpcpnatpmp",
-                url="https://github.com/eMulebb/eMule-libpcpnatpmp.git",
-                relative_path="repos\\third_party\\eMule-libpcpnatpmp",
+                name="emulebb-libpcpnatpmp",
+                url="https://github.com/emulebb/emulebb-libpcpnatpmp.git",
+                relative_path="repos\\third_party\\emulebb-libpcpnatpmp",
                 branch="libpcpnatpmp-master-emule",
                 update_policy=UpdatePolicy(
                     upstream_url="https://github.com/libpcpnatpmp/libpcpnatpmp.git",
@@ -448,9 +448,9 @@ def canonical_topology() -> WorkspaceTopology:
                 ),
             ),
             ManagedRepo(
-                name="eMule-ResizableLib",
-                url="https://github.com/eMulebb/eMule-ResizableLib.git",
-                relative_path="repos\\third_party\\eMule-ResizableLib",
+                name="emulebb-resizablelib",
+                url="https://github.com/emulebb/emulebb-resizablelib.git",
+                relative_path="repos\\third_party\\emulebb-resizablelib",
                 branch="ResizableLib-bebab50-emule",
                 update_policy=UpdatePolicy(
                     upstream_url="https://github.com/ppescher/resizablelib.git",
@@ -460,9 +460,9 @@ def canonical_topology() -> WorkspaceTopology:
                 ),
             ),
             ManagedRepo(
-                name="eMule-nlohmann-json",
-                url="https://github.com/eMulebb/eMule-nlohmann-json.git",
-                relative_path="repos\\third_party\\eMule-nlohmann-json",
+                name="emulebb-nlohmann-json",
+                url="https://github.com/emulebb/emulebb-nlohmann-json.git",
+                relative_path="repos\\third_party\\emulebb-nlohmann-json",
                 branch="json-v3.11.3-emule",
                 update_policy=UpdatePolicy(
                     upstream_url="https://github.com/nlohmann/json.git",
@@ -472,9 +472,9 @@ def canonical_topology() -> WorkspaceTopology:
                 ),
             ),
             ManagedRepo(
-                name="eMule-zlib",
-                url="https://github.com/eMulebb/eMule-zlib.git",
-                relative_path="repos\\third_party\\eMule-zlib",
+                name="emulebb-zlib",
+                url="https://github.com/emulebb/emulebb-zlib.git",
+                relative_path="repos\\third_party\\emulebb-zlib",
                 branch="zlib-v1.3.2-emule",
                 update_policy=UpdatePolicy(
                     upstream_url="https://github.com/madler/zlib.git",

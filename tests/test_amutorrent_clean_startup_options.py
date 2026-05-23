@@ -10,7 +10,7 @@ from emule_workspace import test_runs
 def make_layout(tmp_path: Path) -> WorkspaceLayout:
     emule_workspace_root = tmp_path
     workspace_root = emule_workspace_root / "workspaces" / "workspace"
-    tests_repo_root = emule_workspace_root / "repos" / "eMule-build-tests"
+    tests_repo_root = emule_workspace_root / "repos" / "emulebb-build-tests"
     app_root = workspace_root / "app" / "eMule-main"
     (tests_repo_root / "scripts").mkdir(parents=True)
     (tests_repo_root / "scripts" / "amutorrent-clean-startup.py").write_text("# test runner\n", encoding="utf-8")
@@ -19,12 +19,12 @@ def make_layout(tmp_path: Path) -> WorkspaceLayout:
         emule_workspace_root=emule_workspace_root,
         workspace_name="workspace",
         workspace_root=workspace_root,
-        build_repo_root=emule_workspace_root / "repos" / "eMule-build",
+        build_repo_root=emule_workspace_root / "repos" / "emulebb-build",
         tests_repo_root=tests_repo_root,
-        tooling_repo_root=emule_workspace_root / "repos" / "eMule-tooling",
+        tooling_repo_root=emule_workspace_root / "repos" / "emulebb-tooling",
         ed2k_server_repo_root=emule_workspace_root / "repos" / "goed2k-server",
         amule_repo_root=emule_workspace_root / "repos" / "amule",
-        seed_repo_path=emule_workspace_root / "repos" / "eMule",
+        seed_repo_path=emule_workspace_root / "repos" / "emulebb",
         seed_repo_branch="main",
         dependencies=(),
         app_variants=(AppVariant(name="main", path=app_root, branch="main"),),

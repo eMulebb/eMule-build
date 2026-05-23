@@ -96,9 +96,9 @@ def make_layout(tmp_path: Path):
     return SimpleNamespace(
         emule_workspace_root=tmp_path,
         workspace_root=workspace_root,
-        build_repo_root=tmp_path / "repos" / "eMule-build",
-        tests_repo_root=tmp_path / "repos" / "eMule-build-tests",
-        tooling_repo_root=tmp_path / "repos" / "eMule-tooling",
+        build_repo_root=tmp_path / "repos" / "emulebb-build",
+        tests_repo_root=tmp_path / "repos" / "emulebb-build-tests",
+        tooling_repo_root=tmp_path / "repos" / "emulebb-tooling",
         app_variants=(),
         dependencies=(),
     )

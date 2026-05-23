@@ -13,26 +13,26 @@ from emule_workspace.layout import AppVariant, TestTargets as LayoutTestTargets,
 def make_layout(tmp_path: Path) -> WorkspaceLayout:
     emule_workspace_root = tmp_path
     workspace_root = emule_workspace_root / "workspaces" / "workspace"
-    tests_repo_root = emule_workspace_root / "repos" / "eMule-build-tests"
+    tests_repo_root = emule_workspace_root / "repos" / "emulebb-build-tests"
     app_root = workspace_root / "app" / "eMule-main"
     for path in (
         tests_repo_root / "manifests" / "release-campaigns",
         workspace_root / "state" / "test-reports",
         app_root,
-        emule_workspace_root / "repos" / "eMule-build",
-        emule_workspace_root / "repos" / "eMule-tooling" / "ci",
+        emule_workspace_root / "repos" / "emulebb-build",
+        emule_workspace_root / "repos" / "emulebb-tooling" / "ci",
     ):
         path.mkdir(parents=True, exist_ok=True)
     return WorkspaceLayout(
         emule_workspace_root=emule_workspace_root,
         workspace_name="workspace",
         workspace_root=workspace_root,
-        build_repo_root=emule_workspace_root / "repos" / "eMule-build",
+        build_repo_root=emule_workspace_root / "repos" / "emulebb-build",
         tests_repo_root=tests_repo_root,
-        tooling_repo_root=emule_workspace_root / "repos" / "eMule-tooling",
+        tooling_repo_root=emule_workspace_root / "repos" / "emulebb-tooling",
         ed2k_server_repo_root=emule_workspace_root / "repos" / "goed2k-server",
         amule_repo_root=emule_workspace_root / "repos" / "amule",
-        seed_repo_path=emule_workspace_root / "repos" / "eMule",
+        seed_repo_path=emule_workspace_root / "repos" / "emulebb",
         seed_repo_branch="main",
         dependencies=(),
         app_variants=(AppVariant(name="main", path=app_root, branch="main"),),

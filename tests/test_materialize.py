@@ -10,13 +10,13 @@ from emule_workspace.topology import AppRepo, ManagedRepo, WorkspaceTopology
 
 def test_bootstrap_root_allows_only_required_build_clone(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = tmp_path / "workspace"
-    build_repo = root / "repos" / "eMule-build"
+    build_repo = root / "repos" / "emulebb-build"
     build_repo.mkdir(parents=True)
     monkeypatch.setattr(materialize, "build_repo_root", lambda: build_repo)
 
     materialize.assert_materialize_bootstrap_root(root)
 
-    unexpected_repo = root / "repos" / "eMule-tooling"
+    unexpected_repo = root / "repos" / "emulebb-tooling"
     unexpected_repo.mkdir()
     with pytest.raises(RuntimeError, match="Refusing populated root"):
         materialize.assert_materialize_bootstrap_root(root)
@@ -24,7 +24,7 @@ def test_bootstrap_root_allows_only_required_build_clone(tmp_path: Path, monkeyp
 
 def test_bootstrap_root_rejects_unexpected_top_level_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = tmp_path / "workspace"
-    build_repo = root / "repos" / "eMule-build"
+    build_repo = root / "repos" / "emulebb-build"
     build_repo.mkdir(parents=True)
     (root / "notes.txt").write_text("not part of bootstrap\n", encoding="utf-8")
     monkeypatch.setattr(materialize, "build_repo_root", lambda: build_repo)
@@ -60,7 +60,7 @@ def test_optional_missing_branch_leaves_checkout_unchanged(tmp_path: Path, monke
 def test_seed_overlay_tracks_and_removes_stale_seed_files(tmp_path: Path) -> None:
     topology = WorkspaceTopology(
         root_directories=(),
-        app_repo=AppRepo(name="eMule", url="https://example.invalid/eMule.git", relative_path="repos\\eMule", branch="main"),
+        app_repo=AppRepo(name="emulebb", url="https://example.invalid/emulebb.git", relative_path="repos\\emulebb", branch="main"),
         repos=(),
         analysis_repos=(),
         third_party_repos=(

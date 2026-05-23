@@ -258,4 +258,4 @@ def test_sync_rejects_workspace_root_outside_current_build_clone(tmp_path: Path)
     result = runner.invoke(cli.main, ["sync", "--workspace-root", str(tmp_path)])
 
     assert result.exit_code != 0
-    assert "repos\\eMule-build" in result.output
+    assert "repos\\emulebb-build" in result.output
