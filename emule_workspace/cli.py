@@ -28,6 +28,7 @@ from .config import (
     CommunityCoverageOptions,
     FakeKadTrustSoakOptions,
     LiveE2eOptions,
+    MiniupnpcPackageOptions,
     PythonTestOptions,
     ReleasePackageOptions,
     ReleaseCampaignOptions,
@@ -38,6 +39,7 @@ from .config import (
 from .layout import load_layout
 from .locks import WorkspaceLock
 from .materialize import materialize_workspace, sync_workspace
+from .miniupnpc_release import create_miniupnpc_package
 from .python_tests import invoke_python_tests
 from .release import create_amutorrent_package, create_release_package
 from .release_campaign_runner import invoke_release_campaign
@@ -998,6 +1000,31 @@ def package_amutorrent(
     _locked(
         "package amutorrent",
         lambda **kwargs: create_amutorrent_package(kwargs["layout"], kwargs["workspace_options"], package_options),
+    )(workspace_options=workspace_options, layout=layout)
+
+
+@main.command("package-miniupnpc")
+@_common_options
+@click.option("--clean", is_flag=True, help="Clean selected package build outputs before building.")
+@click.option(
+    "--release-version",
+    default="2.2.3-emulebb.1",
+    show_default=True,
+    help="MiniUPnP release version in MAJOR.MINOR.PATCH-emulebb.N form.",
+)
+def package_miniupnpc(
+    *,
+    clean: bool,
+    release_version: str,
+    workspace_options: WorkspaceOptions,
+    layout,
+) -> None:
+    """Build the optional MiniUPnP upnpc Windows package artifact."""
+
+    package_options = MiniupnpcPackageOptions(release_version=release_version, clean=clean)
+    _locked(
+        "package miniupnpc",
+        lambda **kwargs: create_miniupnpc_package(kwargs["layout"], kwargs["workspace_options"], package_options),
     )(workspace_options=workspace_options, layout=layout)
 
 

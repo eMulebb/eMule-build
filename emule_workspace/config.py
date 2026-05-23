@@ -305,6 +305,15 @@ class AmutorrentPackageOptions(BaseModel):
     clean: bool = False
 
 
+class MiniupnpcPackageOptions(BaseModel):
+    """Options for building the optional MiniUPnP CLI package artifact."""
+
+    model_config = ConfigDict(frozen=True)
+
+    release_version: str = "2.2.3-emulebb.1"
+    clean: bool = False
+
+
 class CleanupOptions(BaseModel):
     """Options for pruning generated workspace artifacts."""
 
