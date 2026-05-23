@@ -39,7 +39,7 @@ def test_routine_cleanup_selects_old_generated_artifacts(tmp_path: Path) -> None
 
 def test_release_state_cleanup_is_explicit(tmp_path: Path) -> None:
     layout = make_layout(tmp_path)
-    current_release = write_file(layout.workspace_root / "state" / "release" / "emulebb-v0.7.3" / "package.zip", 10)
+    current_release = write_file(layout.workspace_root / "state" / "release" / "emulebb-v0.7.3-rc.1" / "package.zip", 10)
     rehearsal_release = write_file(layout.workspace_root / "state" / "release" / "emulebb-v1.0.1" / "package.zip", 10)
 
     candidates = plan_cleanup(layout, CleanupOptions(include_release_state=True))
@@ -51,7 +51,7 @@ def test_release_state_cleanup_is_explicit(tmp_path: Path) -> None:
 
 def test_package_build_outputs_are_explicit_build_output_cleanup(tmp_path: Path) -> None:
     layout = make_layout(tmp_path)
-    package_build_output = write_file(layout.workspace_root / "state" / "package-build" / "emulebb-v0.7.3" / "x64" / "app" / "emulebb.exe", 10)
+    package_build_output = write_file(layout.workspace_root / "state" / "package-build" / "emulebb-v0.7.3-rc.1" / "x64" / "app" / "emulebb.exe", 10)
 
     routine_candidates = plan_cleanup(layout, CleanupOptions())
     build_candidates = plan_cleanup(layout, CleanupOptions(include_build_outputs=True))

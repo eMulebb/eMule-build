@@ -142,8 +142,8 @@ def test_package_build_disables_startup_profiling(
     monkeypatch.setattr(release, "ensure_app_dependency_artifacts", lambda _layout, _options, *, clean: None)
     monkeypatch.setattr(release, "app_property_overrides", lambda _layout, _platform: ("/p:DependencyRoot=test",))
     monkeypatch.setattr(release, "env_override", lambda _name: None)
-    package_app_output_root = tmp_path / "state" / "package-build" / "emulebb-v0.7.3" / "x64" / "app"
-    package_app_intermediate_root = tmp_path / "state" / "package-build" / "emulebb-v0.7.3" / "x64" / "app-obj"
+    package_app_output_root = tmp_path / "state" / "package-build" / "emulebb-v0.7.3-rc.1" / "x64" / "app"
+    package_app_intermediate_root = tmp_path / "state" / "package-build" / "emulebb-v0.7.3-rc.1" / "x64" / "app-obj"
     cfg_checks: list[Path] = []
 
     def fake_verify_app_control_flow_guard(*_args, **kwargs):
@@ -225,8 +225,8 @@ def test_release_manifest_records_explicit_source_provenance(
     build_root = tmp_path / "repos" / "emulebb-build"
     tests_root = tmp_path / "repos" / "emulebb-build-tests"
     tooling_root = tmp_path / "repos" / "emulebb-tooling"
-    release_root = tmp_path / "workspaces" / "workspace" / "state" / "release" / "emulebb-v0.7.3"
-    zip_path = release_root / "emulebb-0.7.3-x64.zip"
+    release_root = tmp_path / "workspaces" / "workspace" / "state" / "release" / "emulebb-v0.7.3-rc.1"
+    zip_path = release_root / "emulebb-0.7.3-rc.1-x64.zip"
     for path in (app_root, build_root, tests_root, tooling_root, release_root):
         path.mkdir(parents=True)
 
@@ -252,13 +252,13 @@ def test_release_manifest_records_explicit_source_provenance(
             tooling_repo_root=tooling_root,
         ),
         workspace_options=SimpleNamespace(configuration="Release", platform="x64"),
-        package_options=SimpleNamespace(release_version="0.7.3"),
+        package_options=SimpleNamespace(release_version="0.7.3-rc.1"),
         app_variant=AppVariant(name="main", path=app_root, branch="main"),
         app_root=app_root,
         zip_path=zip_path,
         release_root=release_root,
         zip_hash="zip-sha",
-        sbom_path=release_root / "emulebb-0.7.3-x64.sbom.spdx.json",
+        sbom_path=release_root / "emulebb-0.7.3-rc.1-x64.sbom.spdx.json",
         sbom_hash="sbom-sha",
         exe_hash="exe-sha",
         expected_language_dlls=("de_DE.dll", "fr_FR.dll"),
@@ -278,7 +278,7 @@ def test_release_manifest_records_explicit_source_provenance(
     assert manifest["languageDlls"] == ["de_DE.dll", "fr_FR.dll"]
     assert manifest["packageFileSha256"] == {"eMule/emulebb.exe": "exe-entry-sha"}
     assert manifest["sbomFormat"] == "SPDX-2.3 JSON"
-    assert manifest["sbomPath"] == "emulebb-0.7.3-x64.sbom.spdx.json"
+    assert manifest["sbomPath"] == "emulebb-0.7.3-rc.1-x64.sbom.spdx.json"
     assert manifest["sbomSha256"] == "sbom-sha"
     assert "eMule/SBOM.spdx.json" in manifest["includedPaths"]
 
@@ -296,7 +296,7 @@ def test_expected_language_dlls_uses_release_language_manifest(tmp_path: Path) -
 
 
 def test_spdx_sbom_describes_staged_package_files_without_self_reference(tmp_path: Path) -> None:
-    release_root = tmp_path / "state" / "release" / "emulebb-v0.7.3"
+    release_root = tmp_path / "state" / "release" / "emulebb-v0.7.3-rc.1"
     package_root = release_root / "staging" / "x64" / "eMule"
     (package_root / "webserver").mkdir(parents=True)
     (package_root / "emulebb.exe").write_bytes(b"exe")
@@ -306,8 +306,8 @@ def test_spdx_sbom_describes_staged_package_files_without_self_reference(tmp_pat
     document = release._build_spdx_sbom(
         name="test sbom",
         namespace="https://example.invalid/sbom",
-        package_name="emulebb-0.7.3-x64",
-        package_version="0.7.3",
+        package_name="emulebb-0.7.3-rc.1-x64",
+        package_version="0.7.3-rc.1",
         package_license="GPL-2.0-or-later",
         package_comment="test package",
         package_root=package_root,
@@ -388,8 +388,8 @@ def test_amutorrent_manifest_records_runtime_policy_and_source_provenance(
     build_root = tmp_path / "repos" / "emulebb-build"
     tests_root = tmp_path / "repos" / "emulebb-build-tests"
     tooling_root = tmp_path / "repos" / "emulebb-tooling"
-    release_root = tmp_path / "state" / "release" / "emulebb-v0.7.3"
-    zip_path = release_root / "emulebb-0.7.3-amutorrent-arm64.zip"
+    release_root = tmp_path / "state" / "release" / "emulebb-v0.7.3-rc.1"
+    zip_path = release_root / "emulebb-0.7.3-rc.1-amutorrent-arm64.zip"
     for path in (amutorrent_root, build_root, tests_root, tooling_root, release_root):
         path.mkdir(parents=True)
 
@@ -415,12 +415,12 @@ def test_amutorrent_manifest_records_runtime_policy_and_source_provenance(
             tooling_repo_root=tooling_root,
         ),
         workspace_options=SimpleNamespace(configuration="Release", platform="ARM64"),
-        package_options=SimpleNamespace(release_version="0.7.3"),
+        package_options=SimpleNamespace(release_version="0.7.3-rc.1"),
         amutorrent_root=amutorrent_root,
         zip_path=zip_path,
         release_root=release_root,
         zip_hash="zip-sha",
-        sbom_path=release_root / "emulebb-0.7.3-amutorrent-arm64.sbom.spdx.json",
+        sbom_path=release_root / "emulebb-0.7.3-rc.1-amutorrent-arm64.sbom.spdx.json",
         sbom_hash="sbom-sha",
         package_file_hashes={"aMuTorrent/installer/windows/amutorrent.ps1": "script-sha"},
     )
@@ -435,7 +435,7 @@ def test_amutorrent_manifest_records_runtime_policy_and_source_provenance(
     assert manifest["runtimePolicy"]["spacesInInstallPathAllowed"] is False
     assert manifest["packageFileSha256"] == {"aMuTorrent/installer/windows/amutorrent.ps1": "script-sha"}
     assert manifest["sbomFormat"] == "SPDX-2.3 JSON"
-    assert manifest["sbomPath"] == "emulebb-0.7.3-amutorrent-arm64.sbom.spdx.json"
+    assert manifest["sbomPath"] == "emulebb-0.7.3-rc.1-amutorrent-arm64.sbom.spdx.json"
     assert manifest["sbomSha256"] == "sbom-sha"
     assert "aMuTorrent/SBOM.spdx.json" in manifest["includedPaths"]
 

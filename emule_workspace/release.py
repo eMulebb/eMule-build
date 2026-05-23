@@ -48,6 +48,7 @@ RELEASE_THIRD_PARTY_COMPONENTS = (
     ("Mbed TLS / TF-PSA-Crypto", "Apache-2.0 OR GPL-2.0-or-later"),
     ("nlohmann/json", "MIT"),
 )
+RELEASE_VERSION_PATTERN = re.compile(r"\d+\.\d+\.\d+(?:-(?:rc|beta)\.\d+)?")
 
 
 def create_amutorrent_package(
@@ -59,8 +60,11 @@ def create_amutorrent_package(
 
     if workspace_options.configuration != "Release":
         raise RuntimeError("package amutorrent requires --config Release.")
-    if not re.fullmatch(r"\d+\.\d+\.\d+", package_options.release_version):
-        raise RuntimeError(f"Release version must use MAJOR.MINOR.PATCH format: {package_options.release_version}")
+    if not _is_release_version(package_options.release_version):
+        raise RuntimeError(
+            "Release version must use MAJOR.MINOR.PATCH[-rc.N|-beta.N] format: "
+            f"{package_options.release_version}"
+        )
 
     amutorrent_root = layout.resolve_workspace_path("repos/amutorrent")
     _assert_clean_amutorrent_package_inputs(layout, amutorrent_root)
@@ -131,8 +135,11 @@ def create_release_package(
 
     if workspace_options.configuration != "Release":
         raise RuntimeError("package release requires --config Release.")
-    if not re.fullmatch(r"\d+\.\d+\.\d+", package_options.release_version):
-        raise RuntimeError(f"Release version must use MAJOR.MINOR.PATCH format: {package_options.release_version}")
+    if not _is_release_version(package_options.release_version):
+        raise RuntimeError(
+            "Release version must use MAJOR.MINOR.PATCH[-rc.N|-beta.N] format: "
+            f"{package_options.release_version}"
+        )
 
     ensure_canonical_app_anchor(layout)
     app_variant = layout.get_app_variant("main")
@@ -1285,11 +1292,19 @@ def _app_mod_release_version(app_root: Path) -> str:
 
 def _assert_package_version_matches_app(app_root: Path, release_version: str) -> None:
     app_release_version = _app_mod_release_version(app_root)
-    if release_version != app_release_version:
+    if _base_release_version(release_version) != app_release_version:
         raise RuntimeError(
             f"package release version mismatch: --release-version is '{release_version}' "
             f"but app MOD_RELEASE_VERSION is '{app_release_version}'."
         )
+
+
+def _is_release_version(release_version: str) -> bool:
+    return RELEASE_VERSION_PATTERN.fullmatch(release_version) is not None
+
+
+def _base_release_version(release_version: str) -> str:
+    return release_version.split("-", 1)[0]
 
 
 def _assert_path_under_root(path: Path, root: Path, label: str) -> None:

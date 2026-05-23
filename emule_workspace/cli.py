@@ -968,7 +968,12 @@ def full(
 @main.command("package-release")
 @_common_options
 @click.option("--clean", is_flag=True, help="Clean selected package build outputs before building.")
-@click.option("--release-version", default="0.7.3", show_default=True, help="Release version in MAJOR.MINOR.PATCH form.")
+@click.option(
+    "--release-version",
+    default="0.7.3-rc.1",
+    show_default=True,
+    help="Release version in MAJOR.MINOR.PATCH[-rc.N|-beta.N] form.",
+)
 def package_release(
     *,
     clean: bool,
@@ -988,7 +993,12 @@ def package_release(
 @main.command("package-amutorrent")
 @_common_options
 @click.option("--clean", is_flag=True, help="Clean selected package build outputs before building.")
-@click.option("--release-version", default="0.7.3", show_default=True, help="Release version in MAJOR.MINOR.PATCH form.")
+@click.option(
+    "--release-version",
+    default="0.7.3-rc.1",
+    show_default=True,
+    help="Release version in MAJOR.MINOR.PATCH[-rc.N|-beta.N] form.",
+)
 def package_amutorrent(
     *,
     clean: bool,

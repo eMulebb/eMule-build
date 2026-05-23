@@ -292,7 +292,7 @@ class ReleasePackageOptions(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    release_version: str = "0.7.3"
+    release_version: str = "0.7.3-rc.1"
     clean: bool = False
 
 
@@ -301,7 +301,7 @@ class AmutorrentPackageOptions(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    release_version: str = "0.7.3"
+    release_version: str = "0.7.3-rc.1"
     clean: bool = False
 
 

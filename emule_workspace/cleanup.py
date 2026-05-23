@@ -350,7 +350,7 @@ def _release_state_candidates(layout: WorkspaceLayout) -> list[CleanupCandidate]
     if not root.is_dir():
         return candidates
     for child in root.iterdir():
-        if child.is_dir() and child.name not in {"emulebb-v0.7.3"}:
+        if child.is_dir() and child.name not in {"emulebb-v0.7.3-rc.1"}:
             candidates.append(_directory_candidate(child, "release-state", "superseded release rehearsal state"))
     return candidates
 
