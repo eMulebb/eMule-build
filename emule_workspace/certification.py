@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .artifact_names import certification_result_file_name, utc_run_id
 from .build import build_apps
 from .build_tests import invoke_build_tests
 from .cleanup import CleanupFailedError, CleanupRunSummary, cleanup_summary_payload, run_pre_test_cleanup
@@ -136,7 +137,7 @@ def invoke_certification(layout: WorkspaceLayout, options: WorkspaceOptions, cer
         else:
             status = _aggregate_status(steps)
         _write_report(report_dir, layout, options, certification_options, started_at, steps, pre_run_cleanup, status=status)
-        print(f"Certification report: {report_dir / 'result.json'}")
+        print(f"Certification report: {report_dir / certification_result_file_name()}")
         raise
 
     _write_report(report_dir, layout, options, certification_options, started_at, steps, pre_run_cleanup, status=status)
@@ -144,7 +145,7 @@ def invoke_certification(layout: WorkspaceLayout, options: WorkspaceOptions, cer
     print(f"Certification profile: {certification_options.profile}")
     print(f"Status: {status}")
     print(f"Steps: {len(steps)}")
-    print(f"Report: {report_dir / 'result.json'}")
+    print(f"Report: {report_dir / certification_result_file_name()}")
 
 
 def _aggregate_status(steps: list[CertificationStepResult]) -> str:
@@ -406,7 +407,7 @@ def _amutorrent_resilience_options(certification_options: CertificationOptions) 
 
 
 def _new_report_dir(layout: WorkspaceLayout, profile: str) -> Path:
-    stamp = time.strftime("%Y%m%d-%H%M%S")
+    stamp = utc_run_id()
     return layout.workspace_root / "state" / "certification" / f"{stamp}-{profile}"
 
 
@@ -438,7 +439,7 @@ def _failure_status_from_child_reports(report_paths: tuple[Path, ...]) -> str:
     """Classifies external live evidence when child reports mark inconclusive."""
 
     for report_path in report_paths:
-        result_path = report_path / "result.json"
+        result_path = _child_result_path(report_path)
         if not result_path.is_file():
             continue
         try:
@@ -448,6 +449,17 @@ def _failure_status_from_child_reports(report_paths: tuple[Path, ...]) -> str:
         if payload.get("status") == "inconclusive" or payload.get("has_inconclusive_suites") is True:
             return "inconclusive"
     return "failed"
+
+
+def _child_result_path(report_path: Path) -> Path:
+    """Returns the canonical latest result path for one changed report family."""
+
+    if report_path.name == "latest":
+        suite_name = report_path.parent.name
+        return report_path / f"{suite_name}-result.json"
+    if report_path.parent.name == "test-reports":
+        return report_path / "latest" / f"{report_path.name}-result.json"
+    return report_path / _report_result_file_name(report_path)
 
 
 def _write_report(
@@ -494,7 +506,17 @@ def _write_report(
             for step in steps
         ],
     }
-    (report_dir / "result.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8", newline="\n")
+    (report_dir / certification_result_file_name()).write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8", newline="\n")
+
+
+def _report_result_file_name(report_path: Path) -> str:
+    """Returns the canonical child result name for a test report directory."""
+
+    if report_path.name == "latest":
+        suite_name = report_path.parent.name
+    else:
+        suite_name = report_path.parent.name if report_path.parent.name != "test-reports" else report_path.name
+    return f"{suite_name}-result.json"
 
 
 def _workspace_commits(layout: WorkspaceLayout) -> dict[str, str]:

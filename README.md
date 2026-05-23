@@ -177,6 +177,11 @@ Use `-BuildOutputMode Full` when you want raw MSBuild output for troubleshooting
 Use `-Clean` when you explicitly want rebuild/cleanup behavior; normal runs stay incremental.
 Build runs write text logs, MSBuild binary logs, and a machine-readable recap under
 `workspaces\<workspace>\state\build-logs\`.
+Build and test run directories use UTC `YYYYMMDDTHHMMSSZ` prefixes. Build recaps
+are named `build-result.json`; certification and release-campaign recaps are
+named `certification-result.json` and `release-campaign-run-result.json`.
+Test reports use `<suite>\latest` snapshots and suite-scoped leaves such as
+`<suite>-result.json`, `<suite>-result.partial.json`, and `<suite>-summary.json`.
 
 Shared test builds support `x64` and `ARM64`. Test execution remains `x64`
 only:

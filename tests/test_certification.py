@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from emule_workspace import certification
+from emule_workspace.artifact_names import certification_result_file_name
 from emule_workspace.config import CertificationOptions, WorkspaceOptions
 from emule_workspace.layout import AppVariant, TestTargets as LayoutTestTargets, WorkspaceLayout
 
@@ -41,7 +42,7 @@ def make_layout(tmp_path: Path) -> WorkspaceLayout:
 
 
 def latest_certification_report(layout: WorkspaceLayout) -> Path:
-    reports = sorted((layout.workspace_root / "state" / "certification").glob("*/result.json"))
+    reports = sorted((layout.workspace_root / "state" / "certification").glob(f"*/{certification_result_file_name()}"))
     assert reports
     return reports[-1]
 
@@ -180,9 +181,9 @@ def test_certification_preserves_inconclusive_child_status(tmp_path: Path, monke
 
     def fake_invoke_step(_layout, _options, _certification_options, name):
         if name == "live-fast-ui-rest":
-            child_report = layout.workspace_root / "state" / "test-reports" / "live-e2e-suite-latest"
+            child_report = layout.workspace_root / "state" / "test-reports" / "live-e2e-suite" / "latest"
             child_report.mkdir(parents=True)
-            (child_report / "result.json").write_text(
+            (child_report / "live-e2e-suite-result.json").write_text(
                 json.dumps({"status": "inconclusive", "has_inconclusive_suites": True}) + "\n",
                 encoding="utf-8",
             )

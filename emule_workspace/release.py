@@ -8,12 +8,12 @@ import re
 import shutil
 import struct
 import subprocess
-import time
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
 from .build import APP_EXE_NAME, app_property_overrides, ensure_app_dependency_artifacts, verify_app_control_flow_guard, with_trailing_separator
+from .artifact_names import utc_run_id
 from .build_state import BuildSession
 from .config import AmutorrentPackageOptions, ReleasePackageOptions, WorkspaceOptions
 from .git import git_output, repo_branch, repo_head, repo_status_lines
@@ -155,7 +155,7 @@ def create_release_package(
         options=workspace_options,
         command_name="package release",
         clean=package_options.clean,
-        stamp=time.strftime("%Y%m%d-%H%M%S"),
+        stamp=utc_run_id(),
     )
     try:
         _build_package_app(

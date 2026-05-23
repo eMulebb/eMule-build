@@ -228,7 +228,7 @@ def _old_report_run_candidates(layout: WorkspaceLayout, options: CleanupOptions,
         if not family.is_dir() or family.name.endswith("-latest"):
             continue
         for run_dir in family.iterdir():
-            if not run_dir.is_dir() or run_dir.stat().st_mtime >= cutoff.timestamp():
+            if not run_dir.is_dir() or run_dir.name == "latest" or run_dir.stat().st_mtime >= cutoff.timestamp():
                 continue
             candidates.append(
                 _directory_candidate(

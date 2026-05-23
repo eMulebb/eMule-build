@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import time
-
+from .artifact_names import utc_run_id
 from .config import BuildTestsOptions, WorkspaceOptions
 from .layout import WorkspaceLayout, file_token, get_test_build_tag
 from .process import get_python_invocation, run_native
@@ -19,7 +18,7 @@ def invoke_build_tests(
     test_build_variant = build_options.test_run_variant or layout.test_targets.test_build_variant
     app_root = layout.get_app_variant(test_build_variant).path
     build_tag = get_test_build_tag(layout.workspace_root, app_root)
-    build_log_session_stamp = time.strftime("%Y%m%d-%H%M%S")
+    build_log_session_stamp = utc_run_id()
     log_directory = layout.build_log_directory(build_log_session_stamp)
     suffix = f"{workspace_options.configuration.lower()}-{workspace_options.platform.lower()}"
     token = file_token(f"emule-tests-{build_tag}")

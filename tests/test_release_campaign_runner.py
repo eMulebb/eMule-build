@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from emule_workspace import release_campaign_runner
+from emule_workspace.artifact_names import release_campaign_result_file_name
 from emule_workspace.config import ReleaseCampaignOptions, WorkspaceOptions
 from emule_workspace.layout import AppVariant, TestTargets as LayoutTestTargets, WorkspaceLayout
 
@@ -131,7 +132,7 @@ def test_campaign_execute_dry_run_writes_planned_report(tmp_path: Path) -> None:
         ReleaseCampaignOptions(campaign="test-campaign", execute=True, dry_run=True),
     )
 
-    reports = sorted((layout.workspace_root / "state" / "release-campaign-runs").glob("*/result.json"))
+    reports = sorted((layout.workspace_root / "state" / "release-campaign-runs").glob(f"*/{release_campaign_result_file_name()}"))
     assert reports
     payload = json.loads(reports[-1].read_text(encoding="utf-8"))
     assert payload["status"] == "planned"
@@ -226,7 +227,7 @@ def test_campaign_execute_records_pre_run_cleanup(tmp_path: Path, monkeypatch: p
         ReleaseCampaignOptions(campaign="test-campaign", execute=True),
     )
 
-    reports = sorted((layout.workspace_root / "state" / "release-campaign-runs").glob("*/result.json"))
+    reports = sorted((layout.workspace_root / "state" / "release-campaign-runs").glob(f"*/{release_campaign_result_file_name()}"))
     payload = json.loads(reports[-1].read_text(encoding="utf-8"))
     assert payload["options"]["preRunCleanup"] is True
     assert payload["preRunCleanup"]["status"] == "passed"

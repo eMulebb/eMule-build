@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .artifact_names import build_log_directory_name, build_result_file_name, utc_run_id
 from .config import WorkspaceOptions
 from .layout import WorkspaceLayout, file_token
 
@@ -33,7 +34,7 @@ class BuildSession:
     options: WorkspaceOptions
     command_name: str
     clean: bool = False
-    stamp: str = field(default_factory=lambda: time.strftime("%Y%m%d-%H%M%S"))
+    stamp: str = field(default_factory=utc_run_id)
     started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     steps: list[BuildStepResult] = field(default_factory=list)
 
@@ -41,7 +42,7 @@ class BuildSession:
     def log_directory(self) -> Path:
         """Returns and creates the per-command log directory."""
 
-        return self.layout.build_log_directory(self.stamp)
+        return self.layout.build_log_directory(build_log_directory_name(self.stamp, self.command_name))
 
     def msbuild_log_paths(
         self,
@@ -117,7 +118,7 @@ class BuildSession:
             "clean": self.clean,
             "build_output_mode": self.options.build_output_mode,
             "started_utc": self.started_at.isoformat(),
-            "completed_utc": completed_at.isoformat(),
+            "updated_utc": completed_at.isoformat(),
             "total_duration_seconds": round(total_duration, 3),
             "total_warning_count": total_warnings,
             "log_directory": str(self.log_directory),
@@ -135,7 +136,7 @@ class BuildSession:
                 for step in self.steps
             ],
         }
-        recap_path = self.log_directory / "summary.json"
+        recap_path = self.log_directory / build_result_file_name()
         recap_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8", newline="\n")
 
         print("")

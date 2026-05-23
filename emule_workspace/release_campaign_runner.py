@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .artifact_names import release_campaign_result_file_name, utc_run_id
 from .certification import invoke_certification
 from .cleanup import CleanupFailedError, CleanupRunSummary, cleanup_summary_payload, run_pre_test_cleanup
 from .config import (
@@ -111,7 +112,7 @@ def invoke_release_campaign(
         print(f"Release campaign: {campaign_options.campaign}")
         print(f"Status: {status}")
         print(f"Commands: {len(results)}/{len(plan)}")
-        print(f"Report: {report_dir / 'result.json'}")
+        print(f"Report: {report_dir / release_campaign_result_file_name()}")
         if stop_error is not None:
             raise stop_error
         if status == "failed":
@@ -119,7 +120,7 @@ def invoke_release_campaign(
     except Exception:
         status = _aggregate_status(results, dry_run=campaign_options.dry_run) if results else "failed"
         _write_report(report_dir, campaign, campaign_options, started_at, plan, results, pre_run_cleanup, status=status)
-        print(f"Release campaign report: {report_dir / 'result.json'}")
+        print(f"Release campaign report: {report_dir / release_campaign_result_file_name()}")
         raise
 
 
@@ -353,7 +354,7 @@ def _aggregate_status(results: list[CampaignCommandResult], *, dry_run: bool) ->
 
 
 def _new_report_dir(layout: WorkspaceLayout, campaign_id: str) -> Path:
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    stamp = utc_run_id()
     return layout.workspace_root / "state" / "release-campaign-runs" / f"{stamp}-{campaign_id}"
 
 
@@ -404,4 +405,4 @@ def _write_report(
         ],
     }
     report_dir.mkdir(parents=True, exist_ok=True)
-    (report_dir / "result.json").write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    (report_dir / release_campaign_result_file_name()).write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
