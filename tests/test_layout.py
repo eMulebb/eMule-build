@@ -36,6 +36,8 @@ def test_workspace_manifest_uses_json_contract_shape() -> None:
     assert "emuleai" not in manifest["workspace"]["repos"]
     assert manifest["workspace"]["repos"]["pages"] == "..\\..\\repos\\eMulebb-pages"
     assert manifest["workspace"]["repos"]["org_profile"] == "..\\..\\repos\\eMulebb-org-profile"
+    assert manifest["workspace"]["repos"]["p2p_overlord_agents"] == "..\\..\\repos\\p2p-overlord-agents"
+    assert manifest["workspace"]["repos"]["p2p_overlord_be"] == "..\\..\\repos\\p2p-overlord-be"
     assert manifest["workspace"]["app_repo"]["variants"][0] == {
         "name": "main",
         "path": "app\\eMule-main",
@@ -86,6 +88,22 @@ def test_canonical_topology_materializes_client_references_in_active_and_analysi
     assert tuple((remote.name, remote.url) for remote in emuleai.additional_remotes) == (
         ("upstream", "https://github.com/eMuleAI/eMuleAI.git"),
     )
+
+
+def test_canonical_topology_materializes_p2p_overlord_product_family_repos() -> None:
+    repos = {repo.name: repo for repo in canonical_topology().repos}
+
+    agents = repos["p2p-overlord-agents"]
+    assert agents.url == "https://github.com/eMulebb/p2p-overlord-agents.git"
+    assert agents.relative_path == "repos\\p2p-overlord-agents"
+    assert agents.branch == "develop"
+
+    backend = repos["p2p-overlord-be"]
+    assert backend.url == "https://github.com/eMulebb/p2p-overlord-be.git"
+    assert backend.relative_path == "repos\\p2p-overlord-be"
+    assert backend.branch == "develop"
+
+    assert "p2p-overlord-ed2k-server" not in repos
 
 
 def test_compare_root_accepts_repo_targets_with_and_without_compare_subdirs(tmp_path: Path) -> None:

@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 BUILD_MANIFEST_NAME = "deps.json"
 WORKSPACE_MANIFEST_NAME = "deps.json"
-WORKSPACE_MANIFEST_SCHEMA_VERSION = 4
+WORKSPACE_MANIFEST_SCHEMA_VERSION = 5
 DEFAULT_WORKSPACE_NAME = "workspace"
 WORKSPACE_PROPS_FILE_NAME = "workspace.props"
 SETUP_LOG_FILE_NAME = "eMule-workspace.log"
@@ -145,6 +145,8 @@ class WorkspaceManifestRepos(BaseModel):
     amule: str
     pages: str
     org_profile: str
+    p2p_overlord_agents: str
+    p2p_overlord_be: str
     third_party: str
 
 
@@ -230,6 +232,8 @@ def build_workspace_manifest(topology: WorkspaceTopology, workspace_name: str | 
                 "amule": _workspace_relative_repo_path(repo_by_name["amule"]),
                 "pages": _workspace_relative_repo_path(repo_by_name["eMulebb-pages"]),
                 "org_profile": _workspace_relative_repo_path(repo_by_name["eMulebb-org-profile"]),
+                "p2p_overlord_agents": _workspace_relative_repo_path(repo_by_name["p2p-overlord-agents"]),
+                "p2p_overlord_be": _workspace_relative_repo_path(repo_by_name["p2p-overlord-be"]),
                 "third_party": str(workspace_prefix / "repos" / "third_party"),
             },
         },
@@ -320,6 +324,18 @@ def canonical_topology() -> WorkspaceTopology:
                 url="https://github.com/eMulebb/.github.git",
                 relative_path="repos\\eMulebb-org-profile",
                 branch="main",
+            ),
+            ManagedRepo(
+                name="p2p-overlord-agents",
+                url="https://github.com/eMulebb/p2p-overlord-agents.git",
+                relative_path="repos\\p2p-overlord-agents",
+                branch="develop",
+            ),
+            ManagedRepo(
+                name="p2p-overlord-be",
+                url="https://github.com/eMulebb/p2p-overlord-be.git",
+                relative_path="repos\\p2p-overlord-be",
+                branch="develop",
             ),
         ),
         analysis_repos=(
