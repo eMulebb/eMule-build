@@ -500,9 +500,6 @@ def install_workspace_hooks(root: Path, topology: WorkspaceTopology) -> None:
     """Configures workspace repos and worktrees to use the shared hook path."""
 
     hooks_path = root / "repos" / "emulebb-tooling" / "hooks"
-    legacy_managed_hooks_paths = {
-        (root / "repos" / "eMule-tooling" / "hooks").resolve(),
-    }
     if not (hooks_path / "pre-commit").is_file():
         raise RuntimeError(f"Shared pre-commit hook is missing: {hooks_path / 'pre-commit'}")
     hook_repo_names = {"emulebb-build", "emulebb-build-tests", "emulebb-tooling"}
@@ -524,7 +521,7 @@ def install_workspace_hooks(root: Path, topology: WorkspaceTopology) -> None:
         ).strip() if configured.returncode == 0 else ""
         if current:
             current_path = (target / current).resolve() if not Path(current).is_absolute() else Path(current).resolve()
-            if current_path != hooks_path.resolve() and current_path not in legacy_managed_hooks_paths:
+            if current_path != hooks_path.resolve():
                 raise RuntimeError(f"Refusing to replace unmanaged core.hooksPath for '{target}'.")
         run_native(["git", "-C", target, "config", "--local", "core.hooksPath", str(hooks_path)], label=f"install hooks {target}", cwd=root)
         run_native(["git", "-C", target, "config", "--local", "core.autocrlf", "false"], label=f"configure autocrlf {target}", cwd=root)
