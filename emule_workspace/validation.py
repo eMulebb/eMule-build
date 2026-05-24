@@ -168,7 +168,7 @@ def validate_product_family_repos(layout: WorkspaceLayout) -> None:
     agents_root = layout.p2p_overlord_agents_repo_root
     if agents_root is not None and agents_root.is_dir():
         run_native(
-            ["cargo", "fmt", "--all", "--check"],
+            [_required_product_family_tool(("cargo.exe", "cargo"), "Rust cargo"), "fmt", "--all", "--check"],
             label="p2p-overlord-agents cargo fmt",
             cwd=agents_root,
         )
@@ -177,7 +177,7 @@ def validate_product_family_repos(layout: WorkspaceLayout) -> None:
     coordinator_root = be_root / "overlord-be-coordinator" if be_root is not None else None
     if coordinator_root is not None and coordinator_root.is_dir():
         run_native(
-            ["npm", "run", "quality"],
+            [_required_product_family_tool(("npm.cmd", "npm.exe", "npm"), "Node npm"), "run", "quality"],
             label="p2p-overlord-be coordinator quality",
             cwd=coordinator_root,
         )
@@ -185,10 +185,17 @@ def validate_product_family_repos(layout: WorkspaceLayout) -> None:
     goed2k_root = layout.ed2k_server_repo_root
     if goed2k_root.is_dir():
         run_native(
-            ["go", "test", "./..."],
+            [_required_product_family_tool(("go.exe", "go"), "Go toolchain"), "test", "./..."],
             label="goed2k-server go test",
             cwd=goed2k_root,
         )
+
+
+def _required_product_family_tool(names: tuple[str, ...], label: str) -> Path:
+    tool = find_tool(names)
+    if tool is None:
+        raise RuntimeError(f"{label} was not found on PATH for product-family validation.")
+    return tool
 
 
 def ensure_canonical_app_anchor(layout: WorkspaceLayout) -> None:

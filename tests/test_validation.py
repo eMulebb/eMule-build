@@ -155,10 +155,11 @@ def test_product_family_validation_runs_repo_native_checks(
     calls: list[tuple[tuple[str, ...], Path]] = []
 
     def fake_run_native(command, **kwargs):
-        calls.append((tuple(command), kwargs["cwd"]))
+        calls.append((tuple(str(part) for part in command), kwargs["cwd"]))
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr(validation, "run_native", fake_run_native)
+    monkeypatch.setattr(validation, "find_tool", lambda names: Path(names[0]))
     layout = SimpleNamespace(
         p2p_overlord_agents_repo_root=agents_root,
         p2p_overlord_be_repo_root=tmp_path / "repos" / "p2p-overlord-be",
@@ -167,6 +168,6 @@ def test_product_family_validation_runs_repo_native_checks(
 
     validation.validate_product_family_repos(layout)
 
-    assert (("cargo", "fmt", "--all", "--check"), agents_root) in calls
-    assert (("npm", "run", "quality"), coordinator_root) in calls
-    assert (("go", "test", "./..."), goed2k_root) in calls
+    assert (("cargo.exe", "fmt", "--all", "--check"), agents_root) in calls
+    assert (("npm.cmd", "run", "quality"), coordinator_root) in calls
+    assert (("go.exe", "test", "./..."), goed2k_root) in calls
