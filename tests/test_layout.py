@@ -138,7 +138,7 @@ def test_canonical_topology_materializes_p2p_overlord_product_family_repos() -> 
     assert backend.branch == "develop"
 
     tooling = repos["p2p-overlord-tooling"]
-    assert tooling.url == "https://github.com/p2p-overlord/p2p-overlord-tooling.git"
+    assert tooling.url == "https://github.com/emulebb/p2p-overlord-tooling.git"
     assert tooling.relative_path == "repos\\p2p-overlord-tooling"
     assert tooling.branch == "develop"
 

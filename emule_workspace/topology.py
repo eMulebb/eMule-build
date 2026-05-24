@@ -441,7 +441,7 @@ def canonical_topology() -> WorkspaceTopology:
             ),
             ManagedRepo(
                 name="p2p-overlord-tooling",
-                url="https://github.com/p2p-overlord/p2p-overlord-tooling.git",
+                url="https://github.com/emulebb/p2p-overlord-tooling.git",
                 relative_path="repos\\p2p-overlord-tooling",
                 branch="develop",
             ),
