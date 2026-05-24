@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from .git import git_output, repo_branch, repo_status_lines, test_app_branch_allowed
@@ -168,7 +169,7 @@ def validate_product_family_repos(layout: WorkspaceLayout) -> None:
     agents_root = layout.p2p_overlord_agents_repo_root
     if agents_root is not None and agents_root.is_dir():
         run_native(
-            [_required_product_family_tool(("cargo.exe", "cargo"), "Rust cargo"), "fmt", "--all", "--check"],
+            [_required_product_family_command(("cargo.exe", "cargo"), "Rust cargo"), "fmt", "--all", "--check"],
             label="p2p-overlord-agents cargo fmt",
             cwd=agents_root,
         )
@@ -177,7 +178,7 @@ def validate_product_family_repos(layout: WorkspaceLayout) -> None:
     coordinator_root = be_root / "overlord-be-coordinator" if be_root is not None else None
     if coordinator_root is not None and coordinator_root.is_dir():
         run_native(
-            [_required_product_family_tool(("npm.cmd", "npm.exe", "npm"), "Node npm"), "run", "quality"],
+            [_required_product_family_command(("npm.cmd", "npm.exe", "npm"), "Node npm"), "run", "quality"],
             label="p2p-overlord-be coordinator quality",
             cwd=coordinator_root,
         )
@@ -185,17 +186,19 @@ def validate_product_family_repos(layout: WorkspaceLayout) -> None:
     goed2k_root = layout.ed2k_server_repo_root
     if goed2k_root.is_dir():
         run_native(
-            [_required_product_family_tool(("go.exe", "go"), "Go toolchain"), "test", "./..."],
+            [_required_product_family_command(("go.exe", "go"), "Go toolchain"), "test", "./..."],
             label="goed2k-server go test",
             cwd=goed2k_root,
         )
 
 
-def _required_product_family_tool(names: tuple[str, ...], label: str) -> Path:
-    tool = find_tool(names)
-    if tool is None:
+def _required_product_family_command(names: tuple[str, ...], label: str) -> str:
+    for name in names:
+        if shutil.which(name):
+            return name
+    if find_tool(names) is None:
         raise RuntimeError(f"{label} was not found on PATH for product-family validation.")
-    return tool
+    return names[0]
 
 
 def ensure_canonical_app_anchor(layout: WorkspaceLayout) -> None:

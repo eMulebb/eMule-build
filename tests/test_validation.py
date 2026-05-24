@@ -159,7 +159,7 @@ def test_product_family_validation_runs_repo_native_checks(
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr(validation, "run_native", fake_run_native)
-    monkeypatch.setattr(validation, "find_tool", lambda names: Path(names[0]))
+    monkeypatch.setattr(validation.shutil, "which", lambda name: name)
     layout = SimpleNamespace(
         p2p_overlord_agents_repo_root=agents_root,
         p2p_overlord_be_repo_root=tmp_path / "repos" / "p2p-overlord-be",
