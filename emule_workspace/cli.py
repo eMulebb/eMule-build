@@ -209,10 +209,10 @@ def _live_e2e_options(function: F) -> F:
     @click.option("--godzilla-cpu-profile", is_flag=True, help="Capture a bounded ETW CPU profile for the Godzilla local swarm.")
     @click.option(
         "--godzilla-vhd-runtime-root",
-        type=click.Choice(["drive-letter", "folder-mount"]),
+        type=click.Choice(["drive-letter"]),
         default="drive-letter",
         show_default=True,
-        help="Runtime root used by Godzilla VHD fixtures; drive-letter keeps legacy harness paths short.",
+        help="Runtime root used by Godzilla VHD fixtures; mixed aMule/tracing-harness runs must stay on the short VHD drive-letter root.",
     )
     @click.option("--rest-cold-start-dump-stress-waves", default=4, show_default=True, type=int)
     @click.option("--rest-cold-start-dump-stress-searches-per-wave", default=12, show_default=True, type=int)

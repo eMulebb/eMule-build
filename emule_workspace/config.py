@@ -150,7 +150,7 @@ class LiveE2eOptions(BaseModel):
     godzilla_visible_ui: bool = False
     godzilla_p2p_bind_interface_address: str | None = None
     godzilla_cpu_profile: bool = False
-    godzilla_vhd_runtime_root: Literal["drive-letter", "folder-mount"] = "drive-letter"
+    godzilla_vhd_runtime_root: Literal["drive-letter"] = "drive-letter"
     rest_cold_start_dump_stress_waves: int = 4
     rest_cold_start_dump_stress_searches_per_wave: int = 12
     rest_cold_start_dump_stress_max_concurrent_searches: int = 8
