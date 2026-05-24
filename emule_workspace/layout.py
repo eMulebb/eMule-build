@@ -58,6 +58,7 @@ class WorkspaceLayout:
     toolset_override_variable: str
     p2p_overlord_agents_repo_root: Path | None = None
     p2p_overlord_be_repo_root: Path | None = None
+    p2p_overlord_tooling_repo_root: Path | None = None
 
     def resolve_workspace_path(self, relative_path: str) -> Path:
         """Resolves a root-relative workspace path."""
@@ -148,6 +149,7 @@ def load_layout(emule_workspace_root: Path, workspace_name: str | None = None) -
         amule_repo_root=_resolve_workspace_manifest_path(workspace_root, repos["amule"]),
         p2p_overlord_agents_repo_root=_resolve_workspace_manifest_path(workspace_root, repos["p2p_overlord_agents"]),
         p2p_overlord_be_repo_root=_resolve_workspace_manifest_path(workspace_root, repos["p2p_overlord_be"]),
+        p2p_overlord_tooling_repo_root=_resolve_workspace_manifest_path(workspace_root, repos["p2p_overlord_tooling"]),
         seed_repo_path=_resolve_workspace_manifest_path(workspace_root, seed_repo["path"]),
         seed_repo_branch=str(seed_repo["branch"]),
         dependencies=dependencies,

@@ -39,6 +39,7 @@ def test_workspace_manifest_uses_json_contract_shape() -> None:
     assert manifest["workspace"]["repos"]["org_profile"] == "..\\..\\repos\\emulebb-org-profile"
     assert manifest["workspace"]["repos"]["p2p_overlord_agents"] == "..\\..\\repos\\p2p-overlord-agents"
     assert manifest["workspace"]["repos"]["p2p_overlord_be"] == "..\\..\\repos\\p2p-overlord-be"
+    assert manifest["workspace"]["repos"]["p2p_overlord_tooling"] == "..\\..\\repos\\p2p-overlord-tooling"
     assert manifest["workspace"]["app_repo"]["variants"][0] == {
         "name": "main",
         "path": "app\\emulebb-main",
@@ -67,6 +68,7 @@ def test_repo_role_manifest_describes_workspace_repositories() -> None:
     assert repos["emulebb-build"]["role"] == "workspace-orchestration"
     assert repos["emulebb-tooling"]["group"] == "workspace"
     assert repos["p2p-overlord-be"]["role"] == "p2p-overlord-suite"
+    assert repos["p2p-overlord-tooling"]["role"] == "p2p-overlord-test-tooling"
     assert repos["goed2k-server"]["role"] == "local-ed2k-test-server"
 
     analysis_repos = {repo["name"]: repo for repo in manifest["analysis_repos"]}
@@ -134,6 +136,11 @@ def test_canonical_topology_materializes_p2p_overlord_product_family_repos() -> 
     assert backend.url == "https://github.com/emulebb/p2p-overlord-be.git"
     assert backend.relative_path == "repos\\p2p-overlord-be"
     assert backend.branch == "develop"
+
+    tooling = repos["p2p-overlord-tooling"]
+    assert tooling.url == "https://github.com/p2p-overlord/p2p-overlord-tooling.git"
+    assert tooling.relative_path == "repos\\p2p-overlord-tooling"
+    assert tooling.branch == "develop"
 
     assert "p2p-overlord-ed2k-server" not in repos
 

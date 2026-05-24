@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 BUILD_MANIFEST_NAME = "deps.json"
 WORKSPACE_MANIFEST_NAME = "deps.json"
-WORKSPACE_MANIFEST_SCHEMA_VERSION = 5
+WORKSPACE_MANIFEST_SCHEMA_VERSION = 6
 REPO_ROLE_MANIFEST_NAME = "repo-roles.json"
 REPO_ROLE_MANIFEST_SCHEMA_VERSION = 1
 DEFAULT_WORKSPACE_NAME = "workspace"
@@ -28,6 +28,7 @@ SHARED_HOOK_REPO_NAMES = frozenset(
         "emulebb-org-profile",
         "p2p-overlord-agents",
         "p2p-overlord-be",
+        "p2p-overlord-tooling",
     }
 )
 
@@ -163,6 +164,7 @@ class WorkspaceManifestRepos(BaseModel):
     org_profile: str
     p2p_overlord_agents: str
     p2p_overlord_be: str
+    p2p_overlord_tooling: str
     third_party: str
 
 
@@ -250,6 +252,7 @@ def build_workspace_manifest(topology: WorkspaceTopology, workspace_name: str | 
                 "org_profile": _workspace_relative_repo_path(repo_by_name["emulebb-org-profile"]),
                 "p2p_overlord_agents": _workspace_relative_repo_path(repo_by_name["p2p-overlord-agents"]),
                 "p2p_overlord_be": _workspace_relative_repo_path(repo_by_name["p2p-overlord-be"]),
+                "p2p_overlord_tooling": _workspace_relative_repo_path(repo_by_name["p2p-overlord-tooling"]),
                 "third_party": str(workspace_prefix / "repos" / "third_party"),
             },
         },
@@ -333,6 +336,7 @@ def _repo_role(repo: ManagedRepo) -> str:
         "emulebb-org-profile": "public-org-profile",
         "p2p-overlord-agents": "p2p-overlord-suite",
         "p2p-overlord-be": "p2p-overlord-suite",
+        "p2p-overlord-tooling": "p2p-overlord-test-tooling",
     }[repo.name]
 
 
@@ -433,6 +437,12 @@ def canonical_topology() -> WorkspaceTopology:
                 name="p2p-overlord-be",
                 url="https://github.com/emulebb/p2p-overlord-be.git",
                 relative_path="repos\\p2p-overlord-be",
+                branch="develop",
+            ),
+            ManagedRepo(
+                name="p2p-overlord-tooling",
+                url="https://github.com/p2p-overlord/p2p-overlord-tooling.git",
+                relative_path="repos\\p2p-overlord-tooling",
                 branch="develop",
             ),
         ),
