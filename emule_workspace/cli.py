@@ -42,6 +42,7 @@ from .layout import load_layout
 from .locks import WorkspaceLock
 from .materialize import materialize_workspace, sync_workspace
 from .miniupnpc_release import create_miniupnpc_package
+from .product_family import prepare_product_family_repos
 from .python_tests import invoke_python_tests
 from .release import create_amutorrent_package, create_release_package
 from .release_campaign_runner import invoke_release_campaign
@@ -297,15 +298,44 @@ def sync(*, workspace_root: str | None, workspace_name: str | None, artifacts_se
     is_flag=True,
     help="Also run repo-native checks for p2p-overlord and goed2k product-family repositories.",
 )
+@click.option(
+    "--product-family-tier",
+    type=click.Choice(["quick", "quality", "full"]),
+    default="quality",
+    show_default=True,
+    help="Repo-native product-family validation depth used with --include-product-family.",
+)
 @click.pass_context
-def validate(ctx: click.Context, *, include_product_family: bool, workspace_options: WorkspaceOptions, layout) -> None:
+def validate(
+    ctx: click.Context,
+    *,
+    include_product_family: bool,
+    product_family_tier: str,
+    workspace_options: WorkspaceOptions,
+    layout,
+) -> None:
     """Run workspace validation and centralized policy audits."""
 
     del ctx
     _locked(
         "validate",
-        lambda **kwargs: validate_workspace(kwargs["layout"], include_product_family=include_product_family),
+        lambda **kwargs: validate_workspace(
+            kwargs["layout"],
+            include_product_family=include_product_family,
+            product_family_tier=product_family_tier,
+        ),
     )(
+        workspace_options=workspace_options,
+        layout=layout,
+    )
+
+
+@main.command("prepare-product-family")
+@_common_options
+def prepare_product_family(*, workspace_options: WorkspaceOptions, layout) -> None:
+    """Install or fetch dependencies for product-family repositories."""
+
+    _locked("prepare-product-family", lambda **kwargs: prepare_product_family_repos(kwargs["layout"]))(
         workspace_options=workspace_options,
         layout=layout,
     )

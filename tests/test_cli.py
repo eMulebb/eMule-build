@@ -206,6 +206,16 @@ def test_validate_help_exposes_product_family_option() -> None:
 
     assert result.exit_code == 0
     assert "--include-product-family" in result.output
+    assert "--product-family-tier" in result.output
+
+
+def test_prepare_product_family_help_is_available() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(cli.main, ["prepare-product-family", "--help"])
+
+    assert result.exit_code == 0
+    assert "product-family" in result.output
 
 
 def test_package_release_help_exposes_release_version() -> None:

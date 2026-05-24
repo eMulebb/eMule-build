@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 
 from .git import git_output, repo_branch, repo_status_lines, test_app_branch_allowed
 from .layout import WorkspaceLayout
 from .materialize import ROOT_AGENTS_CONTENT
 from .process import find_tool, get_python_invocation, run_native
+from .product_family import ProductFamilyValidationTier, validate_product_family_repos
 from .setup_commands import compare_presets, compare_root
 from .toolchain import get_visual_studio_info
 from .topology import (
@@ -163,44 +163,6 @@ def assert_required_test_helpers(layout: WorkspaceLayout) -> None:
             raise RuntimeError(f"Missing required test helper: {path}")
 
 
-def validate_product_family_repos(layout: WorkspaceLayout) -> None:
-    """Runs repo-native quality checks for non-app product-family repositories."""
-
-    agents_root = layout.p2p_overlord_agents_repo_root
-    if agents_root is not None and agents_root.is_dir():
-        run_native(
-            [_required_product_family_command(("cargo.exe", "cargo"), "Rust cargo"), "fmt", "--all", "--check"],
-            label="p2p-overlord-agents cargo fmt",
-            cwd=agents_root,
-        )
-
-    be_root = layout.p2p_overlord_be_repo_root
-    coordinator_root = be_root / "overlord-be-coordinator" if be_root is not None else None
-    if coordinator_root is not None and coordinator_root.is_dir():
-        run_native(
-            [_required_product_family_command(("npm.cmd", "npm.exe", "npm"), "Node npm"), "run", "quality"],
-            label="p2p-overlord-be coordinator quality",
-            cwd=coordinator_root,
-        )
-
-    goed2k_root = layout.ed2k_server_repo_root
-    if goed2k_root.is_dir():
-        run_native(
-            [_required_product_family_command(("go.exe", "go"), "Go toolchain"), "test", "./..."],
-            label="goed2k-server go test",
-            cwd=goed2k_root,
-        )
-
-
-def _required_product_family_command(names: tuple[str, ...], label: str) -> str:
-    for name in names:
-        if shutil.which(name):
-            return name
-    if find_tool(names) is None:
-        raise RuntimeError(f"{label} was not found on PATH for product-family validation.")
-    return names[0]
-
-
 def ensure_canonical_app_anchor(layout: WorkspaceLayout) -> None:
     """Ensures the canonical app anchor is clean and detached at origin/main."""
 
@@ -249,7 +211,12 @@ def run_policy_audits(layout: WorkspaceLayout) -> None:
         )
 
 
-def validate_workspace(layout: WorkspaceLayout, *, include_product_family: bool = False) -> None:
+def validate_workspace(
+    layout: WorkspaceLayout,
+    *,
+    include_product_family: bool = False,
+    product_family_tier: ProductFamilyValidationTier = "quality",
+) -> None:
     """Runs the first Python-native workspace validation pass."""
 
     env_check(layout)
@@ -263,7 +230,7 @@ def validate_workspace(layout: WorkspaceLayout, *, include_product_family: bool 
     run_policy_audits(layout)
     assert_required_test_helpers(layout)
     if include_product_family:
-        validate_product_family_repos(layout)
+        validate_product_family_repos(layout, tier=product_family_tier)
     print("Workspace validation passed.")
 
 
