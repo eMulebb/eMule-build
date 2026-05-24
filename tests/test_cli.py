@@ -218,6 +218,15 @@ def test_prepare_product_family_help_is_available() -> None:
     assert "product-family" in result.output
 
 
+def test_product_family_toolchain_help_is_available() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(cli.main, ["product-family-toolchain", "--help"])
+
+    assert result.exit_code == 0
+    assert "--strict" in result.output
+
+
 def test_evidence_index_help_is_available() -> None:
     runner = CliRunner()
 

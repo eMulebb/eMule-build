@@ -43,7 +43,7 @@ from .layout import load_layout
 from .locks import WorkspaceLock
 from .materialize import materialize_workspace, sync_workspace
 from .miniupnpc_release import create_miniupnpc_package
-from .product_family import prepare_product_family_repos
+from .product_family import audit_product_family_toolchain, prepare_product_family_repos, print_product_family_toolchain
 from .python_tests import invoke_python_tests
 from .release import create_amutorrent_package, create_release_package
 from .release_campaign_runner import invoke_release_campaign
@@ -337,6 +337,21 @@ def prepare_product_family(*, workspace_options: WorkspaceOptions, layout) -> No
     """Install or fetch dependencies for product-family repositories."""
 
     _locked("prepare-product-family", lambda **kwargs: prepare_product_family_repos(kwargs["layout"]))(
+        workspace_options=workspace_options,
+        layout=layout,
+    )
+
+
+@main.command("product-family-toolchain")
+@_common_options
+@click.option("--strict", is_flag=True, help="Fail when any product-family runtime is missing or outside policy.")
+def product_family_toolchain(*, strict: bool, workspace_options: WorkspaceOptions, layout) -> None:
+    """Report product-family runtime and tool version policy."""
+
+    _locked(
+        "product-family-toolchain",
+        lambda **kwargs: print_product_family_toolchain(audit_product_family_toolchain(strict=strict)),
+    )(
         workspace_options=workspace_options,
         layout=layout,
     )
