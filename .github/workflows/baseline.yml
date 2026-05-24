@@ -6,11 +6,11 @@ on:
 
 jobs:
   baseline:
-    uses: emulebb/emulebb-tooling/.github/workflows/reusable-baseline.yml@main
+    uses: emulebb/emulebb-tooling/.github/workflows/reusable-baseline.yml@ci/v8
     with:
       policy_path: manifests/privacy-guard/policy.v1.json
       repo_kind: generic
       extra_commands: |
         python -m pip install -e .[dev]
         python -m pytest
-      tooling_ref: main
+      tooling_ref: ci/v8
