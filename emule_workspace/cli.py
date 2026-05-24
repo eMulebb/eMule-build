@@ -46,7 +46,7 @@ from .python_tests import invoke_python_tests
 from .release import create_amutorrent_package, create_release_package
 from .release_campaign_runner import invoke_release_campaign
 from .setup_commands import run_compare, write_dependency_update_report, write_materialization_status
-from .status import write_dependency_status, write_workspace_summary
+from .status import write_dependency_status, write_workspace_repo_status, write_workspace_summary
 from .test_runs import (
     invoke_amutorrent_clean_startup,
     invoke_amutorrent_emulebb_ui,
@@ -292,12 +292,20 @@ def sync(*, workspace_root: str | None, workspace_name: str | None, artifacts_se
 
 @main.command()
 @_common_options
+@click.option(
+    "--include-product-family",
+    is_flag=True,
+    help="Also run repo-native checks for p2p-overlord and goed2k product-family repositories.",
+)
 @click.pass_context
-def validate(ctx: click.Context, *, workspace_options: WorkspaceOptions, layout) -> None:
+def validate(ctx: click.Context, *, include_product_family: bool, workspace_options: WorkspaceOptions, layout) -> None:
     """Run workspace validation and centralized policy audits."""
 
     del ctx
-    _locked("validate", lambda **kwargs: validate_workspace(kwargs["layout"]))(
+    _locked(
+        "validate",
+        lambda **kwargs: validate_workspace(kwargs["layout"], include_product_family=include_product_family),
+    )(
         workspace_options=workspace_options,
         layout=layout,
     )
@@ -353,6 +361,17 @@ def dep_status(*, workspace_options: WorkspaceOptions, layout) -> None:
     """Report dependency and app worktree status."""
 
     _locked("dep-status", lambda **kwargs: write_dependency_status(kwargs["layout"]))(
+        workspace_options=workspace_options,
+        layout=layout,
+    )
+
+
+@main.command("workspace-status")
+@_common_options
+def workspace_status(*, workspace_options: WorkspaceOptions, layout) -> None:
+    """Report branch, upstream, and dirty-state for every managed workspace repo."""
+
+    _locked("workspace-status", lambda **kwargs: write_workspace_repo_status(kwargs["layout"]))(
         workspace_options=workspace_options,
         layout=layout,
     )

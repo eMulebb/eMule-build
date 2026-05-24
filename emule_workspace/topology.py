@@ -14,6 +14,20 @@ WORKSPACE_MANIFEST_SCHEMA_VERSION = 5
 DEFAULT_WORKSPACE_NAME = "workspace"
 WORKSPACE_PROPS_FILE_NAME = "workspace.props"
 SETUP_LOG_FILE_NAME = "emulebb-workspace.log"
+SHARED_HOOK_REPO_NAMES = frozenset(
+    {
+        "emulebb-build",
+        "emulebb-build-tests",
+        "emulebb-tooling",
+        "amutorrent",
+        "goed2k-server",
+        "amule",
+        "emulebb-pages",
+        "emulebb-org-profile",
+        "p2p-overlord-agents",
+        "p2p-overlord-be",
+    }
+)
 
 
 class AdditionalRemote(BaseModel):

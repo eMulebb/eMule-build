@@ -60,6 +60,35 @@ def test_package_build_outputs_are_explicit_build_output_cleanup(tmp_path: Path)
     assert package_build_output.parents[3] in {candidate.path for candidate in build_candidates}
 
 
+def test_cleanup_selects_generated_state_paths_with_trailing_space_or_dot(tmp_path: Path) -> None:
+    layout = make_layout(tmp_path)
+    trailing_space_dir = (
+        layout.workspace_root
+        / "state"
+        / "test-reports"
+        / "shared-directories-rest"
+        / "latest"
+        / "shared-rest-exact-names. "
+    )
+    trailing_space_dir.parent.mkdir(parents=True)
+    os.mkdir("\\\\?\\" + str(trailing_space_dir))
+    trailing_dot_file = layout.workspace_root / "state" / "test-artifacts" / "suite" / "run" / "result."
+    trailing_dot_file.parent.mkdir(parents=True)
+    with open("\\\\?\\" + str(trailing_dot_file), "wb") as stream:
+        stream.write(b"x" * 10)
+
+    candidates = plan_cleanup(layout, CleanupOptions())
+    candidate_paths = {candidate.path for candidate in candidates}
+    path_anomalies = {candidate.path for candidate in candidates if candidate.category == "path-anomaly"}
+
+    assert trailing_space_dir in candidate_paths
+    assert trailing_dot_file in candidate_paths
+    assert {trailing_space_dir, trailing_dot_file} <= path_anomalies
+    for candidate in candidates:
+        if candidate.path in {trailing_space_dir, trailing_dot_file}:
+            cleanup._delete_candidate(candidate)
+
+
 def test_delete_candidate_uses_windows_long_path_prefix(tmp_path: Path, monkeypatch) -> None:
     layout = make_layout(tmp_path)
     edge_path = layout.workspace_root / "state" / "test-reports" / "shared-directories-rest" / "20260501-run" / "shared-rest-exact-names. "

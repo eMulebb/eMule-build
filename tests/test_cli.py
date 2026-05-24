@@ -190,6 +190,24 @@ def test_dep_status_help_is_available() -> None:
     assert "Report dependency" in result.output
 
 
+def test_workspace_status_help_is_available() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(cli.main, ["workspace-status", "--help"])
+
+    assert result.exit_code == 0
+    assert "dirty-state" in result.output
+
+
+def test_validate_help_exposes_product_family_option() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(cli.main, ["validate", "--help"])
+
+    assert result.exit_code == 0
+    assert "--include-product-family" in result.output
+
+
 def test_package_release_help_exposes_release_version() -> None:
     runner = CliRunner()
 

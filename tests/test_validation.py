@@ -141,3 +141,32 @@ def test_required_workspace_paths_include_topology_managed_repos(
 
     with pytest.raises(RuntimeError, match="emulebb-pages"):
         validation.assert_required_workspace_paths(layout)
+
+
+def test_product_family_validation_runs_repo_native_checks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agents_root = tmp_path / "repos" / "p2p-overlord-agents"
+    coordinator_root = tmp_path / "repos" / "p2p-overlord-be" / "overlord-be-coordinator"
+    goed2k_root = tmp_path / "repos" / "goed2k-server"
+    for path in (agents_root, coordinator_root, goed2k_root):
+        path.mkdir(parents=True)
+    calls: list[tuple[tuple[str, ...], Path]] = []
+
+    def fake_run_native(command, **kwargs):
+        calls.append((tuple(command), kwargs["cwd"]))
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(validation, "run_native", fake_run_native)
+    layout = SimpleNamespace(
+        p2p_overlord_agents_repo_root=agents_root,
+        p2p_overlord_be_repo_root=tmp_path / "repos" / "p2p-overlord-be",
+        ed2k_server_repo_root=goed2k_root,
+    )
+
+    validation.validate_product_family_repos(layout)
+
+    assert (("cargo", "fmt", "--all", "--check"), agents_root) in calls
+    assert (("npm", "run", "quality"), coordinator_root) in calls
+    assert (("go", "test", "./..."), goed2k_root) in calls

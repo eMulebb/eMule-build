@@ -11,6 +11,7 @@ from .process import find_tool, get_python_invocation, run_native
 from .setup_commands import compare_presets, compare_root
 from .toolchain import get_visual_studio_info
 from .topology import (
+    SHARED_HOOK_REPO_NAMES,
     WORKSPACE_MANIFEST_NAME,
     WORKSPACE_PROPS_FILE_NAME,
     build_workspace_manifest,
@@ -119,8 +120,7 @@ def assert_workspace_hooks_installed(layout: WorkspaceLayout) -> None:
     expected_hooks_path = (layout.emule_workspace_root / "repos" / "emulebb-tooling" / "hooks").resolve()
     if not (expected_hooks_path / "pre-commit").is_file():
         raise RuntimeError(f"Shared pre-commit hook is missing: {expected_hooks_path / 'pre-commit'}")
-    hook_repo_names = {"emulebb-build", "emulebb-build-tests", "emulebb-tooling"}
-    targets = [layout.emule_workspace_root / repo.relative_path for repo in topology.repos if repo.name in hook_repo_names]
+    targets = [layout.emule_workspace_root / repo.relative_path for repo in topology.repos if repo.name in SHARED_HOOK_REPO_NAMES]
     targets.extend(layout.emule_workspace_root / worktree.relative_path for worktree in topology.app_repo.worktrees if worktree.active)
     for target in targets:
         configured = run_native(
@@ -160,6 +160,35 @@ def assert_required_test_helpers(layout: WorkspaceLayout) -> None:
         path = layout.tests_repo_root / Path(relative_path)
         if not path.is_file():
             raise RuntimeError(f"Missing required test helper: {path}")
+
+
+def validate_product_family_repos(layout: WorkspaceLayout) -> None:
+    """Runs repo-native quality checks for non-app product-family repositories."""
+
+    agents_root = layout.p2p_overlord_agents_repo_root
+    if agents_root is not None and agents_root.is_dir():
+        run_native(
+            ["cargo", "fmt", "--all", "--check"],
+            label="p2p-overlord-agents cargo fmt",
+            cwd=agents_root,
+        )
+
+    be_root = layout.p2p_overlord_be_repo_root
+    coordinator_root = be_root / "overlord-be-coordinator" if be_root is not None else None
+    if coordinator_root is not None and coordinator_root.is_dir():
+        run_native(
+            ["npm", "run", "quality"],
+            label="p2p-overlord-be coordinator quality",
+            cwd=coordinator_root,
+        )
+
+    goed2k_root = layout.ed2k_server_repo_root
+    if goed2k_root.is_dir():
+        run_native(
+            ["go", "test", "./..."],
+            label="goed2k-server go test",
+            cwd=goed2k_root,
+        )
 
 
 def ensure_canonical_app_anchor(layout: WorkspaceLayout) -> None:
@@ -210,7 +239,7 @@ def run_policy_audits(layout: WorkspaceLayout) -> None:
         )
 
 
-def validate_workspace(layout: WorkspaceLayout) -> None:
+def validate_workspace(layout: WorkspaceLayout, *, include_product_family: bool = False) -> None:
     """Runs the first Python-native workspace validation pass."""
 
     env_check(layout)
@@ -223,6 +252,8 @@ def validate_workspace(layout: WorkspaceLayout) -> None:
     ensure_canonical_app_anchor(layout)
     run_policy_audits(layout)
     assert_required_test_helpers(layout)
+    if include_product_family:
+        validate_product_family_repos(layout)
     print("Workspace validation passed.")
 
 

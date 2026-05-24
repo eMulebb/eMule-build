@@ -124,6 +124,7 @@ def plan_cleanup(layout: WorkspaceLayout, options: CleanupOptions) -> list[Clean
 
     now = datetime.now()
     candidates: list[CleanupCandidate] = []
+    candidates.extend(_path_anomaly_candidates(layout))
     candidates.extend(_test_artifact_candidates(layout, options, now))
     candidates.extend(_legacy_live_e2e_artifact_candidates(layout, options, now))
     candidates.extend(_report_payload_candidates(layout, options, now))
@@ -136,6 +137,60 @@ def plan_cleanup(layout: WorkspaceLayout, options: CleanupOptions) -> list[Clean
     if options.include_release_state:
         candidates.extend(_release_state_candidates(layout))
     return _dedupe_candidates(candidates)
+
+
+def _path_anomaly_candidates(layout: WorkspaceLayout) -> list[CleanupCandidate]:
+    root = layout.workspace_root / "state"
+    if not root.is_dir():
+        return []
+    candidates: list[CleanupCandidate] = []
+    stack = [root]
+    while stack:
+        current = stack.pop()
+        try:
+            entries = list(os.scandir(current))
+        except OSError:
+            continue
+        for entry in entries:
+            path = Path(entry.path)
+            anomalous_name = entry.name != entry.name.rstrip(" .")
+            try:
+                is_directory = entry.is_dir(follow_symlinks=False)
+                is_file = entry.is_file(follow_symlinks=False)
+            except OSError:
+                is_directory = False
+                is_file = False
+            if anomalous_name:
+                kind = "directory" if is_directory else "file"
+                candidates.append(_path_anomaly_candidate(path, kind))
+                continue
+            if is_directory:
+                stack.append(path)
+    return candidates
+
+
+def _path_anomaly_candidate(path: Path, kind: str) -> CleanupCandidate:
+    reason = "generated state path has trailing spaces or dots that break recursive tools"
+    if kind == "directory" and path.is_dir():
+        try:
+            candidate = _directory_candidate(path, "path-anomaly", reason)
+            return CleanupCandidate(
+                candidate.path,
+                candidate.kind,
+                candidate.category,
+                candidate.reason,
+                candidate.bytes,
+                candidate.files,
+                candidate.estimated,
+            )
+        except OSError:
+            return CleanupCandidate(path, "directory", "path-anomaly", reason, 0, 0, estimated=True)
+    if kind == "file" and path.is_file():
+        try:
+            return _file_candidate(path, "path-anomaly", reason)
+        except OSError:
+            return CleanupCandidate(path, "file", "path-anomaly", reason, 0, 1, estimated=True)
+    return CleanupCandidate(path, kind, "path-anomaly", reason, 0, 0, estimated=True)
 
 
 def _test_artifact_candidates(layout: WorkspaceLayout, options: CleanupOptions, now: datetime) -> list[CleanupCandidate]:

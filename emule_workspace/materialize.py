@@ -14,6 +14,7 @@ from .process import find_tool, run_captured, run_native
 from .topology import (
     AppRepo,
     SETUP_LOG_FILE_NAME,
+    SHARED_HOOK_REPO_NAMES,
     WORKSPACE_MANIFEST_NAME,
     WORKSPACE_PROPS_FILE_NAME,
     WorkspaceTopology,
@@ -502,8 +503,7 @@ def install_workspace_hooks(root: Path, topology: WorkspaceTopology) -> None:
     hooks_path = root / "repos" / "emulebb-tooling" / "hooks"
     if not (hooks_path / "pre-commit").is_file():
         raise RuntimeError(f"Shared pre-commit hook is missing: {hooks_path / 'pre-commit'}")
-    hook_repo_names = {"emulebb-build", "emulebb-build-tests", "emulebb-tooling"}
-    targets = [root / repo.relative_path for repo in topology.repos if repo.name in hook_repo_names]
+    targets = [root / repo.relative_path for repo in topology.repos if repo.name in SHARED_HOOK_REPO_NAMES]
     targets.extend(root / worktree.relative_path for worktree in topology.app_repo.worktrees if worktree.active)
     for target in targets:
         if not target.is_dir():
