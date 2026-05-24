@@ -18,7 +18,9 @@ from .topology import (
     WORKSPACE_MANIFEST_NAME,
     WORKSPACE_PROPS_FILE_NAME,
     WorkspaceTopology,
+    REPO_ROLE_MANIFEST_NAME,
     build_workspace_manifest,
+    build_repo_role_manifest,
     canonical_topology,
     write_json,
 )
@@ -106,6 +108,7 @@ def sync_workspace(
     overlay_seed_artifacts(root, topology, artifacts_seed_root, resolved_workspace_name)
     write_workspace_props(root)
     write_workspace_manifest(root, topology, resolved_workspace_name)
+    write_repo_role_manifest(root, topology, resolved_workspace_name)
     if include_worktrees:
         ensure_app_worktrees(root, topology)
         remove_legacy_app_dependency_links(root, topology)
@@ -472,6 +475,13 @@ def write_workspace_manifest(root: Path, topology: WorkspaceTopology, workspace_
 
     path = root / "workspaces" / workspace_name / WORKSPACE_MANIFEST_NAME
     write_json(path, build_workspace_manifest(topology, workspace_name))
+
+
+def write_repo_role_manifest(root: Path, topology: WorkspaceTopology, workspace_name: str) -> None:
+    """Writes the generated repository role manifest."""
+
+    path = root / "workspaces" / workspace_name / REPO_ROLE_MANIFEST_NAME
+    write_json(path, build_repo_role_manifest(topology, workspace_name))
 
 
 def write_compare_launchers(root: Path) -> None:

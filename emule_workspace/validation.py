@@ -13,8 +13,10 @@ from .setup_commands import compare_presets, compare_root
 from .toolchain import get_visual_studio_info
 from .topology import (
     SHARED_HOOK_REPO_NAMES,
+    REPO_ROLE_MANIFEST_NAME,
     WORKSPACE_MANIFEST_NAME,
     WORKSPACE_PROPS_FILE_NAME,
+    build_repo_role_manifest,
     build_workspace_manifest,
     canonical_topology,
     load_json,
@@ -43,6 +45,7 @@ def assert_required_workspace_paths(layout: WorkspaceLayout) -> None:
         layout.emule_workspace_root,
         layout.workspace_root,
         layout.workspace_root / WORKSPACE_MANIFEST_NAME,
+        layout.workspace_root / REPO_ROLE_MANIFEST_NAME,
         layout.emule_workspace_root / WORKSPACE_PROPS_FILE_NAME,
         layout.emule_workspace_root / "analysis" / "compare",
         layout.emule_workspace_root / "AGENTS.md",
@@ -69,6 +72,17 @@ def assert_generated_workspace_manifest(layout: WorkspaceLayout) -> None:
     expected = build_workspace_manifest(topology, layout.workspace_name)
     if actual != expected:
         raise RuntimeError(f"Workspace manifest drifted from Python topology: {manifest_path}. Run sync to regenerate it.")
+
+
+def assert_generated_repo_role_manifest(layout: WorkspaceLayout) -> None:
+    """Checks that the generated repository role manifest matches Python topology."""
+
+    topology = canonical_topology()
+    manifest_path = layout.workspace_root / REPO_ROLE_MANIFEST_NAME
+    actual = load_json(manifest_path)
+    expected = build_repo_role_manifest(topology, layout.workspace_name)
+    if actual != expected:
+        raise RuntimeError(f"Repository role manifest drifted from Python topology: {manifest_path}. Run sync to regenerate it.")
 
 
 def assert_root_agents_file(layout: WorkspaceLayout) -> None:
@@ -222,6 +236,7 @@ def validate_workspace(
     env_check(layout)
     assert_required_workspace_paths(layout)
     assert_generated_workspace_manifest(layout)
+    assert_generated_repo_role_manifest(layout)
     assert_root_agents_file(layout)
     assert_app_layout(layout)
     assert_compare_targets(layout)

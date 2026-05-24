@@ -11,6 +11,8 @@ from pydantic import BaseModel, ConfigDict, field_validator
 BUILD_MANIFEST_NAME = "deps.json"
 WORKSPACE_MANIFEST_NAME = "deps.json"
 WORKSPACE_MANIFEST_SCHEMA_VERSION = 5
+REPO_ROLE_MANIFEST_NAME = "repo-roles.json"
+REPO_ROLE_MANIFEST_SCHEMA_VERSION = 1
 DEFAULT_WORKSPACE_NAME = "workspace"
 WORKSPACE_PROPS_FILE_NAME = "workspace.props"
 SETUP_LOG_FILE_NAME = "emulebb-workspace.log"
@@ -254,10 +256,92 @@ def build_workspace_manifest(topology: WorkspaceTopology, workspace_name: str | 
     }
 
 
+def build_repo_role_manifest(topology: WorkspaceTopology, workspace_name: str | None = None) -> dict[str, Any]:
+    """Builds the generated repository role manifest for agents and tooling."""
+
+    resolved_workspace_name = workspace_name or topology.default_workspace_name
+    return {
+        "schema_version": REPO_ROLE_MANIFEST_SCHEMA_VERSION,
+        "workspace": {"name": resolved_workspace_name},
+        "app_repo": {
+            **_repo_role_payload(topology.app_repo, role="app-seed", group="app"),
+            "worktrees": [
+                {
+                    "name": worktree.name,
+                    "role": "app-worktree",
+                    "group": "app",
+                    "relative_path": worktree.relative_path,
+                    "branch": worktree.branch,
+                    "active": worktree.active,
+                    "source_repo": topology.app_repo.name,
+                }
+                for worktree in topology.app_repo.worktrees
+            ],
+        },
+        "repos": [
+            _repo_role_payload(repo, role=_repo_role(repo), group=_repo_group(repo))
+            for repo in topology.repos
+        ],
+        "analysis_repos": [
+            _repo_role_payload(repo, role="analysis-reference", group="analysis")
+            for repo in topology.analysis_repos
+        ],
+        "third_party_repos": [
+            _repo_role_payload(repo, role="third-party-dependency", group="third-party")
+            for repo in topology.third_party_repos
+        ],
+    }
+
+
 def validate_workspace_manifest_contract(payload: dict[str, Any]) -> WorkspaceManifestContract:
     """Validates one generated workspace manifest payload."""
 
     return WorkspaceManifestContract.model_validate(payload)
+
+
+def _repo_role_payload(repo: ManagedRepo, *, role: str, group: str) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "name": repo.name,
+        "role": role,
+        "group": group,
+        "relative_path": repo.relative_path,
+        "branch": repo.branch,
+        "url": repo.url,
+        "branch_optional": repo.branch_optional,
+        "has_submodules": repo.has_submodules,
+        "additional_remotes": [
+            {"name": remote.name, "url": remote.url}
+            for remote in repo.additional_remotes
+        ],
+    }
+    if repo.compare_subdir is not None:
+        payload["compare_subdir"] = repo.compare_subdir
+    if repo.update_policy is not None:
+        payload["update_policy"] = repo.update_policy.model_dump(exclude_none=True)
+    return payload
+
+
+def _repo_role(repo: ManagedRepo) -> str:
+    return {
+        "emulebb-build": "workspace-orchestration",
+        "emulebb-build-tests": "test-harness",
+        "emulebb-tooling": "workspace-policy-and-docs",
+        "amutorrent": "optional-controller",
+        "goed2k-server": "local-ed2k-test-server",
+        "amule": "optional-client-build",
+        "emulebb-pages": "public-docs-site",
+        "emulebb-org-profile": "public-org-profile",
+        "p2p-overlord-agents": "p2p-overlord-suite",
+        "p2p-overlord-be": "p2p-overlord-suite",
+    }[repo.name]
+
+
+def _repo_group(repo: ManagedRepo) -> str:
+    if repo.name in {"emulebb-build", "emulebb-build-tests", "emulebb-tooling"}:
+        return "workspace"
+    if repo.name in {"emulebb-pages", "emulebb-org-profile"}:
+        return "public-presence"
+    return "product-family"
 
 
 def canonical_topology() -> WorkspaceTopology:

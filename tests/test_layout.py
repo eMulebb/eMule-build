@@ -9,6 +9,7 @@ from emule_workspace.layout import AppVariant, TestTargets as LayoutTestTargets,
 from emule_workspace.setup_commands import compare_root
 from emule_workspace.topology import (
     WORKSPACE_MANIFEST_SCHEMA_VERSION,
+    build_repo_role_manifest,
     build_workspace_manifest,
     canonical_topology,
     validate_workspace_manifest_contract,
@@ -43,6 +44,37 @@ def test_workspace_manifest_uses_json_contract_shape() -> None:
         "path": "app\\emulebb-main",
         "branch": "main",
     }
+
+
+def test_repo_role_manifest_describes_workspace_repositories() -> None:
+    manifest = build_repo_role_manifest(canonical_topology(), "workspace")
+
+    assert manifest["schema_version"] == 1
+    assert manifest["workspace"]["name"] == "workspace"
+    assert manifest["app_repo"]["name"] == "emulebb"
+    assert manifest["app_repo"]["role"] == "app-seed"
+    assert manifest["app_repo"]["worktrees"][0] == {
+        "name": "main",
+        "role": "app-worktree",
+        "group": "app",
+        "relative_path": "workspaces\\workspace\\app\\emulebb-main",
+        "branch": "main",
+        "active": True,
+        "source_repo": "emulebb",
+    }
+
+    repos = {repo["name"]: repo for repo in manifest["repos"]}
+    assert repos["emulebb-build"]["role"] == "workspace-orchestration"
+    assert repos["emulebb-tooling"]["group"] == "workspace"
+    assert repos["p2p-overlord-be"]["role"] == "p2p-overlord-suite"
+    assert repos["goed2k-server"]["role"] == "local-ed2k-test-server"
+
+    analysis_repos = {repo["name"]: repo for repo in manifest["analysis_repos"]}
+    assert analysis_repos["emuleai"]["role"] == "analysis-reference"
+
+    third_party_repos = {repo["name"]: repo for repo in manifest["third_party_repos"]}
+    assert third_party_repos["emulebb-zlib"]["role"] == "third-party-dependency"
+    assert "update_policy" in third_party_repos["emulebb-zlib"]
 
 
 def test_canonical_topology_materializes_web_repositories_under_repos() -> None:

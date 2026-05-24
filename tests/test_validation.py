@@ -109,6 +109,7 @@ def test_required_workspace_paths_include_topology_managed_repos(
     ):
         path.mkdir(parents=True, exist_ok=True)
     (workspace_root / "deps.json").write_text("{}\n", encoding="utf-8")
+    (workspace_root / "repo-roles.json").write_text("{}\n", encoding="utf-8")
     monkeypatch.setattr(
         validation,
         "canonical_topology",
