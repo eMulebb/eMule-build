@@ -38,6 +38,21 @@ def test_heavy_evidence_index_write_uses_generated_state_file(tmp_path: Path) ->
     assert written["entries"][0]["tier"] == "release-proof"
 
 
+def test_heavy_evidence_index_marks_latest_aliases(tmp_path: Path) -> None:
+    layout = make_layout(tmp_path)
+    write_file(layout.workspace_root / "state" / "test-reports" / "resource-ui-smoke" / "result.json", 2048)
+    write_file(layout.workspace_root / "state" / "test-reports" / "resource-ui-smoke-latest" / "result.json", 2048)
+
+    payload = build_heavy_evidence_index(layout, threshold_mb=0.001)
+    entries = {entry["path"]: entry for entry in payload["entries"]}
+    latest = entries["workspaces\\workspace\\state\\test-reports\\resource-ui-smoke-latest"]
+
+    assert latest["latest_alias"] == {
+        "base_path": "workspaces\\workspace\\state\\test-reports\\resource-ui-smoke",
+        "base_exists": True,
+    }
+
+
 def write_file(path: Path, size: int) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"x" * size)

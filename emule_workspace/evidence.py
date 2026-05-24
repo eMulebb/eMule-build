@@ -163,13 +163,27 @@ def _entry_from_directory(path: Path, tier: str, category: str) -> EvidenceEntry
 
 
 def _entry_payload(layout: WorkspaceLayout, entry: EvidenceEntry) -> dict[str, Any]:
-    return {
+    payload = {
         "path": _workspace_relative(layout, entry.path),
         "tier": entry.tier,
         "category": entry.category,
         "bytes": entry.bytes,
         "files": entry.files,
         "last_write_utc": entry.last_write_time.replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+    }
+    latest_alias = _latest_alias_payload(layout, entry.path)
+    if latest_alias is not None:
+        payload["latest_alias"] = latest_alias
+    return payload
+
+
+def _latest_alias_payload(layout: WorkspaceLayout, path: Path) -> dict[str, Any] | None:
+    if not path.name.endswith("-latest"):
+        return None
+    base_path = path.with_name(path.name.removesuffix("-latest"))
+    return {
+        "base_path": _workspace_relative(layout, base_path),
+        "base_exists": base_path.exists(),
     }
 
 
