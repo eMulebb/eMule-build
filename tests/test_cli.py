@@ -218,6 +218,16 @@ def test_prepare_product_family_help_is_available() -> None:
     assert "product-family" in result.output
 
 
+def test_evidence_index_help_is_available() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(cli.main, ["evidence-index", "--help"])
+
+    assert result.exit_code == 0
+    assert "--threshold-mb" in result.output
+    assert "--no-write" in result.output
+
+
 def test_package_release_help_exposes_release_version() -> None:
     runner = CliRunner()
 

@@ -37,6 +37,7 @@ from .config import (
     WorkspaceOptions,
     resolve_workspace_options,
 )
+from .evidence import build_heavy_evidence_index, print_heavy_evidence_index, write_heavy_evidence_index
 from .amule_release import create_amule_package
 from .layout import load_layout
 from .locks import WorkspaceLock
@@ -392,6 +393,25 @@ def cleanup(
         workspace_options=workspace_options,
         layout=layout,
     )
+
+
+@main.command("evidence-index")
+@_common_options
+@click.option("--threshold-mb", default=512.0, show_default=True, type=float, help="Minimum directory size to include.")
+@click.option("--write/--no-write", default=True, show_default=True, help="Write state/heavy-evidence-index.json.")
+def evidence_index(*, threshold_mb: float, write: bool, workspace_options: WorkspaceOptions, layout) -> None:
+    """Index large generated evidence directories before cleanup decisions."""
+
+    def run(**kwargs):
+        target_layout = kwargs["layout"]
+        payload = (
+            write_heavy_evidence_index(target_layout, threshold_mb=threshold_mb)
+            if write
+            else build_heavy_evidence_index(target_layout, threshold_mb=threshold_mb)
+        )
+        print_heavy_evidence_index(target_layout, payload)
+
+    _locked("evidence-index", run)(workspace_options=workspace_options, layout=layout)
 
 
 @main.command("dep-status")
