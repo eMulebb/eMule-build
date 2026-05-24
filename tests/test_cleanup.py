@@ -97,6 +97,24 @@ def test_root_legacy_state_and_logs_are_explicit_cleanup(tmp_path: Path) -> None
     assert current_log not in {candidate.path for candidate in legacy_candidates}
 
 
+def test_profiling_artifacts_are_explicit_cleanup(tmp_path: Path) -> None:
+    layout = make_layout(tmp_path)
+    diagnostic_dump = write_file(layout.workspace_root / "state" / "diagnostics" / "pid-100-cpu-spikes" / "sample.dmp", 10)
+    pageheap_report = write_file(layout.workspace_root / "state" / "test-reports" / "real-live-pageheap" / "trace.etl", 10)
+    normal_report = write_file(layout.workspace_root / "state" / "test-reports" / "live-e2e-suite" / "result.json", 10)
+    crash_evidence = write_file(layout.workspace_root / "state" / "crash-evidence" / "crash.dmp", 10)
+
+    routine_candidates = plan_cleanup(layout, CleanupOptions())
+    profiling_candidates = plan_cleanup(layout, CleanupOptions(include_profiling_artifacts=True))
+
+    assert diagnostic_dump.parent not in {candidate.path for candidate in routine_candidates}
+    assert pageheap_report.parent not in {candidate.path for candidate in routine_candidates}
+    assert diagnostic_dump.parent in {candidate.path for candidate in profiling_candidates}
+    assert pageheap_report.parent in {candidate.path for candidate in profiling_candidates}
+    assert crash_evidence.parent in {candidate.path for candidate in profiling_candidates}
+    assert normal_report.parent not in {candidate.path for candidate in profiling_candidates}
+
+
 def test_cleanup_selects_generated_state_paths_with_trailing_space_or_dot(tmp_path: Path) -> None:
     layout = make_layout(tmp_path)
     trailing_space_dir = (

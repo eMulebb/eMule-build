@@ -38,6 +38,16 @@ REPORT_PAYLOAD_DIRECTORY_NAMES = {
     "temp",
 }
 MAX_DIRECTORY_SIZE_SCAN_FILES = 2000
+PROFILING_ARTIFACT_NAME_MARKERS = (
+    "cpu",
+    "diagnostic",
+    "dump",
+    "live-monitor",
+    "memory-profile",
+    "pageheap",
+    "process-monitor",
+    "umdh",
+)
 
 
 @dataclass(frozen=True)
@@ -142,6 +152,8 @@ def plan_cleanup(layout: WorkspaceLayout, options: CleanupOptions) -> list[Clean
         candidates.extend(_root_legacy_state_candidates(layout))
     if options.include_legacy_root_logs:
         candidates.extend(_legacy_root_log_candidates(layout))
+    if options.include_profiling_artifacts:
+        candidates.extend(_profiling_artifact_candidates(layout))
     return _dedupe_candidates(candidates)
 
 
@@ -452,6 +464,27 @@ def _legacy_root_log_candidates(layout: WorkspaceLayout) -> list[CleanupCandidat
     if path.is_file():
         return [_file_candidate(path, "legacy-root-log", "retired root-level workspace log")]
     return []
+
+
+def _profiling_artifact_candidates(layout: WorkspaceLayout) -> list[CleanupCandidate]:
+    candidates: list[CleanupCandidate] = []
+    state_root = layout.workspace_root / "state"
+    for path in _child_directories(state_root / "diagnostics"):
+        candidates.append(_directory_candidate(path, "profiling-artifact", "diagnostic profiling run"))
+    for name in ("crash-evidence", "live-process-monitor-launch", "startup-progress-diagnostics"):
+        path = state_root / name
+        if path.is_dir():
+            candidates.append(_directory_candidate(path, "profiling-artifact", "profiling diagnostic state"))
+    for root_name in ("test-reports", "test-artifacts"):
+        for path in _child_directories(state_root / root_name):
+            if _is_profiling_artifact_name(path.name):
+                candidates.append(_directory_candidate(path, "profiling-artifact", "profiling-oriented test output"))
+    return candidates
+
+
+def _is_profiling_artifact_name(name: str) -> bool:
+    normalized = name.lower()
+    return any(marker in normalized for marker in PROFILING_ARTIFACT_NAME_MARKERS)
 
 
 def _optional_root(layout: WorkspaceLayout, attribute: str) -> Path:

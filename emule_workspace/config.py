@@ -346,6 +346,7 @@ class CleanupOptions(BaseModel):
     include_product_family_outputs: bool = False
     include_root_legacy_state: bool = False
     include_legacy_root_logs: bool = False
+    include_profiling_artifacts: bool = False
 
 
 def resolve_workspace_options(

@@ -356,6 +356,7 @@ def prepare_product_family(*, workspace_options: WorkspaceOptions, layout) -> No
 @click.option("--include-product-family-outputs", is_flag=True, help="Also prune generated outputs from product-family repos.")
 @click.option("--include-root-legacy-state", is_flag=True, help="Also prune legacy generated state directories at workspace root.")
 @click.option("--include-legacy-root-logs", is_flag=True, help="Also prune retired root-level workspace log files.")
+@click.option("--include-profiling-artifacts", is_flag=True, help="Also prune profiling diagnostics, dumps, ETW, UMDH, and pageheap output.")
 def cleanup(
     *,
     apply_cleanup: bool,
@@ -370,6 +371,7 @@ def cleanup(
     include_product_family_outputs: bool,
     include_root_legacy_state: bool,
     include_legacy_root_logs: bool,
+    include_profiling_artifacts: bool,
     workspace_options: WorkspaceOptions,
     layout,
 ) -> None:
@@ -388,6 +390,7 @@ def cleanup(
         include_product_family_outputs=include_product_family_outputs,
         include_root_legacy_state=include_root_legacy_state,
         include_legacy_root_logs=include_legacy_root_logs,
+        include_profiling_artifacts=include_profiling_artifacts,
     )
     _locked("cleanup", lambda **kwargs: cleanup_workspace(kwargs["layout"], cleanup_options))(
         workspace_options=workspace_options,
