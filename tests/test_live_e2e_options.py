@@ -232,6 +232,7 @@ def test_live_e2e_forwards_godzilla_visible_ui_and_lan_bind(tmp_path: Path, monk
             godzilla_p2p_bind_interface_address="192.168.1.210",
             godzilla_visible_ui=True,
             godzilla_cpu_profile=True,
+            godzilla_vhd_runtime_root="drive-letter",
         ),
     )
 
@@ -239,6 +240,7 @@ def test_live_e2e_forwards_godzilla_visible_ui_and_lan_bind(tmp_path: Path, monk
     assert isinstance(command, list)
     assert option_values(command, "--p2p-bind-interface-name") == ["Ethernet"]
     assert option_values(command, "--godzilla-p2p-bind-interface-address") == ["192.168.1.210"]
+    assert option_values(command, "--godzilla-vhd-runtime-root") == ["drive-letter"]
     assert "--godzilla-visible-ui" in command
     assert "--godzilla-cpu-profile" in command
 

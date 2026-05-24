@@ -207,6 +207,13 @@ def _live_e2e_options(function: F) -> F:
     @click.option("--godzilla-visible-ui", is_flag=True, help="Run the Godzilla local swarm with visible eMuleBB windows.")
     @click.option("--godzilla-p2p-bind-interface-address", default=None, help="Explicit LAN IPv4 address forwarded to the Godzilla local swarm.")
     @click.option("--godzilla-cpu-profile", is_flag=True, help="Capture a bounded ETW CPU profile for the Godzilla local swarm.")
+    @click.option(
+        "--godzilla-vhd-runtime-root",
+        type=click.Choice(["drive-letter", "folder-mount"]),
+        default="drive-letter",
+        show_default=True,
+        help="Runtime root used by Godzilla VHD fixtures; drive-letter keeps legacy harness paths short.",
+    )
     @click.option("--rest-cold-start-dump-stress-waves", default=4, show_default=True, type=int)
     @click.option("--rest-cold-start-dump-stress-searches-per-wave", default=12, show_default=True, type=int)
     @click.option("--rest-cold-start-dump-stress-max-concurrent-searches", default=8, show_default=True, type=int)
