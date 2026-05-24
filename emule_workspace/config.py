@@ -147,6 +147,8 @@ class LiveE2eOptions(BaseModel):
     rest_stop_start_after_churn: bool = False
     search_ui_search_rounds: int = 1
     search_ui_download_lifecycle_count: int = 1
+    godzilla_visible_ui: bool = False
+    godzilla_p2p_bind_interface_address: str | None = None
     rest_cold_start_dump_stress_waves: int = 4
     rest_cold_start_dump_stress_searches_per_wave: int = 12
     rest_cold_start_dump_stress_max_concurrent_searches: int = 8

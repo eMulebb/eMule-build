@@ -337,6 +337,9 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
     ]
     _append_optional_flag(args, live_options.profile_cpu, "--profile-cpu")
     _append_optional_flag(args, live_options.profile_cpu_stack, "--profile-cpu-stack")
+    _append_optional_flag(args, live_options.godzilla_visible_ui, "--godzilla-visible-ui")
+    if live_options.godzilla_p2p_bind_interface_address:
+        args.extend(["--godzilla-p2p-bind-interface-address", live_options.godzilla_p2p_bind_interface_address])
     if not live_options.profile_symbols_required:
         args.append("--no-profile-symbols-required")
     _append_optional_flag(args, live_options.profile_memory, "--profile-memory")

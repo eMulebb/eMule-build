@@ -214,6 +214,33 @@ def test_live_e2e_forwards_search_ui_live_stress_options(tmp_path: Path, monkeyp
     assert option_values(command, "--search-ui-download-lifecycle-count") == ["3"]
 
 
+def test_live_e2e_forwards_godzilla_visible_ui_and_lan_bind(tmp_path: Path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
+        captured["command"] = list(command)
+
+    layout = make_layout(tmp_path)
+    monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+
+    test_runs.invoke_live_e2e_suite(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+        LiveE2eOptions(
+            suites=("godzilla-local-swarm",),
+            p2p_bind_interface_name="Ethernet",
+            godzilla_p2p_bind_interface_address="192.168.1.210",
+            godzilla_visible_ui=True,
+        ),
+    )
+
+    command = captured["command"]
+    assert isinstance(command, list)
+    assert option_values(command, "--p2p-bind-interface-name") == ["Ethernet"]
+    assert option_values(command, "--godzilla-p2p-bind-interface-address") == ["192.168.1.210"]
+    assert "--godzilla-visible-ui" in command
+
+
 def test_live_e2e_forwards_radarr_movie_root_only_when_configured(tmp_path: Path, monkeypatch) -> None:
     captured: dict[str, object] = {}
 
