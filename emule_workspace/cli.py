@@ -352,6 +352,9 @@ def prepare_product_family(*, workspace_options: WorkspaceOptions, layout) -> No
 @click.option("--keep-build-log-runs", default=25, show_default=True, type=int)
 @click.option("--include-build-outputs", is_flag=True, help="Also prune generated app/test/dependency build outputs.")
 @click.option("--include-release-state", is_flag=True, help="Also prune superseded release rehearsal state.")
+@click.option("--include-product-family-outputs", is_flag=True, help="Also prune generated outputs from product-family repos.")
+@click.option("--include-root-legacy-state", is_flag=True, help="Also prune legacy generated state directories at workspace root.")
+@click.option("--include-legacy-root-logs", is_flag=True, help="Also prune retired root-level workspace log files.")
 def cleanup(
     *,
     apply_cleanup: bool,
@@ -363,6 +366,9 @@ def cleanup(
     keep_build_log_runs: int,
     include_build_outputs: bool,
     include_release_state: bool,
+    include_product_family_outputs: bool,
+    include_root_legacy_state: bool,
+    include_legacy_root_logs: bool,
     workspace_options: WorkspaceOptions,
     layout,
 ) -> None:
@@ -378,6 +384,9 @@ def cleanup(
         keep_build_log_runs=keep_build_log_runs,
         include_build_outputs=include_build_outputs,
         include_release_state=include_release_state,
+        include_product_family_outputs=include_product_family_outputs,
+        include_root_legacy_state=include_root_legacy_state,
+        include_legacy_root_logs=include_legacy_root_logs,
     )
     _locked("cleanup", lambda **kwargs: cleanup_workspace(kwargs["layout"], cleanup_options))(
         workspace_options=workspace_options,

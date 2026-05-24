@@ -136,6 +136,12 @@ def plan_cleanup(layout: WorkspaceLayout, options: CleanupOptions) -> list[Clean
         candidates.extend(_build_output_candidates(layout))
     if options.include_release_state:
         candidates.extend(_release_state_candidates(layout))
+    if options.profile == "deep" or options.include_product_family_outputs:
+        candidates.extend(_product_family_output_candidates(layout))
+    if options.include_root_legacy_state:
+        candidates.extend(_root_legacy_state_candidates(layout))
+    if options.include_legacy_root_logs:
+        candidates.extend(_legacy_root_log_candidates(layout))
     return _dedupe_candidates(candidates)
 
 
@@ -408,6 +414,51 @@ def _release_state_candidates(layout: WorkspaceLayout) -> list[CleanupCandidate]
         if child.is_dir() and child.name not in {"emulebb-v0.7.3-rc.1"}:
             candidates.append(_directory_candidate(child, "release-state", "superseded release rehearsal state"))
     return candidates
+
+
+def _product_family_output_candidates(layout: WorkspaceLayout) -> list[CleanupCandidate]:
+    candidates: list[CleanupCandidate] = []
+    repos_root = layout.emule_workspace_root / "repos"
+    candidate_paths = (
+        _optional_root(layout, "p2p_overlord_agents_repo_root") / "target",
+        _optional_root(layout, "p2p_overlord_be_repo_root") / "overlord-be-coordinator" / "node_modules",
+        _optional_root(layout, "p2p_overlord_be_repo_root") / "overlord-be-coordinator" / ".svelte-kit",
+        repos_root / "amutorrent" / "node_modules",
+        repos_root / "amutorrent" / "server" / "node_modules",
+        repos_root / "amutorrent" / "website" / "node_modules",
+        repos_root / "amutorrent" / "static" / "dist",
+        repos_root / "amutorrent" / "website" / "dist",
+        repos_root / "amule" / "build",
+        repos_root / "amule" / "dist",
+    )
+    for path in candidate_paths:
+        if path.is_dir():
+            candidates.append(_directory_candidate(path, "product-family-output", "generated product-family repository output"))
+    return candidates
+
+
+def _root_legacy_state_candidates(layout: WorkspaceLayout) -> list[CleanupCandidate]:
+    root = layout.emule_workspace_root / "state"
+    candidates: list[CleanupCandidate] = []
+    for name in ("miniupnpc-package-test", "smoke", "test-artifacts", "tools"):
+        path = root / name
+        if path.is_dir():
+            candidates.append(_directory_candidate(path, "root-legacy-state", "legacy generated state directory at workspace root"))
+    return candidates
+
+
+def _legacy_root_log_candidates(layout: WorkspaceLayout) -> list[CleanupCandidate]:
+    path = layout.emule_workspace_root / "eMule-workspace.log"
+    if path.is_file():
+        return [_file_candidate(path, "legacy-root-log", "retired root-level workspace log")]
+    return []
+
+
+def _optional_root(layout: WorkspaceLayout, attribute: str) -> Path:
+    value = getattr(layout, attribute, None)
+    if value is None:
+        return layout.emule_workspace_root / "__missing__" / attribute
+    return Path(value)
 
 
 def _child_directories(path: Path) -> list[Path]:

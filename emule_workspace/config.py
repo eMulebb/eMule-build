@@ -343,6 +343,9 @@ class CleanupOptions(BaseModel):
     keep_build_log_runs: int = 25
     include_build_outputs: bool = False
     include_release_state: bool = False
+    include_product_family_outputs: bool = False
+    include_root_legacy_state: bool = False
+    include_legacy_root_logs: bool = False
 
 
 def resolve_workspace_options(

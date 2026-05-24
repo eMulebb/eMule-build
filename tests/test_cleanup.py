@@ -60,6 +60,43 @@ def test_package_build_outputs_are_explicit_build_output_cleanup(tmp_path: Path)
     assert package_build_output.parents[3] in {candidate.path for candidate in build_candidates}
 
 
+def test_product_family_outputs_are_explicit_cleanup(tmp_path: Path) -> None:
+    layout = make_layout(tmp_path)
+    coordinator_modules = write_file(
+        layout.p2p_overlord_be_repo_root / "overlord-be-coordinator" / "node_modules" / "pkg" / "index.js",
+        10,
+    )
+    amutorrent_dist = write_file(layout.emule_workspace_root / "repos" / "amutorrent" / "website" / "dist" / "bundle.js", 10)
+
+    routine_candidates = plan_cleanup(layout, CleanupOptions())
+    product_candidates = plan_cleanup(layout, CleanupOptions(include_product_family_outputs=True))
+    deep_candidates = plan_cleanup(layout, CleanupOptions(profile="deep"))
+
+    assert coordinator_modules.parents[1] not in {candidate.path for candidate in routine_candidates}
+    assert coordinator_modules.parents[1] in {candidate.path for candidate in product_candidates}
+    assert amutorrent_dist.parent in {candidate.path for candidate in product_candidates}
+    assert coordinator_modules.parents[1] in {candidate.path for candidate in deep_candidates}
+
+
+def test_root_legacy_state_and_logs_are_explicit_cleanup(tmp_path: Path) -> None:
+    layout = make_layout(tmp_path)
+    root_state = write_file(layout.emule_workspace_root / "state" / "smoke" / "result.json", 10)
+    legacy_log = write_file(layout.emule_workspace_root / "eMule-workspace.log", 10)
+    current_log = write_file(layout.emule_workspace_root / "emulebb-workspace.log", 10)
+
+    routine_candidates = plan_cleanup(layout, CleanupOptions())
+    legacy_candidates = plan_cleanup(
+        layout,
+        CleanupOptions(include_root_legacy_state=True, include_legacy_root_logs=True),
+    )
+
+    assert root_state.parent not in {candidate.path for candidate in routine_candidates}
+    assert legacy_log not in {candidate.path for candidate in routine_candidates}
+    assert root_state.parent in {candidate.path for candidate in legacy_candidates}
+    assert legacy_log in {candidate.path for candidate in legacy_candidates}
+    assert current_log not in {candidate.path for candidate in legacy_candidates}
+
+
 def test_cleanup_selects_generated_state_paths_with_trailing_space_or_dot(tmp_path: Path) -> None:
     layout = make_layout(tmp_path)
     trailing_space_dir = (
@@ -130,4 +167,6 @@ def make_layout(tmp_path: Path):
         tooling_repo_root=tmp_path / "repos" / "emulebb-tooling",
         app_variants=(),
         dependencies=(),
+        p2p_overlord_agents_repo_root=tmp_path / "repos" / "p2p-overlord-agents",
+        p2p_overlord_be_repo_root=tmp_path / "repos" / "p2p-overlord-be",
     )
