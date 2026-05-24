@@ -317,7 +317,7 @@ def _repo_role_payload(repo: ManagedRepo, *, role: str, group: str) -> dict[str,
     if repo.compare_subdir is not None:
         payload["compare_subdir"] = repo.compare_subdir
     if repo.update_policy is not None:
-        payload["update_policy"] = repo.update_policy.model_dump(exclude_none=True)
+        payload["update_policy"] = repo.update_policy.model_dump(mode="json", exclude_none=True)
     return payload
 
 
