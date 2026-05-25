@@ -63,6 +63,8 @@ def _write_release_zip(path: Path, *, language_payloads: dict[str, bytes] | None
         "eMule/docs/REST-API-OPENAPI.yaml": b"openapi\n",
         "eMule/docs/REST-API-PARITY-INVENTORY.md": b"parity\n",
     }
+    for relative_path in release.EMULE_RUNTIME_SCRIPT_PATHS:
+        entries[f"eMule/{relative_path}"] = b"#Requires -Version 5.1\n"
     for name, payload in (language_payloads or {"de_DE.dll": _pe_payload(0x8664)}).items():
         entries[f"eMule/lang/{name}"] = payload
     entries.update(extra_entries or {})
@@ -308,6 +310,7 @@ def test_release_manifest_records_explicit_source_provenance(
     assert manifest["sbomPath"] == "emulebb-0.7.3-rc.1-x64.sbom.spdx.json"
     assert manifest["sbomSha256"] == "sbom-sha"
     assert "eMule/SBOM.spdx.json" in manifest["includedPaths"]
+    assert "eMule/scripts" in manifest["includedPaths"]
     assert "eMule/webserver" not in manifest["includedPaths"]
 
 
@@ -402,6 +405,17 @@ def test_release_package_contents_reject_legacy_webserver_payload(tmp_path: Path
         release._assert_release_package_contents(zip_path, ("de_DE.dll",), "x64")
 
 
+def test_release_package_contents_reject_runtime_script_without_powershell_51_header(tmp_path: Path) -> None:
+    zip_path = tmp_path / "package.zip"
+    _write_release_zip(
+        zip_path,
+        extra_entries={"eMule/scripts/register-prowlarr.ps1": b"#Requires -Version 7.6\n"},
+    )
+
+    with pytest.raises(RuntimeError, match="PowerShell 5.1 compatibility"):
+        release._assert_release_package_contents(zip_path, ("de_DE.dll",), "x64")
+
+
 def test_release_package_contents_accept_full_bundle_and_hash_entries(tmp_path: Path) -> None:
     zip_path = tmp_path / "package.zip"
     _write_release_zip(zip_path)
@@ -412,6 +426,7 @@ def test_release_package_contents_accept_full_bundle_and_hash_entries(tmp_path: 
     assert hashes["eMule/README.md"] == hashlib.sha256(b"readme\n").hexdigest()
     assert "eMule/THIRD-PARTY-NOTICES.txt" in hashes
     assert "eMule/SBOM.spdx.json" in hashes
+    assert "eMule/scripts/register-prowlarr.ps1" in hashes
 
 
 def test_amutorrent_manifest_records_runtime_policy_and_source_provenance(

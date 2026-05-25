@@ -52,6 +52,13 @@ RELEASE_VERSION_PATTERN = re.compile(
     r"\d+\.\d+\.\d+(?:-(?:(?:rc|beta)\.\d+|nightly\.\d{8}\.[0-9a-f]{7,40}))?"
 )
 RELEASE_VERSION_FORMAT = "MAJOR.MINOR.PATCH[-rc.N|-beta.N|-nightly.YYYYMMDD.SHA]"
+EMULE_RUNTIME_SCRIPT_PATHS = (
+    "scripts/repair-firewall.ps1",
+    "scripts/defender-exclusions.ps1",
+    "scripts/enable-long-paths.ps1",
+    "scripts/register-prowlarr.ps1",
+    "scripts/register-arr-stack.ps1",
+)
 
 
 def create_amutorrent_package(
@@ -219,6 +226,7 @@ def create_release_package(
         package_root,
         Path("docs/REST-API-PARITY-INVENTORY.md"),
     )
+    _copy_emule_runtime_scripts(layout.build_repo_root, package_root)
     _write_release_sbom(
         layout=layout,
         workspace_options=workspace_options,
@@ -317,6 +325,7 @@ def _build_release_manifest(
             "eMule/GPL-2.0-or-later.txt",
             "eMule/THIRD-PARTY-NOTICES.txt",
             "eMule/SBOM.spdx.json",
+            "eMule/scripts",
             "eMule/docs/REST-API-CONTRACT.md",
             "eMule/docs/REST-API-OPENAPI.yaml",
             "eMule/docs/REST-API-PARITY-INVENTORY.md",
@@ -905,6 +914,14 @@ def _copy_package_file(source_path: Path, package_root: Path, relative_destinati
     shutil.copy2(source_path, destination_path)
 
 
+def _copy_emule_runtime_scripts(build_repo_root: Path, package_root: Path) -> None:
+    """Copies package-owned eMuleBB Windows runtime scripts."""
+
+    source_root = build_repo_root / "emule_workspace" / "release_assets" / "emule"
+    for relative_path in EMULE_RUNTIME_SCRIPT_PATHS:
+        _copy_package_file(source_root / relative_path, package_root, Path(relative_path))
+
+
 def _copy_directory_contents(source_path: Path, destination_path: Path) -> None:
     destination_path.mkdir(parents=True, exist_ok=True)
     for child in source_path.iterdir():
@@ -953,6 +970,9 @@ def _write_package_readme(package_root: Path, release_version: str, platform: st
                 "from the stock eMule language resource set and are architecture-specific.",
                 "`SBOM.spdx.json` records the package files and source/dependency",
                 "components in SPDX 2.3 JSON format.",
+                "",
+                "Windows setup and Arr integration helpers are included under `scripts/`",
+                "and are launched from the app Tools menu.",
                 "",
                 "MediaInfo integration remains optional. To enable audio/video metadata,",
                 f"install a compatible external `MediaInfo.dll` next to `{APP_EXE_NAME}`; it is not",
@@ -1131,10 +1151,17 @@ def _assert_release_package_contents(zip_path: Path, expected_language_dlls: tup
             "eMule/docs/REST-API-CONTRACT.md",
             "eMule/docs/REST-API-OPENAPI.yaml",
             "eMule/docs/REST-API-PARITY-INVENTORY.md",
+            *(f"eMule/{relative_path}" for relative_path in EMULE_RUNTIME_SCRIPT_PATHS),
         )
         for required_entry in required_entries:
             if required_entry not in entry_set:
                 raise RuntimeError(f"Release package is missing required entry '{required_entry}': {zip_path}")
+        for relative_path in EMULE_RUNTIME_SCRIPT_PATHS:
+            entry_name = f"eMule/{relative_path}"
+            script = archive.read(entry_name).decode("utf-8-sig")
+            first_non_empty = next((line.strip() for line in script.splitlines() if line.strip()), "")
+            if first_non_empty != "#Requires -Version 5.1":
+                raise RuntimeError(f"Release package script '{entry_name}' must declare Windows PowerShell 5.1 compatibility.")
         language_dlls = sorted(name for name in entry_names if re.fullmatch(r"eMule/lang/[^/]+\.dll", name))
         expected_language_entries = tuple(f"eMule/lang/{dll}" for dll in expected_language_dlls)
         missing_language_entries = [name for name in expected_language_entries if name not in entry_set]
