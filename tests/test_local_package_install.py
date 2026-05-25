@@ -91,7 +91,7 @@ def test_local_package_install_deploys_artifacts_and_preserves_runtime_state(tmp
                 "",
             ]
         ),
-        encoding="utf-8",
+        encoding="utf-16",
     )
     target = tmp_path / "install"
     live_wire_path = layout.tests_repo_root / "live-wire-inputs.local.json"
@@ -134,7 +134,8 @@ def test_local_package_install_deploys_artifacts_and_preserves_runtime_state(tmp
     assert (target / "scripts" / "Update-LocalPackage.ps1").is_file()
     assert not (target / "eMule" / "Incoming").exists()
     assert not (target / "eMule" / "Temp").exists()
-    updated_preferences = preferences.read_text(encoding="utf-8")
+    assert preferences.read_bytes().startswith(b"\xff\xfe")
+    updated_preferences = preferences.read_text(encoding="utf-16")
     assert "IncomingDir=F:\\incoming" in updated_preferences
     assert "TempDir=F:\\temp" in updated_preferences
     assert "Enabled=1" in updated_preferences

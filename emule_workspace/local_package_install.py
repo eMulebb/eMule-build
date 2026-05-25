@@ -72,6 +72,14 @@ class InstallArtifacts:
     arch: str
 
 
+@dataclass(frozen=True)
+class DecodedText:
+    """Text decoded from disk with the encoding needed for round-trip writes."""
+
+    text: str
+    encoding: str
+
+
 def install_local_package(
     layout: WorkspaceLayout,
     workspace_options: WorkspaceOptions,
@@ -196,8 +204,8 @@ def prepare_profile_preferences(config: LocalInstallConfig) -> ProfileRestConfig
     if not preferences_path.is_file():
         raise RuntimeError(f"Profile preferences.ini is missing: {preferences_path}")
 
-    text = preferences_path.read_text(encoding="utf-8-sig")
-    values = parse_ini_values(text)
+    decoded_preferences = read_text_preserving_encoding(preferences_path)
+    values = parse_ini_values(decoded_preferences.text)
     webserver = values.get("webserver", {})
     emule = values.get("emule", {})
     api_key = webserver.get("apikey", "").strip()
@@ -218,8 +226,8 @@ def prepare_profile_preferences(config: LocalInstallConfig) -> ProfileRestConfig
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         backup_path = preferences_path.with_name(f"{preferences_path.name}.local-install-{timestamp}.bak")
         shutil.copy2(preferences_path, backup_path)
-        updated_text = update_ini_values(text, updates)
-        preferences_path.write_text(updated_text, encoding="utf-8", newline="")
+        updated_text = update_ini_values(decoded_preferences.text, updates)
+        preferences_path.write_text(updated_text, encoding=decoded_preferences.encoding, newline="")
         print(f"Updated profile preferences: {preferences_path}")
         print(f"Profile preferences backup: {backup_path}")
 
@@ -486,6 +494,20 @@ def update_ini_values(text: str, updates: list[tuple[str, str, str]]) -> str:
             output.append(f"{key}={value}{final_newline}")
             pending.pop((section.lower(), key.lower()), None)
     return "".join(output)
+
+
+def read_text_preserving_encoding(path: Path) -> DecodedText:
+    """Reads text while preserving common Windows profile encodings for writes."""
+
+    data = path.read_bytes()
+    if data.startswith(b"\xff\xfe") or data.startswith(b"\xfe\xff"):
+        return DecodedText(data.decode("utf-16"), "utf-16")
+    if data.startswith(b"\xef\xbb\xbf"):
+        return DecodedText(data.decode("utf-8-sig"), "utf-8-sig")
+    try:
+        return DecodedText(data.decode("utf-8"), "utf-8")
+    except UnicodeDecodeError:
+        return DecodedText(data.decode("mbcs"), "mbcs")
 
 
 def _append_pending_for_section(
