@@ -237,6 +237,17 @@ def test_evidence_index_help_is_available() -> None:
     assert "--no-write" in result.output
 
 
+def test_cleanup_help_exposes_retention_toggles() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(cli.main, ["cleanup", "--help"])
+
+    assert result.exit_code == 0
+    assert "--report-run-retention-days" in result.output
+    assert "--skip-profiling-artifacts" in result.output
+    assert "--skip-legacy-test-reports" in result.output
+
+
 def test_package_release_help_exposes_release_version() -> None:
     runner = CliRunner()
 

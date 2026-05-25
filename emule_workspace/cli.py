@@ -372,16 +372,27 @@ def product_family_toolchain(*, strict: bool, workspace_options: WorkspaceOption
 @click.option("--apply", "apply_cleanup", is_flag=True, help="Delete selected artifacts. Omit for a dry run.")
 @click.option("--profile", type=click.Choice(["routine", "deep"]), default="routine", show_default=True)
 @click.option("--report-payload-retention-hours", default=24.0, show_default=True, type=float)
-@click.option("--report-run-retention-days", default=7.0, show_default=True, type=float)
+@click.option("--report-run-retention-days", default=3.0, show_default=True, type=float)
 @click.option("--arr-acquisition-retention-hours", default=24.0, show_default=True, type=float)
-@click.option("--build-log-retention-days", default=14.0, show_default=True, type=float)
+@click.option("--build-log-retention-days", default=7.0, show_default=True, type=float)
 @click.option("--keep-build-log-runs", default=25, show_default=True, type=int)
 @click.option("--include-build-outputs", is_flag=True, help="Also prune generated app/test/dependency build outputs.")
 @click.option("--include-release-state", is_flag=True, help="Also prune superseded release rehearsal state.")
 @click.option("--include-product-family-outputs", is_flag=True, help="Also prune generated outputs from product-family repos.")
 @click.option("--include-root-legacy-state", is_flag=True, help="Also prune legacy generated state directories at workspace root.")
 @click.option("--include-legacy-root-logs", is_flag=True, help="Also prune retired root-level workspace log files.")
-@click.option("--include-profiling-artifacts", is_flag=True, help="Also prune profiling diagnostics, dumps, ETW, UMDH, and pageheap output.")
+@click.option(
+    "--include-profiling-artifacts/--skip-profiling-artifacts",
+    default=True,
+    show_default=True,
+    help="Prune profiling diagnostics, dumps, ETW, UMDH, and pageheap output.",
+)
+@click.option(
+    "--include-legacy-test-reports/--skip-legacy-test-reports",
+    default=True,
+    show_default=True,
+    help="Prune legacy generated reports under repos/emulebb-build-tests/reports.",
+)
 def cleanup(
     *,
     apply_cleanup: bool,
@@ -397,6 +408,7 @@ def cleanup(
     include_root_legacy_state: bool,
     include_legacy_root_logs: bool,
     include_profiling_artifacts: bool,
+    include_legacy_test_reports: bool,
     workspace_options: WorkspaceOptions,
     layout,
 ) -> None:
@@ -416,6 +428,7 @@ def cleanup(
         include_root_legacy_state=include_root_legacy_state,
         include_legacy_root_logs=include_legacy_root_logs,
         include_profiling_artifacts=include_profiling_artifacts,
+        include_legacy_test_reports=include_legacy_test_reports,
     )
     _locked("cleanup", lambda **kwargs: cleanup_workspace(kwargs["layout"], cleanup_options))(
         workspace_options=workspace_options,

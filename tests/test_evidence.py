@@ -53,6 +53,18 @@ def test_heavy_evidence_index_marks_latest_aliases(tmp_path: Path) -> None:
     }
 
 
+def test_heavy_evidence_index_marks_legacy_test_reports(tmp_path: Path) -> None:
+    layout = make_layout(tmp_path)
+    write_file(layout.tests_repo_root / "reports" / "rest-api-smoke" / "20260501-run" / "result.json", 2048)
+
+    payload = build_heavy_evidence_index(layout, threshold_mb=0.001)
+    entries = {entry["path"]: entry for entry in payload["entries"]}
+    legacy = entries["repos\\emulebb-build-tests\\reports\\rest-api-smoke"]
+
+    assert legacy["tier"] == "legacy-generated"
+    assert legacy["category"] == "legacy-test-report"
+
+
 def write_file(path: Path, size: int) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"x" * size)
@@ -64,4 +76,5 @@ def make_layout(tmp_path: Path):
         emule_workspace_root=tmp_path,
         workspace_name="workspace",
         workspace_root=tmp_path / "workspaces" / "workspace",
+        tests_repo_root=tmp_path / "repos" / "emulebb-build-tests",
     )

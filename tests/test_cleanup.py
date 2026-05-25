@@ -97,22 +97,53 @@ def test_root_legacy_state_and_logs_are_explicit_cleanup(tmp_path: Path) -> None
     assert current_log not in {candidate.path for candidate in legacy_candidates}
 
 
-def test_profiling_artifacts_are_explicit_cleanup(tmp_path: Path) -> None:
+def test_profiling_artifacts_are_routine_cleanup_with_retention(tmp_path: Path) -> None:
     layout = make_layout(tmp_path)
     diagnostic_dump = write_file(layout.workspace_root / "state" / "diagnostics" / "pid-100-cpu-spikes" / "sample.dmp", 10)
+    recent_diagnostic_dump = write_file(layout.workspace_root / "state" / "diagnostics" / "pid-200-cpu-spikes" / "sample.dmp", 10)
     pageheap_report = write_file(layout.workspace_root / "state" / "test-reports" / "real-live-pageheap" / "trace.etl", 10)
     normal_report = write_file(layout.workspace_root / "state" / "test-reports" / "live-e2e-suite" / "result.json", 10)
     crash_evidence = write_file(layout.workspace_root / "state" / "crash-evidence" / "crash.dmp", 10)
+    for path in (diagnostic_dump, pageheap_report, crash_evidence):
+        make_old(path, tmp_path)
 
     routine_candidates = plan_cleanup(layout, CleanupOptions())
-    profiling_candidates = plan_cleanup(layout, CleanupOptions(include_profiling_artifacts=True))
+    skipped_candidates = plan_cleanup(layout, CleanupOptions(include_profiling_artifacts=False))
 
-    assert diagnostic_dump.parent not in {candidate.path for candidate in routine_candidates}
-    assert pageheap_report.parent not in {candidate.path for candidate in routine_candidates}
-    assert diagnostic_dump.parent in {candidate.path for candidate in profiling_candidates}
-    assert pageheap_report.parent in {candidate.path for candidate in profiling_candidates}
-    assert crash_evidence.parent in {candidate.path for candidate in profiling_candidates}
-    assert normal_report.parent not in {candidate.path for candidate in profiling_candidates}
+    assert diagnostic_dump.parent in {candidate.path for candidate in routine_candidates}
+    assert recent_diagnostic_dump.parent not in {candidate.path for candidate in routine_candidates}
+    assert pageheap_report in {candidate.path for candidate in routine_candidates}
+    assert crash_evidence in {candidate.path for candidate in routine_candidates}
+    assert normal_report.parent not in {candidate.path for candidate in routine_candidates}
+    assert diagnostic_dump.parent not in {candidate.path for candidate in skipped_candidates}
+    assert all(
+        candidate.category != "profiling-artifact"
+        for candidate in skipped_candidates
+        if candidate.path == pageheap_report
+    )
+
+
+def test_legacy_build_test_reports_are_routine_cleanup(tmp_path: Path) -> None:
+    layout = make_layout(tmp_path)
+    old_run = write_file(layout.tests_repo_root / "reports" / "rest-api-smoke" / "20260501-run" / "result.json", 10)
+    recent_run = write_file(layout.tests_repo_root / "reports" / "rest-api-smoke" / "20260525-run" / "result.json", 10)
+    old_latest = write_file(layout.tests_repo_root / "reports" / "rest-api-smoke-latest" / "result.json", 10)
+    old_root_file = write_file(layout.tests_repo_root / "reports" / "test-run-parity.log", 10)
+    for path in (old_run, old_latest, old_root_file):
+        make_old(path, tmp_path)
+
+    routine_candidates = plan_cleanup(layout, CleanupOptions())
+    skipped_candidates = plan_cleanup(layout, CleanupOptions(include_legacy_test_reports=False))
+    routine_paths = {candidate.path for candidate in routine_candidates}
+    skipped_paths = {candidate.path for candidate in skipped_candidates}
+
+    assert old_run.parent in routine_paths
+    assert recent_run.parent not in routine_paths
+    assert old_latest.parent in routine_paths
+    assert old_root_file in routine_paths
+    assert old_run.parent not in skipped_paths
+    assert old_latest.parent not in skipped_paths
+    assert old_root_file not in skipped_paths
 
 
 def test_cleanup_selects_generated_state_paths_with_trailing_space_or_dot(tmp_path: Path) -> None:

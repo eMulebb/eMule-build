@@ -76,8 +76,6 @@ def print_heavy_evidence_index(layout: WorkspaceLayout, payload: dict[str, Any])
 
 def _candidate_entries(layout: WorkspaceLayout) -> list[EvidenceEntry]:
     state_root = layout.workspace_root / "state"
-    if not state_root.is_dir():
-        return []
     roots: list[tuple[Path, str, str]] = []
     known_root_names = {
         "test-reports",
@@ -96,36 +94,41 @@ def _candidate_entries(layout: WorkspaceLayout) -> list[EvidenceEntry]:
         "throwaway-vhd",
         "tools",
     }
-    for root_name, tier, category in (
-        ("test-reports", "campaign-proof", "test-report"),
-        ("test-artifacts", "campaign-proof", "test-artifact"),
-        ("diagnostics", "debug-profile", "diagnostic"),
-        ("crash-evidence", "debug-profile", "crash-evidence"),
-        ("startup-progress-diagnostics", "debug-profile", "diagnostic"),
-        ("release", "release-proof", "release"),
-        ("certification", "release-proof", "certification"),
-        ("release-campaign-runs", "release-proof", "release-campaign"),
-        ("preserved-evidence", "release-proof", "preserved-evidence"),
-        ("overnight-campaigns", "campaign-proof", "overnight-campaign"),
-        ("package-build", "campaign-proof", "package-build"),
-        ("build-logs", "campaign-proof", "build-log"),
-        ("symbols", "campaign-proof", "symbols"),
-        ("throwaway-vhd", "scratch", "throwaway-vhd"),
-        ("tools", "scratch", "tools"),
-    ):
-        root = state_root / root_name
-        if not root.is_dir():
-            continue
-        children = [child for child in root.iterdir() if child.is_dir()]
-        if children:
-            roots.extend((child, tier, category) for child in children)
-        else:
-            roots.append((root, tier, category))
+    if state_root.is_dir():
+        for root_name, tier, category in (
+            ("test-reports", "campaign-proof", "test-report"),
+            ("test-artifacts", "campaign-proof", "test-artifact"),
+            ("diagnostics", "debug-profile", "diagnostic"),
+            ("crash-evidence", "debug-profile", "crash-evidence"),
+            ("startup-progress-diagnostics", "debug-profile", "diagnostic"),
+            ("release", "release-proof", "release"),
+            ("certification", "release-proof", "certification"),
+            ("release-campaign-runs", "release-proof", "release-campaign"),
+            ("preserved-evidence", "release-proof", "preserved-evidence"),
+            ("overnight-campaigns", "campaign-proof", "overnight-campaign"),
+            ("package-build", "campaign-proof", "package-build"),
+            ("build-logs", "campaign-proof", "build-log"),
+            ("symbols", "campaign-proof", "symbols"),
+            ("throwaway-vhd", "scratch", "throwaway-vhd"),
+            ("tools", "scratch", "tools"),
+        ):
+            root = state_root / root_name
+            if not root.is_dir():
+                continue
+            children = [child for child in root.iterdir() if child.is_dir()]
+            if children:
+                roots.extend((child, tier, category) for child in children)
+            else:
+                roots.append((root, tier, category))
 
-    for child in state_root.iterdir():
-        if not child.is_dir() or child.name in known_root_names:
-            continue
-        roots.append((child, "scratch", "unclassified-state"))
+        for child in state_root.iterdir():
+            if not child.is_dir() or child.name in known_root_names:
+                continue
+            roots.append((child, "scratch", "unclassified-state"))
+
+    legacy_reports_root = layout.tests_repo_root / "reports"
+    if legacy_reports_root.is_dir():
+        roots.extend((child, "legacy-generated", "legacy-test-report") for child in legacy_reports_root.iterdir() if child.is_dir())
 
     return [_entry_from_directory(path, tier, category) for path, tier, category in roots]
 

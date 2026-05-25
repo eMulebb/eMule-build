@@ -341,16 +341,17 @@ class CleanupOptions(BaseModel):
     apply: bool = False
     profile: Literal["routine", "deep"] = "routine"
     report_payload_retention_hours: float = 24.0
-    report_run_retention_days: float = 7.0
+    report_run_retention_days: float = 3.0
     arr_acquisition_retention_hours: float = 24.0
-    build_log_retention_days: float = 14.0
+    build_log_retention_days: float = 7.0
     keep_build_log_runs: int = 25
     include_build_outputs: bool = False
     include_release_state: bool = False
     include_product_family_outputs: bool = False
     include_root_legacy_state: bool = False
     include_legacy_root_logs: bool = False
-    include_profiling_artifacts: bool = False
+    include_profiling_artifacts: bool = True
+    include_legacy_test_reports: bool = True
 
 
 def resolve_workspace_options(

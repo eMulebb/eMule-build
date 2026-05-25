@@ -139,6 +139,8 @@ def plan_cleanup(layout: WorkspaceLayout, options: CleanupOptions) -> list[Clean
     candidates.extend(_legacy_live_e2e_artifact_candidates(layout, options, now))
     candidates.extend(_report_payload_candidates(layout, options, now))
     candidates.extend(_old_report_run_candidates(layout, options, now))
+    if options.include_legacy_test_reports:
+        candidates.extend(_legacy_test_report_candidates(layout, options, now))
     candidates.extend(_arr_acquisition_candidates(layout, options, now))
     candidates.extend(_build_log_candidates(layout, options, now))
     candidates.extend(_cache_candidates(layout))
@@ -153,7 +155,7 @@ def plan_cleanup(layout: WorkspaceLayout, options: CleanupOptions) -> list[Clean
     if options.include_legacy_root_logs:
         candidates.extend(_legacy_root_log_candidates(layout))
     if options.include_profiling_artifacts:
-        candidates.extend(_profiling_artifact_candidates(layout))
+        candidates.extend(_profiling_artifact_candidates(layout, options, now))
     return _dedupe_candidates(candidates)
 
 
@@ -251,21 +253,61 @@ def _legacy_live_e2e_artifact_candidates(layout: WorkspaceLayout, options: Clean
 
 
 def _report_payload_candidates(layout: WorkspaceLayout, options: CleanupOptions, now: datetime) -> list[CleanupCandidate]:
-    reports_root = _test_reports_root(layout)
+    return _report_payload_candidates_for_root(
+        _test_reports_root(layout),
+        options,
+        now,
+        category="report-payload",
+        reason_label="report",
+    )
+
+
+def _report_payload_candidates_for_root(
+    reports_root: Path,
+    options: CleanupOptions,
+    now: datetime,
+    *,
+    category: str,
+    reason_label: str,
+) -> list[CleanupCandidate]:
     cutoff = now - timedelta(hours=options.report_payload_retention_hours)
     candidates: list[CleanupCandidate] = []
     if not reports_root.is_dir():
         return candidates
     for family in _child_directories(reports_root):
+        scopes = [family]
         for run_dir in _child_directories(family):
-            scopes = [run_dir, *_child_directories(run_dir)]
-            for scope in scopes:
-                candidates.extend(_payload_directory_candidates(scope, cutoff, options.report_payload_retention_hours))
-                candidates.extend(_direct_heavy_file_candidates(scope, cutoff, options.report_payload_retention_hours))
+            scopes.extend([run_dir, *_child_directories(run_dir)])
+        for scope in scopes:
+            candidates.extend(
+                _payload_directory_candidates(
+                    scope,
+                    cutoff,
+                    options.report_payload_retention_hours,
+                    category=category,
+                    reason_label=reason_label,
+                )
+            )
+            candidates.extend(
+                _direct_heavy_file_candidates(
+                    scope,
+                    cutoff,
+                    options.report_payload_retention_hours,
+                    category=category,
+                    reason_label=reason_label,
+                )
+            )
     return candidates
 
 
-def _payload_directory_candidates(scope: Path, cutoff: datetime, retention_hours: float) -> list[CleanupCandidate]:
+def _payload_directory_candidates(
+    scope: Path,
+    cutoff: datetime,
+    retention_hours: float,
+    *,
+    category: str,
+    reason_label: str,
+) -> list[CleanupCandidate]:
     candidates: list[CleanupCandidate] = []
     for name in REPORT_PAYLOAD_DIRECTORY_NAMES:
         path = scope / name
@@ -273,21 +315,28 @@ def _payload_directory_candidates(scope: Path, cutoff: datetime, retention_hours
             candidates.append(
                 _directory_candidate(
                     path,
-                    "report-payload",
-                    f"report payload directory older than {retention_hours:g}h",
+                    category,
+                    f"{reason_label} payload directory older than {retention_hours:g}h",
                 )
             )
     return candidates
 
 
-def _direct_heavy_file_candidates(scope: Path, cutoff: datetime, retention_hours: float) -> list[CleanupCandidate]:
+def _direct_heavy_file_candidates(
+    scope: Path,
+    cutoff: datetime,
+    retention_hours: float,
+    *,
+    category: str,
+    reason_label: str,
+) -> list[CleanupCandidate]:
     candidates: list[CleanupCandidate] = []
     for path in scope.iterdir() if scope.is_dir() else ():
         if not path.is_file():
             continue
         if path.stat().st_mtime >= cutoff.timestamp() or path.suffix.lower() not in HEAVY_SUFFIXES:
             continue
-        candidates.append(_file_candidate(path, "report-payload", f"heavy report payload older than {retention_hours:g}h"))
+        candidates.append(_file_candidate(path, category, f"heavy {reason_label} payload older than {retention_hours:g}h"))
     return candidates
 
 
@@ -313,12 +362,80 @@ def _old_report_run_candidates(layout: WorkspaceLayout, options: CleanupOptions,
     return candidates
 
 
+def _legacy_test_report_candidates(layout: WorkspaceLayout, options: CleanupOptions, now: datetime) -> list[CleanupCandidate]:
+    reports_root = _legacy_test_reports_root(layout)
+    if not reports_root.is_dir():
+        return []
+    candidates: list[CleanupCandidate] = []
+    candidates.extend(
+        _report_payload_candidates_for_root(
+            reports_root,
+            options,
+            now,
+            category="legacy-test-reports",
+            reason_label="legacy report",
+        )
+    )
+    candidates.extend(_old_legacy_report_run_candidates(reports_root, options, now))
+    candidates.extend(_old_legacy_report_root_file_candidates(reports_root, options, now))
+    return candidates
+
+
+def _old_legacy_report_run_candidates(reports_root: Path, options: CleanupOptions, now: datetime) -> list[CleanupCandidate]:
+    cutoff = now - timedelta(days=options.report_run_retention_days)
+    candidates: list[CleanupCandidate] = []
+    for family in reports_root.iterdir():
+        if not family.is_dir():
+            continue
+        if family.name.endswith("-latest"):
+            if family.stat().st_mtime < cutoff.timestamp():
+                candidates.append(
+                    _directory_candidate(
+                        family,
+                        "legacy-test-reports",
+                        f"legacy latest report snapshot older than {options.report_run_retention_days:g}d",
+                    )
+                )
+            continue
+        for run_dir in family.iterdir():
+            if not run_dir.is_dir() or run_dir.stat().st_mtime >= cutoff.timestamp():
+                continue
+            candidates.append(
+                _directory_candidate(
+                    run_dir,
+                    "legacy-test-reports",
+                    f"legacy timestamped report run older than {options.report_run_retention_days:g}d",
+                )
+            )
+    return candidates
+
+
+def _old_legacy_report_root_file_candidates(reports_root: Path, options: CleanupOptions, now: datetime) -> list[CleanupCandidate]:
+    cutoff = now - timedelta(days=options.report_run_retention_days)
+    candidates: list[CleanupCandidate] = []
+    for path in reports_root.iterdir():
+        if not path.is_file() or path.stat().st_mtime >= cutoff.timestamp():
+            continue
+        candidates.append(
+            _file_candidate(
+                path,
+                "legacy-test-reports",
+                f"legacy root report file older than {options.report_run_retention_days:g}d",
+            )
+        )
+    return candidates
+
+
 def _test_artifacts_root(layout: WorkspaceLayout) -> Path:
     return layout.workspace_root / "state" / TEST_ARTIFACTS_DIR_NAME
 
 
 def _test_reports_root(layout: WorkspaceLayout) -> Path:
     return layout.workspace_root / "state" / TEST_REPORTS_DIR_NAME
+
+
+def _legacy_test_reports_root(layout: WorkspaceLayout) -> Path:
+    return layout.tests_repo_root / "reports"
 
 
 def _arr_acquisition_candidates(layout: WorkspaceLayout, options: CleanupOptions, now: datetime) -> list[CleanupCandidate]:
@@ -466,19 +583,61 @@ def _legacy_root_log_candidates(layout: WorkspaceLayout) -> list[CleanupCandidat
     return []
 
 
-def _profiling_artifact_candidates(layout: WorkspaceLayout) -> list[CleanupCandidate]:
+def _profiling_artifact_candidates(layout: WorkspaceLayout, options: CleanupOptions, now: datetime) -> list[CleanupCandidate]:
     candidates: list[CleanupCandidate] = []
     state_root = layout.workspace_root / "state"
+    cutoff = now - timedelta(hours=options.report_payload_retention_hours)
     for path in _child_directories(state_root / "diagnostics"):
-        candidates.append(_directory_candidate(path, "profiling-artifact", "diagnostic profiling run"))
+        if path.stat().st_mtime < cutoff.timestamp():
+            candidates.append(
+                _directory_candidate(
+                    path,
+                    "profiling-artifact",
+                    f"diagnostic profiling run older than {options.report_payload_retention_hours:g}h",
+                )
+            )
     for name in ("crash-evidence", "live-process-monitor-launch", "startup-progress-diagnostics"):
-        path = state_root / name
-        if path.is_dir():
-            candidates.append(_directory_candidate(path, "profiling-artifact", "profiling diagnostic state"))
+        root = state_root / name
+        for path in _child_directories(root):
+            if path.stat().st_mtime < cutoff.timestamp():
+                candidates.append(
+                    _directory_candidate(
+                        path,
+                        "profiling-artifact",
+                        f"profiling diagnostic state older than {options.report_payload_retention_hours:g}h",
+                    )
+                )
+        candidates.extend(
+            _direct_heavy_file_candidates(
+                root,
+                cutoff,
+                options.report_payload_retention_hours,
+                category="profiling-artifact",
+                reason_label="profiling",
+            )
+        )
     for root_name in ("test-reports", "test-artifacts"):
         for path in _child_directories(state_root / root_name):
-            if _is_profiling_artifact_name(path.name):
-                candidates.append(_directory_candidate(path, "profiling-artifact", "profiling-oriented test output"))
+            if not _is_profiling_artifact_name(path.name):
+                continue
+            candidates.extend(
+                _direct_heavy_file_candidates(
+                    path,
+                    cutoff,
+                    options.report_payload_retention_hours,
+                    category="profiling-artifact",
+                    reason_label="profiling",
+                )
+            )
+            candidates.extend(
+                _payload_directory_candidates(
+                    path,
+                    cutoff,
+                    options.report_payload_retention_hours,
+                    category="profiling-artifact",
+                    reason_label="profiling",
+                )
+            )
     return candidates
 
 
