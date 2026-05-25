@@ -4,7 +4,7 @@ from pathlib import Path
 
 from emule_workspace.config import AmutorrentCleanStartupOptions, WorkspaceOptions
 from emule_workspace.layout import AppVariant, TestTargets as LayoutTestTargets, WorkspaceLayout
-from emule_workspace import test_runs
+from emule_workspace import network_context, test_runs
 
 
 def make_layout(tmp_path: Path) -> WorkspaceLayout:
@@ -48,6 +48,7 @@ def test_amutorrent_clean_startup_forwards_live_options(tmp_path: Path, monkeypa
 
     layout = make_layout(tmp_path)
     monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+    monkeypatch.setenv(network_context.VPN_IP_ENV, "10.8.0.4")
 
     test_runs.invoke_amutorrent_clean_startup(
         layout,
@@ -84,6 +85,7 @@ def test_amutorrent_clean_startup_omits_optional_inputs_by_default(tmp_path: Pat
 
     layout = make_layout(tmp_path)
     monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+    monkeypatch.setenv(network_context.VPN_IP_ENV, "10.8.0.4")
 
     test_runs.invoke_amutorrent_clean_startup(
         layout,

@@ -300,6 +300,7 @@ def _dispatch_workspace_command(
 def _certification_options(campaign_options: ReleaseCampaignOptions, tokens: list[str]) -> CertificationOptions:
     return CertificationOptions(
         profile=_option_value(tokens, "--profile") or "fast",
+        test_network=_option_value(tokens, "--test-network") or campaign_options.test_network,
         pre_run_cleanup=False,
         continue_on_failure=campaign_options.continue_on_failure,
         live_wire_inputs_file=_option_value(tokens, "--live-wire-inputs-file") or campaign_options.live_wire_inputs_file,
@@ -316,6 +317,7 @@ def _live_options_from_tokens(campaign_options: ReleaseCampaignOptions, tokens: 
     return LiveE2eOptions(
         profile=_option_value(tokens, "--profile") or "default",
         suites=tuple(_option_values(tokens, "--suite")),
+        test_network=_option_value(tokens, "--test-network") or campaign_options.test_network,
         pre_run_cleanup=False,
         fail_fast="--fail-fast" in tokens,
         live_wire_inputs_file=_option_value(tokens, "--live-wire-inputs-file") or campaign_options.live_wire_inputs_file,
@@ -334,6 +336,7 @@ def _amutorrent_clean_options_from_tokens(
 ) -> AmutorrentCleanStartupOptions:
     return AmutorrentCleanStartupOptions(
         live_wire_inputs_file=_option_value(tokens, "--live-wire-inputs-file") or campaign_options.live_wire_inputs_file,
+        test_network=_vpn_command_test_network(campaign_options, tokens),
         rest_webserver_scheme=_option_value(tokens, "--rest-webserver-scheme") or "https",
         keep_artifacts="--keep-artifacts" in tokens,
         ready_timeout_seconds=_option_float(tokens, "--ready-timeout-seconds") or 60.0,
@@ -349,6 +352,7 @@ def _amutorrent_ui_options_from_tokens(
 ) -> AmutorrentEmulebbUiOptions:
     return AmutorrentEmulebbUiOptions(
         live_wire_inputs_file=_option_value(tokens, "--live-wire-inputs-file") or campaign_options.live_wire_inputs_file,
+        test_network=_vpn_command_test_network(campaign_options, tokens),
         rest_webserver_scheme=_option_value(tokens, "--rest-webserver-scheme") or "https",
         keep_artifacts="--keep-artifacts" in tokens,
         ready_timeout_seconds=_option_float(tokens, "--ready-timeout-seconds") or 60.0,
@@ -364,6 +368,7 @@ def _amutorrent_resilience_options_from_tokens(
 ) -> AmutorrentResilienceOptions:
     return AmutorrentResilienceOptions(
         live_wire_inputs_file=_option_value(tokens, "--live-wire-inputs-file") or campaign_options.live_wire_inputs_file,
+        test_network=_vpn_command_test_network(campaign_options, tokens),
         rest_webserver_scheme=_option_value(tokens, "--rest-webserver-scheme") or "https",
         keep_artifacts="--keep-artifacts" in tokens,
         ready_timeout_seconds=_option_float(tokens, "--ready-timeout-seconds") or 60.0,
@@ -372,6 +377,13 @@ def _amutorrent_resilience_options_from_tokens(
         reconnect_timeout_seconds=_option_float(tokens, "--reconnect-timeout-seconds") or 120.0,
         p2p_bind_interface_name=_option_value(tokens, "--p2p-bind-interface-name") or campaign_options.p2p_bind_interface_name,
     )
+
+
+def _vpn_command_test_network(campaign_options: ReleaseCampaignOptions, tokens: list[str]) -> str:
+    token_value = _option_value(tokens, "--test-network")
+    if token_value:
+        return token_value
+    return "all" if campaign_options.test_network == "all" else "vpn"
 
 
 def _workspace_options_from_tokens(workspace_options: WorkspaceOptions, tokens: list[str]) -> WorkspaceOptions:
@@ -458,6 +470,7 @@ def _write_report(
         "startedAt": started_at.isoformat(),
         "updatedAt": datetime.now(timezone.utc).isoformat(),
         "options": {
+            "testNetwork": campaign_options.test_network,
             "includeNonblocking": campaign_options.include_nonblocking,
             "continueOnFailure": campaign_options.continue_on_failure,
             "dryRun": campaign_options.dry_run,

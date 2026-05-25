@@ -8,6 +8,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from .network_context import TestNetwork, VpnTestNetwork
+
 BuildConfiguration = Literal["Debug", "Release"]
 BuildPlatform = Literal["x64", "ARM64"]
 BuildOutputMode = Literal["Full", "Warnings", "ErrorsOnly"]
@@ -102,6 +104,7 @@ class LiveE2eOptions(BaseModel):
 
     suites: tuple[str, ...] = ()
     profile: LiveE2eProfile = "default"
+    test_network: TestNetwork = "default"
     pre_run_cleanup: bool = False
     fail_fast: bool = False
     skip_live_seed_refresh: bool = False
@@ -195,6 +198,7 @@ class FakeKadTrustSoakOptions(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     live_wire_inputs_file: str | None = None
+    test_network: VpnTestNetwork = "vpn"
     keep_artifacts: bool = False
     keep_running: bool = False
     skip_live_seed_refresh: bool = False
@@ -215,6 +219,7 @@ class AmutorrentCleanStartupOptions(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     live_wire_inputs_file: str | None = None
+    test_network: VpnTestNetwork = "vpn"
     rest_webserver_scheme: str = "https"
     keep_artifacts: bool = False
     ready_timeout_seconds: float = 60.0
@@ -229,6 +234,7 @@ class AmutorrentEmulebbUiOptions(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     live_wire_inputs_file: str | None = None
+    test_network: VpnTestNetwork = "vpn"
     rest_webserver_scheme: str = "https"
     keep_artifacts: bool = False
     ready_timeout_seconds: float = 60.0
@@ -243,6 +249,7 @@ class AmutorrentResilienceOptions(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     live_wire_inputs_file: str | None = None
+    test_network: VpnTestNetwork = "vpn"
     rest_webserver_scheme: str = "https"
     keep_artifacts: bool = False
     ready_timeout_seconds: float = 60.0
@@ -265,6 +272,7 @@ class ReleaseCampaignOptions(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     campaign: str = "emulebb-0.7.3"
+    test_network: TestNetwork = "default"
     phase: str | None = None
     show_template: bool = False
     json_output: bool = False
@@ -287,6 +295,7 @@ class CertificationOptions(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     profile: CertificationProfile = "fast"
+    test_network: TestNetwork = "default"
     pre_run_cleanup: bool = True
     continue_on_failure: bool = False
     live_wire_inputs_file: str | None = None

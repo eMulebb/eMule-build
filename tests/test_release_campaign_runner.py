@@ -178,7 +178,7 @@ def test_campaign_execute_forwards_live_e2e_suite_selection(tmp_path: Path, monk
         }
     ]
     write_campaign(layout, campaign)
-    calls: list[tuple[str, tuple[str, ...], bool]] = []
+    calls: list[tuple[str, tuple[str, ...], str, bool]] = []
 
     monkeypatch.setattr(
         release_campaign_runner,
@@ -189,7 +189,7 @@ def test_campaign_execute_forwards_live_e2e_suite_selection(tmp_path: Path, monk
         release_campaign_runner,
         "invoke_live_e2e_suite",
         lambda _layout, _workspace_options, live_options: calls.append(
-            (live_options.profile, live_options.suites, live_options.fail_fast)
+            (live_options.profile, live_options.suites, live_options.test_network, live_options.fail_fast)
         ),
     )
 
@@ -199,7 +199,7 @@ def test_campaign_execute_forwards_live_e2e_suite_selection(tmp_path: Path, monk
         ReleaseCampaignOptions(campaign="test-campaign", phase="controller-surface", execute=True),
     )
 
-    assert calls == [("default", ("live-process-monitor",), True)]
+    assert calls == [("default", ("live-process-monitor",), "default", True)]
 
 
 def test_campaign_execute_applies_campaign_runtime_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -218,8 +218,8 @@ def test_campaign_execute_applies_campaign_runtime_inputs(tmp_path: Path, monkey
         },
     ]
     write_campaign(layout, campaign)
-    live_calls: list[tuple[str | None, str | None, str | None, float | None, str, bool]] = []
-    certification_calls: list[tuple[str | None, str | None, str | None, float | None, str, bool]] = []
+    live_calls: list[tuple[str | None, str | None, str | None, float | None, str, bool, str]] = []
+    certification_calls: list[tuple[str | None, str | None, str | None, float | None, str, bool, str]] = []
 
     monkeypatch.setattr(
         release_campaign_runner,
@@ -237,6 +237,7 @@ def test_campaign_execute_applies_campaign_runtime_inputs(tmp_path: Path, monkey
                 options.acquisition_timeout_minutes,
                 options.p2p_bind_interface_name,
                 options.skip_live_seed_refresh,
+                options.test_network,
             )
         ),
     )
@@ -251,6 +252,7 @@ def test_campaign_execute_applies_campaign_runtime_inputs(tmp_path: Path, monkey
                 options.acquisition_timeout_minutes,
                 options.p2p_bind_interface_name,
                 options.skip_live_seed_refresh,
+                options.test_network,
             )
         ),
     )
@@ -268,10 +270,11 @@ def test_campaign_execute_applies_campaign_runtime_inputs(tmp_path: Path, monkey
             acquisition_timeout_minutes=12.5,
             p2p_bind_interface_name="hide.me",
             skip_live_seed_refresh=True,
+            test_network="all",
         ),
     )
 
-    expected = [("inputs.local.json", "R:/movies", "S:/series", 12.5, "hide.me", True)]
+    expected = [("inputs.local.json", "R:/movies", "S:/series", 12.5, "hide.me", True, "all")]
     assert live_calls == expected
     assert certification_calls == expected
 
@@ -306,7 +309,7 @@ def test_campaign_execute_dispatches_amutorrent_live_commands(tmp_path: Path, mo
         },
     ]
     write_campaign(layout, campaign)
-    calls: list[tuple[str, str | None, str, bool]] = []
+    calls: list[tuple[str, str | None, str, bool, str]] = []
 
     monkeypatch.setattr(
         release_campaign_runner,
@@ -317,21 +320,21 @@ def test_campaign_execute_dispatches_amutorrent_live_commands(tmp_path: Path, mo
         release_campaign_runner,
         "invoke_amutorrent_clean_startup",
         lambda _layout, _workspace_options, options: calls.append(
-            ("clean", options.live_wire_inputs_file, options.rest_webserver_scheme, options.keep_artifacts)
+            ("clean", options.live_wire_inputs_file, options.rest_webserver_scheme, options.keep_artifacts, options.test_network)
         ),
     )
     monkeypatch.setattr(
         release_campaign_runner,
         "invoke_amutorrent_emulebb_ui",
         lambda _layout, _workspace_options, options: calls.append(
-            ("ui", options.live_wire_inputs_file, options.rest_webserver_scheme, options.keep_artifacts)
+            ("ui", options.live_wire_inputs_file, options.rest_webserver_scheme, options.keep_artifacts, options.test_network)
         ),
     )
     monkeypatch.setattr(
         release_campaign_runner,
         "invoke_amutorrent_resilience",
         lambda _layout, _workspace_options, options: calls.append(
-            ("resilience", options.live_wire_inputs_file, options.rest_webserver_scheme, options.keep_artifacts)
+            ("resilience", options.live_wire_inputs_file, options.rest_webserver_scheme, options.keep_artifacts, options.test_network)
         ),
     )
 
@@ -342,9 +345,9 @@ def test_campaign_execute_dispatches_amutorrent_live_commands(tmp_path: Path, mo
     )
 
     assert calls == [
-        ("clean", "inputs.json", "https", True),
-        ("ui", "inputs.json", "https", True),
-        ("resilience", "inputs.json", "https", True),
+        ("clean", "inputs.json", "https", True, "vpn"),
+        ("ui", "inputs.json", "https", True, "vpn"),
+        ("resilience", "inputs.json", "https", True, "vpn"),
     ]
 
 

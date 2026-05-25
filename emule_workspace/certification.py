@@ -122,7 +122,7 @@ def invoke_certification(layout: WorkspaceLayout, options: WorkspaceOptions, cer
             )
             steps.append(step_result)
             _write_report(report_dir, layout, options, certification_options, started_at, steps, pre_run_cleanup, status="running")
-            if step_result.status != "passed":
+            if step_result.status not in {"passed", "skipped"}:
                 if not certification_options.continue_on_failure:
                     stop_error = RuntimeError(f"Certification step '{step_result.name}' {step_result.status}: {step_result.error}")
                     break
@@ -158,6 +158,15 @@ def _aggregate_status(steps: list[CertificationStepResult]) -> str:
     return "passed"
 
 
+def _skip_reason_for_network(step_plan: CertificationStepPlan, certification_options: CertificationOptions) -> str:
+    """Returns a skip reason when a certification step is outside the selected test network."""
+
+    if step_plan.name in {"amutorrent-clean-startup", "amutorrent-emulebb-ui", "amutorrent-resilience"}:
+        if certification_options.test_network not in {"vpn", "all"}:
+            return f"Skipped by test_network={certification_options.test_network}; step requires vpn."
+    return ""
+
+
 def _run_step(
     layout: WorkspaceLayout,
     options: WorkspaceOptions,
@@ -171,6 +180,15 @@ def _run_step(
     started = time.monotonic()
     error = ""
     status = "passed"
+    skip_reason = _skip_reason_for_network(step_plan, certification_options)
+    if skip_reason:
+        return CertificationStepResult(
+            name=step_plan.name,
+            category=step_plan.category,
+            status="skipped",
+            duration_seconds=0.0,
+            error=skip_reason,
+        )
     try:
         _invoke_step(layout, options, certification_options, step_plan.name)
     except Exception as exc:
@@ -357,6 +375,7 @@ def _live_options(
     return LiveE2eOptions(
         suites=suites,
         profile=profile,
+        test_network=certification_options.test_network,
         pre_run_cleanup=False,
         fail_fast=fail_fast,
         skip_live_seed_refresh=certification_options.skip_live_seed_refresh,
@@ -382,6 +401,7 @@ def _live_options(
 def _amutorrent_clean_options(certification_options: CertificationOptions) -> AmutorrentCleanStartupOptions:
     return AmutorrentCleanStartupOptions(
         live_wire_inputs_file=certification_options.live_wire_inputs_file,
+        test_network=_vpn_step_test_network(certification_options),
         rest_webserver_scheme="https",
         keep_artifacts=True,
         p2p_bind_interface_name=certification_options.p2p_bind_interface_name,
@@ -391,6 +411,7 @@ def _amutorrent_clean_options(certification_options: CertificationOptions) -> Am
 def _amutorrent_ui_options(certification_options: CertificationOptions) -> AmutorrentEmulebbUiOptions:
     return AmutorrentEmulebbUiOptions(
         live_wire_inputs_file=certification_options.live_wire_inputs_file,
+        test_network=_vpn_step_test_network(certification_options),
         rest_webserver_scheme="https",
         keep_artifacts=True,
         p2p_bind_interface_name=certification_options.p2p_bind_interface_name,
@@ -400,10 +421,15 @@ def _amutorrent_ui_options(certification_options: CertificationOptions) -> Amuto
 def _amutorrent_resilience_options(certification_options: CertificationOptions) -> AmutorrentResilienceOptions:
     return AmutorrentResilienceOptions(
         live_wire_inputs_file=certification_options.live_wire_inputs_file,
+        test_network=_vpn_step_test_network(certification_options),
         rest_webserver_scheme="https",
         keep_artifacts=True,
         p2p_bind_interface_name=certification_options.p2p_bind_interface_name,
     )
+
+
+def _vpn_step_test_network(certification_options: CertificationOptions) -> str:
+    return "all" if certification_options.test_network == "all" else "vpn"
 
 
 def _new_report_dir(layout: WorkspaceLayout, profile: str) -> Path:
@@ -484,6 +510,7 @@ def _write_report(
         "duration_seconds": round((completed_at - started_at).total_seconds(), 3),
         "commits": _workspace_commits(layout),
         "options": {
+            "test_network": certification_options.test_network,
             "pre_run_cleanup": certification_options.pre_run_cleanup,
             "continue_on_failure": certification_options.continue_on_failure,
             "p2p_bind_interface_name": certification_options.p2p_bind_interface_name,

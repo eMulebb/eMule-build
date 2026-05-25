@@ -19,6 +19,7 @@ from .config import (
 )
 from .cleanup import run_pre_test_cleanup
 from .layout import WorkspaceLayout, get_test_build_tag
+from .network_context import TestNetwork, resolve_workspace_network_context
 from .process import get_python_invocation, run_native
 
 
@@ -258,6 +259,8 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
         options.configuration,
         "--startup-trace-mode",
         live_options.startup_trace_mode,
+        "--test-network",
+        live_options.test_network,
         "--profile-cpu-max-file-mb",
         live_options.profile_cpu_max_file_mb,
         "--profile-cpu-stack-min-hits",
@@ -403,7 +406,11 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
         python.command(args),
         label="live E2E suite",
         cwd=layout.emule_workspace_root,
-        env={"EMULE_WORKSPACE_ROOT": layout.emule_workspace_root},
+        env=_test_network_env(
+            layout,
+            test_network=live_options.test_network,
+            vpn_interface_name=live_options.p2p_bind_interface_name,
+        ),
     )
 
 
@@ -524,7 +531,12 @@ def invoke_fake_kad_trust_soak(
         python.command(args),
         label="fake/Kad trust soak",
         cwd=layout.emule_workspace_root,
-        env={"EMULE_WORKSPACE_ROOT": layout.emule_workspace_root},
+        env=_test_network_env(
+            layout,
+            test_network=soak_options.test_network,
+            vpn_interface_name=soak_options.p2p_bind_interface_name,
+            require_vpn=True,
+        ),
     )
 
 
@@ -569,7 +581,12 @@ def invoke_amutorrent_clean_startup(
         python.command(args),
         label="aMuTorrent clean startup",
         cwd=layout.emule_workspace_root,
-        env={"EMULE_WORKSPACE_ROOT": layout.emule_workspace_root},
+        env=_test_network_env(
+            layout,
+            test_network=clean_options.test_network,
+            vpn_interface_name=clean_options.p2p_bind_interface_name,
+            require_vpn=True,
+        ),
     )
 
 
@@ -616,7 +633,12 @@ def invoke_amutorrent_resilience(
         python.command(args),
         label="aMuTorrent resilience live",
         cwd=layout.emule_workspace_root,
-        env={"EMULE_WORKSPACE_ROOT": layout.emule_workspace_root},
+        env=_test_network_env(
+            layout,
+            test_network=resilience_options.test_network,
+            vpn_interface_name=resilience_options.p2p_bind_interface_name,
+            require_vpn=True,
+        ),
     )
 
 
@@ -661,7 +683,12 @@ def invoke_amutorrent_emulebb_ui(
         python.command(args),
         label="aMuTorrent eMuleBB UI live",
         cwd=layout.emule_workspace_root,
-        env={"EMULE_WORKSPACE_ROOT": layout.emule_workspace_root},
+        env=_test_network_env(
+            layout,
+            test_network=ui_options.test_network,
+            vpn_interface_name=ui_options.p2p_bind_interface_name,
+            require_vpn=True,
+        ),
     )
 
 
@@ -680,6 +707,27 @@ def _resolve_workspace_argument(layout: WorkspaceLayout, value: str) -> str:
     if workspace_path.exists():
         return str(workspace_path.resolve())
     return value
+
+
+def _test_network_env(
+    layout: WorkspaceLayout,
+    *,
+    test_network: TestNetwork,
+    vpn_interface_name: str | None = None,
+    require_vpn: bool = False,
+) -> dict[str, str]:
+    """Returns the eMule workspace environment for one network-scoped child run."""
+
+    context = resolve_workspace_network_context(
+        workspace_root=layout.workspace_root,
+        test_network=test_network,
+        vpn_interface_name=vpn_interface_name,
+        require_vpn=require_vpn,
+    )
+    return {
+        "EMULE_WORKSPACE_ROOT": str(layout.emule_workspace_root),
+        **context.env(),
+    }
 
 
 def _assert_test_execution_platform_supported(options: WorkspaceOptions) -> None:

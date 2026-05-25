@@ -95,6 +95,7 @@ def test_certification_writes_single_passing_report(tmp_path: Path, monkeypatch:
     assert calls == [step.name for step in certification.get_certification_step_plan("fast")]
     assert [step["status"] for step in report["steps"]] == ["passed"] * len(calls)
     assert report["options"]["pre_run_cleanup"] is True
+    assert report["options"]["test_network"] == "default"
     assert report["pre_run_cleanup"]["status"] == "passed"
 
 
@@ -231,6 +232,7 @@ def test_fast_live_step_uses_critical_ui_and_rest_scope(tmp_path: Path, monkeypa
         "rest-api",
     )
     assert live_options.fail_fast is True
+    assert live_options.test_network == "default"
     assert live_options.live_wire_inputs_file == "inputs.json"
 
 
@@ -258,6 +260,32 @@ def test_overnight_stress_step_enables_cpu_profile(tmp_path: Path, monkeypatch: 
     assert live_options.profile_memory is True
     assert live_options.rest_cold_start_dump_stress_cpu_profile is True
     assert live_options.rest_cold_start_dump_stress_cpu_profile_stack is True
+
+
+def test_overnight_vpn_only_steps_are_skipped_by_default_network(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    layout = make_layout(tmp_path)
+    calls: list[str] = []
+
+    def fake_invoke_step(_layout, _options, _certification_options, name):
+        calls.append(name)
+
+    monkeypatch.setattr(certification, "_invoke_step", fake_invoke_step)
+
+    certification.invoke_certification(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+        CertificationOptions(profile="overnight", pre_run_cleanup=False),
+    )
+
+    report = json.loads(latest_certification_report(layout).read_text(encoding="utf-8"))
+    skipped = [step for step in report["steps"] if step["status"] == "skipped"]
+    assert [step["name"] for step in skipped] == [
+        "amutorrent-clean-startup",
+        "amutorrent-emulebb-ui",
+        "amutorrent-resilience",
+    ]
+    assert all("requires vpn" in step["error"] for step in skipped)
+    assert not any(name.startswith("amutorrent-") for name in calls)
 
 
 def test_overnight_release_steps_use_broad_live_profiles(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

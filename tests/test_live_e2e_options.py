@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 from emule_workspace.config import LiveE2eOptions, ReleaseCampaignOptions, WorkspaceOptions
 from emule_workspace.layout import AppVariant, TestTargets as LayoutTestTargets, WorkspaceLayout
@@ -40,6 +43,19 @@ def option_values(command: list[str], option: str) -> list[str]:
     """Returns values that immediately follow an option in a captured command."""
 
     return [command[index + 1] for index, value in enumerate(command[:-1]) if value == option]
+
+
+@pytest.fixture(autouse=True)
+def fake_network_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    def resolve(*, workspace_root, test_network, vpn_interface_name=None, require_vpn=False, require_lan=False):
+        return SimpleNamespace(
+            env=lambda: {
+                "EMULEBB_TEST_NETWORK": test_network,
+                "EMULEBB_TEST_NETWORK_CONTEXT_JSON": str(Path(workspace_root) / "state" / "network-context" / "fake.json"),
+            }
+        )
+
+    monkeypatch.setattr(test_runs, "resolve_workspace_network_context", resolve)
 
 
 def test_live_e2e_forwards_cold_stress_cpu_profile_options(tmp_path: Path, monkeypatch) -> None:
@@ -107,7 +123,8 @@ def test_live_e2e_forwards_cold_stress_cpu_profile_options(tmp_path: Path, monke
     assert "--rest-cold-start-dump-stress-skip-umdh-diffs" in command
     assert "--no-rest-cold-start-dump-stress-cpu-profile-symbols-required" in command
     assert "--rest-cold-start-dump-stress-skip-dumps" not in command
-    assert captured["env"] == {"EMULE_WORKSPACE_ROOT": layout.emule_workspace_root}
+    assert captured["env"]["EMULE_WORKSPACE_ROOT"] == str(layout.emule_workspace_root)
+    assert captured["env"]["EMULEBB_TEST_NETWORK"] == "default"
 
 
 def test_live_e2e_forwards_preference_directory_tree_stress(tmp_path: Path, monkeypatch) -> None:

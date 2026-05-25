@@ -140,6 +140,13 @@ def _comparison_options(function: F) -> F:
 def _live_e2e_options(function: F) -> F:
     @click.option("--suite", "suites", multiple=True, help="Live E2E suite to run.")
     @click.option(
+        "--test-network",
+        type=click.Choice(["default", "offline", "lan", "vpn", "all"]),
+        default="default",
+        show_default=True,
+        help="Network scope for live E2E suite selection.",
+    )
+    @click.option(
         "--profile",
         type=click.Choice([
             "default",
@@ -789,6 +796,7 @@ def test_live_e2e(
 @click.option("--continue-on-failure", is_flag=True, help="Run remaining campaign commands after a failure.")
 @click.option("--dry-run", is_flag=True, help="Write an execution plan report without running campaign commands.")
 @click.option("--skip-pre-run-cleanup", is_flag=True, help="Do not prune old generated outcomes before executing campaign commands.")
+@click.option("--test-network", type=click.Choice(["default", "offline", "lan", "vpn", "all"]), default="default", show_default=True)
 @click.option("--live-wire-inputs-file", default=None, help="Runtime live-wire search/download input JSON for campaign commands.")
 @click.option("--radarr-movie-root", default=None, help="Radarr-visible movie root for campaign live checks.")
 @click.option("--sonarr-series-root", default=None, help="Sonarr-visible series root for campaign live checks.")
@@ -806,6 +814,7 @@ def test_release_campaign(
     continue_on_failure: bool,
     dry_run: bool,
     skip_pre_run_cleanup: bool,
+    test_network: str,
     live_wire_inputs_file: str | None,
     radarr_movie_root: str | None,
     sonarr_series_root: str | None,
@@ -819,6 +828,7 @@ def test_release_campaign(
 
     campaign_options = ReleaseCampaignOptions(
         campaign=campaign,
+        test_network=test_network,
         phase=phase,
         show_template=show_template,
         json_output=json_output,
@@ -843,6 +853,7 @@ def test_release_campaign(
 @test.command("certification")
 @_common_options
 @click.option("--profile", type=click.Choice(["fast", "overnight"]), default="fast", show_default=True)
+@click.option("--test-network", type=click.Choice(["default", "offline", "lan", "vpn", "all"]), default="default", show_default=True)
 @click.option("--live-wire-inputs-file", default=None, help="Runtime live-wire search/download input JSON.")
 @click.option("--radarr-movie-root", default=None, help="Radarr-visible movie root for Radarr import live checks.")
 @click.option("--sonarr-series-root", default=None, help="Sonarr-visible series root for Sonarr import live checks.")
@@ -854,6 +865,7 @@ def test_release_campaign(
 def test_certification(
     *,
     profile: str,
+    test_network: str,
     live_wire_inputs_file: str | None,
     radarr_movie_root: str | None,
     sonarr_series_root: str | None,
@@ -869,6 +881,7 @@ def test_certification(
 
     certification_options = CertificationOptions(
         profile=profile,
+        test_network=test_network,
         pre_run_cleanup=not skip_pre_run_cleanup,
         continue_on_failure=continue_on_failure,
         live_wire_inputs_file=live_wire_inputs_file,
@@ -905,6 +918,7 @@ def test_amutorrent_session(
 @test.command("fake-kad-trust-soak")
 @_common_options
 @click.option("--live-wire-inputs-file", default=None, help="Runtime live-wire search input JSON.")
+@click.option("--test-network", type=click.Choice(["vpn", "all"]), default="vpn", show_default=True)
 @click.option("--keep-artifacts", is_flag=True, help="Keep source artifacts after the soak run.")
 @click.option("--keep-running", is_flag=True, help="Leave eMule running when the soak passes.")
 @click.option("--skip-live-seed-refresh", is_flag=True, help="Reuse the existing live seed state.")
@@ -920,6 +934,7 @@ def test_amutorrent_session(
 def test_fake_kad_trust_soak(
     *,
     live_wire_inputs_file: str | None,
+    test_network: str,
     keep_artifacts: bool,
     keep_running: bool,
     skip_live_seed_refresh: bool,
@@ -939,6 +954,7 @@ def test_fake_kad_trust_soak(
 
     soak_options = FakeKadTrustSoakOptions(
         live_wire_inputs_file=live_wire_inputs_file,
+        test_network=test_network,
         keep_artifacts=keep_artifacts,
         keep_running=keep_running,
         skip_live_seed_refresh=skip_live_seed_refresh,
@@ -961,6 +977,7 @@ def test_fake_kad_trust_soak(
 @test.command("amutorrent-clean-startup")
 @_common_options
 @click.option("--live-wire-inputs-file", default=None, help="Runtime live-wire search/download input JSON.")
+@click.option("--test-network", type=click.Choice(["vpn", "all"]), default="vpn", show_default=True)
 @click.option("--rest-webserver-scheme", type=click.Choice(["http", "https"]), default="https", show_default=True)
 @click.option("--keep-artifacts", is_flag=True, help="Keep source artifacts after the clean-startup run.")
 @click.option("--ready-timeout-seconds", default=60.0, show_default=True, type=float)
@@ -970,6 +987,7 @@ def test_fake_kad_trust_soak(
 def test_amutorrent_clean_startup(
     *,
     live_wire_inputs_file: str | None,
+    test_network: str,
     rest_webserver_scheme: str,
     keep_artifacts: bool,
     ready_timeout_seconds: float,
@@ -983,6 +1001,7 @@ def test_amutorrent_clean_startup(
 
     clean_options = AmutorrentCleanStartupOptions(
         live_wire_inputs_file=live_wire_inputs_file,
+        test_network=test_network,
         rest_webserver_scheme=rest_webserver_scheme,
         keep_artifacts=keep_artifacts,
         ready_timeout_seconds=ready_timeout_seconds,
@@ -999,6 +1018,7 @@ def test_amutorrent_clean_startup(
 @test.command("amutorrent-resilience")
 @_common_options
 @click.option("--live-wire-inputs-file", default=None, help="Runtime live-wire search/download input JSON.")
+@click.option("--test-network", type=click.Choice(["vpn", "all"]), default="vpn", show_default=True)
 @click.option("--rest-webserver-scheme", type=click.Choice(["http", "https"]), default="https", show_default=True)
 @click.option("--keep-artifacts", is_flag=True, help="Keep source artifacts after the resilience run.")
 @click.option("--ready-timeout-seconds", default=60.0, show_default=True, type=float)
@@ -1009,6 +1029,7 @@ def test_amutorrent_clean_startup(
 def test_amutorrent_resilience(
     *,
     live_wire_inputs_file: str | None,
+    test_network: str,
     rest_webserver_scheme: str,
     keep_artifacts: bool,
     ready_timeout_seconds: float,
@@ -1023,6 +1044,7 @@ def test_amutorrent_resilience(
 
     resilience_options = AmutorrentResilienceOptions(
         live_wire_inputs_file=live_wire_inputs_file,
+        test_network=test_network,
         rest_webserver_scheme=rest_webserver_scheme,
         keep_artifacts=keep_artifacts,
         ready_timeout_seconds=ready_timeout_seconds,
@@ -1040,6 +1062,7 @@ def test_amutorrent_resilience(
 @test.command("amutorrent-emulebb-ui")
 @_common_options
 @click.option("--live-wire-inputs-file", default=None, help="Runtime live-wire search/download input JSON.")
+@click.option("--test-network", type=click.Choice(["vpn", "all"]), default="vpn", show_default=True)
 @click.option("--rest-webserver-scheme", type=click.Choice(["http", "https"]), default="https", show_default=True)
 @click.option("--keep-artifacts", is_flag=True, help="Keep source artifacts after the eMuleBB UI run.")
 @click.option("--ready-timeout-seconds", default=60.0, show_default=True, type=float)
@@ -1049,6 +1072,7 @@ def test_amutorrent_resilience(
 def test_amutorrent_emulebb_ui(
     *,
     live_wire_inputs_file: str | None,
+    test_network: str,
     rest_webserver_scheme: str,
     keep_artifacts: bool,
     ready_timeout_seconds: float,
@@ -1062,6 +1086,7 @@ def test_amutorrent_emulebb_ui(
 
     ui_options = AmutorrentEmulebbUiOptions(
         live_wire_inputs_file=live_wire_inputs_file,
+        test_network=test_network,
         rest_webserver_scheme=rest_webserver_scheme,
         keep_artifacts=keep_artifacts,
         ready_timeout_seconds=ready_timeout_seconds,
