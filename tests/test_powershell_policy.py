@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -141,3 +142,88 @@ def test_workspace_policy_rejects_nested_emulebb_runtime_script(
 
     with pytest.raises(RuntimeError, match="tracked PowerShell is only allowed"):
         policy.audit_powershell_boundary(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "script_name",
+    [
+        "register-prowlarr.ps1",
+        "register-arr-stack.ps1",
+    ],
+)
+def test_runtime_scripts_set_provider_field_adds_missing_value_property(
+    workspace_root: Path,
+    tmp_path: Path,
+    script_name: str,
+) -> None:
+    script_path = (
+        workspace_root
+        / "repos"
+        / "emulebb-build"
+        / "emule_workspace"
+        / "release_assets"
+        / "emule"
+        / "scripts"
+        / script_name
+    )
+    function_text = _extract_powershell_function(script_path.read_text(encoding="utf-8"), "Set-ProviderField")
+    test_script = tmp_path / "set-provider-field-test.ps1"
+    test_script.write_text(
+        function_text
+        + """
+$provider = [pscustomobject]@{
+    fields = @(
+        [pscustomobject]@{ name = 'baseUrl' },
+        [pscustomobject]@{ name = 'apiKey'; value = '' }
+    )
+}
+if (-not (Set-ProviderField -Provider $provider -Name 'baseUrl' -Value 'http://127.0.0.1')) {
+    throw 'baseUrl was not set'
+}
+if ($provider.fields[0].value -ne 'http://127.0.0.1') {
+    throw 'baseUrl value property was not added'
+}
+if (-not (Set-ProviderField -Provider $provider -Name 'apiKey' -Value 'secret')) {
+    throw 'apiKey was not set'
+}
+if ($provider.fields[1].value -ne 'secret') {
+    throw 'apiKey existing value property was not updated'
+}
+if (Set-ProviderField -Provider $provider -Name 'missing' -Value 'ignored' -Optional) {
+    throw 'optional missing field should return false'
+}
+""",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(test_script),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+
+
+def _extract_powershell_function(script_text: str, function_name: str) -> str:
+    start_token = f"function {function_name} "
+    start = script_text.index(start_token)
+    brace_start = script_text.index("{", start)
+    depth = 0
+    for index in range(brace_start, len(script_text)):
+        char = script_text[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return script_text[start : index + 1]
+    raise AssertionError(f"Could not extract PowerShell function {function_name}")

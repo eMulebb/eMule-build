@@ -64,7 +64,13 @@ function Set-ProviderField {
     param($Provider, [string]$Name, $Value, [switch]$Optional)
     foreach ($field in @($Provider.fields)) {
         if ($field.name -eq $Name) {
-            $field.value = $Value
+            if ($field -is [System.Collections.IDictionary]) {
+                $field['value'] = $Value
+            } elseif ($null -ne $field.PSObject.Properties['value']) {
+                $field.value = $Value
+            } else {
+                $field | Add-Member -NotePropertyName 'value' -NotePropertyValue $Value -Force
+            }
             return $true
         }
     }
