@@ -29,6 +29,7 @@ from .config import (
     CommunityCoverageOptions,
     FakeKadTrustSoakOptions,
     LiveE2eOptions,
+    LocalPackageInstallOptions,
     MiniupnpcPackageOptions,
     PythonTestOptions,
     ReleasePackageOptions,
@@ -40,6 +41,7 @@ from .config import (
 from .evidence import build_heavy_evidence_index, print_heavy_evidence_index, write_heavy_evidence_index
 from .amule_release import create_amule_package
 from .layout import load_layout
+from .local_package_install import install_local_package
 from .locks import WorkspaceLock
 from .materialize import materialize_workspace, sync_workspace
 from .miniupnpc_release import create_miniupnpc_package
@@ -1224,6 +1226,40 @@ def package_miniupnpc(
     _locked(
         "package miniupnpc",
         lambda **kwargs: create_miniupnpc_package(kwargs["layout"], kwargs["workspace_options"], package_options),
+    )(workspace_options=workspace_options, layout=layout)
+
+
+@main.command("install-local-package")
+@_common_options
+@click.option("--clean", is_flag=True, help="Clean selected package build outputs before building.")
+@click.option("--skip-build", is_flag=True, help="Deploy existing package artifacts without rebuilding them.")
+@click.option("--live-wire-inputs-file", default=None, help="Ignored live-wire JSON containing local_package_install settings.")
+@click.option(
+    "--release-version",
+    default="0.7.3-rc.1",
+    show_default=True,
+    help="Release version in MAJOR.MINOR.PATCH[-rc.N|-beta.N|-nightly.YYYYMMDD.SHA] form.",
+)
+def install_local_package_command(
+    *,
+    clean: bool,
+    skip_build: bool,
+    live_wire_inputs_file: str | None,
+    release_version: str,
+    workspace_options: WorkspaceOptions,
+    layout,
+) -> None:
+    """Build and refresh a local package install from ignored live-wire JSON."""
+
+    install_options = LocalPackageInstallOptions(
+        release_version=release_version,
+        clean=clean,
+        skip_build=skip_build,
+        live_wire_inputs_file=live_wire_inputs_file,
+    )
+    _locked(
+        "install local-package",
+        lambda **kwargs: install_local_package(kwargs["layout"], kwargs["workspace_options"], install_options),
     )(workspace_options=workspace_options, layout=layout)
 
 

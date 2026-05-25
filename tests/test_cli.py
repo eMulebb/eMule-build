@@ -218,6 +218,17 @@ def test_prepare_product_family_help_is_available() -> None:
     assert "product-family" in result.output
 
 
+def test_install_local_package_help_exposes_live_wire_config() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(cli.main, ["install-local-package", "--help"])
+
+    assert result.exit_code == 0
+    assert "--live-wire-inputs-file" in result.output
+    assert "--release-version" in result.output
+    assert "--skip-build" in result.output
+
+
 def test_product_family_toolchain_help_is_available() -> None:
     runner = CliRunner()
 

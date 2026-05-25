@@ -342,6 +342,17 @@ class MiniupnpcPackageOptions(BaseModel):
     clean: bool = False
 
 
+class LocalPackageInstallOptions(BaseModel):
+    """Options for refreshing a local package-style install."""
+
+    model_config = ConfigDict(frozen=True)
+
+    release_version: str = "0.7.3-rc.1"
+    clean: bool = False
+    skip_build: bool = False
+    live_wire_inputs_file: str | None = None
+
+
 class CleanupOptions(BaseModel):
     """Options for pruning generated workspace artifacts."""
 
