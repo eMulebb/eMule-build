@@ -213,6 +213,529 @@ if (Set-ProviderField -Provider $provider -Name 'missing' -Value 'ignored' -Opti
     assert completed.returncode == 0, completed.stderr + completed.stdout
 
 
+@pytest.mark.parametrize(
+    "script_name",
+    [
+        "register-prowlarr.ps1",
+        "register-arr-stack.ps1",
+    ],
+)
+def test_runtime_scripts_accept_register_unregister_action_aliases(
+    workspace_root: Path,
+    tmp_path: Path,
+    script_name: str,
+) -> None:
+    script_path = (
+        workspace_root
+        / "repos"
+        / "emulebb-build"
+        / "emule_workspace"
+        / "release_assets"
+        / "emule"
+        / "scripts"
+        / script_name
+    )
+    function_text = _extract_powershell_function(script_path.read_text(encoding="utf-8"), "Read-ActionValue")
+    test_script = tmp_path / "read-action-value-test.ps1"
+    test_script.write_text(
+        function_text
+        + """
+if ((Read-ActionValue -Value 'register') -ne 'Register') { throw 'register action was not accepted' }
+if ((Read-ActionValue -Value 'R') -ne 'Register') { throw 'register alias was not accepted' }
+if ((Read-ActionValue -Value 'unregister') -ne 'Unregister') { throw 'unregister action was not accepted' }
+if ((Read-ActionValue -Value 'u') -ne 'Unregister') { throw 'unregister alias was not accepted' }
+try {
+    [void](Read-ActionValue -Value 'delete')
+    throw 'invalid action was accepted'
+} catch {
+    if ($_.Exception.Message -notlike '*Action must be Register or Unregister*') { throw }
+}
+""",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(test_script),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+
+
+def test_register_prowlarr_unregister_deletes_named_indexer(
+    workspace_root: Path,
+    tmp_path: Path,
+) -> None:
+    script_path = (
+        workspace_root
+        / "repos"
+        / "emulebb-build"
+        / "emule_workspace"
+        / "release_assets"
+        / "emule"
+        / "scripts"
+        / "register-prowlarr.ps1"
+    )
+    script_text = script_path.read_text(encoding="utf-8")
+    test_script = tmp_path / "remove-prowlarr-indexer-test.ps1"
+    test_script.write_text(
+        """
+$script:Calls = @()
+function Invoke-JsonApi {
+    param([string]$BaseUrl, [string]$ApiKey, [string]$Path, [string]$Method = 'GET', $Body = $null)
+    $script:Calls += [pscustomobject]@{ BaseUrl = $BaseUrl; ApiKey = $ApiKey; Path = $Path; Method = $Method }
+    if ($Path -eq '/api/v1/indexer') {
+        return @(
+            [pscustomobject]@{ name = 'Other'; id = 7 },
+            [pscustomobject]@{ name = 'eMuleBB'; id = 42 }
+        )
+    }
+    return $null
+}
+"""
+        + _extract_powershell_function(script_text, "Get-ExistingIndexer")
+        + "\n"
+        + _extract_powershell_function(script_text, "Remove-Indexer")
+        + """
+Remove-Indexer -BaseUrl 'http://prowlarr' -ApiKey 'secret' -Name 'eMuleBB'
+if ($script:Calls.Count -ne 2) { throw ('expected 2 API calls, got {0}' -f $script:Calls.Count) }
+if ($script:Calls[1].Path -ne '/api/v1/indexer/42') { throw ('unexpected delete path: {0}' -f $script:Calls[1].Path) }
+if ($script:Calls[1].Method -ne 'DELETE') { throw ('unexpected delete method: {0}' -f $script:Calls[1].Method) }
+""",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(test_script),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+
+
+def test_register_prowlarr_save_indexer_returns_only_saved_provider(
+    workspace_root: Path,
+    tmp_path: Path,
+) -> None:
+    script_path = (
+        workspace_root
+        / "repos"
+        / "emulebb-build"
+        / "emule_workspace"
+        / "release_assets"
+        / "emule"
+        / "scripts"
+        / "register-prowlarr.ps1"
+    )
+    script_text = script_path.read_text(encoding="utf-8")
+    test_script = tmp_path / "save-prowlarr-indexer-test.ps1"
+    test_script.write_text(
+        """
+function Invoke-JsonApi {
+    param([string]$BaseUrl, [string]$ApiKey, [string]$Path, [string]$Method = 'GET', $Body = $null)
+    if ($Path -eq '/api/v1/indexer') { return @() }
+    if ($Path -eq '/api/v1/indexer/schema') {
+        return @([pscustomobject]@{
+            name = 'Generic Torznab'
+            implementation = 'Torznab'
+            appProfileId = 1
+            priority = 25
+            fields = @(
+                [pscustomobject]@{ name = 'baseUrl' },
+                [pscustomobject]@{ name = 'apiPath' },
+                [pscustomobject]@{ name = 'apiKey' },
+                [pscustomobject]@{ name = 'torrentBaseSettings.preferMagnetUrl' }
+            )
+        })
+    }
+    if ($Path -eq '/api/v1/indexer?forceSave=true' -and $Method -eq 'POST') {
+        return [pscustomobject]@{ id = 99; name = $Body.name }
+    }
+    throw ('unexpected call: {0} {1}' -f $Method, $Path)
+}
+"""
+        + _extract_powershell_function(script_text, "Get-HttpStatusCode")
+        + "\n"
+        + _extract_powershell_function(script_text, "Copy-JsonObject")
+        + "\n"
+        + _extract_powershell_function(script_text, "Set-ObjectProperty")
+        + "\n"
+        + _extract_powershell_function(script_text, "Set-ProviderField")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-GenericTorznabSchema")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-ExistingIndexer")
+        + "\n"
+        + _extract_powershell_function(script_text, "Save-Indexer")
+        + """
+$saved = Save-Indexer -BaseUrl 'http://prowlarr' -ApiKey 'secret' -Name 'eMuleBB' -TorznabBaseUrl 'http://emule/indexer/emulebb' -TorznabApiKey 'emule-key'
+if ($saved -is [array]) { throw ('Save-Indexer emitted an array with {0} items' -f $saved.Count) }
+if ($saved.id -ne 99) { throw ('unexpected saved id: {0}' -f $saved.id) }
+""",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(test_script),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+
+
+def test_register_arr_stack_unregister_deletes_named_download_client(
+    workspace_root: Path,
+    tmp_path: Path,
+) -> None:
+    script_path = (
+        workspace_root
+        / "repos"
+        / "emulebb-build"
+        / "emule_workspace"
+        / "release_assets"
+        / "emule"
+        / "scripts"
+        / "register-arr-stack.ps1"
+    )
+    script_text = script_path.read_text(encoding="utf-8")
+    test_script = tmp_path / "remove-arr-client-test.ps1"
+    test_script.write_text(
+        """
+$script:Calls = @()
+function Invoke-JsonApi {
+    param([string]$BaseUrl, [string]$ApiKey, [string]$Path, [string]$Method = 'GET', $Body = $null)
+    $script:Calls += [pscustomobject]@{ BaseUrl = $BaseUrl; ApiKey = $ApiKey; Path = $Path; Method = $Method }
+    if ($Path -eq '/api/v3/downloadclient') {
+        return @(
+            [pscustomobject]@{ name = 'Other'; id = 12 },
+            [pscustomobject]@{ name = 'eMuleBB'; id = 77 }
+        )
+    }
+    return $null
+}
+"""
+        + _extract_powershell_function(script_text, "Get-ExistingDownloadClient")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-HttpStatusCode")
+        + "\n"
+        + _extract_powershell_function(script_text, "Invoke-JsonApiWithRetry")
+        + "\n"
+        + _extract_powershell_function(script_text, "Invoke-DeleteJsonApiWithRetry")
+        + "\n"
+        + _extract_powershell_function(script_text, "Remove-QbitClient")
+        + """
+Remove-QbitClient -BaseUrl 'http://radarr' -ApiKey 'secret' -Name 'eMuleBB'
+if ($script:Calls.Count -ne 2) { throw ('expected 2 API calls, got {0}' -f $script:Calls.Count) }
+if ($script:Calls[1].Path -ne '/api/v3/downloadclient/77') { throw ('unexpected delete path: {0}' -f $script:Calls[1].Path) }
+if ($script:Calls[1].Method -ne 'DELETE') { throw ('unexpected delete method: {0}' -f $script:Calls[1].Method) }
+""",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(test_script),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+
+
+def test_register_arr_stack_save_client_returns_only_saved_provider(
+    workspace_root: Path,
+    tmp_path: Path,
+) -> None:
+    script_path = (
+        workspace_root
+        / "repos"
+        / "emulebb-build"
+        / "emule_workspace"
+        / "release_assets"
+        / "emule"
+        / "scripts"
+        / "register-arr-stack.ps1"
+    )
+    script_text = script_path.read_text(encoding="utf-8")
+    test_script = tmp_path / "save-arr-client-test.ps1"
+    test_script.write_text(
+        """
+function Invoke-JsonApi {
+    param([string]$BaseUrl, [string]$ApiKey, [string]$Path, [string]$Method = 'GET', $Body = $null)
+    if ($Path -eq '/api/v3/downloadclient') { return @() }
+    if ($Path -eq '/api/v3/downloadclient/schema') {
+        return @([pscustomobject]@{
+            implementation = 'QBittorrent'
+            fields = @(
+                [pscustomobject]@{ name = 'host' },
+                [pscustomobject]@{ name = 'port' },
+                [pscustomobject]@{ name = 'useSsl' },
+                [pscustomobject]@{ name = 'urlBase' },
+                [pscustomobject]@{ name = 'username' },
+                [pscustomobject]@{ name = 'password' },
+                [pscustomobject]@{ name = 'movieCategory' },
+                [pscustomobject]@{ name = 'initialState' }
+            )
+        })
+    }
+    if ($Path -eq '/api/v3/downloadclient?forceSave=true' -and $Method -eq 'POST') {
+        return [pscustomobject]@{ id = 88; name = $Body.name }
+    }
+    throw ('unexpected call: {0} {1}' -f $Method, $Path)
+}
+        """
+        + _extract_powershell_function(script_text, "Set-ObjectProperty")
+        + "\n"
+        + _extract_powershell_function(script_text, "Set-ProviderField")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-HttpStatusCode")
+        + "\n"
+        + _extract_powershell_function(script_text, "Invoke-JsonApiWithRetry")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-QbitSchema")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-ExistingDownloadClient")
+        + "\n"
+        + _extract_powershell_function(script_text, "Save-QbitClient")
+        + """
+$saved = Save-QbitClient -Kind 'radarr' -BaseUrl 'http://radarr' -ApiKey 'secret' -EmuleBaseUrl 'http://emule:4711' -EmuleApiKey 'emule-key' -Name 'eMuleBB'
+if ($saved -is [array]) { throw ('Save-QbitClient emitted an array with {0} items' -f $saved.Count) }
+if ($saved.id -ne 88) { throw ('unexpected saved id: {0}' -f $saved.id) }
+""",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(test_script),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+
+
+def test_register_arr_stack_save_prowlarr_application_adds_missing_root_name(
+    workspace_root: Path,
+    tmp_path: Path,
+) -> None:
+    script_path = (
+        workspace_root
+        / "repos"
+        / "emulebb-build"
+        / "emule_workspace"
+        / "release_assets"
+        / "emule"
+        / "scripts"
+        / "register-arr-stack.ps1"
+    )
+    script_text = script_path.read_text(encoding="utf-8")
+    test_script = tmp_path / "save-prowlarr-application-test.ps1"
+    test_script.write_text(
+        """
+function Invoke-JsonApi {
+    param([string]$BaseUrl, [string]$ApiKey, [string]$Path, [string]$Method = 'GET', $Body = $null)
+    if ($Path -eq '/api/v1/applications') { return @() }
+    if ($Path -eq '/api/v1/applications/schema') {
+        return @([pscustomobject]@{
+            implementation = 'Radarr'
+            fields = @(
+                [pscustomobject]@{ name = 'baseUrl' },
+                [pscustomobject]@{ name = 'apiKey' },
+                [pscustomobject]@{ name = 'prowlarrUrl' },
+                [pscustomobject]@{ name = 'syncCategories' },
+                [pscustomobject]@{ name = 'animeSyncCategories' }
+            )
+        })
+    }
+    if ($Path -eq '/api/v1/applications?forceSave=true' -and $Method -eq 'POST') {
+        if (-not $Body.name) { throw 'missing root name' }
+        return [pscustomobject]@{ id = 66; name = $Body.name }
+    }
+    throw ('unexpected call: {0} {1}' -f $Method, $Path)
+}
+"""
+        + _extract_powershell_function(script_text, "Set-ObjectProperty")
+        + "\n"
+        + _extract_powershell_function(script_text, "Set-ProviderField")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-ProviderFieldValue")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-ExistingProwlarrApplication")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-ProwlarrApplicationSchema")
+        + "\n"
+        + _extract_powershell_function(script_text, "Save-ProwlarrApplication")
+        + """
+$saved = Save-ProwlarrApplication -ProwlarrBaseUrl 'http://prowlarr' -ProwlarrKey 'secret' -Kind 'radarr' -ArrUrl 'http://radarr' -ArrKey 'arr-key'
+if ($saved -is [array]) { throw ('Save-ProwlarrApplication emitted an array with {0} items' -f $saved.Count) }
+if ($saved.id -ne 66) { throw ('unexpected saved id: {0}' -f $saved.id) }
+if ($saved.name -ne 'Radarr') { throw ('unexpected saved name: {0}' -f $saved.name) }
+""",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(test_script),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+
+
+def test_register_arr_stack_waits_for_prowlarr_sync_completion(
+    workspace_root: Path,
+    tmp_path: Path,
+) -> None:
+    script_path = (
+        workspace_root
+        / "repos"
+        / "emulebb-build"
+        / "emule_workspace"
+        / "release_assets"
+        / "emule"
+        / "scripts"
+        / "register-arr-stack.ps1"
+    )
+    script_text = script_path.read_text(encoding="utf-8")
+    test_script = tmp_path / "prowlarr-sync-wait-test.ps1"
+    test_script.write_text(
+        """
+$script:PollCount = 0
+function Start-Sleep { param([int]$Seconds) }
+function Invoke-JsonApi {
+    param([string]$BaseUrl, [string]$ApiKey, [string]$Path, [string]$Method = 'GET', $Body = $null)
+    if ($Path -eq '/api/v1/command' -and $Method -eq 'POST') { return [pscustomobject]@{ id = 123 } }
+    if ($Path -eq '/api/v1/command/123') {
+        $script:PollCount += 1
+        return [pscustomobject]@{ status = 'completed' }
+    }
+    throw ('unexpected call: {0} {1}' -f $Method, $Path)
+}
+"""
+        + _extract_powershell_function(script_text, "Invoke-ProwlarrSync")
+        + """
+Invoke-ProwlarrSync -BaseUrl 'http://prowlarr' -ApiKey 'secret'
+if ($script:PollCount -ne 1) { throw ('expected one status poll, got {0}' -f $script:PollCount) }
+""",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(test_script),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+
+
+def test_register_arr_stack_retry_wrapper_does_not_shadow_selected_action(
+    workspace_root: Path,
+    tmp_path: Path,
+) -> None:
+    script_path = (
+        workspace_root
+        / "repos"
+        / "emulebb-build"
+        / "emule_workspace"
+        / "release_assets"
+        / "emule"
+        / "scripts"
+        / "register-arr-stack.ps1"
+    )
+    script_text = script_path.read_text(encoding="utf-8")
+    test_script = tmp_path / "run-target-action-scope-test.ps1"
+    test_script.write_text(
+        _extract_powershell_function(script_text, "Run-TargetWithRetry")
+        + """
+$Action = 'Unregister'
+$script:Observed = ''
+Run-TargetWithRetry -Name 'scope check' -NoRetry -Operation {
+    $script:Observed = $Action
+}
+if ($script:Observed -ne 'Unregister') {
+    throw ('Run-TargetWithRetry shadowed selected action as {0}' -f $script:Observed)
+}
+""",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(test_script),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+
+
 def _extract_powershell_function(script_text: str, function_name: str) -> str:
     start_token = f"function {function_name} "
     start = script_text.index(start_token)
