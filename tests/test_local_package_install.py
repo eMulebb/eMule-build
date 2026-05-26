@@ -131,6 +131,7 @@ def test_local_package_install_deploys_artifacts_and_preserves_runtime_state(tmp
     assert preserved_data.read_text(encoding="utf-8") == "keep"
     assert not stale_file.exists()
     assert (target / "symbols" / "emulebb-v0.7.3-rc.1" / "x64" / "emulebb.pdb").read_bytes() == b"pdb"
+    assert (target / "eMule" / "emulebb.pdb").read_bytes() == b"pdb"
     assert (target / "scripts" / "Update-LocalPackage.ps1").is_file()
     assert not (target / "eMule" / "Incoming").exists()
     assert not (target / "eMule" / "Temp").exists()
@@ -144,7 +145,52 @@ def test_local_package_install_deploys_artifacts_and_preserves_runtime_state(tmp
     manifest = json.loads((target / "manifests" / "local-install.json").read_text(encoding="utf-8"))
     assert manifest["schema"] == local_package_install.INSTALL_MANIFEST_SCHEMA
     assert manifest["rest"]["apiKeyPresent"] is True
+    assert manifest["artifacts"]["packageExe"]["sha256"] == manifest["artifacts"]["deployedExe"]["sha256"]
+    assert manifest["artifacts"]["packagePdb"]["sha256"] == manifest["artifacts"]["deployedPdb"]["sha256"]
+    assert manifest["artifacts"]["packagePdb"]["sha256"] == manifest["artifacts"]["deployedAdjacentPdb"]["sha256"]
     assert "secret-key" not in json.dumps(manifest)
+
+
+def test_local_package_install_rejects_zip_exe_without_matching_package_build_exe(tmp_path: Path) -> None:
+    layout = _layout(tmp_path)
+    layout.tests_repo_root.mkdir(parents=True)
+    layout.build_repo_root.mkdir(parents=True)
+    profile = tmp_path / "profile"
+    preferences = profile / "config" / "preferences.ini"
+    preferences.parent.mkdir(parents=True)
+    preferences.write_text("[WebServer]\nApiKey=secret-key\n", encoding="utf-8")
+    target = tmp_path / "install"
+    live_wire_path = layout.tests_repo_root / "live-wire-inputs.local.json"
+    _write_live_wire(live_wire_path, target, profile)
+
+    release_root = layout.workspace_root / "state" / "release" / "emulebb-v0.7.3-rc.1"
+    package_build_root = layout.workspace_root / "state" / "package-build" / "emulebb-v0.7.3-rc.1" / "x64" / "app"
+    package_build_root.mkdir(parents=True)
+    (package_build_root / "emulebb.exe").write_bytes(b"package-build-exe")
+    (package_build_root / "emulebb.pdb").write_bytes(b"pdb")
+    _write_zip(release_root / "emulebb-0.7.3-rc.1-x64.zip", {"eMule/emulebb.exe": b"zip-exe"})
+    _write_zip(
+        release_root / "emulebb-0.7.3-rc.1-amutorrent-x64.zip",
+        {"aMuTorrent/installer/windows/amutorrent.ps1": b"#Requires -Version 5.1\n"},
+    )
+    for name in (
+        "emulebb-0.7.3-rc.1-x64.manifest.json",
+        "emulebb-0.7.3-rc.1-x64.sbom.spdx.json",
+        "emulebb-0.7.3-rc.1-amutorrent-x64.manifest.json",
+        "emulebb-0.7.3-rc.1-amutorrent-x64.sbom.spdx.json",
+    ):
+        (release_root / name).write_text("{}\n", encoding="utf-8")
+
+    try:
+        local_package_install.install_local_package(
+            layout,
+            _workspace_options(tmp_path),
+            LocalPackageInstallOptions(skip_build=True),
+        )
+    except RuntimeError as exc:
+        assert "does not match the package-build executable" in str(exc)
+    else:
+        raise AssertionError("Expected mismatched package executable to fail")
 
 
 def test_load_local_install_config_requires_live_wire_object(tmp_path: Path) -> None:

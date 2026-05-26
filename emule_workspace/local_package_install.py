@@ -268,7 +268,17 @@ def deploy_local_install(
     scripts_dir = target_root / "scripts"
     for path in (symbols_dir, manifests_dir, diagnostics_dir, scripts_dir):
         path.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(artifacts.package_pdb, symbols_dir / "emulebb.pdb")
+    deployed_exe = target_root / "eMule" / APP_EXE_NAME
+    if _sha256(deployed_exe) != _sha256(artifacts.package_exe):
+        raise RuntimeError(
+            "Local package install extracted an emulebb.exe that does not match the package-build executable "
+            f"used for symbols:\n{deployed_exe}\n{artifacts.package_exe}"
+        )
+
+    versioned_pdb = symbols_dir / "emulebb.pdb"
+    adjacent_pdb = target_root / "eMule" / "emulebb.pdb"
+    shutil.copy2(artifacts.package_pdb, versioned_pdb)
+    shutil.copy2(artifacts.package_pdb, adjacent_pdb)
     for manifest in (artifacts.emule_manifest, artifacts.emule_sbom, artifacts.amutorrent_manifest, artifacts.amutorrent_sbom):
         shutil.copy2(manifest, manifests_dir / manifest.name)
 
@@ -277,6 +287,7 @@ def deploy_local_install(
     print(f"Local package install: {target_root}")
     print(f"Profile: {config.profile_dir}")
     print(f"Symbols: {symbols_dir}")
+    print(f"Adjacent debug info: {adjacent_pdb}")
 
 
 def write_local_scripts(
@@ -405,6 +416,7 @@ def write_install_manifest(
     manifest_path = target_root / "manifests" / "local-install.json"
     emule_exe = target_root / "eMule" / APP_EXE_NAME
     pdb_path = target_root / "symbols" / f"emulebb-v{release_version}" / artifacts.arch / "emulebb.pdb"
+    adjacent_pdb_path = target_root / "eMule" / "emulebb.pdb"
     payload = {
         "schema": INSTALL_MANIFEST_SCHEMA,
         "installedAtUtc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -425,8 +437,11 @@ def write_install_manifest(
             "amutorrentZip": _file_record(artifacts.amutorrent_zip),
             "emuleManifest": _file_record(artifacts.emule_manifest),
             "amutorrentManifest": _file_record(artifacts.amutorrent_manifest),
+            "packageExe": _file_record(artifacts.package_exe),
+            "packagePdb": _file_record(artifacts.package_pdb),
             "deployedExe": _file_record(emule_exe),
             "deployedPdb": _file_record(pdb_path),
+            "deployedAdjacentPdb": _file_record(adjacent_pdb_path),
         },
     }
     manifest_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8", newline="\n")
