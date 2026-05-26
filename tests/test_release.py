@@ -447,6 +447,8 @@ def test_release_package_contents_accept_full_bundle_and_hash_entries(tmp_path: 
     assert "eMule/scripts/register-prowlarr.ps1" in hashes
     assert "eMule/skins/emulebb-slate.eMuleSkin.ini" in hashes
     assert "eMule/skins/emulebb-classic.eMuleToolbar.kad02.bmp" in hashes
+    assert "eMule/skins/emulebb-borland.eMuleToolbar.kad02.bmp" in hashes
+    assert "eMule/skins/emulebb-matrix.eMuleToolbar.kad02.bmp" in hashes
 
 
 def test_amutorrent_manifest_records_runtime_policy_and_source_provenance(

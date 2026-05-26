@@ -68,6 +68,8 @@ EMULE_SKIN_ASSET_PATHS = (
     "skins/emulebb-daylight-soft.eMuleSkin.ini",
     "skins/emulebb-classic.eMuleToolbar.kad02.bmp",
     "skins/emulebb-muted.eMuleToolbar.kad02.bmp",
+    "skins/emulebb-borland.eMuleToolbar.kad02.bmp",
+    "skins/emulebb-matrix.eMuleToolbar.kad02.bmp",
 )
 EMULE_RUNTIME_ASSET_PATHS = (*EMULE_RUNTIME_SCRIPT_PATHS, *EMULE_SKIN_ASSET_PATHS)
 
