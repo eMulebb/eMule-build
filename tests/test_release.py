@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import configparser
 import hashlib
 import json
 import struct
@@ -48,6 +49,33 @@ def _pe_payload(machine: int) -> bytes:
     payload[0x40:0x44] = b"PE\0\0"
     struct.pack_into("<H", payload, 0x44, machine)
     return bytes(payload)
+
+
+def _parse_rgb(value: str) -> tuple[int, int, int]:
+    channels = tuple(int(channel.strip()) for channel in value.split(","))
+    assert len(channels) == 3
+    assert all(0 <= channel <= 255 for channel in channels)
+    return channels
+
+
+def _linear_channel(channel: int) -> float:
+    normalized = channel / 255
+    if normalized <= 0.03928:
+        return normalized / 12.92
+    return ((normalized + 0.055) / 1.055) ** 2.4
+
+
+def _relative_luminance(color: tuple[int, int, int]) -> float:
+    red, green, blue = (_linear_channel(channel) for channel in color)
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+
+
+def _contrast_ratio(first: tuple[int, int, int], second: tuple[int, int, int]) -> float:
+    first_luminance = _relative_luminance(first)
+    second_luminance = _relative_luminance(second)
+    lighter = max(first_luminance, second_luminance)
+    darker = min(first_luminance, second_luminance)
+    return (lighter + 0.05) / (darker + 0.05)
 
 
 def _write_release_zip(
@@ -450,6 +478,55 @@ def test_release_skin_assets_are_name_paired_without_source_theme_names() -> Non
     assert len(skin_names) == 8
     forbidden_terms = ("bor" + "land", "mat" + "rix")
     assert not any(term in relative_path.lower() for term in forbidden_terms for relative_path in release.EMULE_SKIN_ASSET_PATHS)
+
+
+def test_release_skin_profiles_define_readable_semantic_colors() -> None:
+    required_keys = {
+        "SearchResultsLvFg_AvblyBase",
+        "SearchResultsLvFg_Downloading",
+        "Fg_DownloadStopped",
+        "SearchResultsLvFg_Sharing",
+        "SearchResultsLvFg_Known",
+        "SearchResultsLvFg_Cancelled",
+        "TransferBarBackground",
+        "TransferBarComplete",
+        "TransferBarHave",
+        "TransferBarMissing",
+        "TransferBarPending",
+        "TransferBarFileOp",
+        "TransferBarSourceBase",
+        "TransferBarSourceHot",
+        "TransferBarPeerBoth",
+        "TransferBarPeerOnly",
+        "TransferBarPeerActive",
+        "TransferBarPeerNext",
+    }
+    semantic_text_keys = {
+        "SearchResultsLvFg_AvblyBase",
+        "SearchResultsLvFg_Downloading",
+        "Fg_DownloadStopped",
+        "SearchResultsLvFg_Sharing",
+        "SearchResultsLvFg_Known",
+        "SearchResultsLvFg_Cancelled",
+    }
+
+    assets_root = Path(release.__file__).parent / "release_assets" / "emule"
+    skin_paths = [
+        assets_root / relative_path
+        for relative_path in release.EMULE_SKIN_ASSET_PATHS
+        if relative_path.endswith(".eMuleSkin.ini")
+    ]
+
+    for skin_path in skin_paths:
+        parser = configparser.ConfigParser()
+        parser.optionxform = str
+        parser.read(skin_path, encoding="utf-8")
+        colors = parser["Colors"]
+        assert required_keys <= set(colors.keys()), skin_path.name
+
+        background = _parse_rgb(colors["SearchResultsLvBk"])
+        for key in semantic_text_keys:
+            assert _contrast_ratio(background, _parse_rgb(colors[key])) >= 3.0, f"{skin_path.name}: {key}"
 
 
 def test_release_package_contents_accept_full_bundle_and_hash_entries(tmp_path: Path) -> None:
