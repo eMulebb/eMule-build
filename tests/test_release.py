@@ -488,18 +488,38 @@ def test_release_skin_profiles_define_readable_semantic_colors() -> None:
         "SearchResultsLvFg_Sharing",
         "SearchResultsLvFg_Known",
         "SearchResultsLvFg_Cancelled",
+        "SearchResultsLvFg_Incomplete",
         "TransferBarBackground",
         "TransferBarComplete",
         "TransferBarHave",
         "TransferBarMissing",
         "TransferBarPending",
         "TransferBarFileOp",
+        "TransferBarPercentFg",
         "TransferBarSourceBase",
         "TransferBarSourceHot",
         "TransferBarPeerBoth",
         "TransferBarPeerOnly",
         "TransferBarPeerActive",
         "TransferBarPeerNext",
+        "UploadBarBackground",
+        "UploadBarHave",
+        "UploadBarSending",
+        "UploadBarNext",
+        "DetailProgressBackground",
+        "DetailProgressStart",
+        "DetailProgressEnd",
+        "DetailProgressText",
+        "ChatStatusFg",
+        "ChatSentFg",
+        "ChatReceivedFg",
+        "ServersLvFg_Connected",
+        "ServersLvFg_Failed",
+        "ServersLvFg_Warning",
+        "TreeGuideFg",
+        "TreeBoxFg",
+        "TooltipBk",
+        "TooltipFg",
     }
     semantic_text_keys = {
         "SearchResultsLvFg_AvblyBase",
@@ -508,6 +528,7 @@ def test_release_skin_profiles_define_readable_semantic_colors() -> None:
         "SearchResultsLvFg_Sharing",
         "SearchResultsLvFg_Known",
         "SearchResultsLvFg_Cancelled",
+        "SearchResultsLvFg_Incomplete",
     }
 
     assets_root = Path(release.__file__).parent / "release_assets" / "emule"
@@ -527,6 +548,11 @@ def test_release_skin_profiles_define_readable_semantic_colors() -> None:
         background = _parse_rgb(colors["SearchResultsLvBk"])
         for key in semantic_text_keys:
             assert _contrast_ratio(background, _parse_rgb(colors[key])) >= 3.0, f"{skin_path.name}: {key}"
+        for key in ("ChatStatusFg", "ChatSentFg", "ChatReceivedFg"):
+            assert _contrast_ratio(_parse_rgb(colors["ChatBk"]), _parse_rgb(colors[key])) >= 3.0, f"{skin_path.name}: {key}"
+        for key in ("ServersLvFg_Connected", "ServersLvFg_Failed", "ServersLvFg_Warning"):
+            assert _contrast_ratio(_parse_rgb(colors["ServersLvBk"]), _parse_rgb(colors[key])) >= 3.0, f"{skin_path.name}: {key}"
+        assert _contrast_ratio(_parse_rgb(colors["TooltipBk"]), _parse_rgb(colors["TooltipFg"])) >= 4.5, skin_path.name
 
 
 def test_release_package_contents_accept_full_bundle_and_hash_entries(tmp_path: Path) -> None:
