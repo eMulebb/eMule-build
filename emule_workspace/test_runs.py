@@ -345,6 +345,12 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
     if live_options.godzilla_p2p_bind_interface_address:
         args.extend(["--godzilla-p2p-bind-interface-address", live_options.godzilla_p2p_bind_interface_address])
     args.extend(["--godzilla-vhd-runtime-root", live_options.godzilla_vhd_runtime_root])
+    args.extend(["--godzilla-total-client-count", live_options.godzilla_total_client_count])
+    args.extend(["--godzilla-peer-transfer-count", live_options.godzilla_peer_transfer_count])
+    args.extend(["--godzilla-harness-transfer-count", live_options.godzilla_harness_transfer_count])
+    args.extend(["--godzilla-adverse-kill-cycles", live_options.godzilla_adverse_kill_cycles])
+    args.extend(["--godzilla-adverse-kill-warmup-seconds", live_options.godzilla_adverse_kill_warmup_seconds])
+    args.extend(["--godzilla-adverse-recovery-timeout-seconds", live_options.godzilla_adverse_recovery_timeout_seconds])
     if not live_options.profile_symbols_required:
         args.append("--no-profile-symbols-required")
     _append_optional_flag(args, live_options.profile_memory, "--profile-memory")

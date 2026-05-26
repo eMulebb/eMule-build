@@ -154,6 +154,12 @@ class LiveE2eOptions(BaseModel):
     godzilla_p2p_bind_interface_address: str | None = None
     godzilla_cpu_profile: bool = False
     godzilla_vhd_runtime_root: Literal["drive-letter"] = "drive-letter"
+    godzilla_total_client_count: int = 30
+    godzilla_peer_transfer_count: int = 300
+    godzilla_harness_transfer_count: int = 300
+    godzilla_adverse_kill_cycles: int = 2
+    godzilla_adverse_kill_warmup_seconds: float = 45.0
+    godzilla_adverse_recovery_timeout_seconds: float = 300.0
     rest_cold_start_dump_stress_waves: int = 4
     rest_cold_start_dump_stress_searches_per_wave: int = 12
     rest_cold_start_dump_stress_max_concurrent_searches: int = 8
