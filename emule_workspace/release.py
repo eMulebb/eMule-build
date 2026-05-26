@@ -66,10 +66,16 @@ EMULE_SKIN_ASSET_PATHS = (
     "skins/emulebb-steel.eMuleSkin.ini",
     "skins/emulebb-moss.eMuleSkin.ini",
     "skins/emulebb-daylight-soft.eMuleSkin.ini",
-    "skins/emulebb-classic.eMuleToolbar.kad02.bmp",
-    "skins/emulebb-muted.eMuleToolbar.kad02.bmp",
-    "skins/emulebb-borland.eMuleToolbar.kad02.bmp",
-    "skins/emulebb-matrix.eMuleToolbar.kad02.bmp",
+    "skins/emulebb-retro-teal.eMuleSkin.ini",
+    "skins/emulebb-phosphor-green.eMuleSkin.ini",
+    "skins/emulebb-slate.eMuleToolbar.kad02.bmp",
+    "skins/emulebb-graphite.eMuleToolbar.kad02.bmp",
+    "skins/emulebb-midnight.eMuleToolbar.kad02.bmp",
+    "skins/emulebb-steel.eMuleToolbar.kad02.bmp",
+    "skins/emulebb-moss.eMuleToolbar.kad02.bmp",
+    "skins/emulebb-daylight-soft.eMuleToolbar.kad02.bmp",
+    "skins/emulebb-retro-teal.eMuleToolbar.kad02.bmp",
+    "skins/emulebb-phosphor-green.eMuleToolbar.kad02.bmp",
 )
 EMULE_RUNTIME_ASSET_PATHS = (*EMULE_RUNTIME_SCRIPT_PATHS, *EMULE_SKIN_ASSET_PATHS)
 

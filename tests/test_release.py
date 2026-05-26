@@ -434,6 +434,24 @@ def test_release_package_contents_require_skin_and_toolbar_assets(tmp_path: Path
         release._assert_release_package_contents(zip_path, ("de_DE.dll",), "x64")
 
 
+def test_release_skin_assets_are_name_paired_without_source_theme_names() -> None:
+    skin_names = {
+        Path(relative_path).name.replace(".eMuleSkin.ini", "")
+        for relative_path in release.EMULE_SKIN_ASSET_PATHS
+        if relative_path.endswith(".eMuleSkin.ini")
+    }
+    toolbar_names = {
+        Path(relative_path).name.replace(".eMuleToolbar.kad02.bmp", "")
+        for relative_path in release.EMULE_SKIN_ASSET_PATHS
+        if relative_path.endswith(".eMuleToolbar.kad02.bmp")
+    }
+
+    assert skin_names == toolbar_names
+    assert len(skin_names) == 8
+    forbidden_terms = ("bor" + "land", "mat" + "rix")
+    assert not any(term in relative_path.lower() for term in forbidden_terms for relative_path in release.EMULE_SKIN_ASSET_PATHS)
+
+
 def test_release_package_contents_accept_full_bundle_and_hash_entries(tmp_path: Path) -> None:
     zip_path = tmp_path / "package.zip"
     _write_release_zip(zip_path)
@@ -446,9 +464,9 @@ def test_release_package_contents_accept_full_bundle_and_hash_entries(tmp_path: 
     assert "eMule/SBOM.spdx.json" in hashes
     assert "eMule/scripts/register-prowlarr.ps1" in hashes
     assert "eMule/skins/emulebb-slate.eMuleSkin.ini" in hashes
-    assert "eMule/skins/emulebb-classic.eMuleToolbar.kad02.bmp" in hashes
-    assert "eMule/skins/emulebb-borland.eMuleToolbar.kad02.bmp" in hashes
-    assert "eMule/skins/emulebb-matrix.eMuleToolbar.kad02.bmp" in hashes
+    assert "eMule/skins/emulebb-slate.eMuleToolbar.kad02.bmp" in hashes
+    assert "eMule/skins/emulebb-retro-teal.eMuleSkin.ini" in hashes
+    assert "eMule/skins/emulebb-retro-teal.eMuleToolbar.kad02.bmp" in hashes
 
 
 def test_amutorrent_manifest_records_runtime_policy_and_source_provenance(
