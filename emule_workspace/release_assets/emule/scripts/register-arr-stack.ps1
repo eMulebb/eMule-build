@@ -16,12 +16,50 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+function Normalize-ArgumentValue {
+    param([string]$Value)
+    if ($null -eq $Value) {
+        return ''
+    }
+    $normalized = $Value.Trim()
+    while ($normalized.Length -ge 2) {
+        $first = $normalized[0]
+        $last = $normalized[$normalized.Length - 1]
+        if (($first -eq "'" -and $last -eq "'") -or ($first -eq '"' -and $last -eq '"')) {
+            $normalized = $normalized.Substring(1, $normalized.Length - 2).Trim()
+            continue
+        }
+        break
+    }
+    return $normalized
+}
+
+function Normalize-HttpBaseUrl {
+    param([string]$Value, [string]$Name)
+    $normalized = (Normalize-ArgumentValue -Value $Value).TrimEnd('/')
+    if ([string]::IsNullOrWhiteSpace($normalized)) {
+        throw "$Name is required."
+    }
+
+    $uri = $null
+    if (-not [Uri]::TryCreate($normalized, [UriKind]::Absolute, [ref]$uri)) {
+        throw "$Name must be an absolute HTTP or HTTPS URL, not '$Value'."
+    }
+    if ($uri.Scheme -ne 'http' -and $uri.Scheme -ne 'https') {
+        throw "$Name must use http or https, not '$($uri.Scheme)'."
+    }
+    if (-not [string]::IsNullOrEmpty($uri.Query) -or -not [string]::IsNullOrEmpty($uri.Fragment)) {
+        throw "$Name must be a base URL without query or fragment, not '$Value'."
+    }
+    return $normalized
+}
+
 function Read-OptionalValue {
     param([string]$Prompt, [string]$Value)
     if (-not [string]::IsNullOrWhiteSpace($Value)) {
-        return $Value.Trim()
+        return Normalize-ArgumentValue -Value $Value
     }
-    return (Read-Host $Prompt).Trim()
+    return Normalize-ArgumentValue -Value (Read-Host $Prompt)
 }
 
 function Read-RequiredValue {
@@ -29,7 +67,7 @@ function Read-RequiredValue {
     while ([string]::IsNullOrWhiteSpace($Value)) {
         $Value = Read-Host $Prompt
     }
-    return $Value.Trim()
+    return Normalize-ArgumentValue -Value $Value
 }
 
 function Read-ActionValue {
@@ -53,7 +91,7 @@ function Read-ActionValue {
 function Read-SecretValue {
     param([string]$Prompt, [string]$Value)
     if (-not [string]::IsNullOrWhiteSpace($Value)) {
-        return $Value.Trim()
+        return Normalize-ArgumentValue -Value $Value
     }
     $secure = Read-Host $Prompt -AsSecureString
     $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
@@ -73,7 +111,7 @@ function Invoke-JsonApi {
         $Body = $null
     )
     $headers = @{ 'X-Api-Key' = $ApiKey }
-    $uri = $BaseUrl.TrimEnd('/') + $Path
+    $uri = (Normalize-HttpBaseUrl -Value $BaseUrl -Name 'BaseUrl') + $Path
     if ($null -eq $Body) {
         return Invoke-RestMethod -Uri $uri -Method $Method -Headers $headers -TimeoutSec 90 -ErrorAction Stop
     }
@@ -186,7 +224,8 @@ function Save-QbitClient {
         [string]$EmuleApiKey,
         [string]$Name
     )
-    $uri = [Uri]$EmuleBaseUrl
+    $normalizedEmuleBaseUrl = Normalize-HttpBaseUrl -Value $EmuleBaseUrl -Name 'EmuleBaseUrl'
+    $uri = [Uri]$normalizedEmuleBaseUrl
     $existing = Get-ExistingDownloadClient -BaseUrl $BaseUrl -ApiKey $ApiKey -Name $Name
     if ($null -ne $existing) {
         $payload = $existing
@@ -204,10 +243,11 @@ function Save-QbitClient {
     Set-ObjectProperty -Target $payload -Name 'removeFailedDownloads' -Value $false
     $categoryField = if ($Kind -eq 'radarr') { 'movieCategory' } else { 'tvCategory' }
     $category = if ($Kind -eq 'radarr') { 'emulebb-radarr' } else { 'emulebb-sonarr' }
+    $urlBase = if ($uri.AbsolutePath -and $uri.AbsolutePath -ne '/') { $uri.AbsolutePath.TrimEnd('/') } else { '' }
     [void](Set-ProviderField -Provider $payload -Name 'host' -Value $uri.Host)
     [void](Set-ProviderField -Provider $payload -Name 'port' -Value $uri.Port)
     [void](Set-ProviderField -Provider $payload -Name 'useSsl' -Value ($uri.Scheme -eq 'https'))
-    [void](Set-ProviderField -Provider $payload -Name 'urlBase' -Value '')
+    [void](Set-ProviderField -Provider $payload -Name 'urlBase' -Value $urlBase)
     [void](Set-ProviderField -Provider $payload -Name 'username' -Value 'emule')
     [void](Set-ProviderField -Provider $payload -Name 'password' -Value $EmuleApiKey)
     [void](Set-ProviderField -Provider $payload -Name $categoryField -Value $category)
@@ -284,11 +324,11 @@ function Get-ProviderFieldValue {
 
 function Get-ExistingProwlarrApplication {
     param([string]$BaseUrl, [string]$ApiKey, [string]$ArrUrl)
-    $target = $ArrUrl.TrimEnd('/').ToLowerInvariant()
+    $target = (Normalize-HttpBaseUrl -Value $ArrUrl -Name 'ArrUrl').ToLowerInvariant()
     $applications = Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v1/applications'
     foreach ($application in @($applications)) {
         $baseUrl = [string](Get-ProviderFieldValue -Provider $application -Name 'baseUrl')
-        if ($baseUrl.TrimEnd('/').ToLowerInvariant() -eq $target) {
+        if ((Normalize-ArgumentValue -Value $baseUrl).TrimEnd('/').ToLowerInvariant() -eq $target) {
             return $application
         }
     }
@@ -304,23 +344,25 @@ function Save-ProwlarrApplication {
         [string]$ArrKey
     )
     $name = if ($Kind -eq 'radarr') { 'Radarr' } else { 'Sonarr' }
-    $existing = Get-ExistingProwlarrApplication -BaseUrl $ProwlarrBaseUrl -ApiKey $ProwlarrKey -ArrUrl $ArrUrl
+    $normalizedProwlarrBaseUrl = Normalize-HttpBaseUrl -Value $ProwlarrBaseUrl -Name 'ProwlarrBaseUrl'
+    $normalizedArrUrl = Normalize-HttpBaseUrl -Value $ArrUrl -Name 'ArrUrl'
+    $existing = Get-ExistingProwlarrApplication -BaseUrl $normalizedProwlarrBaseUrl -ApiKey $ProwlarrKey -ArrUrl $normalizedArrUrl
     if ($null -ne $existing) {
         $payload = $existing
     } else {
-        $payload = Get-ProwlarrApplicationSchema -BaseUrl $ProwlarrBaseUrl -ApiKey $ProwlarrKey -Kind $Kind
+        $payload = Get-ProwlarrApplicationSchema -BaseUrl $normalizedProwlarrBaseUrl -ApiKey $ProwlarrKey -Kind $Kind
     }
     Set-ObjectProperty -Target $payload -Name 'name' -Value $name
     Set-ObjectProperty -Target $payload -Name 'enable' -Value $true
     Set-ObjectProperty -Target $payload -Name 'implementation' -Value $name
     Set-ObjectProperty -Target $payload -Name 'implementationName' -Value $name
-    [void](Set-ProviderField -Provider $payload -Name 'baseUrl' -Value ($ArrUrl.TrimEnd('/')))
+    [void](Set-ProviderField -Provider $payload -Name 'baseUrl' -Value $normalizedArrUrl)
     [void](Set-ProviderField -Provider $payload -Name 'apiKey' -Value $ArrKey)
-    [void](Set-ProviderField -Provider $payload -Name 'prowlarrUrl' -Value ($ProwlarrBaseUrl.TrimEnd('/')) -Optional)
+    [void](Set-ProviderField -Provider $payload -Name 'prowlarrUrl' -Value $normalizedProwlarrBaseUrl -Optional)
     if ($null -ne $existing -and $existing.id) {
-        return Invoke-JsonApi -BaseUrl $ProwlarrBaseUrl -ApiKey $ProwlarrKey -Path (('/api/v1/applications/{0}?forceSave=true' -f [int]$existing.id)) -Method 'PUT' -Body $payload
+        return Invoke-JsonApi -BaseUrl $normalizedProwlarrBaseUrl -ApiKey $ProwlarrKey -Path (('/api/v1/applications/{0}?forceSave=true' -f [int]$existing.id)) -Method 'PUT' -Body $payload
     }
-    return Invoke-JsonApi -BaseUrl $ProwlarrBaseUrl -ApiKey $ProwlarrKey -Path '/api/v1/applications?forceSave=true' -Method 'POST' -Body $payload
+    return Invoke-JsonApi -BaseUrl $normalizedProwlarrBaseUrl -ApiKey $ProwlarrKey -Path '/api/v1/applications?forceSave=true' -Method 'POST' -Body $payload
 }
 
 function Run-TargetWithRetry {
@@ -345,16 +387,18 @@ function Run-TargetWithRetry {
 $Action = Read-ActionValue -Value $Action
 Write-Host ('eMuleBB Radarr/Sonarr Integration - {0}' -f $Action) -ForegroundColor Cyan
 if ($Action -eq 'Register') {
-    $EmulebbBaseUrl = Read-RequiredValue -Prompt 'eMuleBB base URL (example http://127.0.0.1:4711)' -Value $EmulebbBaseUrl
+    $EmulebbBaseUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'eMuleBB base URL (example http://127.0.0.1:4711)' -Value $EmulebbBaseUrl) -Name 'EmulebbBaseUrl'
     $EmulebbApiKey = Read-SecretValue -Prompt 'eMuleBB API key' -Value $EmulebbApiKey
 }
 $ProwlarrUrl = Read-OptionalValue -Prompt 'Prowlarr URL for application sync (blank to skip)' -Value $ProwlarrUrl
 if ($ProwlarrUrl) {
+    $ProwlarrUrl = Normalize-HttpBaseUrl -Value $ProwlarrUrl -Name 'ProwlarrUrl'
     $ProwlarrApiKey = Read-SecretValue -Prompt 'Prowlarr API key' -Value $ProwlarrApiKey
 }
 
 $RadarrUrl = Read-OptionalValue -Prompt 'Radarr URL for eMuleBB download client (blank to skip)' -Value $RadarrUrl
 if ($RadarrUrl) {
+    $RadarrUrl = Normalize-HttpBaseUrl -Value $RadarrUrl -Name 'RadarrUrl'
     $RadarrApiKey = Read-SecretValue -Prompt 'Radarr API key' -Value $RadarrApiKey
     if ($Action -eq 'Register' -and $ProwlarrUrl) {
         Run-TargetWithRetry -Name 'Prowlarr Radarr application registration' -NoRetry:$NoRetry -Operation {
@@ -374,6 +418,7 @@ if ($RadarrUrl) {
 
 $SonarrUrl = Read-OptionalValue -Prompt 'Sonarr URL for eMuleBB download client (blank to skip)' -Value $SonarrUrl
 if ($SonarrUrl) {
+    $SonarrUrl = Normalize-HttpBaseUrl -Value $SonarrUrl -Name 'SonarrUrl'
     $SonarrApiKey = Read-SecretValue -Prompt 'Sonarr API key' -Value $SonarrApiKey
     if ($Action -eq 'Register' -and $ProwlarrUrl) {
         Run-TargetWithRetry -Name 'Prowlarr Sonarr application registration' -NoRetry:$NoRetry -Operation {

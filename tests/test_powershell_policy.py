@@ -367,6 +367,8 @@ function Invoke-JsonApi {
         })
     }
     if ($Path -eq '/api/v1/indexer?forceSave=true' -and $Method -eq 'POST') {
+        $baseUrl = ($Body.fields | Where-Object { $_.name -eq 'baseUrl' }).value
+        if ($baseUrl -ne 'http://emule/indexer/emulebb') { throw ('unexpected baseUrl: {0}' -f $baseUrl) }
         return [pscustomobject]@{ id = 99; name = $Body.name }
     }
     throw ('unexpected call: {0} {1}' -f $Method, $Path)
@@ -380,13 +382,17 @@ function Invoke-JsonApi {
         + "\n"
         + _extract_powershell_function(script_text, "Set-ProviderField")
         + "\n"
+        + _extract_powershell_function(script_text, "Normalize-ArgumentValue")
+        + "\n"
+        + _extract_powershell_function(script_text, "Normalize-HttpBaseUrl")
+        + "\n"
         + _extract_powershell_function(script_text, "Get-GenericTorznabSchema")
         + "\n"
         + _extract_powershell_function(script_text, "Get-ExistingIndexer")
         + "\n"
         + _extract_powershell_function(script_text, "Save-Indexer")
         + """
-$saved = Save-Indexer -BaseUrl 'http://prowlarr' -ApiKey 'secret' -Name 'eMuleBB' -TorznabBaseUrl 'http://emule/indexer/emulebb' -TorznabApiKey 'emule-key'
+$saved = Save-Indexer -BaseUrl 'http://prowlarr' -ApiKey 'secret' -Name 'eMuleBB' -TorznabBaseUrl "'http://emule/indexer/emulebb/'" -TorznabApiKey 'emule-key'
 if ($saved -is [array]) { throw ('Save-Indexer emitted an array with {0} items' -f $saved.Count) }
 if ($saved.id -ne 99) { throw ('unexpected saved id: {0}' -f $saved.id) }
 """,
@@ -513,6 +519,10 @@ function Invoke-JsonApi {
         })
     }
     if ($Path -eq '/api/v3/downloadclient?forceSave=true' -and $Method -eq 'POST') {
+        $hostName = ($Body.fields | Where-Object { $_.name -eq 'host' }).value
+        $urlBase = ($Body.fields | Where-Object { $_.name -eq 'urlBase' }).value
+        if ($hostName -ne 'emule') { throw ('unexpected host: {0}' -f $hostName) }
+        if ($urlBase -ne '/proxy') { throw ('unexpected urlBase: {0}' -f $urlBase) }
         return [pscustomobject]@{ id = 88; name = $Body.name }
     }
     throw ('unexpected call: {0} {1}' -f $Method, $Path)
@@ -521,6 +531,10 @@ function Invoke-JsonApi {
         + _extract_powershell_function(script_text, "Set-ObjectProperty")
         + "\n"
         + _extract_powershell_function(script_text, "Set-ProviderField")
+        + "\n"
+        + _extract_powershell_function(script_text, "Normalize-ArgumentValue")
+        + "\n"
+        + _extract_powershell_function(script_text, "Normalize-HttpBaseUrl")
         + "\n"
         + _extract_powershell_function(script_text, "Get-HttpStatusCode")
         + "\n"
@@ -532,7 +546,7 @@ function Invoke-JsonApi {
         + "\n"
         + _extract_powershell_function(script_text, "Save-QbitClient")
         + """
-$saved = Save-QbitClient -Kind 'radarr' -BaseUrl 'http://radarr' -ApiKey 'secret' -EmuleBaseUrl 'http://emule:4711' -EmuleApiKey 'emule-key' -Name 'eMuleBB'
+$saved = Save-QbitClient -Kind 'radarr' -BaseUrl 'http://radarr' -ApiKey 'secret' -EmuleBaseUrl "'http://emule:4711/proxy/'" -EmuleApiKey 'emule-key' -Name 'eMuleBB'
 if ($saved -is [array]) { throw ('Save-QbitClient emitted an array with {0} items' -f $saved.Count) }
 if ($saved.id -ne 88) { throw ('unexpected saved id: {0}' -f $saved.id) }
 """,
@@ -599,6 +613,10 @@ function Invoke-JsonApi {
         + _extract_powershell_function(script_text, "Set-ObjectProperty")
         + "\n"
         + _extract_powershell_function(script_text, "Set-ProviderField")
+        + "\n"
+        + _extract_powershell_function(script_text, "Normalize-ArgumentValue")
+        + "\n"
+        + _extract_powershell_function(script_text, "Normalize-HttpBaseUrl")
         + "\n"
         + _extract_powershell_function(script_text, "Get-ProviderFieldValue")
         + "\n"
@@ -714,6 +732,56 @@ Run-TargetWithRetry -Name 'scope check' -NoRetry -Operation {
 }
 if ($script:Observed -ne 'Unregister') {
     throw ('Run-TargetWithRetry shadowed selected action as {0}' -f $script:Observed)
+}
+""",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(test_script),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+
+
+def test_register_arr_stack_normalizes_quoted_http_urls(
+    workspace_root: Path,
+    tmp_path: Path,
+) -> None:
+    script_path = (
+        workspace_root
+        / "repos"
+        / "emulebb-build"
+        / "emule_workspace"
+        / "release_assets"
+        / "emule"
+        / "scripts"
+        / "register-arr-stack.ps1"
+    )
+    script_text = script_path.read_text(encoding="utf-8")
+    test_script = tmp_path / "normalize-arr-url-test.ps1"
+    test_script.write_text(
+        _extract_powershell_function(script_text, "Normalize-ArgumentValue")
+        + "\n"
+        + _extract_powershell_function(script_text, "Normalize-HttpBaseUrl")
+        + """
+$url = Normalize-HttpBaseUrl -Value "'http://127.0.0.1:4711/'" -Name 'EmulebbBaseUrl'
+if ($url -ne 'http://127.0.0.1:4711') { throw ('unexpected normalized URL: {0}' -f $url) }
+try {
+    [void](Normalize-HttpBaseUrl -Value "'ftp://127.0.0.1'" -Name 'BadUrl')
+    throw 'expected unsupported scheme rejection'
+} catch {
+    if ($_.Exception.Message -notmatch 'http or https') { throw }
 }
 """,
         encoding="utf-8",

@@ -12,12 +12,50 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+function Normalize-ArgumentValue {
+    param([string]$Value)
+    if ($null -eq $Value) {
+        return ''
+    }
+    $normalized = $Value.Trim()
+    while ($normalized.Length -ge 2) {
+        $first = $normalized[0]
+        $last = $normalized[$normalized.Length - 1]
+        if (($first -eq "'" -and $last -eq "'") -or ($first -eq '"' -and $last -eq '"')) {
+            $normalized = $normalized.Substring(1, $normalized.Length - 2).Trim()
+            continue
+        }
+        break
+    }
+    return $normalized
+}
+
+function Normalize-HttpBaseUrl {
+    param([string]$Value, [string]$Name)
+    $normalized = (Normalize-ArgumentValue -Value $Value).TrimEnd('/')
+    if ([string]::IsNullOrWhiteSpace($normalized)) {
+        throw "$Name is required."
+    }
+
+    $uri = $null
+    if (-not [Uri]::TryCreate($normalized, [UriKind]::Absolute, [ref]$uri)) {
+        throw "$Name must be an absolute HTTP or HTTPS URL, not '$Value'."
+    }
+    if ($uri.Scheme -ne 'http' -and $uri.Scheme -ne 'https') {
+        throw "$Name must use http or https, not '$($uri.Scheme)'."
+    }
+    if (-not [string]::IsNullOrEmpty($uri.Query) -or -not [string]::IsNullOrEmpty($uri.Fragment)) {
+        throw "$Name must be a base URL without query or fragment, not '$Value'."
+    }
+    return $normalized
+}
+
 function Read-RequiredValue {
     param([string]$Prompt, [string]$Value)
     while ([string]::IsNullOrWhiteSpace($Value)) {
         $Value = Read-Host $Prompt
     }
-    return $Value.Trim()
+    return Normalize-ArgumentValue -Value $Value
 }
 
 function Read-ActionValue {
@@ -41,7 +79,7 @@ function Read-ActionValue {
 function Read-SecretValue {
     param([string]$Prompt, [string]$Value)
     if (-not [string]::IsNullOrWhiteSpace($Value)) {
-        return $Value.Trim()
+        return Normalize-ArgumentValue -Value $Value
     }
     $secure = Read-Host $Prompt -AsSecureString
     $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
@@ -61,7 +99,7 @@ function Invoke-JsonApi {
         $Body = $null
     )
     $headers = @{ 'X-Api-Key' = $ApiKey }
-    $uri = $BaseUrl.TrimEnd('/') + $Path
+    $uri = (Normalize-HttpBaseUrl -Value $BaseUrl -Name 'BaseUrl') + $Path
     if ($null -eq $Body) {
         return Invoke-RestMethod -Uri $uri -Method $Method -Headers $headers -TimeoutSec 90 -ErrorAction Stop
     }
@@ -162,11 +200,12 @@ function Save-Indexer {
     $payload.implementation = 'Torznab'
     $payload.implementationName = 'Torznab'
     $payload.configContract = 'TorznabSettings'
-    [void](Set-ProviderField -Provider $payload -Name 'baseUrl' -Value ($TorznabBaseUrl.TrimEnd('/')))
+    $normalizedTorznabBaseUrl = Normalize-HttpBaseUrl -Value $TorznabBaseUrl -Name 'TorznabBaseUrl'
+    [void](Set-ProviderField -Provider $payload -Name 'baseUrl' -Value $normalizedTorznabBaseUrl)
     [void](Set-ProviderField -Provider $payload -Name 'apiPath' -Value '/api')
     [void](Set-ProviderField -Provider $payload -Name 'apiKey' -Value $TorznabApiKey)
     [void](Set-ProviderField -Provider $payload -Name 'torrentBaseSettings.preferMagnetUrl' -Value $true)
-    if ($TorznabBaseUrl.StartsWith('https://', [StringComparison]::OrdinalIgnoreCase)) {
+    if ($normalizedTorznabBaseUrl.StartsWith('https://', [StringComparison]::OrdinalIgnoreCase)) {
         [void](Set-ProviderField -Provider $payload -Name 'certificateValidation' -Value 1 -Optional)
     }
 
@@ -220,13 +259,13 @@ $Action = Read-ActionValue -Value $Action
 Write-Host ('eMuleBB Prowlarr Integration - {0}' -f $Action) -ForegroundColor Cyan
 do {
     try {
-        $ProwlarrUrl = Read-RequiredValue -Prompt 'Prowlarr URL (example http://localhost:9696)' -Value $ProwlarrUrl
+        $ProwlarrUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'Prowlarr URL (example http://localhost:9696)' -Value $ProwlarrUrl) -Name 'ProwlarrUrl'
         $ProwlarrApiKey = Read-SecretValue -Prompt 'Prowlarr API key' -Value $ProwlarrApiKey
         if ($Action -eq 'Unregister') {
             Remove-Indexer -BaseUrl $ProwlarrUrl -ApiKey $ProwlarrApiKey -Name $IndexerName
             exit 0
         }
-        $EmulebbBaseUrl = Read-RequiredValue -Prompt 'eMuleBB base URL (example http://127.0.0.1:4711)' -Value $EmulebbBaseUrl
+        $EmulebbBaseUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'eMuleBB base URL (example http://127.0.0.1:4711)' -Value $EmulebbBaseUrl) -Name 'EmulebbBaseUrl'
         $EmulebbApiKey = Read-SecretValue -Prompt 'eMuleBB API key' -Value $EmulebbApiKey
         $saved = Save-Indexer -BaseUrl $ProwlarrUrl -ApiKey $ProwlarrApiKey -Name $IndexerName -TorznabBaseUrl ($EmulebbBaseUrl.TrimEnd('/') + '/indexer/emulebb') -TorznabApiKey $EmulebbApiKey
         Write-Host ('Registered Prowlarr indexer "{0}" with id {1}.' -f $saved.name, $saved.id) -ForegroundColor Green
