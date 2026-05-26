@@ -59,6 +59,17 @@ EMULE_RUNTIME_SCRIPT_PATHS = (
     "scripts/register-prowlarr.ps1",
     "scripts/register-arr-stack.ps1",
 )
+EMULE_SKIN_ASSET_PATHS = (
+    "skins/emulebb-slate.eMuleSkin.ini",
+    "skins/emulebb-graphite.eMuleSkin.ini",
+    "skins/emulebb-midnight.eMuleSkin.ini",
+    "skins/emulebb-steel.eMuleSkin.ini",
+    "skins/emulebb-moss.eMuleSkin.ini",
+    "skins/emulebb-daylight-soft.eMuleSkin.ini",
+    "skins/emulebb-classic.eMuleToolbar.kad02.bmp",
+    "skins/emulebb-muted.eMuleToolbar.kad02.bmp",
+)
+EMULE_RUNTIME_ASSET_PATHS = (*EMULE_RUNTIME_SCRIPT_PATHS, *EMULE_SKIN_ASSET_PATHS)
 
 
 def create_amutorrent_package(
@@ -226,7 +237,7 @@ def create_release_package(
         package_root,
         Path("docs/REST-API-PARITY-INVENTORY.md"),
     )
-    _copy_emule_runtime_scripts(layout.build_repo_root, package_root)
+    _copy_emule_runtime_assets(layout.build_repo_root, package_root)
     _write_release_sbom(
         layout=layout,
         workspace_options=workspace_options,
@@ -326,6 +337,7 @@ def _build_release_manifest(
             "eMule/THIRD-PARTY-NOTICES.txt",
             "eMule/SBOM.spdx.json",
             "eMule/scripts",
+            "eMule/skins",
             "eMule/docs/REST-API-CONTRACT.md",
             "eMule/docs/REST-API-OPENAPI.yaml",
             "eMule/docs/REST-API-PARITY-INVENTORY.md",
@@ -914,11 +926,11 @@ def _copy_package_file(source_path: Path, package_root: Path, relative_destinati
     shutil.copy2(source_path, destination_path)
 
 
-def _copy_emule_runtime_scripts(build_repo_root: Path, package_root: Path) -> None:
-    """Copies package-owned eMuleBB Windows runtime scripts."""
+def _copy_emule_runtime_assets(build_repo_root: Path, package_root: Path) -> None:
+    """Copies package-owned eMuleBB runtime assets."""
 
     source_root = build_repo_root / "emule_workspace" / "release_assets" / "emule"
-    for relative_path in EMULE_RUNTIME_SCRIPT_PATHS:
+    for relative_path in EMULE_RUNTIME_ASSET_PATHS:
         _copy_package_file(source_root / relative_path, package_root, Path(relative_path))
 
 
@@ -972,7 +984,8 @@ def _write_package_readme(package_root: Path, release_version: str, platform: st
                 "components in SPDX 2.3 JSON format.",
                 "",
                 "Windows setup and Arr integration helpers are included under `scripts/`",
-                "and are launched from the app Tools menu.",
+                "and are launched from the app Tools menu. Bundled skin profiles and",
+                "toolbar bitmap strips are included under `skins/`.",
                 "",
                 "MediaInfo integration remains optional. To enable audio/video metadata,",
                 f"install a compatible external `MediaInfo.dll` next to `{APP_EXE_NAME}`; it is not",
@@ -1151,7 +1164,7 @@ def _assert_release_package_contents(zip_path: Path, expected_language_dlls: tup
             "eMule/docs/REST-API-CONTRACT.md",
             "eMule/docs/REST-API-OPENAPI.yaml",
             "eMule/docs/REST-API-PARITY-INVENTORY.md",
-            *(f"eMule/{relative_path}" for relative_path in EMULE_RUNTIME_SCRIPT_PATHS),
+            *(f"eMule/{relative_path}" for relative_path in EMULE_RUNTIME_ASSET_PATHS),
         )
         for required_entry in required_entries:
             if required_entry not in entry_set:

@@ -50,7 +50,13 @@ def _pe_payload(machine: int) -> bytes:
     return bytes(payload)
 
 
-def _write_release_zip(path: Path, *, language_payloads: dict[str, bytes] | None = None, extra_entries: dict[str, bytes] | None = None) -> None:
+def _write_release_zip(
+    path: Path,
+    *,
+    language_payloads: dict[str, bytes] | None = None,
+    extra_entries: dict[str, bytes] | None = None,
+    include_skin_assets: bool = True,
+) -> None:
     entries = {
         "eMule/emulebb.exe": _pe_payload(0x8664),
         "eMule/README.md": b"readme\n",
@@ -65,6 +71,9 @@ def _write_release_zip(path: Path, *, language_payloads: dict[str, bytes] | None
     }
     for relative_path in release.EMULE_RUNTIME_SCRIPT_PATHS:
         entries[f"eMule/{relative_path}"] = b"#Requires -Version 5.1\n"
+    if include_skin_assets:
+        for relative_path in release.EMULE_SKIN_ASSET_PATHS:
+            entries[f"eMule/{relative_path}"] = b"skin-or-toolbar-asset\n"
     for name, payload in (language_payloads or {"de_DE.dll": _pe_payload(0x8664)}).items():
         entries[f"eMule/lang/{name}"] = payload
     entries.update(extra_entries or {})
@@ -311,6 +320,7 @@ def test_release_manifest_records_explicit_source_provenance(
     assert manifest["sbomSha256"] == "sbom-sha"
     assert "eMule/SBOM.spdx.json" in manifest["includedPaths"]
     assert "eMule/scripts" in manifest["includedPaths"]
+    assert "eMule/skins" in manifest["includedPaths"]
     assert "eMule/webserver" not in manifest["includedPaths"]
 
 
@@ -416,6 +426,14 @@ def test_release_package_contents_reject_runtime_script_without_powershell_51_he
         release._assert_release_package_contents(zip_path, ("de_DE.dll",), "x64")
 
 
+def test_release_package_contents_require_skin_and_toolbar_assets(tmp_path: Path) -> None:
+    zip_path = tmp_path / "package.zip"
+    _write_release_zip(zip_path, include_skin_assets=False)
+
+    with pytest.raises(RuntimeError, match="missing required entry"):
+        release._assert_release_package_contents(zip_path, ("de_DE.dll",), "x64")
+
+
 def test_release_package_contents_accept_full_bundle_and_hash_entries(tmp_path: Path) -> None:
     zip_path = tmp_path / "package.zip"
     _write_release_zip(zip_path)
@@ -427,6 +445,8 @@ def test_release_package_contents_accept_full_bundle_and_hash_entries(tmp_path: 
     assert "eMule/THIRD-PARTY-NOTICES.txt" in hashes
     assert "eMule/SBOM.spdx.json" in hashes
     assert "eMule/scripts/register-prowlarr.ps1" in hashes
+    assert "eMule/skins/emulebb-slate.eMuleSkin.ini" in hashes
+    assert "eMule/skins/emulebb-classic.eMuleToolbar.kad02.bmp" in hashes
 
 
 def test_amutorrent_manifest_records_runtime_policy_and_source_provenance(
