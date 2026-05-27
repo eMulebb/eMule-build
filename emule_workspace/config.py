@@ -157,6 +157,10 @@ class LiveE2eOptions(BaseModel):
     godzilla_total_client_count: int = 30
     godzilla_peer_transfer_count: int = 300
     godzilla_harness_transfer_count: int = 300
+    godzilla_emulebb_files: int = 600
+    godzilla_extra_emulebb_files: int = 50
+    godzilla_harness_files: int = 400
+    godzilla_amule_files: int = 100
     godzilla_adverse_kill_cycles: int = 2
     godzilla_adverse_kill_warmup_seconds: float = 45.0
     godzilla_adverse_recovery_timeout_seconds: float = 300.0

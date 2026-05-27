@@ -253,6 +253,10 @@ def test_live_e2e_forwards_godzilla_visible_ui_and_lan_bind(tmp_path: Path, monk
             godzilla_total_client_count=12,
             godzilla_peer_transfer_count=444,
             godzilla_harness_transfer_count=222,
+            godzilla_emulebb_files=700,
+            godzilla_extra_emulebb_files=70,
+            godzilla_harness_files=500,
+            godzilla_amule_files=120,
             godzilla_adverse_kill_cycles=3,
             godzilla_adverse_kill_warmup_seconds=0.5,
             godzilla_adverse_recovery_timeout_seconds=45.0,
@@ -267,6 +271,10 @@ def test_live_e2e_forwards_godzilla_visible_ui_and_lan_bind(tmp_path: Path, monk
     assert option_values(command, "--godzilla-total-client-count") == ["12"]
     assert option_values(command, "--godzilla-peer-transfer-count") == ["444"]
     assert option_values(command, "--godzilla-harness-transfer-count") == ["222"]
+    assert option_values(command, "--godzilla-emulebb-files") == ["700"]
+    assert option_values(command, "--godzilla-extra-emulebb-files") == ["70"]
+    assert option_values(command, "--godzilla-harness-files") == ["500"]
+    assert option_values(command, "--godzilla-amule-files") == ["120"]
     assert option_values(command, "--godzilla-adverse-kill-cycles") == ["3"]
     assert option_values(command, "--godzilla-adverse-kill-warmup-seconds") == ["0.5"]
     assert option_values(command, "--godzilla-adverse-recovery-timeout-seconds") == ["45.0"]
