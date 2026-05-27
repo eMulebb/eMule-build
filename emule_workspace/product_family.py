@@ -55,6 +55,30 @@ class ToolchainCheck:
     note: str
 
 
+@dataclass(frozen=True)
+class ProductFamilyRebaseRepo:
+    """One fork whose remote branch is maintained by upstream-rebase automation."""
+
+    name: str
+    path: Path
+    branch: str
+    remote: str = "origin"
+
+
+@dataclass(frozen=True)
+class ProductFamilyRebaseRefresh:
+    """Result of refreshing one local fork clone from its rebased remote branch."""
+
+    name: str
+    branch: str
+    path: Path
+    old_remote_head: str
+    new_remote_head: str
+    old_local_head: str
+    status: Literal["unchanged", "refreshed"]
+    message: str
+
+
 TOOLCHAIN_POLICIES: tuple[ToolchainPolicy, ...] = (
     ToolchainPolicy(
         name="python",
@@ -100,6 +124,34 @@ TOOLCHAIN_POLICIES: tuple[ToolchainPolicy, ...] = (
         note="goed2k-server module declares Go 1.25.x.",
     ),
 )
+
+
+def refresh_product_family_rebases(layout: WorkspaceLayout) -> list[ProductFamilyRebaseRefresh]:
+    """Refreshes local product-family fork clones after GitHub upstream rebases.
+
+    The refresh is intentionally narrower than a general `git pull`: the local
+    branch must be clean and exactly at the pre-fetch remote-tracking ref before
+    the command will reset it to the freshly fetched remote branch.
+    """
+
+    repos = (
+        ProductFamilyRebaseRepo("amule", layout.amule_repo_root, "master"),
+        ProductFamilyRebaseRepo("amutorrent", layout.resolve_workspace_path("repos/amutorrent"), "main"),
+    )
+    results: list[ProductFamilyRebaseRefresh] = []
+    failures: list[str] = []
+    for repo in repos:
+        try:
+            results.append(_refresh_rebased_repo(repo))
+        except Exception as exc:
+            failures.append(f"{repo.name}: {exc}")
+    for result in results:
+        print(f"{result.name:<10} {result.status:<9} {result.branch:<6} {result.message}")
+    if failures:
+        for failure in failures:
+            print(f"SKIPPED {failure}")
+        raise RuntimeError("Product-family rebase refresh skipped one or more repositories; review messages above.")
+    return results
 
 
 def prepare_product_family_repos(layout: WorkspaceLayout) -> None:
@@ -233,6 +285,60 @@ def print_product_family_toolchain(payload: dict[str, Any]) -> None:
 def _coordinator_root(layout: WorkspaceLayout) -> Path | None:
     be_root = layout.p2p_overlord_be_repo_root
     return be_root / "overlord-be-coordinator" if be_root is not None else None
+
+
+def _refresh_rebased_repo(repo: ProductFamilyRebaseRepo) -> ProductFamilyRebaseRefresh:
+    if not repo.path.is_dir():
+        raise RuntimeError(f"repository is missing: {repo.path}")
+    _require_clean_expected_branch(repo)
+    local_head = _git(repo.path, "rev-parse", "HEAD")
+    old_remote_head = _git(repo.path, "rev-parse", "--verify", f"refs/remotes/{repo.remote}/{repo.branch}")
+    run_native(["git", "-C", repo.path, "fetch", repo.remote, "--prune"], label=f"fetch {repo.name}", cwd=repo.path)
+    new_remote_head = _git(repo.path, "rev-parse", "--verify", f"refs/remotes/{repo.remote}/{repo.branch}")
+    if local_head == new_remote_head:
+        return ProductFamilyRebaseRefresh(
+            repo.name,
+            repo.branch,
+            repo.path,
+            old_remote_head,
+            new_remote_head,
+            local_head,
+            "unchanged",
+            f"already at {new_remote_head[:12]}",
+        )
+    if local_head != old_remote_head:
+        raise RuntimeError(
+            f"local HEAD {local_head[:12]} is not the pre-fetch {repo.remote}/{repo.branch} "
+            f"{old_remote_head[:12]}; refusing to reset local work"
+        )
+    run_native(
+        ["git", "-C", repo.path, "reset", "--hard", f"refs/remotes/{repo.remote}/{repo.branch}"],
+        label=f"reset {repo.name}",
+        cwd=repo.path,
+    )
+    return ProductFamilyRebaseRefresh(
+        repo.name,
+        repo.branch,
+        repo.path,
+        old_remote_head,
+        new_remote_head,
+        local_head,
+        "refreshed",
+        f"{old_remote_head[:12]} -> {new_remote_head[:12]}",
+    )
+
+
+def _require_clean_expected_branch(repo: ProductFamilyRebaseRepo) -> None:
+    branch = _git(repo.path, "rev-parse", "--abbrev-ref", "HEAD")
+    if branch != repo.branch:
+        raise RuntimeError(f"checkout is on branch '{branch}', expected '{repo.branch}'")
+    status = _git(repo.path, "status", "--short")
+    if status:
+        raise RuntimeError("worktree has local changes")
+
+
+def _git(repo_root: Path, *args: str) -> str:
+    return run_captured(["git", "-C", repo_root, *args], label=f"git {' '.join(args)}", cwd=repo_root).strip()
 
 
 def _required_product_family_command(names: tuple[str, ...], label: str) -> str:

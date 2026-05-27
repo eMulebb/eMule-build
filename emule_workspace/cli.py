@@ -45,7 +45,12 @@ from .local_package_install import install_local_package
 from .locks import WorkspaceLock
 from .materialize import materialize_workspace, sync_workspace
 from .miniupnpc_release import create_miniupnpc_package
-from .product_family import audit_product_family_toolchain, prepare_product_family_repos, print_product_family_toolchain
+from .product_family import (
+    audit_product_family_toolchain,
+    prepare_product_family_repos,
+    print_product_family_toolchain,
+    refresh_product_family_rebases,
+)
 from .python_tests import invoke_python_tests
 from .release import create_amutorrent_package, create_release_package
 from .release_campaign_runner import invoke_release_campaign
@@ -366,6 +371,17 @@ def prepare_product_family(*, workspace_options: WorkspaceOptions, layout) -> No
     """Install or fetch dependencies for product-family repositories."""
 
     _locked("prepare-product-family", lambda **kwargs: prepare_product_family_repos(kwargs["layout"]))(
+        workspace_options=workspace_options,
+        layout=layout,
+    )
+
+
+@main.command("refresh-product-family-rebases")
+@_common_options
+def refresh_product_family_rebase_clones(*, workspace_options: WorkspaceOptions, layout) -> None:
+    """Refresh local aMule and aMuTorrent clones after automated upstream rebases."""
+
+    _locked("refresh-product-family-rebases", lambda **kwargs: refresh_product_family_rebases(kwargs["layout"]))(
         workspace_options=workspace_options,
         layout=layout,
     )

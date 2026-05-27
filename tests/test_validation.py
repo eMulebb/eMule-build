@@ -232,3 +232,115 @@ def test_product_family_prepare_fetches_native_dependencies(
     assert (("npm.cmd", "ci"), coordinator_root) in calls
     assert (("npm.cmd", "run", "prisma:generate"), coordinator_root) in calls
     assert (("go.exe", "mod", "download"), goed2k_root) in calls
+
+
+def test_product_family_rebase_refresh_resets_clean_clone_after_remote_rewrite(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repos" / "amule"
+    repo_root.mkdir(parents=True)
+    fetched = False
+    commands: list[tuple[str, ...]] = []
+
+    def fake_git(_repo_root: Path, *args: str) -> str:
+        if args == ("rev-parse", "--abbrev-ref", "HEAD"):
+            return "master"
+        if args == ("status", "--short"):
+            return ""
+        if args == ("rev-parse", "HEAD"):
+            return "a" * 40
+        if args == ("rev-parse", "--verify", "refs/remotes/origin/master"):
+            return ("b" if fetched else "a") * 40
+        raise AssertionError(f"unexpected git call: {args}")
+
+    def fake_run_native(command, **kwargs):
+        nonlocal fetched
+        del kwargs
+        command_tuple = tuple(str(part) for part in command)
+        commands.append(command_tuple)
+        if command_tuple[-3:] == ("fetch", "origin", "--prune"):
+            fetched = True
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(product_family, "_git", fake_git)
+    monkeypatch.setattr(product_family, "run_native", fake_run_native)
+
+    result = product_family._refresh_rebased_repo(
+        product_family.ProductFamilyRebaseRepo("amule", repo_root, "master")
+    )
+
+    assert result.status == "refreshed"
+    assert commands[-1][-3:] == ("reset", "--hard", "refs/remotes/origin/master")
+
+
+def test_product_family_rebase_refresh_noops_when_clone_already_matches_origin(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repos" / "amutorrent"
+    repo_root.mkdir(parents=True)
+    commands: list[tuple[str, ...]] = []
+
+    def fake_git(_repo_root: Path, *args: str) -> str:
+        if args == ("rev-parse", "--abbrev-ref", "HEAD"):
+            return "main"
+        if args == ("status", "--short"):
+            return ""
+        if args == ("rev-parse", "HEAD"):
+            return "c" * 40
+        if args == ("rev-parse", "--verify", "refs/remotes/origin/main"):
+            return "c" * 40
+        raise AssertionError(f"unexpected git call: {args}")
+
+    def fake_run_native(command, **kwargs):
+        del kwargs
+        commands.append(tuple(str(part) for part in command))
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(product_family, "_git", fake_git)
+    monkeypatch.setattr(product_family, "run_native", fake_run_native)
+
+    result = product_family._refresh_rebased_repo(
+        product_family.ProductFamilyRebaseRepo("amutorrent", repo_root, "main")
+    )
+
+    assert result.status == "unchanged"
+    assert len(commands) == 1
+    assert commands[0][-3:] == ("fetch", "origin", "--prune")
+
+
+def test_product_family_rebase_refresh_refuses_local_divergence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repos" / "amule"
+    repo_root.mkdir(parents=True)
+    fetched = False
+
+    def fake_git(_repo_root: Path, *args: str) -> str:
+        if args == ("rev-parse", "--abbrev-ref", "HEAD"):
+            return "master"
+        if args == ("status", "--short"):
+            return ""
+        if args == ("rev-parse", "HEAD"):
+            return "d" * 40
+        if args == ("rev-parse", "--verify", "refs/remotes/origin/master"):
+            return ("b" if fetched else "a") * 40
+        raise AssertionError(f"unexpected git call: {args}")
+
+    def fake_run_native(command, **kwargs):
+        nonlocal fetched
+        del kwargs
+        command_tuple = tuple(str(part) for part in command)
+        if command_tuple[-3:] == ("fetch", "origin", "--prune"):
+            fetched = True
+        if command_tuple[-4:] == ("reset", "--hard", "refs/remotes/origin/master"):
+            raise AssertionError("diverged clone must not be reset")
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(product_family, "_git", fake_git)
+    monkeypatch.setattr(product_family, "run_native", fake_run_native)
+
+    with pytest.raises(RuntimeError, match="refusing to reset local work"):
+        product_family._refresh_rebased_repo(product_family.ProductFamilyRebaseRepo("amule", repo_root, "master"))

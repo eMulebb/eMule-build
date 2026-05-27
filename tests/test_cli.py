@@ -218,6 +218,15 @@ def test_prepare_product_family_help_is_available() -> None:
     assert "product-family" in result.output
 
 
+def test_refresh_product_family_rebases_help_is_available() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(cli.main, ["refresh-product-family-rebases", "--help"])
+
+    assert result.exit_code == 0
+    assert "Refresh local aMule and aMuTorrent clones" in result.output
+
+
 def test_install_local_package_help_exposes_live_wire_config() -> None:
     runner = CliRunner()
 
