@@ -206,6 +206,46 @@ def test_live_e2e_forwards_admin_volume_fixture_options(tmp_path: Path, monkeypa
     assert "--keep-admin-fixtures" in command
 
 
+def test_live_e2e_forwards_dependency_resolution_options(tmp_path: Path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
+        captured["command"] = list(command)
+
+    layout = make_layout(tmp_path)
+    monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+
+    cache_root = r"state\arr-cache"
+    prowlarr_exe = r"tools\Prowlarr\Prowlarr.exe"
+    radarr_exe = r"tools\Radarr\Radarr.exe"
+    sonarr_exe = r"tools\Sonarr\Sonarr.exe"
+    test_runs.invoke_live_e2e_suite(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+        LiveE2eOptions(
+            profile="package-helpers",
+            dependency_mode="auto-download",
+            dependency_channel="latest",
+            dependency_cache_root=cache_root,
+            refresh_dependencies=True,
+            prowlarr_exe=prowlarr_exe,
+            radarr_exe=radarr_exe,
+            sonarr_exe=sonarr_exe,
+        ),
+    )
+
+    command = captured["command"]
+    assert isinstance(command, list)
+    assert option_values(command, "--profile") == ["package-helpers"]
+    assert option_values(command, "--dependency-mode") == ["auto-download"]
+    assert option_values(command, "--dependency-channel") == ["latest"]
+    assert option_values(command, "--dependency-cache-root") == [str((layout.emule_workspace_root / cache_root).resolve())]
+    assert "--refresh-dependencies" in command
+    assert option_values(command, "--prowlarr-exe") == [str((layout.emule_workspace_root / prowlarr_exe).resolve())]
+    assert option_values(command, "--radarr-exe") == [str((layout.emule_workspace_root / radarr_exe).resolve())]
+    assert option_values(command, "--sonarr-exe") == [str((layout.emule_workspace_root / sonarr_exe).resolve())]
+
+
 def test_live_e2e_forwards_search_ui_live_stress_options(tmp_path: Path, monkeypatch) -> None:
     captured: dict[str, object] = {}
 

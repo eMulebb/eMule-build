@@ -20,6 +20,7 @@ LiveE2eProfile = Literal[
     "protocol-parity",
     "beta-green",
     "controller-surface",
+    "package-helpers",
     "beta-release",
     "release-expanded",
     "release-expanded-quick",
@@ -117,6 +118,13 @@ class LiveE2eOptions(BaseModel):
     vhd_size_mb: int = 256
     mount_root: str | None = None
     keep_admin_fixtures: bool = False
+    dependency_mode: Literal["cache-only", "auto-download", "off"] = "cache-only"
+    dependency_channel: Literal["pinned", "latest"] = "pinned"
+    dependency_cache_root: str | None = None
+    refresh_dependencies: bool = False
+    prowlarr_exe: str | None = None
+    radarr_exe: str | None = None
+    sonarr_exe: str | None = None
     profile_cpu: bool = False
     profile_cpu_max_file_mb: int = 512
     profile_cpu_stack: bool = False

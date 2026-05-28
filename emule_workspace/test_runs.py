@@ -385,6 +385,17 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
     if live_options.mount_root:
         args.extend(["--mount-root", live_options.mount_root])
     _append_optional_flag(args, live_options.keep_admin_fixtures, "--keep-admin-fixtures")
+    args.extend(["--dependency-mode", live_options.dependency_mode])
+    args.extend(["--dependency-channel", live_options.dependency_channel])
+    if live_options.dependency_cache_root:
+        args.extend(["--dependency-cache-root", _resolve_workspace_path_argument(layout, live_options.dependency_cache_root)])
+    _append_optional_flag(args, live_options.refresh_dependencies, "--refresh-dependencies")
+    if live_options.prowlarr_exe:
+        args.extend(["--prowlarr-exe", _resolve_workspace_path_argument(layout, live_options.prowlarr_exe)])
+    if live_options.radarr_exe:
+        args.extend(["--radarr-exe", _resolve_workspace_path_argument(layout, live_options.radarr_exe)])
+    if live_options.sonarr_exe:
+        args.extend(["--sonarr-exe", _resolve_workspace_path_argument(layout, live_options.sonarr_exe)])
     _append_optional_flag(args, live_options.preference_ui_directories_tree_stress, "--preference-ui-directories-tree-stress")
     for scenario_name in live_options.shared_files_ui_scenarios:
         args.extend(["--shared-files-ui-scenario", scenario_name])
@@ -717,6 +728,15 @@ def _resolve_workspace_argument(layout: WorkspaceLayout, value: str) -> str:
     if workspace_path.exists():
         return str(workspace_path.resolve())
     return value
+
+
+def _resolve_workspace_path_argument(layout: WorkspaceLayout, value: str) -> str:
+    """Resolves workspace-relative path knobs even when the target is created later."""
+
+    path = Path(value)
+    if path.is_absolute():
+        return str(path)
+    return str((layout.emule_workspace_root / path).resolve())
 
 
 def _test_network_env(

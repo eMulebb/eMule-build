@@ -161,6 +161,7 @@ def _live_e2e_options(function: F) -> F:
             "protocol-parity",
             "beta-green",
             "controller-surface",
+            "package-helpers",
             "beta-release",
             "release-expanded",
             "release-expanded-quick",
@@ -182,6 +183,13 @@ def _live_e2e_options(function: F) -> F:
     @click.option("--vhd-size-mb", default=256, show_default=True, type=int)
     @click.option("--mount-root", default=None, help="Parent directory for admin-only folder mount fixtures.")
     @click.option("--keep-admin-fixtures", is_flag=True, help="Leave admin VHD fixture files after a live suite for inspection.")
+    @click.option("--dependency-mode", type=click.Choice(["cache-only", "auto-download", "off"]), default="cache-only", show_default=True)
+    @click.option("--dependency-channel", type=click.Choice(["pinned", "latest"]), default="pinned", show_default=True)
+    @click.option("--dependency-cache-root", default=None, help="Workspace-owned cache root for portable live-test dependencies.")
+    @click.option("--refresh-dependencies", is_flag=True, help="Refresh cached portable live-test dependencies before running selected suites.")
+    @click.option("--prowlarr-exe", default=None, help="Explicit Prowlarr executable for package-helper live tests.")
+    @click.option("--radarr-exe", default=None, help="Explicit Radarr executable for package-helper live tests.")
+    @click.option("--sonarr-exe", default=None, help="Explicit Sonarr executable for package-helper live tests.")
     @click.option("--preference-ui-directories-tree-stress", is_flag=True, help="Exercise the Preferences Directories tree with a large shared-directory profile.")
     @click.option("--shared-files-ui-scenario", "shared_files_ui_scenarios", multiple=True)
     @click.option("--shared-files-tree-stress-churn-cycles", default=-1, show_default=True, type=int)
