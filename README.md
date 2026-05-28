@@ -183,6 +183,31 @@ named `certification-result.json` and `release-campaign-run-result.json`.
 Test reports use `<suite>\latest` snapshots and suite-scoped leaves such as
 `<suite>-result.json`, `<suite>-result.partial.json`, and `<suite>-summary.json`.
 
+## Environment Overrides
+
+The orchestration layer has a small set of supported environment overrides for
+nonstandard tool locations and controlled toolchain diagnosis. They are not a
+substitute for the pinned workspace topology, and release/CI runs should leave
+them unset unless the run evidence explicitly records why an override was
+needed.
+
+| Variable | Used by | Default when unset | Intended use |
+|---|---|---|---|
+| `EMULE_MSYS2_ROOT` | `build clients --client amule` | First usable system MSYS2 root, normally `C:\msys64` | Point the aMule Windows client build at a nonstandard MSYS2 install. |
+| `EMULE_V072_PLATFORM_TOOLSET` | app, Crypto++, and release MSBuild entrypoints | `v143` | Temporarily force a Visual Studio `PlatformToolset` for local compatibility diagnosis. |
+
+Use these only at the shell or CI-job boundary:
+
+```powershell
+$env:EMULE_MSYS2_ROOT = 'D:\Tools\msys64'
+$env:EMULE_V072_PLATFORM_TOOLSET = 'v143'
+python -m emule_workspace env-check
+```
+
+If a build succeeds only with an override, record the variable and value in the
+run notes. Do not commit generated project files or dependency metadata that
+bake a local override into the workspace.
+
 Shared test builds support `x64` and `ARM64`. Test execution remains `x64`
 only:
 
