@@ -82,6 +82,12 @@ function Read-SecretValue {
     if (-not [string]::IsNullOrWhiteSpace($Value)) {
         return Normalize-ArgumentValue -Value $Value
     }
+    if ($Optional) {
+        # aMuTorrent can run with authentication disabled during local installs
+        # and helper E2E tests, so an explicit blank admin key must stay blank
+        # instead of falling through to an interactive secret prompt.
+        return ''
+    }
     $secure = Read-Host $Prompt -AsSecureString
     $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
     try {
