@@ -58,6 +58,7 @@ EMULE_RUNTIME_SCRIPT_PATHS = (
     "scripts/enable-long-paths.ps1",
     "scripts/register-prowlarr.ps1",
     "scripts/register-arr-stack.ps1",
+    "scripts/register-amutorrent.ps1",
 )
 EMULE_SKIN_ASSET_PATHS = (
     "skins/emulebb-slate.eMuleSkin.ini",
