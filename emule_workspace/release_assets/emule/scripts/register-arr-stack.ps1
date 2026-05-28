@@ -2,6 +2,7 @@
 [CmdletBinding()]
 param(
     [string]$Action,
+    [string]$Target,
     [string]$EmulebbBaseUrl,
     [string]$EmulebbApiKey,
     [string]$ProwlarrUrl,
@@ -85,6 +86,23 @@ function Read-ActionValue {
         if ($normalized.StartsWith('r')) { return 'Register' }
         if ($normalized.StartsWith('u')) { return 'Unregister' }
         Write-Host 'Enter R to register or U to unregister.' -ForegroundColor Yellow
+    }
+}
+
+function Read-TargetValue {
+    param([string]$Value)
+    if (-not [string]::IsNullOrWhiteSpace($Value)) {
+        $normalized = $Value.Trim().ToLowerInvariant()
+        if ($normalized -eq 'radarr' -or $normalized -eq 'r') { return 'Radarr' }
+        if ($normalized -eq 'sonarr' -or $normalized -eq 's') { return 'Sonarr' }
+        throw "Target must be Radarr or Sonarr, not '$Value'."
+    }
+    while ($true) {
+        $answer = Read-Host 'Target [R]adarr/[S]onarr'
+        $normalized = $answer.Trim().ToLowerInvariant()
+        if ($normalized.StartsWith('r')) { return 'Radarr' }
+        if ($normalized.StartsWith('s')) { return 'Sonarr' }
+        Write-Host 'Enter R for Radarr or S for Sonarr.' -ForegroundColor Yellow
     }
 }
 
@@ -385,7 +403,9 @@ function Run-TargetWithRetry {
 }
 
 $Action = Read-ActionValue -Value $Action
-Write-Host ('eMuleBB Radarr/Sonarr Integration - {0}' -f $Action) -ForegroundColor Cyan
+$Target = Read-TargetValue -Value $Target
+$targetKind = $Target.ToLowerInvariant()
+Write-Host ('eMuleBB {0} Integration - {1}' -f $Target, $Action) -ForegroundColor Cyan
 if ($Action -eq 'Register') {
     $EmulebbBaseUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'eMuleBB base URL (example http://127.0.0.1:4711)' -Value $EmulebbBaseUrl) -Name 'EmulebbBaseUrl'
     $EmulebbApiKey = Read-SecretValue -Prompt 'eMuleBB API key' -Value $EmulebbApiKey
@@ -396,43 +416,24 @@ if ($ProwlarrUrl) {
     $ProwlarrApiKey = Read-SecretValue -Prompt 'Prowlarr API key' -Value $ProwlarrApiKey
 }
 
-$RadarrUrl = Read-OptionalValue -Prompt 'Radarr URL for eMuleBB download client (blank to skip)' -Value $RadarrUrl
-if ($RadarrUrl) {
-    $RadarrUrl = Normalize-HttpBaseUrl -Value $RadarrUrl -Name 'RadarrUrl'
-    $RadarrApiKey = Read-SecretValue -Prompt 'Radarr API key' -Value $RadarrApiKey
-    if ($Action -eq 'Register' -and $ProwlarrUrl) {
-        Run-TargetWithRetry -Name 'Prowlarr Radarr application registration' -NoRetry:$NoRetry -Operation {
-            $saved = Save-ProwlarrApplication -ProwlarrBaseUrl $ProwlarrUrl -ProwlarrKey $ProwlarrApiKey -Kind 'radarr' -ArrUrl $RadarrUrl -ArrKey $RadarrApiKey
-            Write-Host ('Prowlarr Radarr application saved with id {0}.' -f $saved.id) -ForegroundColor Green
-        }
-    }
-    Run-TargetWithRetry -Name ('Radarr download client {0}' -f $Action.ToLowerInvariant()) -NoRetry:$NoRetry -Operation {
-        if ($Action -eq 'Unregister') {
-            Remove-QbitClient -BaseUrl $RadarrUrl -ApiKey $RadarrApiKey -Name $DownloadClientName
-        } else {
-            $saved = Save-QbitClient -Kind 'radarr' -BaseUrl $RadarrUrl -ApiKey $RadarrApiKey -EmuleBaseUrl $EmulebbBaseUrl -EmuleApiKey $EmulebbApiKey -Name $DownloadClientName
-            Write-Host ('Radarr download client saved with id {0}.' -f $saved.id) -ForegroundColor Green
-        }
+$targetUrl = if ($Target -eq 'Radarr') { $RadarrUrl } else { $SonarrUrl }
+$targetApiKey = if ($Target -eq 'Radarr') { $RadarrApiKey } else { $SonarrApiKey }
+$targetUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt ("$Target URL for eMuleBB download client") -Value $targetUrl) -Name ("${Target}Url")
+$targetApiKey = Read-SecretValue -Prompt "$Target API key" -Value $targetApiKey
+
+if ($Action -eq 'Register' -and $ProwlarrUrl) {
+    Run-TargetWithRetry -Name "Prowlarr $Target application registration" -NoRetry:$NoRetry -Operation {
+        $saved = Save-ProwlarrApplication -ProwlarrBaseUrl $ProwlarrUrl -ProwlarrKey $ProwlarrApiKey -Kind $targetKind -ArrUrl $targetUrl -ArrKey $targetApiKey
+        Write-Host ('Prowlarr {0} application saved with id {1}.' -f $Target, $saved.id) -ForegroundColor Green
     }
 }
 
-$SonarrUrl = Read-OptionalValue -Prompt 'Sonarr URL for eMuleBB download client (blank to skip)' -Value $SonarrUrl
-if ($SonarrUrl) {
-    $SonarrUrl = Normalize-HttpBaseUrl -Value $SonarrUrl -Name 'SonarrUrl'
-    $SonarrApiKey = Read-SecretValue -Prompt 'Sonarr API key' -Value $SonarrApiKey
-    if ($Action -eq 'Register' -and $ProwlarrUrl) {
-        Run-TargetWithRetry -Name 'Prowlarr Sonarr application registration' -NoRetry:$NoRetry -Operation {
-            $saved = Save-ProwlarrApplication -ProwlarrBaseUrl $ProwlarrUrl -ProwlarrKey $ProwlarrApiKey -Kind 'sonarr' -ArrUrl $SonarrUrl -ArrKey $SonarrApiKey
-            Write-Host ('Prowlarr Sonarr application saved with id {0}.' -f $saved.id) -ForegroundColor Green
-        }
-    }
-    Run-TargetWithRetry -Name ('Sonarr download client {0}' -f $Action.ToLowerInvariant()) -NoRetry:$NoRetry -Operation {
-        if ($Action -eq 'Unregister') {
-            Remove-QbitClient -BaseUrl $SonarrUrl -ApiKey $SonarrApiKey -Name $DownloadClientName
-        } else {
-            $saved = Save-QbitClient -Kind 'sonarr' -BaseUrl $SonarrUrl -ApiKey $SonarrApiKey -EmuleBaseUrl $EmulebbBaseUrl -EmuleApiKey $EmulebbApiKey -Name $DownloadClientName
-            Write-Host ('Sonarr download client saved with id {0}.' -f $saved.id) -ForegroundColor Green
-        }
+Run-TargetWithRetry -Name ("$Target download client {0}" -f $Action.ToLowerInvariant()) -NoRetry:$NoRetry -Operation {
+    if ($Action -eq 'Unregister') {
+        Remove-QbitClient -BaseUrl $targetUrl -ApiKey $targetApiKey -Name $DownloadClientName
+    } else {
+        $saved = Save-QbitClient -Kind $targetKind -BaseUrl $targetUrl -ApiKey $targetApiKey -EmuleBaseUrl $EmulebbBaseUrl -EmuleApiKey $EmulebbApiKey -Name $DownloadClientName
+        Write-Host ('{0} download client saved with id {1}.' -f $Target, $saved.id) -ForegroundColor Green
     }
 }
 
@@ -442,5 +443,5 @@ if ($ProwlarrUrl) {
     }
 }
 
-Write-Host ('eMuleBB integration {0} finished.' -f $Action.ToLowerInvariant()) -ForegroundColor Green
+Write-Host ('eMuleBB {0} integration {1} finished.' -f $Target, $Action.ToLowerInvariant()) -ForegroundColor Green
 exit 0
