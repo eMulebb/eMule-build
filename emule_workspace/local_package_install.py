@@ -73,6 +73,18 @@ class InstallArtifacts:
 
 
 @dataclass(frozen=True)
+class MaterializedLocalInstall:
+    """Resolved paths for an installer-created local suite install."""
+
+    target_path: Path
+    app_root: Path
+    app_exe: Path
+    profile_dir: Path
+    profile_config_dir: Path
+    manifest_path: Path
+
+
+@dataclass(frozen=True)
 class DecodedText:
     """Text decoded from disk with the encoding needed for round-trip writes."""
 
@@ -86,6 +98,16 @@ def install_local_package(
     options: LocalPackageInstallOptions,
 ) -> None:
     """Builds and deploys a local package install from ignored live-wire inputs."""
+
+    materialize_local_install(layout, workspace_options, options)
+
+
+def materialize_local_install(
+    layout: WorkspaceLayout,
+    workspace_options: WorkspaceOptions,
+    options: LocalPackageInstallOptions,
+) -> MaterializedLocalInstall:
+    """Materializes a local package install through the suite installer."""
 
     if workspace_options.configuration != "Release":
         raise RuntimeError("install local package requires --config Release.")
@@ -113,6 +135,7 @@ def install_local_package(
     profile_dir = suite_profile_dir(config)
     rest_config = prepare_profile_preferences(config, profile_dir)
     deploy_local_install(layout, config, rest_config, artifacts, options.release_version)
+    return materialized_local_install_from_config(config)
 
 
 def load_local_install_config(layout: WorkspaceLayout, raw_inputs_path: str | None) -> LocalInstallConfig:
@@ -218,6 +241,22 @@ def suite_profile_dir(config: LocalInstallConfig) -> Path:
     """Returns the installer-owned eMuleBB profile path."""
 
     return config.target_path / "profiles" / "emulebb"
+
+
+def materialized_local_install_from_config(config: LocalInstallConfig) -> MaterializedLocalInstall:
+    """Builds typed metadata for the installer-owned local install layout."""
+
+    target_path = config.target_path
+    app_root = target_path / "apps" / EMULEBB_PACKAGE_ROOT_NAME
+    profile_dir = suite_profile_dir(config)
+    return MaterializedLocalInstall(
+        target_path=target_path,
+        app_root=app_root,
+        app_exe=app_root / APP_EXE_NAME,
+        profile_dir=profile_dir,
+        profile_config_dir=profile_dir / "config",
+        manifest_path=target_path / "manifests" / "local-install.json",
+    )
 
 
 def build_suite_installer_options(

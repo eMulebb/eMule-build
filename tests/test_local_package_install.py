@@ -154,12 +154,18 @@ def test_local_package_install_deploys_artifacts_from_suite_profile(
 
     monkeypatch.setattr(local_package_install.suite_installer, "invoke_suite_installer", fake_invoke_suite_installer)
 
-    local_package_install.install_local_package(
+    result = local_package_install.materialize_local_install(
         layout,
         _workspace_options(tmp_path),
         LocalPackageInstallOptions(skip_build=True),
     )
 
+    assert result.target_path == target.resolve()
+    assert result.app_root == target / "apps" / "eMuleBB"
+    assert result.app_exe == target / "apps" / "eMuleBB" / "emulebb.exe"
+    assert result.profile_dir == target / "profiles" / "emulebb"
+    assert result.profile_config_dir == target / "profiles" / "emulebb" / "config"
+    assert result.manifest_path == target / "manifests" / "local-install.json"
     assert installer_calls
     assert installer_calls[0].emulebb_port == 14711
     assert installer_calls[0].p2p_bind_interface == "hide.me"
