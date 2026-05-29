@@ -77,6 +77,10 @@ def test_test_live_e2e_help_exposes_live_options() -> None:
     assert "ui-resource-depth" in result.output
     assert "--p2p-bind-interface-name" in result.output
     assert "--live-wire-inputs-file" in result.output
+    assert "--materialize-test-install" in result.output
+    assert "--materialize-test-install-release-version" in result.output
+    assert "--materialize-test-install-clean" in result.output
+    assert "--materialize-test-install-skip-build" in result.output
     assert "--arr-download-proof-mode" in result.output
     assert "--pre-run-cleanup" in result.output
     assert "--skip-pre-run-cleanup" in result.output

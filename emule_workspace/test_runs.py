@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime, timezone
+import os
 from pathlib import Path
 
 from .config import (
@@ -13,12 +15,14 @@ from .config import (
     CommunityCoverageOptions,
     FakeKadTrustSoakOptions,
     LiveE2eOptions,
+    LocalPackageInstallOptions,
     ReleaseCampaignOptions,
     VariantComparisonOptions,
     WorkspaceOptions,
 )
 from .cleanup import run_pre_test_cleanup
 from .layout import WorkspaceLayout, get_test_build_tag
+from .local_package_install import materialize_test_local_install
 from .network_context import TestNetwork, resolve_workspace_network_context
 from .process import get_python_invocation, run_native
 
@@ -245,6 +249,25 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
     if live_options.pre_run_cleanup:
         run_pre_test_cleanup(layout)
     app_root = layout.get_app_variant(layout.test_targets.test_run_variant).path
+    app_exe: Path | None = None
+    profile_seed_dir: Path | None = None
+    if live_options.materialize_test_install:
+        materialized = materialize_test_local_install(
+            layout,
+            options,
+            LocalPackageInstallOptions(
+                live_wire_inputs_file=live_options.live_wire_inputs_file,
+                release_version=live_options.materialize_test_install_release_version,
+                clean=live_options.materialize_test_install_clean,
+                skip_build=live_options.materialize_test_install_skip_build,
+            ),
+            run_id=_live_e2e_test_install_run_id(),
+            suite_name="live-e2e-suite",
+            client_id=layout.test_targets.test_run_variant,
+        )
+        app_root = materialized.app_root
+        app_exe = materialized.app_exe
+        profile_seed_dir = materialized.profile_config_dir
     script_path = layout.tests_repo_root / "scripts" / "run-live-e2e-suite.py"
     if not script_path.is_file():
         raise RuntimeError(f"Missing live E2E suite runner: {script_path}")
@@ -338,6 +361,10 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
         "--rest-cold-start-dump-stress-cpu-profile-stack-min-hits",
         live_options.rest_cold_start_dump_stress_cpu_profile_stack_min_hits,
     ]
+    if app_exe is not None:
+        args.extend(["--app-exe", app_exe])
+    if profile_seed_dir is not None:
+        args.extend(["--profile-seed-dir", profile_seed_dir])
     _append_optional_flag(args, live_options.profile_cpu, "--profile-cpu")
     _append_optional_flag(args, live_options.profile_cpu_stack, "--profile-cpu-stack")
     _append_optional_flag(args, live_options.multi_client_require_optional_clients, "--multi-client-require-optional-clients")
@@ -719,6 +746,11 @@ def invoke_amutorrent_emulebb_ui(
 def _append_optional_flag(args: list, enabled: bool, flag: str) -> None:
     if enabled:
         args.append(flag)
+
+
+def _live_e2e_test_install_run_id() -> str:
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return f"{stamp}-pid{os.getpid()}"
 
 
 def _resolve_workspace_argument(layout: WorkspaceLayout, value: str) -> str:

@@ -175,13 +175,15 @@ def test_campaign_execute_forwards_live_e2e_suite_selection(tmp_path: Path, monk
             "id": "live-monitor",
             "command": (
                 "python -m emule_workspace test live-e2e --suite live-process-monitor "
-                "--multi-client-require-optional-clients --godzilla-stage launch-scale --fail-fast"
+                "--multi-client-require-optional-clients --godzilla-stage launch-scale --fail-fast "
+                "--materialize-test-install --materialize-test-install-release-version 0.7.4-rc.2 "
+                "--materialize-test-install-clean --materialize-test-install-skip-build"
             ),
             "blocking": True,
         }
     ]
     write_campaign(layout, campaign)
-    calls: list[tuple[str, tuple[str, ...], str, bool, str | None, bool]] = []
+    calls: list[tuple[str, tuple[str, ...], str, bool, str | None, bool, bool, str, bool, bool]] = []
 
     monkeypatch.setattr(
         release_campaign_runner,
@@ -199,6 +201,10 @@ def test_campaign_execute_forwards_live_e2e_suite_selection(tmp_path: Path, monk
                 live_options.multi_client_require_optional_clients,
                 live_options.godzilla_stage,
                 live_options.fail_fast,
+                live_options.materialize_test_install,
+                live_options.materialize_test_install_release_version,
+                live_options.materialize_test_install_clean,
+                live_options.materialize_test_install_skip_build,
             )
         ),
     )
@@ -209,7 +215,9 @@ def test_campaign_execute_forwards_live_e2e_suite_selection(tmp_path: Path, monk
         ReleaseCampaignOptions(campaign="test-campaign", phase="controller-surface", execute=True),
     )
 
-    assert calls == [("default", ("live-process-monitor",), "default", True, "launch-scale", True)]
+    assert calls == [
+        ("default", ("live-process-monitor",), "default", True, "launch-scale", True, True, "0.7.4-rc.2", True, True)
+    ]
 
 
 def test_campaign_execute_applies_campaign_runtime_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

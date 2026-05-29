@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -342,6 +343,69 @@ def test_live_e2e_leaves_godzilla_stage_unset_for_profile_defaults(tmp_path: Pat
     command = captured["command"]
     assert isinstance(command, list)
     assert "--godzilla-stage" not in command
+
+
+def test_live_e2e_can_run_against_materialized_installer_test_install(tmp_path: Path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    materialize_calls: list[object] = []
+
+    def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
+        captured["command"] = list(command)
+
+    def fake_materialize(layout, workspace_options, install_options, *, run_id, suite_name, client_id):
+        materialize_calls.append(
+            SimpleNamespace(
+                layout=layout,
+                workspace_options=workspace_options,
+                install_options=install_options,
+                run_id=run_id,
+                suite_name=suite_name,
+                client_id=client_id,
+            )
+        )
+        install_root = tmp_path / "workspaces" / "workspace" / "state" / "test-installs" / "run" / "live-e2e-suite" / "main"
+        return SimpleNamespace(
+            app_root=install_root / "apps" / "eMuleBB",
+            app_exe=install_root / "apps" / "eMuleBB" / "emulebb.exe",
+            profile_config_dir=install_root / "profiles" / "emulebb" / "config",
+        )
+
+    layout = make_layout(tmp_path)
+    monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+    monkeypatch.setattr(test_runs, "materialize_test_local_install", fake_materialize)
+
+    test_runs.invoke_live_e2e_suite(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+        LiveE2eOptions(
+            suites=("godzilla-local-swarm",),
+            live_wire_inputs_file="repos/emulebb-build-tests/live-wire-inputs.local.json",
+            materialize_test_install=True,
+            materialize_test_install_release_version="0.7.4-rc.2",
+            materialize_test_install_clean=True,
+            materialize_test_install_skip_build=True,
+        ),
+    )
+
+    command = captured["command"]
+    call = materialize_calls[0]
+    assert isinstance(command, list)
+    assert call.install_options.live_wire_inputs_file == "repos/emulebb-build-tests/live-wire-inputs.local.json"
+    assert call.install_options.release_version == "0.7.4-rc.2"
+    assert call.install_options.clean is True
+    assert call.install_options.skip_build is True
+    assert call.suite_name == "live-e2e-suite"
+    assert call.client_id == "main"
+    assert call.run_id.endswith("-pid" + str(os.getpid()))
+    install_root = call.layout.workspace_root / "state" / "test-installs" / "run" / "live-e2e-suite" / "main"
+    assert option_values(command, "--app-root") == [str(install_root / "apps" / "eMuleBB")]
+    assert option_values(command, "--app-exe") == [
+        str(install_root / "apps" / "eMuleBB" / "emulebb.exe")
+    ]
+    assert option_values(command, "--profile-seed-dir") == [
+        str(install_root / "profiles" / "emulebb" / "config")
+    ]
+    assert option_values(command, "--live-wire-inputs-file") == ["repos/emulebb-build-tests/live-wire-inputs.local.json"]
 
 
 def test_live_e2e_forwards_multi_client_required_optional_clients(tmp_path: Path, monkeypatch) -> None:
