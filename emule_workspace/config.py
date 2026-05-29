@@ -156,12 +156,13 @@ class LiveE2eOptions(BaseModel):
     rest_leak_churn_budget: str = "off"
     rest_leak_churn_cycles: int = -1
     rest_stop_start_after_churn: bool = False
+    multi_client_require_optional_clients: bool = False
     search_ui_search_rounds: int = 1
     search_ui_download_lifecycle_count: int = 1
     godzilla_visible_ui: bool = False
     godzilla_p2p_bind_interface_address: str | None = None
     godzilla_cpu_profile: bool = False
-    godzilla_stage: Literal["full", "launch-scale"] = "full"
+    godzilla_stage: Literal["full", "launch-scale"] | None = None
     godzilla_vhd_runtime_root: Literal["drive-letter"] = "drive-letter"
     godzilla_total_client_count: int = 30
     godzilla_peer_transfer_count: int = 300

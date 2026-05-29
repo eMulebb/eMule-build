@@ -324,6 +324,49 @@ def test_live_e2e_forwards_godzilla_visible_ui_and_lan_bind(tmp_path: Path, monk
     assert "--godzilla-cpu-profile" in command
 
 
+def test_live_e2e_leaves_godzilla_stage_unset_for_profile_defaults(tmp_path: Path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
+        captured["command"] = list(command)
+
+    layout = make_layout(tmp_path)
+    monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+
+    test_runs.invoke_live_e2e_suite(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+        LiveE2eOptions(profile="release-expanded"),
+    )
+
+    command = captured["command"]
+    assert isinstance(command, list)
+    assert "--godzilla-stage" not in command
+
+
+def test_live_e2e_forwards_multi_client_required_optional_clients(tmp_path: Path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
+        captured["command"] = list(command)
+
+    layout = make_layout(tmp_path)
+    monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+
+    test_runs.invoke_live_e2e_suite(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+        LiveE2eOptions(
+            suites=("multi-client-p2p-matrix",),
+            multi_client_require_optional_clients=True,
+        ),
+    )
+
+    command = captured["command"]
+    assert isinstance(command, list)
+    assert "--multi-client-require-optional-clients" in command
+
+
 def test_live_e2e_forwards_radarr_movie_root_only_when_configured(tmp_path: Path, monkeypatch) -> None:
     captured: dict[str, object] = {}
 

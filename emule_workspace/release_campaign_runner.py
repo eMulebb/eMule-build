@@ -326,7 +326,8 @@ def _live_options_from_tokens(campaign_options: ReleaseCampaignOptions, tokens: 
         acquisition_timeout_minutes=_option_float(tokens, "--acquisition-timeout-minutes")
         or campaign_options.acquisition_timeout_minutes,
         p2p_bind_interface_name=_option_value(tokens, "--p2p-bind-interface-name") or campaign_options.p2p_bind_interface_name,
-        godzilla_stage=_option_value(tokens, "--godzilla-stage") or "full",
+        multi_client_require_optional_clients="--multi-client-require-optional-clients" in tokens,
+        godzilla_stage=_option_value(tokens, "--godzilla-stage"),
         skip_live_seed_refresh="--skip-live-seed-refresh" in tokens or campaign_options.skip_live_seed_refresh,
     )
 

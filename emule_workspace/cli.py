@@ -224,6 +224,7 @@ def _live_e2e_options(function: F) -> F:
     @click.option("--rest-leak-churn-budget", type=click.Choice(["off", "smoke", "soak"]), default="off")
     @click.option("--rest-leak-churn-cycles", default=-1, show_default=True, type=int)
     @click.option("--rest-stop-start-after-churn", is_flag=True)
+    @click.option("--multi-client-require-optional-clients", is_flag=True)
     @click.option("--search-ui-search-rounds", default=1, show_default=True, type=int)
     @click.option("--search-ui-download-lifecycle-count", default=1, show_default=True, type=int)
     @click.option("--godzilla-visible-ui", is_flag=True, help="Run the Godzilla local swarm with visible eMuleBB windows.")
@@ -232,8 +233,7 @@ def _live_e2e_options(function: F) -> F:
     @click.option(
         "--godzilla-stage",
         type=click.Choice(["full", "launch-scale"]),
-        default="full",
-        show_default=True,
+        default=None,
         help="Godzilla campaign boundary to run through.",
     )
     @click.option("--godzilla-total-client-count", default=30, show_default=True, type=int)
