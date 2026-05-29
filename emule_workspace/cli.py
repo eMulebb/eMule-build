@@ -229,6 +229,13 @@ def _live_e2e_options(function: F) -> F:
     @click.option("--godzilla-visible-ui", is_flag=True, help="Run the Godzilla local swarm with visible eMuleBB windows.")
     @click.option("--godzilla-p2p-bind-interface-address", default=None, help="Explicit LAN IPv4 address forwarded to the Godzilla local swarm.")
     @click.option("--godzilla-cpu-profile", is_flag=True, help="Capture a bounded ETW CPU profile for the Godzilla local swarm.")
+    @click.option(
+        "--godzilla-stage",
+        type=click.Choice(["full", "launch-scale"]),
+        default="full",
+        show_default=True,
+        help="Godzilla campaign boundary to run through.",
+    )
     @click.option("--godzilla-total-client-count", default=30, show_default=True, type=int)
     @click.option("--godzilla-peer-transfer-count", default=300, show_default=True, type=int)
     @click.option("--godzilla-harness-transfer-count", default=300, show_default=True, type=int)

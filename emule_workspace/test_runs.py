@@ -344,6 +344,7 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
     _append_optional_flag(args, live_options.godzilla_cpu_profile, "--godzilla-cpu-profile")
     if live_options.godzilla_p2p_bind_interface_address:
         args.extend(["--godzilla-p2p-bind-interface-address", live_options.godzilla_p2p_bind_interface_address])
+    args.extend(["--godzilla-stage", live_options.godzilla_stage])
     args.extend(["--godzilla-vhd-runtime-root", live_options.godzilla_vhd_runtime_root])
     args.extend(["--godzilla-total-client-count", live_options.godzilla_total_client_count])
     args.extend(["--godzilla-peer-transfer-count", live_options.godzilla_peer_transfer_count])

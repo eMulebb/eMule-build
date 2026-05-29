@@ -161,6 +161,7 @@ class LiveE2eOptions(BaseModel):
     godzilla_visible_ui: bool = False
     godzilla_p2p_bind_interface_address: str | None = None
     godzilla_cpu_profile: bool = False
+    godzilla_stage: Literal["full", "launch-scale"] = "full"
     godzilla_vhd_runtime_root: Literal["drive-letter"] = "drive-letter"
     godzilla_total_client_count: int = 30
     godzilla_peer_transfer_count: int = 300

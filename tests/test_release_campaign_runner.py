@@ -173,12 +173,12 @@ def test_campaign_execute_forwards_live_e2e_suite_selection(tmp_path: Path, monk
     campaign["phases"][1]["scenarios"] = [
         {
             "id": "live-monitor",
-            "command": "python -m emule_workspace test live-e2e --suite live-process-monitor --fail-fast",
+            "command": "python -m emule_workspace test live-e2e --suite live-process-monitor --godzilla-stage launch-scale --fail-fast",
             "blocking": True,
         }
     ]
     write_campaign(layout, campaign)
-    calls: list[tuple[str, tuple[str, ...], str, bool]] = []
+    calls: list[tuple[str, tuple[str, ...], str, str, bool]] = []
 
     monkeypatch.setattr(
         release_campaign_runner,
@@ -189,7 +189,13 @@ def test_campaign_execute_forwards_live_e2e_suite_selection(tmp_path: Path, monk
         release_campaign_runner,
         "invoke_live_e2e_suite",
         lambda _layout, _workspace_options, live_options: calls.append(
-            (live_options.profile, live_options.suites, live_options.test_network, live_options.fail_fast)
+            (
+                live_options.profile,
+                live_options.suites,
+                live_options.test_network,
+                live_options.godzilla_stage,
+                live_options.fail_fast,
+            )
         ),
     )
 
@@ -199,7 +205,7 @@ def test_campaign_execute_forwards_live_e2e_suite_selection(tmp_path: Path, monk
         ReleaseCampaignOptions(campaign="test-campaign", phase="controller-surface", execute=True),
     )
 
-    assert calls == [("default", ("live-process-monitor",), "default", True)]
+    assert calls == [("default", ("live-process-monitor",), "default", "launch-scale", True)]
 
 
 def test_campaign_execute_applies_campaign_runtime_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
