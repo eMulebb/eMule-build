@@ -86,6 +86,7 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
 
     suite_config = json.loads((install_root / "manifests" / "suite-config.json").read_text(encoding="utf-8-sig"))
     assert suite_config["schema"] == "emulebb.suite-config.v1"
+    assert suite_config["installKind"] == "Production"
     assert suite_config["services"]["emulebb"]["bindAddress"] == _default_control_bind()
     assert suite_config["services"]["emulebb"]["port"] == 14711
     assert suite_config["services"]["amutorrent"]["bindAddress"] == _default_control_bind()
@@ -102,6 +103,7 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
         "source": None,
         "sourcePreferencesSha256": None,
     }
+    assert install_manifest["installKind"] == "Production"
     assert install_manifest["services"]["emulebb"]["apiKeyPresent"] is True
     assert "apiKey" not in install_manifest["services"]["emulebb"]
     assert suite_config["services"]["emulebb"]["apiKey"] not in json.dumps(install_manifest)

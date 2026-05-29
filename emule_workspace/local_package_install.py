@@ -347,6 +347,7 @@ def write_install_manifest(
         "installedAtUtc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "releaseVersion": release_version,
         "platform": artifacts.arch,
+        "installKind": suite_installer.LOCAL_INSTALL_KIND,
         "bundle": suite_installer.SUITE_BUNDLE,
         "workspaceRoot": str(layout.emule_workspace_root),
         "liveWireInputsFile": str(config.live_wire_inputs_file),

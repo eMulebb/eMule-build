@@ -181,6 +181,7 @@ def test_local_package_install_deploys_artifacts_from_suite_profile(
     manifest = json.loads((target / "manifests" / "local-install.json").read_text(encoding="utf-8"))
     assert manifest["schema"] == local_package_install.INSTALL_MANIFEST_SCHEMA
     assert manifest["bundle"] == "Full"
+    assert manifest["installKind"] == "Development"
     assert manifest["profileDir"] == str((target / "profiles" / "emulebb").resolve())
     assert manifest["importProfileDir"] == str(import_profile.resolve())
     assert "legacyProfileDir" not in manifest
@@ -294,6 +295,7 @@ def test_suite_installer_command_uses_full_bundle_and_existing_suite_config(tmp_
 
     assert command[command.index("-Bundle") + 1] == "Full"
     assert command[command.index("-InstallRoot") + 1] == str(target.resolve())
+    assert command[command.index("-InstallKind") + 1] == "Development"
     assert command[command.index("-ConfigFile") + 1] == str(suite_config)
     assert command[command.index("-DependencyManifest") + 1] == str((tmp_path / "deps.json").resolve())
     assert command[command.index("-ImportProfileDir") + 1] == str((tmp_path / "import-profile").resolve())

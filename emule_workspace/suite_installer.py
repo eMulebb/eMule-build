@@ -12,6 +12,7 @@ from .process import find_tool, run_native
 from .release import EMULEBB_PACKAGE_ROOT_NAME
 
 SUITE_BUNDLE = "Full"
+LOCAL_INSTALL_KIND = "Development"
 
 
 @dataclass(frozen=True)
@@ -32,6 +33,7 @@ class SuiteInstallerOptions:
     import_profile_dir: Path | None
     emulebb_pdb_path: Path | None
     p2p_bind_interface: str
+    install_kind: str = LOCAL_INSTALL_KIND
     bundle: str = SUITE_BUNDLE
 
 
@@ -99,6 +101,8 @@ def build_suite_installer_invocation(*, powershell: Path, options: SuiteInstalle
         options.release_version,
         "-Platform",
         options.platform,
+        "-InstallKind",
+        options.install_kind,
         "-AmutorrentPort",
         str(options.amutorrent_port),
         "-AmutorrentBindAddress",

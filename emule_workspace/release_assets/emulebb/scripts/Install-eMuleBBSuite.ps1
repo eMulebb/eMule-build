@@ -11,6 +11,9 @@ param(
     [ValidateSet('x64', 'ARM64')]
     [string]$Platform = 'x64',
 
+    [ValidateSet('Production', 'Development', 'Test')]
+    [string]$InstallKind = 'Production',
+
     [ValidateSet('Pinned', 'Latest')]
     [string]$DependencyChannel = 'Pinned',
 
@@ -132,6 +135,7 @@ function New-SuiteConfig {
         bundle = $Bundle
         version = $Version
         platform = $Platform
+        installKind = $InstallKind
         installRoot = $InstallRoot
         dependencyChannel = $DependencyChannel
         releaseBaseUrl = $ReleaseBaseUrl
@@ -221,6 +225,7 @@ function Resolve-SuiteConfig {
         @('InstallRoot', { param($c, $v) $c.installRoot = $v }),
         @('Version', { param($c, $v) $c.version = $v }),
         @('Platform', { param($c, $v) $c.platform = $v }),
+        @('InstallKind', { param($c, $v) $c.installKind = $v }),
         @('DependencyChannel', { param($c, $v) $c.dependencyChannel = $v }),
         @('ReleaseBaseUrl', { param($c, $v) $c.releaseBaseUrl = $v }),
         @('NodeBaseUrl', { param($c, $v) $c.nodeBaseUrl = $v }),
@@ -1156,6 +1161,7 @@ function Write-InstallManifest {
         bundle = $Config.bundle
         version = $Config.version
         platform = $Config.platform
+        installKind = $Config.installKind
         installRoot = $script:Root
         profileImport = $ProfileImport
         symbols = $Symbols
