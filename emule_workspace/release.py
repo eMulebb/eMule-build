@@ -24,8 +24,8 @@ PE_MACHINES = {"x64": 0x8664, "ARM64": 0xAA64}
 STARTUP_PROFILING_BINARY_MARKERS = (
     b"startup-profile.trace.json",
     "startup-profile.trace.json".encode("utf-16le"),
-    b"EMULE_STARTUP_PROFILE",
-    "EMULE_STARTUP_PROFILE".encode("utf-16le"),
+    b"EMULEBB_STARTUP_PROFILE",
+    "EMULEBB_STARTUP_PROFILE".encode("utf-16le"),
 )
 AMUTORRENT_NODE_VERSION = "v24.15.0"
 AMUTORRENT_NODE_ARCHIVES = {
