@@ -250,6 +250,7 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
         run_pre_test_cleanup(layout)
     app_root = layout.get_app_variant(layout.test_targets.test_run_variant).path
     app_exe: Path | None = None
+    profile_seed_config_dir: Path | None = None
     live_process_monitor_profile_dir: Path | None = None
     if live_options.materialize_test_install:
         materialized = materialize_test_local_install(
@@ -267,6 +268,7 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
         )
         app_root = materialized.app_root
         app_exe = materialized.app_exe
+        profile_seed_config_dir = materialized.profile_seed_config_dir
         live_process_monitor_profile_dir = materialized.profile_dir
     script_path = layout.tests_repo_root / "scripts" / "run-live-e2e-suite.py"
     if not script_path.is_file():
@@ -363,6 +365,8 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
     ]
     if app_exe is not None:
         args.extend(["--app-exe", app_exe])
+    if profile_seed_config_dir is not None:
+        args.extend(["--profile-seed-dir", profile_seed_config_dir])
     if live_process_monitor_profile_dir is not None:
         args.extend(["--live-process-monitor-profile-dir", live_process_monitor_profile_dir])
     _append_optional_flag(args, live_options.profile_cpu, "--profile-cpu")

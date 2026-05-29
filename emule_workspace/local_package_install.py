@@ -20,6 +20,8 @@ LEGACY_LIVE_WIRE_SCHEMAS = ("emule-build-tests.live-wire-inputs.v1",)
 LOCAL_INSTALL_KEY = "local_package_install"
 INSTALL_MANIFEST_SCHEMA = "emulebb.local-package-install.v1"
 TEST_INSTALLS_DIR_NAME = "test-installs"
+TEST_PROFILE_SEED_DIR_NAME = "harness-profile-seed"
+HARNESS_PROFILE_SEED_FILES = frozenset({"preferences.ini", "preferences.dat", "server.met", "nodes.dat"})
 DEFAULT_AMUTORRENT_PORT = 4000
 DEFAULT_AMUTORRENT_BIND_ADDRESS = "0.0.0.0"
 DEFAULT_REST_PORT = 4711
@@ -82,6 +84,7 @@ class MaterializedLocalInstall:
     app_exe: Path
     profile_dir: Path
     profile_config_dir: Path
+    profile_seed_config_dir: Path
     manifest_path: Path
 
 
@@ -130,7 +133,9 @@ def materialize_test_local_install(
         base_config,
         target_path=test_install_root(layout, run_id=run_id, suite_name=suite_name, client_id=client_id),
     )
-    return _materialize_local_install_from_config(layout, workspace_options, options, test_config)
+    materialized = _materialize_local_install_from_config(layout, workspace_options, options, test_config)
+    seed_config_dir = prepare_test_profile_seed(layout, materialized.profile_config_dir, test_config.target_path)
+    return replace(materialized, profile_seed_config_dir=seed_config_dir)
 
 
 def _materialize_local_install_from_config(
@@ -274,18 +279,24 @@ def suite_profile_dir(config: LocalInstallConfig) -> Path:
     return config.target_path / "profiles" / "emulebb"
 
 
-def materialized_local_install_from_config(config: LocalInstallConfig) -> MaterializedLocalInstall:
+def materialized_local_install_from_config(
+    config: LocalInstallConfig,
+    *,
+    profile_seed_config_dir: Path | None = None,
+) -> MaterializedLocalInstall:
     """Builds typed metadata for the installer-owned local install layout."""
 
     target_path = config.target_path
     app_root = target_path / "apps" / EMULEBB_PACKAGE_ROOT_NAME
     profile_dir = suite_profile_dir(config)
+    profile_config_dir = profile_dir / "config"
     return MaterializedLocalInstall(
         target_path=target_path,
         app_root=app_root,
         app_exe=app_root / APP_EXE_NAME,
         profile_dir=profile_dir,
-        profile_config_dir=profile_dir / "config",
+        profile_config_dir=profile_config_dir,
+        profile_seed_config_dir=profile_seed_config_dir or profile_config_dir,
         manifest_path=target_path / "manifests" / "local-install.json",
     )
 
@@ -334,6 +345,33 @@ def build_suite_installer_options(
         emulebb_pdb_path=artifacts.package_pdb,
         p2p_bind_interface=config.p2p_bind_interface,
     )
+
+
+def prepare_test_profile_seed(layout: WorkspaceLayout, installer_config_dir: Path, install_root: Path) -> Path:
+    """Builds a curated harness seed from the installer-owned profile config."""
+
+    if not installer_config_dir.is_dir():
+        raise RuntimeError(f"Installer profile config directory is missing: {installer_config_dir}")
+    fallback_seed_dir = layout.tests_repo_root / "manifests" / "live-profile-seed" / "config"
+    if not fallback_seed_dir.is_dir():
+        raise RuntimeError(f"Harness fallback profile seed directory is missing: {fallback_seed_dir}")
+    seed_config_dir = install_root / TEST_PROFILE_SEED_DIR_NAME / "config"
+    if seed_config_dir.exists():
+        shutil.rmtree(seed_config_dir)
+    seed_config_dir.mkdir(parents=True, exist_ok=True)
+
+    for file_name in sorted(HARNESS_PROFILE_SEED_FILES):
+        source = installer_config_dir / file_name
+        if not source.is_file():
+            source = fallback_seed_dir / file_name
+        if not source.is_file():
+            raise RuntimeError(
+                "Installer-backed test profile seed is missing required file "
+                f"{file_name!r} from {installer_config_dir} and fallback {fallback_seed_dir}."
+            )
+        shutil.copy2(source, seed_config_dir / file_name)
+
+    return seed_config_dir
 
 
 def prepare_profile_preferences(config: LocalInstallConfig, profile_dir: Path) -> ProfileRestConfig:

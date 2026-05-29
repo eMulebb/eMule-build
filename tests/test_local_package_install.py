@@ -99,6 +99,7 @@ def _write_suite_profile(target: Path, *, exe_payload: bytes = b"exe") -> None:
         ),
         encoding="utf-16",
     )
+    (profile_config / "known.met").write_bytes(b"runtime-cache")
     (manifest_root / "suite-config.json").write_text(
         json.dumps(
             {
@@ -124,6 +125,16 @@ def _write_suite_profile(target: Path, *, exe_payload: bytes = b"exe") -> None:
         + "\n",
         encoding="utf-8",
     )
+
+
+def _write_harness_seed(tests_repo_root: Path) -> Path:
+    seed_config = tests_repo_root / "manifests" / "live-profile-seed" / "config"
+    seed_config.mkdir(parents=True, exist_ok=True)
+    (seed_config / "preferences.ini").write_text("[eMule]\nNick=fallback\n", encoding="utf-16")
+    (seed_config / "preferences.dat").write_bytes(b"fallback-prefs")
+    (seed_config / "server.met").write_bytes(b"fallback-servers")
+    (seed_config / "nodes.dat").write_bytes(b"fallback-nodes")
+    return seed_config
 
 
 def test_local_package_install_deploys_artifacts_from_suite_profile(
@@ -165,6 +176,7 @@ def test_local_package_install_deploys_artifacts_from_suite_profile(
     assert result.app_exe == target / "apps" / "eMuleBB" / "emulebb.exe"
     assert result.profile_dir == target / "profiles" / "emulebb"
     assert result.profile_config_dir == target / "profiles" / "emulebb" / "config"
+    assert result.profile_seed_config_dir == result.profile_config_dir
     assert result.manifest_path == target / "manifests" / "local-install.json"
     assert installer_calls
     assert installer_calls[0].emulebb_port == 14711
@@ -206,6 +218,7 @@ def test_local_package_install_rejects_zip_exe_without_matching_package_build_ex
     layout = _layout(tmp_path)
     layout.tests_repo_root.mkdir(parents=True)
     layout.build_repo_root.mkdir(parents=True)
+    _write_harness_seed(layout.tests_repo_root)
     target = tmp_path / "install"
     live_wire_path = layout.tests_repo_root / "live-wire-inputs.local.json"
     _write_live_wire(live_wire_path, target)
@@ -357,6 +370,7 @@ def test_materialize_test_local_install_uses_isolated_test_root(
     layout = _layout(tmp_path)
     layout.tests_repo_root.mkdir(parents=True)
     layout.build_repo_root.mkdir(parents=True)
+    _write_harness_seed(layout.tests_repo_root)
     operator_target = tmp_path / "operator-install"
     live_wire_path = layout.tests_repo_root / "live-wire-inputs.local.json"
     import_profile = tmp_path / "import-profile"
@@ -398,9 +412,19 @@ def test_materialize_test_local_install_uses_isolated_test_root(
     assert result.target_path == expected_target
     assert result.app_exe == expected_target / "apps" / "eMuleBB" / "emulebb.exe"
     assert result.profile_config_dir == expected_target / "profiles" / "emulebb" / "config"
+    assert result.profile_seed_config_dir == expected_target / "harness-profile-seed" / "config"
     assert installer_calls[0].install_root == expected_target
     assert installer_calls[0].import_profile_dir == import_profile.resolve()
     assert not operator_target.exists()
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
     assert manifest["targetPath"] == str(expected_target)
     assert manifest["importProfileDir"] == str(import_profile.resolve())
+    seed_files = {path.name for path in result.profile_seed_config_dir.iterdir()}
+    assert seed_files == {"preferences.ini", "preferences.dat", "server.met", "nodes.dat"}
+    assert (result.profile_seed_config_dir / "preferences.ini").read_bytes() == (
+        result.profile_config_dir / "preferences.ini"
+    ).read_bytes()
+    assert (result.profile_seed_config_dir / "preferences.dat").read_bytes() == b"fallback-prefs"
+    assert (result.profile_seed_config_dir / "server.met").read_bytes() == b"fallback-servers"
+    assert (result.profile_seed_config_dir / "nodes.dat").read_bytes() == b"fallback-nodes"
+    assert not (result.profile_seed_config_dir / "known.met").exists()
