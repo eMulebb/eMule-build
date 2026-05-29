@@ -17,9 +17,11 @@ ClientBuildTarget = Literal["amule"]
 LiveE2eProfile = Literal[
     "default",
     "multi-client-p2p",
+    "multi-client-p2p-required",
     "protocol-parity",
     "beta-green",
     "controller-surface",
+    "controller-local",
     "package-helpers",
     "beta-release",
     "release-expanded",
@@ -29,6 +31,7 @@ LiveE2eProfile = Literal[
     "cpu-heavy",
     "cpu-heavy-quick",
     "ui-resource-depth",
+    "diagnostics-soak",
 ]
 CertificationProfile = Literal["fast", "overnight"]
 BROAD_LIVE_E2E_PRE_RUN_CLEANUP_PROFILES: tuple[LiveE2eProfile, ...] = (
@@ -38,6 +41,7 @@ BROAD_LIVE_E2E_PRE_RUN_CLEANUP_PROFILES: tuple[LiveE2eProfile, ...] = (
     "stabilization-stress",
     "stabilization-stress-quick",
     "ui-resource-depth",
+    "diagnostics-soak",
 )
 
 

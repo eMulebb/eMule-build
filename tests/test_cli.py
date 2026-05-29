@@ -69,12 +69,15 @@ def test_test_live_e2e_help_exposes_live_options() -> None:
     assert "--suite" in result.output
     assert "--profile" in result.output
     assert "multi-client-p2p" in result.output
+    assert "multi-client-p2p-required" in result.output
+    assert "controller-local" in result.output
     assert "release-expanded" in result.output
     assert "release-expanded-quick" in result.output
     assert "stabilization-stress" in result.output
     assert "stabilization-stress-quick" in result.output
     assert "cpu-heavy-quick" in result.output
     assert "ui-resource-depth" in result.output
+    assert "diagnostics-soak" in result.output
     assert "--p2p-bind-interface-name" in result.output
     assert "--live-wire-inputs-file" in result.output
     assert "--materialize-test-install" in result.output
