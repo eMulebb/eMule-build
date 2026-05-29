@@ -318,3 +318,33 @@ def test_update_ini_values_appends_keys_to_existing_sections() -> None:
     )
 
     assert "[eMule]\nNick=test\nCreateCrashDump=2\n[WebServer]\nApiKey=abc\nEnabled=1\n" == updated
+
+
+def test_test_install_root_is_scoped_by_run_suite_and_client(tmp_path: Path) -> None:
+    layout = _layout(tmp_path)
+
+    first = local_package_install.test_install_root(
+        layout,
+        run_id="20260529T120000Z run",
+        suite_name="godzilla/local swarm",
+        client_id="client:01",
+    )
+    second = local_package_install.test_install_root(
+        layout,
+        run_id="20260529T120000Z run",
+        suite_name="godzilla/local swarm",
+        client_id="client:02",
+    )
+
+    assert first == (
+        tmp_path
+        / "workspaces"
+        / "workspace"
+        / "state"
+        / "test-installs"
+        / "20260529T120000Z-run"
+        / "godzilla-local-swarm"
+        / "client-01"
+    )
+    assert second.parent == first.parent
+    assert second != first

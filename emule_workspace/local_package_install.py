@@ -12,13 +12,14 @@ from typing import Any
 from . import suite_installer
 from .build import APP_EXE_NAME
 from .config import AmutorrentPackageOptions, LocalPackageInstallOptions, ReleasePackageOptions, WorkspaceOptions
-from .layout import WorkspaceLayout
+from .layout import WorkspaceLayout, file_token
 from .release import EMULEBB_PACKAGE_ROOT_NAME, create_amutorrent_package, create_release_package
 
 LIVE_WIRE_SCHEMA = "emulebb-build-tests.live-wire-inputs.v1"
 LEGACY_LIVE_WIRE_SCHEMAS = ("emule-build-tests.live-wire-inputs.v1",)
 LOCAL_INSTALL_KEY = "local_package_install"
 INSTALL_MANIFEST_SCHEMA = "emulebb.local-package-install.v1"
+TEST_INSTALLS_DIR_NAME = "test-installs"
 DEFAULT_AMUTORRENT_PORT = 4000
 DEFAULT_AMUTORRENT_BIND_ADDRESS = "0.0.0.0"
 DEFAULT_REST_PORT = 4711
@@ -256,6 +257,25 @@ def materialized_local_install_from_config(config: LocalInstallConfig) -> Materi
         profile_dir=profile_dir,
         profile_config_dir=profile_dir / "config",
         manifest_path=target_path / "manifests" / "local-install.json",
+    )
+
+
+def test_install_root(
+    layout: WorkspaceLayout,
+    *,
+    run_id: str,
+    suite_name: str,
+    client_id: str = "primary",
+) -> Path:
+    """Returns the isolated suite install root for one parallel test client."""
+
+    return (
+        layout.workspace_root
+        / "state"
+        / TEST_INSTALLS_DIR_NAME
+        / file_token(run_id)
+        / file_token(suite_name)
+        / file_token(client_id)
     )
 
 
