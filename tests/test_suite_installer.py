@@ -375,6 +375,46 @@ def test_suite_installer_import_profile_requires_source_before_bootstrap(tmp_pat
     assert "ImportProfileDir must contain config\\preferences.ini" in completed.stdout
 
 
+def test_suite_installer_copies_configured_emulebb_symbols(tmp_path: Path) -> None:
+    release_root = tmp_path / "release"
+    install_root = tmp_path / "suite"
+    pdb_path = tmp_path / "build" / "emulebb.pdb"
+    suite_install_fixtures.write_core_release(release_root)
+    pdb_path.parent.mkdir()
+    pdb_path.write_bytes(b"private-symbols\n")
+    expected_hash = suite_install_fixtures.sha256_bytes(pdb_path.read_bytes())
+
+    repo_root = Path.cwd()
+    suite_install_fixtures.run_installer(
+        (repo_root / INSTALLER).resolve(),
+        [
+            "-NonInteractive",
+            "-NoStart",
+            "-Force",
+            "-Bundle",
+            "Core",
+            "-InstallRoot",
+            str(install_root),
+            "-ReleaseBaseUrl",
+            release_root.as_uri(),
+            "-EmulebbPdbPath",
+            str(pdb_path),
+        ],
+        cwd=repo_root,
+    )
+
+    adjacent_pdb = install_root / "apps" / "eMuleBB" / "emulebb.pdb"
+    versioned_pdb = install_root / "symbols" / "emulebb-v0.7.3-rc.1" / "x64" / "emulebb.pdb"
+    assert adjacent_pdb.read_bytes() == b"private-symbols\n"
+    assert versioned_pdb.read_bytes() == b"private-symbols\n"
+    install_manifest = suite_install_fixtures.read_suite_install_manifest(install_root)
+    assert install_manifest["symbols"]["action"] == "copied"
+    assert install_manifest["symbols"]["source"] == str(pdb_path)
+    assert install_manifest["symbols"]["sourceSha256"] == expected_hash
+    assert install_manifest["symbols"]["adjacentPdb"] == str(adjacent_pdb)
+    assert install_manifest["symbols"]["versionedPdb"] == str(versioned_pdb)
+
+
 def test_suite_installer_keeps_full_suite_service_binds_config_driven() -> None:
     installer = INSTALLER.read_text(encoding="utf-8")
 

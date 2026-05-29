@@ -18,6 +18,7 @@ param(
     [string]$NodeBaseUrl,
     [string]$DependencyManifest,
     [string]$ImportProfileDir,
+    [string]$EmulebbPdbPath,
 
     [string]$ConfigFile,
 
@@ -137,6 +138,9 @@ function New-SuiteConfig {
         nodeBaseUrl = $NodeBaseUrl
         dependencyManifest = $DependencyManifest
         importProfileDir = $ImportProfileDir
+        symbols = [ordered]@{
+            emulebbPdbPath = $EmulebbPdbPath
+        }
         allowRemoteServiceBind = [bool]$AllowRemoteServiceBind
         services = [ordered]@{
             emulebb = [ordered]@{ bindAddress = (Resolve-OptionalValue -Value $EmulebbBindAddress -Default $controlBind); port = $EmulebbPort; apiKey = '' }
@@ -222,6 +226,7 @@ function Resolve-SuiteConfig {
         @('NodeBaseUrl', { param($c, $v) $c.nodeBaseUrl = $v }),
         @('DependencyManifest', { param($c, $v) $c.dependencyManifest = $v }),
         @('ImportProfileDir', { param($c, $v) $c.importProfileDir = $v }),
+        @('EmulebbPdbPath', { param($c, $v) $c.symbols.emulebbPdbPath = $v }),
         @('ControlBindAddress', {
             param($c, $v)
             foreach ($serviceName in @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr')) {
@@ -965,6 +970,42 @@ function Write-EmuleProfile {
     return $importResult
 }
 
+function Copy-OptionalEmuleSymbols {
+    param([hashtable]$Config)
+    $result = @{
+        configured = -not [string]::IsNullOrWhiteSpace($Config.symbols.emulebbPdbPath)
+        source = if ([string]::IsNullOrWhiteSpace($Config.symbols.emulebbPdbPath)) { $null } else { [string]$Config.symbols.emulebbPdbPath }
+        adjacentPdb = $null
+        versionedPdb = $null
+        sourceSha256 = $null
+        action = 'skipped-not-configured'
+    }
+    if ([string]::IsNullOrWhiteSpace($Config.symbols.emulebbPdbPath)) {
+        return $result
+    }
+    $sourcePdb = [IO.Path]::GetFullPath([string]$Config.symbols.emulebbPdbPath)
+    if (-not (Test-Path -LiteralPath $sourcePdb)) {
+        throw "EmulebbPdbPath is missing: $sourcePdb"
+    }
+    $adjacentPdb = Join-Path (Join-Path $script:Root 'apps\eMuleBB') 'emulebb.pdb'
+    $symbolsDir = Join-Path (Join-Path (Join-Path $script:Root 'symbols') "emulebb-v$($Config.version)") ([string]$Config.platform)
+    $versionedPdb = Join-Path $symbolsDir 'emulebb.pdb'
+    $result.adjacentPdb = $adjacentPdb
+    $result.versionedPdb = $versionedPdb
+    $result.sourceSha256 = Get-Sha256 -Path $sourcePdb
+    if ($DryRun) {
+        $result.action = 'dry-run'
+        Write-Step "Would copy eMuleBB symbols from $sourcePdb"
+        return $result
+    }
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $adjacentPdb) | Out-Null
+    New-Item -ItemType Directory -Force -Path $symbolsDir | Out-Null
+    Copy-Item -Force -LiteralPath $sourcePdb -Destination $adjacentPdb
+    Copy-Item -Force -LiteralPath $sourcePdb -Destination $versionedPdb
+    $result.action = 'copied'
+    return $result
+}
+
 function Write-SuiteConfigFile {
     param([hashtable]$Config)
     if ($DryRun) {
@@ -1103,7 +1144,7 @@ Write-Host 'Manual reconfiguration: edit manifests\suite-config.json, profiles\e
 }
 
 function Write-InstallManifest {
-    param([hashtable]$Config, [hashtable]$ProfileImport)
+    param([hashtable]$Config, [hashtable]$ProfileImport, [hashtable]$Symbols)
     if ($DryRun) {
         return
     }
@@ -1117,6 +1158,7 @@ function Write-InstallManifest {
         platform = $Config.platform
         installRoot = $script:Root
         profileImport = $ProfileImport
+        symbols = $Symbols
         services = @{
             emulebb = @{ bindAddress = $Config.services.emulebb.bindAddress; port = $Config.services.emulebb.port; apiKeyPresent = -not [string]::IsNullOrWhiteSpace($Config.services.emulebb.apiKey) }
             amutorrent = @{ bindAddress = $Config.services.amutorrent.bindAddress; port = $Config.services.amutorrent.port }
@@ -1179,6 +1221,7 @@ if ($script:SuiteConfig.bundle -eq 'Full') {
 }
 
 $script:ProfileImport = Write-EmuleProfile -Config $script:SuiteConfig
+$script:Symbols = Copy-OptionalEmuleSymbols -Config $script:SuiteConfig
 if ($script:SuiteConfig.bundle -eq 'Full') {
     Write-ArrConfig -Name 'prowlarr' -Port $script:SuiteConfig.services.prowlarr.port -BindAddress $script:SuiteConfig.services.prowlarr.bindAddress -ApiKey $script:SuiteConfig.services.prowlarr.apiKey
     Write-ArrConfig -Name 'radarr' -Port $script:SuiteConfig.services.radarr.port -BindAddress $script:SuiteConfig.services.radarr.bindAddress -ApiKey $script:SuiteConfig.services.radarr.apiKey
@@ -1186,7 +1229,7 @@ if ($script:SuiteConfig.bundle -eq 'Full') {
 }
 Write-SuiteConfigFile -Config $script:SuiteConfig
 Write-SuiteScripts -Config $script:SuiteConfig
-Write-InstallManifest -Config $script:SuiteConfig -ProfileImport $script:ProfileImport
+Write-InstallManifest -Config $script:SuiteConfig -ProfileImport $script:ProfileImport -Symbols $script:Symbols
 
 if (-not $KeepDownloads -and -not $DryRun) {
     Remove-Item -Recurse -Force -LiteralPath (Join-Path $script:Root 'downloads-cache') -ErrorAction SilentlyContinue

@@ -30,6 +30,7 @@ class SuiteInstallerOptions:
     emulebb_port: int
     dependency_manifest: Path | None
     import_profile_dir: Path | None
+    emulebb_pdb_path: Path | None
     p2p_bind_interface: str
     bundle: str = SUITE_BUNDLE
 
@@ -118,6 +119,8 @@ def build_suite_installer_invocation(*, powershell: Path, options: SuiteInstalle
         command.extend(("-DependencyManifest", str(options.dependency_manifest)))
     if options.import_profile_dir:
         command.extend(("-ImportProfileDir", str(options.import_profile_dir)))
+    if options.emulebb_pdb_path:
+        command.extend(("-EmulebbPdbPath", str(options.emulebb_pdb_path)))
     return SuiteInstallerInvocation(
         command=tuple(command),
         installer_script=options.installer_script,

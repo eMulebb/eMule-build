@@ -242,6 +242,7 @@ def build_suite_installer_options(
         emulebb_port=config.emulebb_port,
         dependency_manifest=config.dependency_manifest,
         import_profile_dir=config.import_profile_dir,
+        emulebb_pdb_path=artifacts.package_pdb,
         p2p_bind_interface=config.p2p_bind_interface,
     )
 
@@ -291,7 +292,7 @@ def deploy_local_install(
     artifacts: InstallArtifacts,
     release_version: str,
 ) -> None:
-    """Adds Python-owned symbols and manifests to the installer-created suite."""
+    """Adds Python-owned manifests to the installer-created suite."""
 
     target_root = config.target_path
     symbols_dir = target_root / "symbols" / f"emulebb-v{release_version}" / artifacts.arch
@@ -306,10 +307,15 @@ def deploy_local_install(
             f"used for symbols:\n{deployed_exe}\n{artifacts.package_exe}"
         )
 
-    versioned_pdb = symbols_dir / "emulebb.pdb"
     adjacent_pdb = target_root / "apps" / EMULEBB_PACKAGE_ROOT_NAME / "emulebb.pdb"
-    shutil.copy2(artifacts.package_pdb, versioned_pdb)
-    shutil.copy2(artifacts.package_pdb, adjacent_pdb)
+    versioned_pdb = symbols_dir / "emulebb.pdb"
+    if not adjacent_pdb.is_file() or not versioned_pdb.is_file():
+        raise RuntimeError(
+            "The suite installer did not deploy required eMuleBB debug symbols beside the executable "
+            f"and in the versioned symbols directory:\n{adjacent_pdb}\n{versioned_pdb}"
+        )
+    if _sha256(adjacent_pdb) != _sha256(artifacts.package_pdb) or _sha256(versioned_pdb) != _sha256(artifacts.package_pdb):
+        raise RuntimeError("The suite installer deployed eMuleBB debug symbols that do not match package-build emulebb.pdb.")
     for manifest in (artifacts.emule_manifest, artifacts.emule_sbom, artifacts.amutorrent_manifest, artifacts.amutorrent_sbom):
         shutil.copy2(manifest, manifests_dir / manifest.name)
 

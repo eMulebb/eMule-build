@@ -77,6 +77,10 @@ def _write_suite_profile(target: Path, *, exe_payload: bytes = b"exe") -> None:
     profile_config.mkdir(parents=True, exist_ok=True)
     manifest_root.mkdir(parents=True, exist_ok=True)
     (app_root / "emulebb.exe").write_bytes(exe_payload)
+    (app_root / "emulebb.pdb").write_bytes(b"pdb")
+    symbols_dir = target / "symbols" / "emulebb-v0.7.3-rc.1" / "x64"
+    symbols_dir.mkdir(parents=True, exist_ok=True)
+    (symbols_dir / "emulebb.pdb").write_bytes(b"pdb")
     (target / "apps" / "aMuTorrent" / "server").mkdir(parents=True, exist_ok=True)
     (target / "apps" / "aMuTorrent" / "server" / "server.js").write_text("server\n", encoding="utf-8")
     (profile_config / "preferences.ini").write_text(
@@ -160,6 +164,7 @@ def test_local_package_install_deploys_artifacts_from_suite_profile(
     assert installer_calls[0].emulebb_port == 14711
     assert installer_calls[0].p2p_bind_interface == "hide.me"
     assert installer_calls[0].import_profile_dir == import_profile.resolve()
+    assert installer_calls[0].emulebb_pdb_path.name == "emulebb.pdb"
     assert installer_calls[0].bundle == "Full"
     assert (target / "apps" / "eMuleBB" / "emulebb.exe").read_bytes() == b"exe"
     assert (target / "apps" / "aMuTorrent" / "server" / "server.js").is_file()
@@ -292,6 +297,7 @@ def test_suite_installer_command_uses_full_bundle_and_existing_suite_config(tmp_
     assert command[command.index("-ConfigFile") + 1] == str(suite_config)
     assert command[command.index("-DependencyManifest") + 1] == str((tmp_path / "deps.json").resolve())
     assert command[command.index("-ImportProfileDir") + 1] == str((tmp_path / "import-profile").resolve())
+    assert command[command.index("-EmulebbPdbPath") + 1] == str((release_root / "emulebb.pdb"))
     assert command[command.index("-P2PBindInterface") + 1] == "hide.me"
 
 
