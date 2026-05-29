@@ -367,6 +367,7 @@ def test_live_e2e_can_run_against_materialized_installer_test_install(tmp_path: 
         return SimpleNamespace(
             app_root=install_root / "apps" / "eMuleBB",
             app_exe=install_root / "apps" / "eMuleBB" / "emulebb.exe",
+            profile_dir=install_root / "profiles" / "emulebb",
             profile_config_dir=install_root / "profiles" / "emulebb" / "config",
         )
 
@@ -402,9 +403,8 @@ def test_live_e2e_can_run_against_materialized_installer_test_install(tmp_path: 
     assert option_values(command, "--app-exe") == [
         str(install_root / "apps" / "eMuleBB" / "emulebb.exe")
     ]
-    assert option_values(command, "--profile-seed-dir") == [
-        str(install_root / "profiles" / "emulebb" / "config")
-    ]
+    assert "--profile-seed-dir" not in command
+    assert option_values(command, "--live-process-monitor-profile-dir") == [str(install_root / "profiles" / "emulebb")]
     assert option_values(command, "--live-wire-inputs-file") == ["repos/emulebb-build-tests/live-wire-inputs.local.json"]
 
 
