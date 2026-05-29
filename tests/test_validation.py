@@ -34,7 +34,7 @@ def test_policy_audits_receive_workspace_root_through_environment(
         assert "-EmuleWorkspaceRoot" not in call["command"]
         assert "pwsh" not in call["command"]
         assert call["command"][-2] == str(audit_path)
-        assert call["env"] == {"EMULE_WORKSPACE_ROOT": tmp_path}
+        assert call["env"] == {"EMULEBB_WORKSPACE_ROOT": tmp_path}
 
 
 def test_validation_reanchors_clean_canonical_app_anchor(

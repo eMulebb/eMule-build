@@ -55,7 +55,7 @@ def invoke_test_runs(layout: WorkspaceLayout, options: WorkspaceOptions) -> None
         ),
         label="native coverage",
         cwd=layout.emule_workspace_root,
-        env={"EMULE_WORKSPACE_ROOT": layout.emule_workspace_root},
+        env={"EMULEBB_WORKSPACE_ROOT": layout.emule_workspace_root},
     )
     invoke_live_diff_runs(layout, options, VariantComparisonOptions())
 
@@ -120,7 +120,7 @@ def invoke_live_diff_runs(
         ),
         label=f"live diff {test_run_variant} vs {baseline_variant}",
         cwd=layout.emule_workspace_root,
-        env={"EMULE_WORKSPACE_ROOT": layout.emule_workspace_root},
+        env={"EMULEBB_WORKSPACE_ROOT": layout.emule_workspace_root},
     )
 
 
@@ -154,7 +154,7 @@ def invoke_protocol_parity(
         ),
         label=f"protocol surface diff {test_run_variant} vs {baseline_variant}",
         cwd=layout.emule_workspace_root,
-        env={"EMULE_WORKSPACE_ROOT": layout.emule_workspace_root},
+        env={"EMULEBB_WORKSPACE_ROOT": layout.emule_workspace_root},
     )
     run_native(
         python.command(
@@ -166,7 +166,7 @@ def invoke_protocol_parity(
         ),
         label="protocol oracle golden validation",
         cwd=layout.emule_workspace_root,
-        env={"EMULE_WORKSPACE_ROOT": layout.emule_workspace_root},
+        env={"EMULEBB_WORKSPACE_ROOT": layout.emule_workspace_root},
     )
     run_native(
         python.command(
@@ -192,7 +192,7 @@ def invoke_protocol_parity(
         ),
         label=f"protocol parity live diff {test_run_variant} vs {baseline_variant}",
         cwd=layout.emule_workspace_root,
-        env={"EMULE_WORKSPACE_ROOT": layout.emule_workspace_root},
+        env={"EMULEBB_WORKSPACE_ROOT": layout.emule_workspace_root},
     )
 
 
@@ -234,7 +234,7 @@ def invoke_community_core_coverage(
         ),
         label=f"community core coverage {test_run_variant} vs {baseline_variant}",
         cwd=layout.emule_workspace_root,
-        env={"EMULE_WORKSPACE_ROOT": layout.emule_workspace_root},
+        env={"EMULEBB_WORKSPACE_ROOT": layout.emule_workspace_root},
     )
 
 
@@ -466,7 +466,7 @@ def invoke_release_campaign_report(
         python.command(args),
         label="release campaign report",
         cwd=layout.emule_workspace_root,
-        env={"EMULE_WORKSPACE_ROOT": layout.emule_workspace_root},
+        env={"EMULEBB_WORKSPACE_ROOT": layout.emule_workspace_root},
     )
 
 
@@ -498,7 +498,7 @@ def invoke_amutorrent_interactive_session(
         python.command(args),
         label="aMuTorrent interactive session",
         cwd=layout.emule_workspace_root,
-        env={"EMULE_WORKSPACE_ROOT": layout.emule_workspace_root},
+        env={"EMULEBB_WORKSPACE_ROOT": layout.emule_workspace_root},
     )
 
 
@@ -755,7 +755,7 @@ def _test_network_env(
         require_vpn=require_vpn,
     )
     return {
-        "EMULE_WORKSPACE_ROOT": str(layout.emule_workspace_root),
+        "EMULEBB_WORKSPACE_ROOT": str(layout.emule_workspace_root),
         **context.env(),
     }
 

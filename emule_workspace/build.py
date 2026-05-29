@@ -230,7 +230,7 @@ def resolve_msys2_root() -> Path:
     import os
 
     candidates: list[Path] = []
-    override = os.environ.get("EMULE_MSYS2_ROOT")
+    override = os.environ.get("EMULEBB_MSYS2_ROOT")
     if override:
         candidates.append(Path(override))
     candidates.extend((Path("C:/msys64"), Path("C:/tools/msys64")))
@@ -241,7 +241,7 @@ def resolve_msys2_root() -> Path:
     checked = ", ".join(str(path) for path in candidates)
     raise RuntimeError(
         "build clients --client amule requires system MSYS2. "
-        f"Install MSYS2 at C:\\msys64 or set EMULE_MSYS2_ROOT. Checked: {checked}"
+        f"Install MSYS2 at C:\\msys64 or set EMULEBB_MSYS2_ROOT. Checked: {checked}"
     )
 
 

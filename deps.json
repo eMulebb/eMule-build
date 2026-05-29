@@ -2,7 +2,7 @@
   "workspace": {
     "name": "workspace",
     "toolchain": {
-      "toolset_override_variable": "EMULE_V072_PLATFORM_TOOLSET"
+      "toolset_override_variable": "EMULEBB_VS_PLATFORM_TOOLSET"
     },
     "app_repo": {
       "test_targets": {

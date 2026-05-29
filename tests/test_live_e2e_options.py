@@ -123,7 +123,7 @@ def test_live_e2e_forwards_cold_stress_cpu_profile_options(tmp_path: Path, monke
     assert "--rest-cold-start-dump-stress-skip-umdh-diffs" in command
     assert "--no-rest-cold-start-dump-stress-cpu-profile-symbols-required" in command
     assert "--rest-cold-start-dump-stress-skip-dumps" not in command
-    assert captured["env"]["EMULE_WORKSPACE_ROOT"] == str(layout.emule_workspace_root)
+    assert captured["env"]["EMULEBB_WORKSPACE_ROOT"] == str(layout.emule_workspace_root)
     assert captured["env"]["EMULEBB_TEST_NETWORK"] == "default"
 
 
@@ -657,4 +657,4 @@ def test_release_campaign_report_forwards_campaign_phase_and_json_options(tmp_pa
     assert option_values(command, "--test-repo-root") == [str(layout.tests_repo_root)]
     assert option_values(command, "--workspace-state-root") == [str(layout.workspace_root / "state")]
     assert "--json" in command
-    assert captured["env"] == {"EMULE_WORKSPACE_ROOT": layout.emule_workspace_root}
+    assert captured["env"] == {"EMULEBB_WORKSPACE_ROOT": layout.emule_workspace_root}

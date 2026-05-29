@@ -14,7 +14,7 @@ def test_resolve_msys2_root_honors_explicit_override(tmp_path: Path, monkeypatch
     bash = root / "usr" / "bin" / "bash.exe"
     bash.parent.mkdir(parents=True)
     bash.write_bytes(b"")
-    monkeypatch.setenv("EMULE_MSYS2_ROOT", str(root))
+    monkeypatch.setenv("EMULEBB_MSYS2_ROOT", str(root))
 
     assert build.resolve_msys2_root() == root.resolve()
 
@@ -77,5 +77,5 @@ def make_layout(tmp_path: Path) -> WorkspaceLayout:
         dependencies=(),
         app_variants=(),
         test_targets=LayoutTestTargets(test_build_variant="main", test_run_variant="main", baseline_variant="community"),
-        toolset_override_variable="EMULE_V072_PLATFORM_TOOLSET",
+        toolset_override_variable="EMULEBB_VS_PLATFORM_TOOLSET",
     )

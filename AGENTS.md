@@ -1,6 +1,6 @@
 # Rules
 
-- Read `EMULE_WORKSPACE_ROOT\repos\emulebb-tooling\docs\WORKSPACE-POLICY.md`
+- Read `EMULEBB_WORKSPACE_ROOT\repos\emulebb-tooling\docs\WORKSPACE-POLICY.md`
   before build or test orchestration work; it is authoritative for
   workspace-wide rules.
 - This file contains build-repo local deltas only. Do not duplicate branch,

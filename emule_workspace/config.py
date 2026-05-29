@@ -46,7 +46,7 @@ class WorkspaceOptions(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    workspace_root: Path = Field(description="Canonical EMULE_WORKSPACE_ROOT path.")
+    workspace_root: Path = Field(description="Canonical EMULEBB_WORKSPACE_ROOT path.")
     workspace_name: str = Field(default="workspace")
     configuration: BuildConfiguration = "Release"
     platform: BuildPlatform = "x64"
@@ -402,9 +402,9 @@ def resolve_workspace_options(
 ) -> WorkspaceOptions:
     """Builds common workspace options from Click values and environment."""
 
-    resolved_root = workspace_root or os.environ.get("EMULE_WORKSPACE_ROOT")
+    resolved_root = workspace_root or os.environ.get("EMULEBB_WORKSPACE_ROOT")
     if not resolved_root:
-        raise ValueError("EMULE_WORKSPACE_ROOT or --workspace-root is required.")
+        raise ValueError("EMULEBB_WORKSPACE_ROOT or --workspace-root is required.")
     return WorkspaceOptions(
         workspace_root=Path(resolved_root),
         workspace_name=workspace_name or "workspace",

@@ -27,17 +27,17 @@ from .topology import (
 from .topology import ManagedRepo
 
 ROOT_AGENTS_CONTENT = """ANALYZE THIS WORKSPACE, DIRECTORIES `repos` and `workspaces`
-ALWAYS READ AND FOLLOW EMULE_WORKSPACE_ROOT\\repos\\emulebb-tooling\\docs\\WORKSPACE-POLICY.md
+ALWAYS READ AND FOLLOW EMULEBB_WORKSPACE_ROOT\\repos\\emulebb-tooling\\docs\\WORKSPACE-POLICY.md
 """
 
 
 def derive_workspace_root_from_build_repo() -> Path:
-    """Returns EMULE_WORKSPACE_ROOT from the required repos/emulebb-build clone layout."""
+    """Returns EMULEBB_WORKSPACE_ROOT from the required repos/emulebb-build clone layout."""
 
     repo_root = build_repo_root().resolve()
     if repo_root.name != "emulebb-build" or repo_root.parent.name != "repos":
         raise RuntimeError(
-            "emulebb-build must be cloned as <EMULE_WORKSPACE_ROOT>\\repos\\emulebb-build "
+            "emulebb-build must be cloned as <EMULEBB_WORKSPACE_ROOT>\\repos\\emulebb-build "
             f"for materialization. Current path: {repo_root}"
         )
     return repo_root.parent.parent.resolve()
@@ -58,7 +58,7 @@ def _assert_build_repo_matches_root(root: Path) -> None:
     expected = (root / "repos" / "emulebb-build").resolve()
     if repo_root != expected:
         raise RuntimeError(
-            "emulebb-build must be the clone at <EMULE_WORKSPACE_ROOT>\\repos\\emulebb-build. "
+            "emulebb-build must be the clone at <EMULEBB_WORKSPACE_ROOT>\\repos\\emulebb-build. "
             f"Expected {expected}, current package is {repo_root}."
         )
 
@@ -538,16 +538,16 @@ def install_workspace_hooks(root: Path, topology: WorkspaceTopology) -> None:
 
 
 def set_workspace_root_environment(root: Path) -> None:
-    """Sets EMULE_WORKSPACE_ROOT for this process and the Windows user environment."""
+    """Sets EMULEBB_WORKSPACE_ROOT for this process and the Windows user environment."""
 
     resolved = str(root.resolve())
-    os.environ["EMULE_WORKSPACE_ROOT"] = resolved
+    os.environ["EMULEBB_WORKSPACE_ROOT"] = resolved
     if sys.platform == "win32":
         import winreg
 
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0, winreg.KEY_SET_VALUE) as key:
-            winreg.SetValueEx(key, "EMULE_WORKSPACE_ROOT", 0, winreg.REG_EXPAND_SZ, resolved)
-    print(f"EMULE_WORKSPACE_ROOT={resolved}")
+            winreg.SetValueEx(key, "EMULEBB_WORKSPACE_ROOT", 0, winreg.REG_EXPAND_SZ, resolved)
+    print(f"EMULEBB_WORKSPACE_ROOT={resolved}")
     print("Restart existing shells to pick up the persisted user environment value.")
 
 

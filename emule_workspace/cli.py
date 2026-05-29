@@ -80,7 +80,7 @@ BASELINE_VARIANT_HELP = f"{APP_VARIANT_HELP} Defaults to the workspace baseline 
 
 
 def _common_options(function: F) -> F:
-    @click.option("--workspace-root", envvar="EMULE_WORKSPACE_ROOT", help="Canonical EMULE_WORKSPACE_ROOT.")
+    @click.option("--workspace-root", envvar="EMULEBB_WORKSPACE_ROOT", help="Canonical EMULEBB_WORKSPACE_ROOT.")
     @click.option("--workspace-name", default=None, help="Workspace name. Defaults to build manifest value.")
     @click.option("--config", "configuration", type=click.Choice(["Debug", "Release"]), default="Release", show_default=True)
     @click.option("--platform", type=click.Choice(["x64", "ARM64"]), default="x64", show_default=True)
@@ -301,7 +301,7 @@ def main() -> None:
 
 
 @main.command()
-@click.option("--workspace-root", default=None, help="Canonical EMULE_WORKSPACE_ROOT. Defaults from repos/emulebb-build layout.")
+@click.option("--workspace-root", default=None, help="Canonical EMULEBB_WORKSPACE_ROOT. Defaults from repos/emulebb-build layout.")
 @click.option("--workspace-name", default=None, help="Workspace name. Defaults to canonical topology.")
 @click.option("--artifacts-seed-root", default=None, help="Optional third-party artifact seed root.")
 def materialize(*, workspace_root: str | None, workspace_name: str | None, artifacts_seed_root: str | None) -> None:
@@ -318,7 +318,7 @@ def materialize(*, workspace_root: str | None, workspace_name: str | None, artif
 
 
 @main.command()
-@click.option("--workspace-root", envvar="EMULE_WORKSPACE_ROOT", default=None, help="Canonical EMULE_WORKSPACE_ROOT.")
+@click.option("--workspace-root", envvar="EMULEBB_WORKSPACE_ROOT", default=None, help="Canonical EMULEBB_WORKSPACE_ROOT.")
 @click.option("--workspace-name", default=None, help="Workspace name. Defaults to canonical topology.")
 @click.option("--artifacts-seed-root", default=None, help="Optional third-party artifact seed root.")
 def sync(*, workspace_root: str | None, workspace_name: str | None, artifacts_seed_root: str | None) -> None:
@@ -521,7 +521,7 @@ def workspace_status(*, workspace_options: WorkspaceOptions, layout) -> None:
 
 
 @main.command("status")
-@click.option("--workspace-root", envvar="EMULE_WORKSPACE_ROOT", default=None, help="Canonical EMULE_WORKSPACE_ROOT.")
+@click.option("--workspace-root", envvar="EMULEBB_WORKSPACE_ROOT", default=None, help="Canonical EMULEBB_WORKSPACE_ROOT.")
 def materialization_status(*, workspace_root: str | None) -> None:
     """Report setup-managed repository status."""
 
@@ -532,7 +532,7 @@ def materialization_status(*, workspace_root: str | None) -> None:
 
 
 @main.command("dep-updates")
-@click.option("--workspace-root", envvar="EMULE_WORKSPACE_ROOT", default=None, help="Canonical EMULE_WORKSPACE_ROOT.")
+@click.option("--workspace-root", envvar="EMULEBB_WORKSPACE_ROOT", default=None, help="Canonical EMULEBB_WORKSPACE_ROOT.")
 @click.option("--workspace-name", default=None, help="Workspace name. Defaults to canonical topology.")
 def dep_updates(*, workspace_root: str | None, workspace_name: str | None) -> None:
     """Report advisory third-party dependency updates."""
@@ -545,7 +545,7 @@ def dep_updates(*, workspace_root: str | None, workspace_name: str | None) -> No
 
 @main.command("compare")
 @click.argument("preset_key", required=False)
-@click.option("--workspace-root", envvar="EMULE_WORKSPACE_ROOT", default=None, help="Canonical EMULE_WORKSPACE_ROOT.")
+@click.option("--workspace-root", envvar="EMULEBB_WORKSPACE_ROOT", default=None, help="Canonical EMULEBB_WORKSPACE_ROOT.")
 def compare_command(*, preset_key: str | None, workspace_root: str | None) -> None:
     """Show or launch WinMerge comparison presets."""
 

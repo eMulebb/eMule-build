@@ -1,7 +1,7 @@
 # emulebb-build
 
 `emulebb-build` is the canonical build and test orchestration layer for the
-workspace rooted at `EMULE_WORKSPACE_ROOT`.
+workspace rooted at `EMULEBB_WORKSPACE_ROOT`.
 
 `emulebb-build` owns workspace materialization, generated workspace topology, and
 build/test orchestration. It is responsible for:
@@ -25,8 +25,8 @@ routing, build/test execution, live-test wrapping, and release packaging.
 
 This repo is the source of truth for workspace materialization and the full
 layout contract. A materialized workspace uses the standard
-`EMULE_WORKSPACE_ROOT\repos\...` plus
-`EMULE_WORKSPACE_ROOT\workspaces\workspace\...` layout.
+`EMULEBB_WORKSPACE_ROOT\repos\...` plus
+`EMULEBB_WORKSPACE_ROOT\workspaces\workspace\...` layout.
 
 In practice this repo needs:
 
@@ -58,7 +58,7 @@ descriptive, but they are not CLI variant keys:
 | `tracing-harness` | `workspaces\workspace\app\emulebb-community-tracing-harness` | `tracing-harness/community-0.72a` |
 
 Branch roles, release intent, and baseline rules are owned by
-`EMULE_WORKSPACE_ROOT\repos\emulebb-tooling\docs\WORKSPACE-POLICY.md`.
+`EMULEBB_WORKSPACE_ROOT\repos\emulebb-tooling\docs\WORKSPACE-POLICY.md`.
 
 The active app layout and workspace repo paths are topology-driven from
 `workspaces\workspace\deps.json`, with build-specific settings kept in this repo's
@@ -193,14 +193,14 @@ needed.
 
 | Variable | Used by | Default when unset | Intended use |
 |---|---|---|---|
-| `EMULE_MSYS2_ROOT` | `build clients --client amule` | First usable system MSYS2 root, normally a standard MSYS2 install under the system drive | Point the aMule Windows client build at a nonstandard MSYS2 install. |
-| `EMULE_V072_PLATFORM_TOOLSET` | app, Crypto++, and release MSBuild entrypoints | `v143` | Temporarily force a Visual Studio `PlatformToolset` for local compatibility diagnosis. |
+| `EMULEBB_MSYS2_ROOT` | `build clients --client amule` | First usable system MSYS2 root, normally a standard MSYS2 install under the system drive | Point the aMule Windows client build at a nonstandard MSYS2 install. |
+| `EMULEBB_VS_PLATFORM_TOOLSET` | app, Crypto++, and release MSBuild entrypoints | `v143` | Temporarily force a Visual Studio `PlatformToolset` for local compatibility diagnosis. |
 
 Use these only at the shell or CI-job boundary:
 
 ```powershell
-$env:EMULE_MSYS2_ROOT = Join-Path $env:SystemDrive 'Tools\msys64'
-$env:EMULE_V072_PLATFORM_TOOLSET = 'v143'
+$env:EMULEBB_MSYS2_ROOT = Join-Path $env:SystemDrive 'Tools\msys64'
+$env:EMULEBB_VS_PLATFORM_TOOLSET = 'v143'
 python -m emule_workspace env-check
 ```
 
