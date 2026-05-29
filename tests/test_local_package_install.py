@@ -348,3 +348,59 @@ def test_test_install_root_is_scoped_by_run_suite_and_client(tmp_path: Path) -> 
     )
     assert second.parent == first.parent
     assert second != first
+
+
+def test_materialize_test_local_install_uses_isolated_test_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    layout = _layout(tmp_path)
+    layout.tests_repo_root.mkdir(parents=True)
+    layout.build_repo_root.mkdir(parents=True)
+    operator_target = tmp_path / "operator-install"
+    live_wire_path = layout.tests_repo_root / "live-wire-inputs.local.json"
+    import_profile = tmp_path / "import-profile"
+    _write_live_wire(live_wire_path, operator_target, import_profile_dir=str(import_profile))
+    suite_install_fixtures.write_local_package_artifacts(
+        layout.workspace_root,
+        version="0.7.3-rc.1",
+    )
+    installer_calls: list[suite_installer.SuiteInstallerOptions] = []
+
+    def fake_invoke_suite_installer(options: suite_installer.SuiteInstallerOptions) -> suite_installer.SuiteInstallerInvocation:
+        installer_calls.append(options)
+        _write_suite_profile(options.install_root)
+        return suite_installer.SuiteInstallerInvocation(
+            command=(),
+            installer_script=options.installer_script,
+            staging_root=options.installer_script.parent,
+        )
+
+    monkeypatch.setattr(local_package_install.suite_installer, "invoke_suite_installer", fake_invoke_suite_installer)
+
+    result = local_package_install.materialize_test_local_install(
+        layout,
+        _workspace_options(tmp_path),
+        LocalPackageInstallOptions(skip_build=True),
+        run_id="20260529T120000Z run",
+        suite_name="godzilla/local swarm",
+        client_id="client:01",
+    )
+
+    expected_target = (
+        layout.workspace_root
+        / "state"
+        / "test-installs"
+        / "20260529T120000Z-run"
+        / "godzilla-local-swarm"
+        / "client-01"
+    )
+    assert result.target_path == expected_target
+    assert result.app_exe == expected_target / "apps" / "eMuleBB" / "emulebb.exe"
+    assert result.profile_config_dir == expected_target / "profiles" / "emulebb" / "config"
+    assert installer_calls[0].install_root == expected_target
+    assert installer_calls[0].import_profile_dir == import_profile.resolve()
+    assert not operator_target.exists()
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    assert manifest["targetPath"] == str(expected_target)
+    assert manifest["importProfileDir"] == str(import_profile.resolve())

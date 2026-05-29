@@ -110,9 +110,39 @@ def materialize_local_install(
 ) -> MaterializedLocalInstall:
     """Materializes a local package install through the suite installer."""
 
+    config = load_local_install_config(layout, options.live_wire_inputs_file)
+    return _materialize_local_install_from_config(layout, workspace_options, options, config)
+
+
+def materialize_test_local_install(
+    layout: WorkspaceLayout,
+    workspace_options: WorkspaceOptions,
+    options: LocalPackageInstallOptions,
+    *,
+    run_id: str,
+    suite_name: str,
+    client_id: str = "primary",
+) -> MaterializedLocalInstall:
+    """Materializes an isolated installer-created local install for one test client."""
+
+    base_config = load_local_install_config(layout, options.live_wire_inputs_file)
+    test_config = replace(
+        base_config,
+        target_path=test_install_root(layout, run_id=run_id, suite_name=suite_name, client_id=client_id),
+    )
+    return _materialize_local_install_from_config(layout, workspace_options, options, test_config)
+
+
+def _materialize_local_install_from_config(
+    layout: WorkspaceLayout,
+    workspace_options: WorkspaceOptions,
+    options: LocalPackageInstallOptions,
+    config: LocalInstallConfig,
+) -> MaterializedLocalInstall:
+    """Materializes a local install from an already resolved config object."""
+
     if workspace_options.configuration != "Release":
         raise RuntimeError("install local package requires --config Release.")
-    config = load_local_install_config(layout, options.live_wire_inputs_file)
     if not options.skip_build:
         create_release_package(
             layout,
