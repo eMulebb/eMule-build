@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import json
-import re
 import shutil
-import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from . import suite_installer
 from .build import APP_EXE_NAME
 from .config import AmutorrentPackageOptions, LocalPackageInstallOptions, ReleasePackageOptions, WorkspaceOptions
 from .layout import WorkspaceLayout
@@ -20,11 +19,11 @@ LIVE_WIRE_SCHEMA = "emulebb-build-tests.live-wire-inputs.v1"
 LEGACY_LIVE_WIRE_SCHEMAS = ("emule-build-tests.live-wire-inputs.v1",)
 LOCAL_INSTALL_KEY = "local_package_install"
 INSTALL_MANIFEST_SCHEMA = "emulebb.local-package-install.v1"
-PRESERVED_AMUTORRENT_DIRS = {"data", "logs", "runtime", ".pm2"}
 DEFAULT_AMUTORRENT_PORT = 4000
 DEFAULT_AMUTORRENT_BIND_ADDRESS = "0.0.0.0"
 DEFAULT_REST_PORT = 4711
-DEFAULT_PROCDUMP_PATH = Path(r"C:\bin\sysin\procdump.exe")
+DEFAULT_P2P_BIND_INTERFACE = "hide.me"
+RETIRED_LOCAL_INSTALL_FIELDS = ("profile_dir", "procdump_path")
 
 
 @dataclass(frozen=True)
@@ -33,16 +32,16 @@ class LocalInstallConfig:
 
     live_wire_inputs_file: Path
     target_path: Path
-    profile_dir: Path
     amutorrent_port: int
     amutorrent_bind_address: str
-    emulebb_id: str
-    emulebb_name: str
-    procdump_path: Path
+    control_bind_address: str | None
+    emulebb_bind_address: str | None
+    emulebb_port: int
+    dependency_manifest: Path | None
+    import_profile_dir: Path | None
+    p2p_bind_interface: str
     enable_rest: bool
     enable_crash_dumps: bool
-    rest_host_override: str | None
-    rest_port_override: int | None
     rest_use_ssl_override: bool | None
 
 
@@ -70,6 +69,7 @@ class InstallArtifacts:
     package_exe: Path
     package_pdb: Path
     arch: str
+    installer_script: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -103,7 +103,15 @@ def install_local_package(
         )
 
     artifacts = resolve_install_artifacts(layout, workspace_options, options.release_version)
-    rest_config = prepare_profile_preferences(config)
+    installer_path = suite_installer.extract_packaged_installer(
+        package_zip=artifacts.emule_zip,
+        install_root=config.target_path,
+        release_version=options.release_version,
+    )
+    artifacts = replace(artifacts, installer_script=installer_path)
+    suite_installer.invoke_suite_installer(build_suite_installer_options(config, artifacts, options.release_version))
+    profile_dir = suite_profile_dir(config)
+    rest_config = prepare_profile_preferences(config, profile_dir)
     deploy_local_install(layout, config, rest_config, artifacts, options.release_version)
 
 
@@ -118,25 +126,35 @@ def load_local_install_config(layout: WorkspaceLayout, raw_inputs_path: str | No
     raw_config = payload.get(LOCAL_INSTALL_KEY)
     if not isinstance(raw_config, dict):
         raise RuntimeError(f"Live-wire inputs field {LOCAL_INSTALL_KEY!r} must be an object.")
+    retired_fields = [field for field in RETIRED_LOCAL_INSTALL_FIELDS if field in raw_config]
+    if retired_fields:
+        raise RuntimeError(
+            "Local package install no longer accepts retired field(s): "
+            + ", ".join(repr(field) for field in retired_fields)
+            + ". The suite installer owns the profile and crash dump setup."
+        )
 
     target_path = _required_path(raw_config, "target_path")
-    profile_dir = _required_path(raw_config, "profile_dir")
     if " " in str(target_path):
         raise RuntimeError(f"Local install target path must not contain spaces for aMuTorrent packaging: {target_path}")
+    rest_host = _optional_nullable_string(raw_config, "rest_host")
+    emulebb_bind_address = _optional_nullable_string(raw_config, "emulebb_bind_address") or rest_host
+    rest_port = _optional_nullable_int(raw_config, "rest_port")
+    emulebb_port = _optional_nullable_int(raw_config, "emulebb_port") or rest_port or DEFAULT_REST_PORT
 
     return LocalInstallConfig(
         live_wire_inputs_file=inputs_path,
         target_path=target_path,
-        profile_dir=profile_dir,
         amutorrent_port=_optional_int(raw_config, "amutorrent_port", DEFAULT_AMUTORRENT_PORT),
         amutorrent_bind_address=_optional_string(raw_config, "amutorrent_bind_address", DEFAULT_AMUTORRENT_BIND_ADDRESS),
-        emulebb_id=_optional_string(raw_config, "emulebb_id", "emulebb-local"),
-        emulebb_name=_optional_string(raw_config, "emulebb_name", "eMuleBB local"),
-        procdump_path=_optional_path(raw_config, "procdump_path", DEFAULT_PROCDUMP_PATH),
+        control_bind_address=_optional_nullable_string(raw_config, "control_bind_address"),
+        emulebb_bind_address=emulebb_bind_address,
+        emulebb_port=emulebb_port,
+        dependency_manifest=_optional_nullable_path(raw_config, "dependency_manifest"),
+        import_profile_dir=_optional_nullable_path(raw_config, "import_profile_dir"),
+        p2p_bind_interface=_optional_string(raw_config, "p2p_bind_interface", DEFAULT_P2P_BIND_INTERFACE),
         enable_rest=_optional_bool(raw_config, "enable_rest", True),
         enable_crash_dumps=_optional_bool(raw_config, "enable_crash_dumps", True),
-        rest_host_override=_optional_nullable_string(raw_config, "rest_host"),
-        rest_port_override=_optional_nullable_int(raw_config, "rest_port"),
         rest_use_ssl_override=_optional_nullable_bool(raw_config, "rest_use_ssl"),
     )
 
@@ -196,10 +214,42 @@ def resolve_install_artifacts(
     return artifacts
 
 
-def prepare_profile_preferences(config: LocalInstallConfig) -> ProfileRestConfig:
+def suite_profile_dir(config: LocalInstallConfig) -> Path:
+    """Returns the installer-owned eMuleBB profile path."""
+
+    return config.target_path / "profiles" / "emulebb"
+
+
+def build_suite_installer_options(
+    config: LocalInstallConfig,
+    artifacts: InstallArtifacts,
+    release_version: str,
+) -> suite_installer.SuiteInstallerOptions:
+    """Maps local install config into the suite installer command contract."""
+
+    if artifacts.installer_script is None:
+        raise RuntimeError("Suite installer path was not resolved.")
+    return suite_installer.SuiteInstallerOptions(
+        install_root=config.target_path,
+        release_root=artifacts.release_root,
+        installer_script=artifacts.installer_script,
+        release_version=release_version,
+        platform=artifacts.arch,
+        amutorrent_port=config.amutorrent_port,
+        amutorrent_bind_address=config.amutorrent_bind_address,
+        control_bind_address=config.control_bind_address,
+        emulebb_bind_address=config.emulebb_bind_address,
+        emulebb_port=config.emulebb_port,
+        dependency_manifest=config.dependency_manifest,
+        import_profile_dir=config.import_profile_dir,
+        p2p_bind_interface=config.p2p_bind_interface,
+    )
+
+
+def prepare_profile_preferences(config: LocalInstallConfig, profile_dir: Path) -> ProfileRestConfig:
     """Ensures required profile preferences and returns REST connection settings."""
 
-    profile_config_dir = config.profile_dir / "config"
+    profile_config_dir = profile_dir / "config"
     preferences_path = profile_config_dir / "preferences.ini"
     if not preferences_path.is_file():
         raise RuntimeError(f"Profile preferences.ini is missing: {preferences_path}")
@@ -212,8 +262,8 @@ def prepare_profile_preferences(config: LocalInstallConfig) -> ProfileRestConfig
     if not api_key:
         raise RuntimeError(f"Profile WebServer ApiKey is missing: {preferences_path}")
 
-    host = config.rest_host_override or webserver.get("bindaddr", "").strip() or "127.0.0.1"
-    port = config.rest_port_override or _parse_int(webserver.get("port", ""), DEFAULT_REST_PORT)
+    host = webserver.get("bindaddr", "").strip() or "127.0.0.1"
+    port = _parse_int(webserver.get("port", ""), DEFAULT_REST_PORT)
     use_ssl = config.rest_use_ssl_override if config.rest_use_ssl_override is not None else _parse_bool(webserver.get("usehttps", ""), False)
 
     updates: list[tuple[str, str, str]] = []
@@ -241,34 +291,15 @@ def deploy_local_install(
     artifacts: InstallArtifacts,
     release_version: str,
 ) -> None:
-    """Extracts release packages, symbols, manifests, and local scripts."""
+    """Adds Python-owned symbols and manifests to the installer-created suite."""
 
     target_root = config.target_path
-    target_root.mkdir(parents=True, exist_ok=True)
-    staging_root = target_root / ".staging" / f"emulebb-v{release_version}-{_timestamp_for_path()}"
-    _assert_under_root(staging_root, target_root, "install staging path")
-    if staging_root.exists():
-        shutil.rmtree(staging_root)
-    staging_root.mkdir(parents=True, exist_ok=True)
-
-    try:
-        emule_stage = staging_root / "emule"
-        amutorrent_stage = staging_root / "amutorrent"
-        _extract_zip_safe(artifacts.emule_zip, emule_stage)
-        _extract_zip_safe(artifacts.amutorrent_zip, amutorrent_stage)
-        _replace_emule_tree(emule_stage / EMULEBB_PACKAGE_ROOT_NAME, target_root / EMULEBB_PACKAGE_ROOT_NAME, target_root)
-        _replace_amutorrent_tree(amutorrent_stage / "aMuTorrent", target_root / "aMuTorrent", target_root)
-    finally:
-        if staging_root.exists():
-            shutil.rmtree(staging_root)
-
     symbols_dir = target_root / "symbols" / f"emulebb-v{release_version}" / artifacts.arch
     manifests_dir = target_root / "manifests" / f"emulebb-v{release_version}"
     diagnostics_dir = target_root / "diagnostics"
-    scripts_dir = target_root / "scripts"
-    for path in (symbols_dir, manifests_dir, diagnostics_dir, scripts_dir):
+    for path in (symbols_dir, manifests_dir, diagnostics_dir):
         path.mkdir(parents=True, exist_ok=True)
-    deployed_exe = target_root / EMULEBB_PACKAGE_ROOT_NAME / APP_EXE_NAME
+    deployed_exe = target_root / "apps" / EMULEBB_PACKAGE_ROOT_NAME / APP_EXE_NAME
     if _sha256(deployed_exe) != _sha256(artifacts.package_exe):
         raise RuntimeError(
             "Local package install extracted an emulebb.exe that does not match the package-build executable "
@@ -276,147 +307,17 @@ def deploy_local_install(
         )
 
     versioned_pdb = symbols_dir / "emulebb.pdb"
-    adjacent_pdb = target_root / EMULEBB_PACKAGE_ROOT_NAME / "emulebb.pdb"
+    adjacent_pdb = target_root / "apps" / EMULEBB_PACKAGE_ROOT_NAME / "emulebb.pdb"
     shutil.copy2(artifacts.package_pdb, versioned_pdb)
     shutil.copy2(artifacts.package_pdb, adjacent_pdb)
     for manifest in (artifacts.emule_manifest, artifacts.emule_sbom, artifacts.amutorrent_manifest, artifacts.amutorrent_sbom):
         shutil.copy2(manifest, manifests_dir / manifest.name)
 
-    write_local_scripts(layout, config, rest_config, release_version)
     write_install_manifest(layout, config, rest_config, artifacts, release_version)
     print(f"Local package install: {target_root}")
-    print(f"Profile: {config.profile_dir}")
+    print(f"Profile: {suite_profile_dir(config)}")
     print(f"Symbols: {symbols_dir}")
     print(f"Adjacent debug info: {adjacent_pdb}")
-
-
-def write_local_scripts(
-    layout: WorkspaceLayout,
-    config: LocalInstallConfig,
-    rest_config: ProfileRestConfig,
-    release_version: str,
-) -> None:
-    """Writes package-local scripts that start, update, and diagnose the install."""
-
-    scripts_dir = config.target_path / "scripts"
-    emule_exe = config.target_path / EMULEBB_PACKAGE_ROOT_NAME / APP_EXE_NAME
-    amutorrent_root = config.target_path / "aMuTorrent"
-    amutorrent_server = amutorrent_root / "server" / "server.js"
-    live_wire_path = config.live_wire_inputs_file
-    build_repo = layout.build_repo_root
-    workspace_root = layout.emule_workspace_root
-    scheme = "https" if rest_config.use_ssl else "http"
-
-    _write_text(
-        scripts_dir / "Start-EmuleBB.ps1",
-        f"""#Requires -Version 5.1
-$ErrorActionPreference = 'Stop'
-$Exe = {ps_string(emule_exe)}
-$ProfileDir = {ps_string(config.profile_dir)}
-Start-Process -FilePath $Exe -ArgumentList @('-c', $ProfileDir)
-""",
-    )
-    _write_text(
-        scripts_dir / "Start-aMuTorrent.ps1",
-        f"""#Requires -Version 5.1
-$ErrorActionPreference = 'Stop'
-$env:EMULEBB_ENABLED = 'true'
-$env:EMULEBB_HOST = {ps_string(rest_config.host)}
-$env:EMULEBB_PORT = '{rest_config.port}'
-$env:EMULEBB_API_KEY = {ps_string(rest_config.api_key)}
-$env:EMULEBB_USE_SSL = '{str(rest_config.use_ssl).lower()}'
-$env:EMULEBB_ID = {ps_string(config.emulebb_id)}
-$env:EMULEBB_NAME = {ps_string(config.emulebb_name)}
-$env:AMUTORRENT_DATA_DIR = {ps_string(config.target_path / "aMuTorrent" / "data")}
-$env:PORT = '{config.amutorrent_port}'
-$env:BIND_ADDRESS = {ps_string(config.amutorrent_bind_address)}
-$Node = (Get-Command node.exe -ErrorAction SilentlyContinue).Source
-if (-not $Node) {{
-    $Node = Join-Path {ps_string(config.target_path)} 'runtime\node\node.exe'
-}}
-if (-not (Test-Path -LiteralPath $Node)) {{
-    throw 'Node 24 or newer is required to start aMuTorrent. Install Node or use Install-eMuleBBSuite.ps1 to provision the pinned runtime.'
-}}
-Push-Location {ps_string(amutorrent_root)}
-try {{
-    & $Node {ps_string(amutorrent_server)}
-}} finally {{
-    Pop-Location
-}}
-""",
-    )
-    _write_text(
-        scripts_dir / "Start-All.ps1",
-        f"""#Requires -Version 5.1
-$ErrorActionPreference = 'Stop'
-& (Join-Path $PSScriptRoot 'Start-EmuleBB.ps1')
-$Headers = @{{ 'X-API-Key' = {ps_string(rest_config.api_key)} }}
-$Uri = {ps_string(f"{scheme}://{rest_config.host}:{rest_config.port}/api/v1/app")}
-for ($i = 0; $i -lt 60; $i++) {{
-    try {{
-        Invoke-RestMethod -Uri $Uri -Headers $Headers -TimeoutSec 2 | Out-Null
-        break
-    }} catch {{
-        Start-Sleep -Seconds 1
-    }}
-}}
-& (Join-Path $PSScriptRoot 'Start-aMuTorrent.ps1')
-""",
-    )
-    _write_text(
-        scripts_dir / "Status-aMuTorrent.ps1",
-        f"""#Requires -Version 5.1
-$ErrorActionPreference = 'Stop'
-Invoke-RestMethod -Uri 'http://127.0.0.1:{config.amutorrent_port}/health' -TimeoutSec 5 | ConvertTo-Json -Compress
-""",
-    )
-    _write_text(
-        scripts_dir / "Capture-Dump.ps1",
-        f"""#Requires -Version 5.1
-param(
-    [int]$Pid = 0,
-    [switch]$Full
-)
-$ErrorActionPreference = 'Stop'
-$ProcDump = {ps_string(config.procdump_path)}
-$Diagnostics = {ps_string(config.target_path / "diagnostics")}
-$Exe = {ps_string(emule_exe)}
-if ($Pid -eq 0) {{
-    $Process = Get-Process emulebb -ErrorAction Stop | Where-Object {{ $_.Path -eq $Exe }} | Select-Object -First 1
-    if ($null -eq $Process) {{ throw "No emulebb process found for $Exe." }}
-    $Pid = $Process.Id
-}}
-$Timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-$Kind = if ($Full) {{ 'full' }} else {{ 'mini' }}
-$DumpPath = Join-Path $Diagnostics ("emulebb-dump-$Timestamp-pid$Pid-$Kind.dmp")
-$Mode = if ($Full) {{ '-ma' }} else {{ '-mp' }}
-& $ProcDump -accepteula $Mode $Pid $DumpPath
-""",
-    )
-    _write_text(
-        scripts_dir / "Update-LocalPackage.ps1",
-        f"""#Requires -Version 5.1
-param(
-    [switch]$Clean,
-    [switch]$SkipBuild
-)
-$ErrorActionPreference = 'Stop'
-Push-Location {ps_string(build_repo)}
-try {{
-    $Args = @(
-        'install-local-package',
-        '--workspace-root', {ps_string(workspace_root)},
-        '--release-version', {ps_string(release_version)},
-        '--live-wire-inputs-file', {ps_string(live_wire_path)}
-    )
-    if ($Clean) {{ $Args += '--clean' }}
-    if ($SkipBuild) {{ $Args += '--skip-build' }}
-    python -m emule_workspace @Args
-}} finally {{
-    Pop-Location
-}}
-""",
-    )
 
 
 def write_install_manifest(
@@ -430,23 +331,31 @@ def write_install_manifest(
 
     target_root = config.target_path
     manifest_path = target_root / "manifests" / "local-install.json"
-    emule_exe = target_root / EMULEBB_PACKAGE_ROOT_NAME / APP_EXE_NAME
+    emule_exe = target_root / "apps" / EMULEBB_PACKAGE_ROOT_NAME / APP_EXE_NAME
     pdb_path = target_root / "symbols" / f"emulebb-v{release_version}" / artifacts.arch / "emulebb.pdb"
-    adjacent_pdb_path = target_root / EMULEBB_PACKAGE_ROOT_NAME / "emulebb.pdb"
+    adjacent_pdb_path = target_root / "apps" / EMULEBB_PACKAGE_ROOT_NAME / "emulebb.pdb"
+    suite_config_path = target_root / "manifests" / "suite-config.json"
+    suite_install_path = target_root / "manifests" / "suite-install.json"
     payload = {
         "schema": INSTALL_MANIFEST_SCHEMA,
         "installedAtUtc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "releaseVersion": release_version,
         "platform": artifacts.arch,
+        "bundle": suite_installer.SUITE_BUNDLE,
         "workspaceRoot": str(layout.emule_workspace_root),
         "liveWireInputsFile": str(config.live_wire_inputs_file),
         "targetPath": str(target_root),
-        "profileDir": str(config.profile_dir),
+        "profileDir": str(suite_profile_dir(config)),
+        "importProfileDir": str(config.import_profile_dir) if config.import_profile_dir else None,
         "rest": {
             "host": rest_config.host,
             "port": rest_config.port,
             "useSsl": rest_config.use_ssl,
             "apiKeyPresent": bool(rest_config.api_key),
+        },
+        "suite": {
+            "config": _optional_file_record(suite_config_path),
+            "installManifest": _optional_file_record(suite_install_path),
         },
         "artifacts": {
             "emuleZip": _file_record(artifacts.emule_zip),
@@ -553,50 +462,6 @@ def _append_pending_for_section(
             pending.pop(pending_key)
 
 
-def _replace_emule_tree(source: Path, destination: Path, target_root: Path) -> None:
-    if not source.is_dir():
-        raise RuntimeError(f"Extracted eMule package root is missing: {source}")
-    _assert_under_root(destination, target_root, "eMule install path")
-    if destination.exists():
-        shutil.rmtree(destination)
-    shutil.move(str(source), str(destination))
-
-
-def _replace_amutorrent_tree(source: Path, destination: Path, target_root: Path) -> None:
-    if not source.is_dir():
-        raise RuntimeError(f"Extracted aMuTorrent package root is missing: {source}")
-    _assert_under_root(destination, target_root, "aMuTorrent install path")
-    destination.mkdir(parents=True, exist_ok=True)
-    for child in list(destination.iterdir()):
-        if child.name in PRESERVED_AMUTORRENT_DIRS:
-            continue
-        if child.is_dir():
-            shutil.rmtree(child)
-        else:
-            child.unlink()
-    _copy_directory_contents(source, destination)
-
-
-def _copy_directory_contents(source: Path, destination: Path) -> None:
-    for child in source.iterdir():
-        target = destination / child.name
-        if child.is_dir():
-            shutil.copytree(child, target, dirs_exist_ok=True)
-        else:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(child, target)
-
-
-def _extract_zip_safe(zip_path: Path, destination: Path) -> None:
-    destination.mkdir(parents=True, exist_ok=True)
-    destination_root = destination.resolve()
-    with zipfile.ZipFile(zip_path, "r") as archive:
-        for member in archive.infolist():
-            target = (destination_root / member.filename).resolve()
-            _assert_under_root_or_equal(target, destination_root, f"ZIP member '{member.filename}'")
-        archive.extractall(destination_root)
-
-
 def _load_json_object(path: Path, description: str) -> dict[str, Any]:
     if not path.is_file():
         raise RuntimeError(f"{description} is missing: {path}")
@@ -616,12 +481,12 @@ def _required_path(payload: dict[str, Any], key: str) -> Path:
     return Path(value.strip()).expanduser().resolve()
 
 
-def _optional_path(payload: dict[str, Any], key: str, default: Path) -> Path:
+def _optional_nullable_path(payload: dict[str, Any], key: str) -> Path | None:
     value = payload.get(key)
     if value is None:
-        return default
+        return None
     if not isinstance(value, str) or not value.strip():
-        raise RuntimeError(f"Local package install field {key!r} must be a non-empty path string.")
+        raise RuntimeError(f"Local package install field {key!r} must be null or a non-empty path string.")
     return Path(value.strip()).expanduser().resolve()
 
 
@@ -695,46 +560,15 @@ def _file_record(path: Path) -> dict[str, object]:
     }
 
 
+def _optional_file_record(path: Path) -> dict[str, object] | None:
+    if not path.is_file():
+        return None
+    return _file_record(path)
+
+
 def _sha256(path: Path) -> str:
     hasher = __import__("hashlib").sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             hasher.update(chunk)
     return hasher.hexdigest()
-
-
-def _timestamp_for_path() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-
-
-def _assert_under_root(path: Path, root: Path, description: str) -> None:
-    resolved_path = path.resolve()
-    resolved_root = root.resolve()
-    if resolved_path == resolved_root or not _is_relative_to(resolved_path, resolved_root):
-        raise RuntimeError(f"{description} must stay under {resolved_root}: {resolved_path}")
-
-
-def _assert_under_root_or_equal(path: Path, root: Path, description: str) -> None:
-    resolved_path = path.resolve()
-    resolved_root = root.resolve()
-    if resolved_path != resolved_root and not _is_relative_to(resolved_path, resolved_root):
-        raise RuntimeError(f"{description} must stay under {resolved_root}: {resolved_path}")
-
-
-def _is_relative_to(path: Path, root: Path) -> bool:
-    try:
-        path.relative_to(root)
-    except ValueError:
-        return False
-    return True
-
-
-def _write_text(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8", newline="\r\n")
-
-
-def ps_string(value: str | Path) -> str:
-    """Returns a single-quoted PowerShell literal."""
-
-    return "'" + str(value).replace("'", "''") + "'"

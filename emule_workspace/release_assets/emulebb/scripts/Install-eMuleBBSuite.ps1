@@ -17,6 +17,7 @@ param(
     [string]$ReleaseBaseUrl,
     [string]$NodeBaseUrl,
     [string]$DependencyManifest,
+    [string]$ImportProfileDir,
 
     [string]$ConfigFile,
 
@@ -108,6 +109,14 @@ function New-Secret {
     return [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
 }
 
+function Resolve-Secret {
+    param([string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return New-Secret
+    }
+    return $Value
+}
+
 function Get-DefaultControlBindAddress {
     if (-not [string]::IsNullOrWhiteSpace($env:X_LOCAL_IP)) {
         return $env:X_LOCAL_IP.Trim()
@@ -127,6 +136,7 @@ function New-SuiteConfig {
         releaseBaseUrl = $ReleaseBaseUrl
         nodeBaseUrl = $NodeBaseUrl
         dependencyManifest = $DependencyManifest
+        importProfileDir = $ImportProfileDir
         allowRemoteServiceBind = [bool]$AllowRemoteServiceBind
         services = [ordered]@{
             emulebb = [ordered]@{ bindAddress = (Resolve-OptionalValue -Value $EmulebbBindAddress -Default $controlBind); port = $EmulebbPort; apiKey = '' }
@@ -182,9 +192,9 @@ function ConvertTo-Hashtable {
 }
 
 function Merge-Hashtable {
-    param([hashtable]$Target, [hashtable]$Source)
+    param([System.Collections.IDictionary]$Target, [System.Collections.IDictionary]$Source)
     foreach ($key in $Source.Keys) {
-        if ($Target.Contains($key) -and $Target[$key] -is [hashtable] -and $Source[$key] -is [hashtable]) {
+        if ($Target.Contains($key) -and $Target[$key] -is [System.Collections.IDictionary] -and $Source[$key] -is [System.Collections.IDictionary]) {
             Merge-Hashtable -Target $Target[$key] -Source $Source[$key]
         } else {
             $Target[$key] = $Source[$key]
@@ -211,6 +221,7 @@ function Resolve-SuiteConfig {
         @('ReleaseBaseUrl', { param($c, $v) $c.releaseBaseUrl = $v }),
         @('NodeBaseUrl', { param($c, $v) $c.nodeBaseUrl = $v }),
         @('DependencyManifest', { param($c, $v) $c.dependencyManifest = $v }),
+        @('ImportProfileDir', { param($c, $v) $c.importProfileDir = $v }),
         @('ControlBindAddress', {
             param($c, $v)
             foreach ($serviceName in @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr')) {
@@ -417,6 +428,9 @@ function Write-ConfigSummary {
         Write-Host '  P2P bind interface: none'
     } else {
         Write-Host "  P2P bind interface: $($Config.p2p.bindInterface) (warn-only policy)"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Config.importProfileDir)) {
+        Write-Host "  Import profile: $($Config.importProfileDir)"
     }
 }
 
@@ -635,18 +649,28 @@ function Get-GithubReleaseAsset {
     throw "No asset in $Repo $Tag matched $Pattern."
 }
 
-function Load-DependencyManifest {
-    param([string]$ManifestPath, [string]$Channel)
+function Load-DependencyManifestPayload {
+    param([string]$ManifestPath)
     if ([string]::IsNullOrWhiteSpace($ManifestPath)) {
+        return $null
+    }
+    if (-not (Test-Path -LiteralPath $ManifestPath)) {
+        throw "DependencyManifest is missing: $ManifestPath"
+    }
+    return Get-Content -Raw -LiteralPath $ManifestPath | ConvertFrom-Json
+}
+
+function Load-DependencyManifest {
+    param([object]$Payload, [string]$Channel)
+    if ($null -eq $Payload) {
         if ($Channel -eq 'Latest') {
             throw 'Latest dependency resolution requires -DependencyManifest entries with exact URLs and SHA256 hashes.'
         }
         return $PinnedDependencies
     }
-    $payload = Get-Content -Raw -LiteralPath $ManifestPath | ConvertFrom-Json
     $result = @{}
     foreach ($name in @('prowlarr', 'radarr', 'sonarr')) {
-        $item = $payload.$name
+        $item = $Payload.$name
         if ($null -eq $item) {
             throw "Dependency manifest is missing '$name'."
         }
@@ -659,6 +683,39 @@ function Load-DependencyManifest {
             Url = [string]$item.url
         }
     }
+    return $result
+}
+
+function Load-NodeSpec {
+    param([object]$Payload, [string]$Platform)
+    $defaultSpec = $NodeArchives[$Platform]
+    $result = @{
+        FileName = [string]$defaultSpec.FileName
+        Sha256 = [string]$defaultSpec.Sha256
+        Url = ''
+    }
+    if ($null -eq $Payload) {
+        return $result
+    }
+    $item = $Payload.node
+    if ($null -eq $item) {
+        return $result
+    }
+    $url = [string]$item.url
+    $fileName = [string]$item.fileName
+    if ([string]::IsNullOrWhiteSpace($fileName) -and -not [string]::IsNullOrWhiteSpace($url)) {
+        $fileName = [IO.Path]::GetFileName($url)
+    }
+    if ([string]::IsNullOrWhiteSpace($fileName)) {
+        throw 'Node dependency manifest entry requires fileName or url.'
+    }
+    $sha256 = [string]$item.sha256
+    if ([string]::IsNullOrWhiteSpace($sha256)) {
+        throw 'Node dependency download requires a SHA256 hash.'
+    }
+    $result.FileName = $fileName
+    $result.Sha256 = $sha256
+    $result.Url = $url
     return $result
 }
 
@@ -746,16 +803,10 @@ function Write-ArrConfig {
     }
 }
 
-function Write-EmuleProfile {
+function New-DefaultEmulePreferencesText {
     param([hashtable]$Config)
-    $configDir = Join-Path (Join-Path $script:Root 'profiles\emulebb') 'config'
-    if ($DryRun) {
-        Write-Step "Would write fresh eMuleBB profile under $configDir"
-        return
-    }
-    New-Item -ItemType Directory -Force -Path $configDir | Out-Null
     $p2pInterface = [string]$Config.p2p.bindInterface
-    @(
+    return @(
         '[eMule]'
         "IncomingDir=$(Join-Path $script:Root 'downloads\incoming')"
         "TempDir=$(Join-Path $script:Root 'downloads\temp')"
@@ -772,7 +823,146 @@ function Write-EmuleProfile {
         'WebUseUPnP=0'
         "ApiKey=$($Config.services.emulebb.apiKey)"
         ''
-    ) -join "`r`n" | Set-Content -Encoding Unicode -LiteralPath (Join-Path $configDir 'preferences.ini')
+    ) -join "`r`n"
+}
+
+function Copy-DirectoryContents {
+    param([string]$Source, [string]$Destination)
+    New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    foreach ($child in @(Get-ChildItem -LiteralPath $Source -Force)) {
+        $target = Join-Path $Destination $child.Name
+        if ($child.PSIsContainer) {
+            Copy-Item -Recurse -Force -LiteralPath $child.FullName -Destination $target
+        } else {
+            Copy-Item -Force -LiteralPath $child.FullName -Destination $target
+        }
+    }
+}
+
+function Append-PendingIniValues {
+    param(
+        [System.Collections.Generic.List[string]]$Output,
+        [hashtable]$Pending,
+        [string]$Section,
+        [string]$Newline
+    )
+    foreach ($pendingKey in @($Pending.Keys)) {
+        if ($pendingKey.StartsWith("$Section|")) {
+            $entry = $Pending[$pendingKey]
+            $Output.Add("$($entry.Key)=$($entry.Value)$Newline")
+            $Pending.Remove($pendingKey)
+        }
+    }
+}
+
+function Update-IniText {
+    param([string]$Text, [object[]]$Updates)
+    $pending = @{}
+    foreach ($update in $Updates) {
+        $pending["$(([string]$update.Section).ToLowerInvariant())|$(([string]$update.Key).ToLowerInvariant())"] = $update
+    }
+    $lines = [regex]::Split($Text, "(`r`n|`n|`r)")
+    $output = New-Object 'System.Collections.Generic.List[string]'
+    $currentSection = ''
+    $seenSections = @{}
+    $newline = "`r`n"
+    for ($i = 0; $i -lt $lines.Count; $i += 2) {
+        $line = $lines[$i]
+        if (($i + 1) -lt $lines.Count -and -not [string]::IsNullOrEmpty($lines[$i + 1])) {
+            $newline = $lines[$i + 1]
+        }
+        if ($i -eq ($lines.Count - 1) -and [string]::IsNullOrEmpty($line)) {
+            continue
+        }
+        $trimmed = $line.Trim()
+        if ($trimmed.StartsWith('[') -and $trimmed.EndsWith(']')) {
+            Append-PendingIniValues -Output $output -Pending $pending -Section $currentSection -Newline $newline
+            $currentSection = $trimmed.Substring(1, $trimmed.Length - 2).Trim().ToLowerInvariant()
+            $seenSections[$currentSection] = $true
+            $output.Add("$line$newline")
+            continue
+        }
+        $equalsIndex = $line.IndexOf('=')
+        if ($equalsIndex -ge 0 -and -not [string]::IsNullOrWhiteSpace($currentSection)) {
+            $key = $line.Substring(0, $equalsIndex).Trim()
+            $pendingKey = "$currentSection|$($key.ToLowerInvariant())"
+            if ($pending.ContainsKey($pendingKey)) {
+                $entry = $pending[$pendingKey]
+                $output.Add("$($entry.Key)=$($entry.Value)$newline")
+                $pending.Remove($pendingKey)
+                continue
+            }
+        }
+        $output.Add("$line$newline")
+    }
+    Append-PendingIniValues -Output $output -Pending $pending -Section $currentSection -Newline $newline
+    foreach ($entry in @($pending.Values)) {
+        $sectionName = [string]$entry.Section
+        if (-not $seenSections.ContainsKey($sectionName.ToLowerInvariant())) {
+            $output.Add("[$sectionName]$newline")
+            $seenSections[$sectionName.ToLowerInvariant()] = $true
+        }
+        $output.Add("$($entry.Key)=$($entry.Value)$newline")
+    }
+    return ($output -join '')
+}
+
+function Update-EmulePreferencesFile {
+    param([string]$PreferencesPath, [hashtable]$Config)
+    $updates = @(
+        [pscustomobject]@{ Section = 'eMule'; Key = 'IncomingDir'; Value = (Join-Path $script:Root 'downloads\incoming') }
+        [pscustomobject]@{ Section = 'eMule'; Key = 'TempDir'; Value = (Join-Path $script:Root 'downloads\temp') }
+        [pscustomobject]@{ Section = 'eMule'; Key = 'CreateCrashDump'; Value = '2' }
+        [pscustomobject]@{ Section = 'eMule'; Key = 'BindInterface'; Value = [string]$Config.p2p.bindInterface }
+        [pscustomobject]@{ Section = 'eMule'; Key = 'BindAddr'; Value = '' }
+        [pscustomobject]@{ Section = 'eMule'; Key = 'BlockNetworkWhenBindUnavailableAtStartup'; Value = '0' }
+        [pscustomobject]@{ Section = 'eMule'; Key = 'ExitOnBindInterfaceLoss'; Value = '0' }
+        [pscustomobject]@{ Section = 'WebServer'; Key = 'Enabled'; Value = '1' }
+        [pscustomobject]@{ Section = 'WebServer'; Key = 'BindAddr'; Value = [string]$Config.services.emulebb.bindAddress }
+        [pscustomobject]@{ Section = 'WebServer'; Key = 'Port'; Value = [string]$Config.services.emulebb.port }
+        [pscustomobject]@{ Section = 'WebServer'; Key = 'UseHTTPS'; Value = '0' }
+        [pscustomobject]@{ Section = 'WebServer'; Key = 'WebUseUPnP'; Value = '0' }
+        [pscustomobject]@{ Section = 'WebServer'; Key = 'ApiKey'; Value = [string]$Config.services.emulebb.apiKey }
+    )
+    $text = Get-Content -Raw -LiteralPath $PreferencesPath
+    Update-IniText -Text $text -Updates $updates | Set-Content -Encoding Unicode -LiteralPath $PreferencesPath
+}
+
+function Write-EmuleProfile {
+    param([hashtable]$Config)
+    $configDir = Join-Path (Join-Path $script:Root 'profiles\emulebb') 'config'
+    $preferencesPath = Join-Path $configDir 'preferences.ini'
+    $importResult = @{
+        configured = -not [string]::IsNullOrWhiteSpace($Config.importProfileDir)
+        source = if ([string]::IsNullOrWhiteSpace($Config.importProfileDir)) { $null } else { [string]$Config.importProfileDir }
+        action = 'skipped-existing'
+        sourcePreferencesSha256 = $null
+    }
+    if ($DryRun) {
+        Write-Step "Would ensure eMuleBB profile under $configDir"
+        return $importResult
+    }
+    if (-not (Test-Path -LiteralPath $preferencesPath)) {
+        if (-not [string]::IsNullOrWhiteSpace($Config.importProfileDir)) {
+            $sourceConfigDir = Join-Path ([IO.Path]::GetFullPath([string]$Config.importProfileDir)) 'config'
+            $sourcePreferences = Join-Path $sourceConfigDir 'preferences.ini'
+            if (-not (Test-Path -LiteralPath $sourcePreferences)) {
+                throw "ImportProfileDir must contain config\preferences.ini: $sourcePreferences"
+            }
+            $importResult.action = 'imported'
+            $importResult.sourcePreferencesSha256 = Get-Sha256 -Path $sourcePreferences
+            if (Test-Path -LiteralPath $configDir) {
+                Remove-Item -Recurse -Force -LiteralPath $configDir
+            }
+            Copy-DirectoryContents -Source $sourceConfigDir -Destination $configDir
+        } else {
+            $importResult.action = 'fresh'
+            New-Item -ItemType Directory -Force -Path $configDir | Out-Null
+            New-DefaultEmulePreferencesText -Config $Config | Set-Content -Encoding Unicode -LiteralPath $preferencesPath
+        }
+    }
+    Update-EmulePreferencesFile -PreferencesPath $preferencesPath -Config $Config
+    return $importResult
 }
 
 function Write-SuiteConfigFile {
@@ -913,7 +1103,7 @@ Write-Host 'Manual reconfiguration: edit manifests\suite-config.json, profiles\e
 }
 
 function Write-InstallManifest {
-    param([hashtable]$Config)
+    param([hashtable]$Config, [hashtable]$ProfileImport)
     if ($DryRun) {
         return
     }
@@ -926,6 +1116,7 @@ function Write-InstallManifest {
         version = $Config.version
         platform = $Config.platform
         installRoot = $script:Root
+        profileImport = $ProfileImport
         services = @{
             emulebb = @{ bindAddress = $Config.services.emulebb.bindAddress; port = $Config.services.emulebb.port; apiKeyPresent = -not [string]::IsNullOrWhiteSpace($Config.services.emulebb.apiKey) }
             amutorrent = @{ bindAddress = $Config.services.amutorrent.bindAddress; port = $Config.services.amutorrent.port }
@@ -958,34 +1149,36 @@ if (-not $DryRun) {
     New-Item -ItemType Directory -Force -Path $script:Root | Out-Null
 }
 
-$script:SuiteConfig.services.emulebb.apiKey = New-Secret
-$script:SuiteConfig.services.prowlarr.apiKey = New-Secret
-$script:SuiteConfig.services.radarr.apiKey = New-Secret
-$script:SuiteConfig.services.sonarr.apiKey = New-Secret
+$script:SuiteConfig.services.emulebb.apiKey = Resolve-Secret $script:SuiteConfig.services.emulebb.apiKey
+$script:SuiteConfig.services.prowlarr.apiKey = Resolve-Secret $script:SuiteConfig.services.prowlarr.apiKey
+$script:SuiteConfig.services.radarr.apiKey = Resolve-Secret $script:SuiteConfig.services.radarr.apiKey
+$script:SuiteConfig.services.sonarr.apiKey = Resolve-Secret $script:SuiteConfig.services.sonarr.apiKey
 
 $releaseBase = Resolve-OptionalValue -Value $script:SuiteConfig.releaseBaseUrl -Default "https://github.com/emulebb/emulebb/releases/download/emulebb-v$($script:SuiteConfig.version)"
 $nodeBase = Resolve-OptionalValue -Value $script:SuiteConfig.nodeBaseUrl -Default "https://nodejs.org/dist/$NodeVersion"
+$dependencyManifestPayload = Load-DependencyManifestPayload -ManifestPath $script:SuiteConfig.dependencyManifest
 $assetArch = if ($script:SuiteConfig.platform -eq 'ARM64') { 'arm64' } else { 'x64' }
 $appRoot = Join-Path $script:Root 'apps'
 Install-ReleaseZip -Name 'eMuleBB' -ZipUrl "$releaseBase/emulebb-$($script:SuiteConfig.version)-$assetArch.zip" -ManifestUrl "$releaseBase/emulebb-$($script:SuiteConfig.version)-$assetArch.manifest.json" -Destination $appRoot
 
 if ($script:SuiteConfig.bundle -ne 'Core') {
     Install-ReleaseZip -Name 'aMuTorrent' -ZipUrl "$releaseBase/emulebb-$($script:SuiteConfig.version)-amutorrent-x64.zip" -ManifestUrl "$releaseBase/emulebb-$($script:SuiteConfig.version)-amutorrent-x64.manifest.json" -Destination $appRoot
-    $nodeSpec = $NodeArchives[$script:SuiteConfig.platform]
+    $nodeSpec = Load-NodeSpec -Payload $dependencyManifestPayload -Platform $script:SuiteConfig.platform
     $nodeArchive = Join-Path (Join-Path $script:Root 'downloads-cache') $nodeSpec.FileName
-    Invoke-Download -Url "$nodeBase/$($nodeSpec.FileName)" -Destination $nodeArchive
+    $nodeUrl = if ([string]::IsNullOrWhiteSpace($nodeSpec.Url)) { "$nodeBase/$($nodeSpec.FileName)" } else { [string]$nodeSpec.Url }
+    Invoke-Download -Url $nodeUrl -Destination $nodeArchive
     Assert-FileHash -Path $nodeArchive -ExpectedSha256 $nodeSpec.Sha256
     Expand-ZipSafe -Archive $nodeArchive -Destination (Join-Path $script:Root 'runtime\node')
 }
 
 if ($script:SuiteConfig.bundle -eq 'Full') {
-    $dependencies = Load-DependencyManifest -ManifestPath $script:SuiteConfig.dependencyManifest -Channel $script:SuiteConfig.dependencyChannel
+    $dependencies = Load-DependencyManifest -Payload $dependencyManifestPayload -Channel $script:SuiteConfig.dependencyChannel
     foreach ($name in @('prowlarr', 'radarr', 'sonarr')) {
         Install-ArrDependency -Name $name -Spec $dependencies[$name] -Channel $script:SuiteConfig.dependencyChannel
     }
 }
 
-Write-EmuleProfile -Config $script:SuiteConfig
+$script:ProfileImport = Write-EmuleProfile -Config $script:SuiteConfig
 if ($script:SuiteConfig.bundle -eq 'Full') {
     Write-ArrConfig -Name 'prowlarr' -Port $script:SuiteConfig.services.prowlarr.port -BindAddress $script:SuiteConfig.services.prowlarr.bindAddress -ApiKey $script:SuiteConfig.services.prowlarr.apiKey
     Write-ArrConfig -Name 'radarr' -Port $script:SuiteConfig.services.radarr.port -BindAddress $script:SuiteConfig.services.radarr.bindAddress -ApiKey $script:SuiteConfig.services.radarr.apiKey
@@ -993,7 +1186,7 @@ if ($script:SuiteConfig.bundle -eq 'Full') {
 }
 Write-SuiteConfigFile -Config $script:SuiteConfig
 Write-SuiteScripts -Config $script:SuiteConfig
-Write-InstallManifest -Config $script:SuiteConfig
+Write-InstallManifest -Config $script:SuiteConfig -ProfileImport $script:ProfileImport
 
 if (-not $KeepDownloads -and -not $DryRun) {
     Remove-Item -Recurse -Force -LiteralPath (Join-Path $script:Root 'downloads-cache') -ErrorAction SilentlyContinue
