@@ -35,3 +35,9 @@ def release_campaign_result_file_name() -> str:
     """Returns the canonical release campaign execution report filename."""
 
     return "release-campaign-run-result.json"
+
+
+def local_hammer_campaign_result_file_name() -> str:
+    """Returns the canonical local hammer campaign report filename."""
+
+    return "local-hammer-campaign-result.json"

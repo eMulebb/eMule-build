@@ -381,6 +381,25 @@ class LocalPackageInstallOptions(BaseModel):
     live_wire_inputs_file: str | None = None
 
 
+class LocalHammerCampaignOptions(BaseModel):
+    """Options for the installer-backed local heavy hammer campaign."""
+
+    model_config = ConfigDict(frozen=True)
+
+    until_local: str | None = None
+    timezone_str: str = "Europe/Berlin"
+    max_cycles: int = 0
+    cycle_pause_seconds: float = 0.0
+    dry_run: bool = False
+    live_wire_inputs_file: str | None = None
+    release_version: str = "0.7.3-rc.1"
+    clean: bool = False
+    skip_build: bool = False
+    p2p_bind_interface_name: str = "hide.me"
+    godzilla_p2p_bind_interface_address: str | None = None
+    profile_symbols_required: bool = True
+
+
 class CleanupOptions(BaseModel):
     """Options for pruning generated workspace artifacts."""
 

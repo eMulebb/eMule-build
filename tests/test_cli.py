@@ -103,6 +103,19 @@ def test_test_live_e2e_help_exposes_live_options() -> None:
     assert "--rest-cold-start-dump-stress-cpu-profile-stack" in result.output
 
 
+def test_overnight_local_hammer_help_exposes_campaign_options() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(cli.main, ["test", "overnight-local-hammer", "--help"])
+
+    assert result.exit_code == 0
+    assert "--until-local" in result.output
+    assert "--live-wire-inputs-file" in result.output
+    assert "--skip-build" in result.output
+    assert "--godzilla-p2p-bind-interface-address" in result.output
+    assert "--no-profile-symbols-required" in result.output
+
+
 def test_test_certification_help_exposes_release_gate_options() -> None:
     runner = CliRunner()
 

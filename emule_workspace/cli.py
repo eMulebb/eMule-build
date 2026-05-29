@@ -29,6 +29,7 @@ from .config import (
     CommunityCoverageOptions,
     FakeKadTrustSoakOptions,
     LiveE2eOptions,
+    LocalHammerCampaignOptions,
     LocalPackageInstallOptions,
     MiniupnpcPackageOptions,
     PythonTestOptions,
@@ -41,6 +42,7 @@ from .config import (
 from .evidence import build_heavy_evidence_index, print_heavy_evidence_index, write_heavy_evidence_index
 from .amule_release import create_amule_package
 from .layout import load_layout
+from .local_hammer_campaign import invoke_local_hammer_campaign
 from .local_package_install import install_local_package
 from .locks import WorkspaceLock
 from .materialize import materialize_workspace, sync_workspace
@@ -832,6 +834,59 @@ def test_live_e2e(
     _locked(
         "test live-e2e",
         lambda **kwargs: invoke_live_e2e_suite(kwargs["layout"], kwargs["workspace_options"], live_options),
+    )(workspace_options=workspace_options, layout=layout)
+
+
+@test.command("overnight-local-hammer")
+@_common_options
+@click.option("--until-local", default=None, help="Local wall-clock deadline, for example 2026-05-30T05:00:00.")
+@click.option("--timezone", "timezone_str", default="Europe/Berlin", show_default=True)
+@click.option("--max-cycles", default=0, show_default=True, type=int, help="Maximum full smoke-to-heavy cycles; 0 means until deadline.")
+@click.option("--cycle-pause-seconds", default=0.0, show_default=True, type=float)
+@click.option("--dry-run", is_flag=True, help="Write the planned campaign matrix without running phases.")
+@click.option("--live-wire-inputs-file", default=None, help="Runtime live-wire JSON with local_package_install settings.")
+@click.option("--release-version", default="0.7.3-rc.1", show_default=True)
+@click.option("--clean", is_flag=True, help="Clean package outputs before installer materialization.")
+@click.option("--skip-build", is_flag=True, help="Reuse existing package artifacts during installer materialization.")
+@click.option("--p2p-bind-interface-name", default="hide.me", show_default=True)
+@click.option("--godzilla-p2p-bind-interface-address", default=None, help="Explicit LAN IPv4 address for Godzilla swarm binding.")
+@click.option("--profile-symbols-required/--no-profile-symbols-required", default=True, show_default=True)
+def test_overnight_local_hammer(
+    *,
+    until_local: str | None,
+    timezone_str: str,
+    max_cycles: int,
+    cycle_pause_seconds: float,
+    dry_run: bool,
+    live_wire_inputs_file: str | None,
+    release_version: str,
+    clean: bool,
+    skip_build: bool,
+    p2p_bind_interface_name: str,
+    godzilla_p2p_bind_interface_address: str | None,
+    profile_symbols_required: bool,
+    workspace_options: WorkspaceOptions,
+    layout,
+) -> None:
+    """Run the installer-backed local overnight heavy hammer campaign."""
+
+    campaign_options = LocalHammerCampaignOptions(
+        until_local=until_local,
+        timezone_str=timezone_str,
+        max_cycles=max_cycles,
+        cycle_pause_seconds=cycle_pause_seconds,
+        dry_run=dry_run,
+        live_wire_inputs_file=live_wire_inputs_file,
+        release_version=release_version,
+        clean=clean,
+        skip_build=skip_build,
+        p2p_bind_interface_name=p2p_bind_interface_name,
+        godzilla_p2p_bind_interface_address=godzilla_p2p_bind_interface_address,
+        profile_symbols_required=profile_symbols_required,
+    )
+    _locked(
+        "test overnight-local-hammer",
+        lambda **kwargs: invoke_local_hammer_campaign(kwargs["layout"], kwargs["workspace_options"], campaign_options),
     )(workspace_options=workspace_options, layout=layout)
 
 
