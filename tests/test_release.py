@@ -86,24 +86,24 @@ def _write_release_zip(
     include_skin_assets: bool = True,
 ) -> None:
     entries = {
-        "eMule/emulebb.exe": _pe_payload(0x8664),
-        "eMule/README.md": b"readme\n",
-        "eMule/RELEASE-NOTES.md": b"notes\n",
-        "eMule/LICENSE-NOTICE.txt": b"notice\n",
-        "eMule/GPL-2.0-or-later.txt": b"gpl\n",
-        "eMule/THIRD-PARTY-NOTICES.txt": b"third party\n",
-        "eMule/SBOM.spdx.json": b'{"spdxVersion":"SPDX-2.3"}\n',
-        "eMule/docs/REST-API-CONTRACT.md": b"contract\n",
-        "eMule/docs/REST-API-OPENAPI.yaml": b"openapi\n",
-        "eMule/docs/REST-API-PARITY-INVENTORY.md": b"parity\n",
+        "eMuleBB/emulebb.exe": _pe_payload(0x8664),
+        "eMuleBB/README.md": b"readme\n",
+        "eMuleBB/RELEASE-NOTES.md": b"notes\n",
+        "eMuleBB/LICENSE-NOTICE.txt": b"notice\n",
+        "eMuleBB/GPL-2.0-or-later.txt": b"gpl\n",
+        "eMuleBB/THIRD-PARTY-NOTICES.txt": b"third party\n",
+        "eMuleBB/SBOM.spdx.json": b'{"spdxVersion":"SPDX-2.3"}\n',
+        "eMuleBB/docs/REST-API-CONTRACT.md": b"contract\n",
+        "eMuleBB/docs/REST-API-OPENAPI.yaml": b"openapi\n",
+        "eMuleBB/docs/REST-API-PARITY-INVENTORY.md": b"parity\n",
     }
-    for relative_path in release.EMULE_RUNTIME_SCRIPT_PATHS:
-        entries[f"eMule/{relative_path}"] = b"#Requires -Version 5.1\n"
+    for relative_path in release.EMULEBB_RUNTIME_SCRIPT_PATHS:
+        entries[f"eMuleBB/{relative_path}"] = b"#Requires -Version 5.1\n"
     if include_skin_assets:
-        for relative_path in release.EMULE_SKIN_ASSET_PATHS:
-            entries[f"eMule/{relative_path}"] = b"skin-or-toolbar-asset\n"
+        for relative_path in release.EMULEBB_SKIN_ASSET_PATHS:
+            entries[f"eMuleBB/{relative_path}"] = b"skin-or-toolbar-asset\n"
     for name, payload in (language_payloads or {"de_DE.dll": _pe_payload(0x8664)}).items():
-        entries[f"eMule/lang/{name}"] = payload
+        entries[f"eMuleBB/lang/{name}"] = payload
     entries.update(extra_entries or {})
     path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(path, "w") as archive:
@@ -111,23 +111,11 @@ def _write_release_zip(
             archive.writestr(name, payload)
 
 
-def _amutorrent_script(*, data_dir: bool = True, space_check: bool = True, appdata: bool = False) -> bytes:
-    lines = ["#Requires -Version 5.1"]
-    if space_check:
-        lines.append('if ($PackageRoot -match "\\s") { throw "path contains spaces" }')
-    if data_dir:
-        lines.append("$env:AMUTORRENT_DATA_DIR = $DataRoot")
-    if appdata:
-        lines.append("$env:LOCALAPPDATA")
-    return ("\n".join(lines) + "\n").encode("utf-8")
-
-
-def _write_amutorrent_zip(path: Path, *, extra_entries: dict[str, bytes] | None = None, script_payload: bytes | None = None) -> None:
+def _write_amutorrent_zip(path: Path, *, extra_entries: dict[str, bytes] | None = None) -> None:
     entries = {
         "aMuTorrent/README.md": b"readme\n",
         "aMuTorrent/LICENSE-aMuTorrent.txt": b"license\n",
         "aMuTorrent/SBOM.spdx.json": b'{"spdxVersion":"SPDX-2.3"}\n',
-        "aMuTorrent/installer/windows/amutorrent.ps1": script_payload or _amutorrent_script(),
         "aMuTorrent/server/server.js": b"server\n",
         "aMuTorrent/server/package.json": b"{}\n",
         "aMuTorrent/server/package-lock.json": b"{}\n",
@@ -201,7 +189,7 @@ def test_package_build_disables_startup_profiling(
     app_root = tmp_path / "app"
     captured: dict[str, object] = {}
     session = SimpleNamespace(
-        layout=SimpleNamespace(toolset_override_variable="EMULE_TEST_TOOLSET"),
+        layout=SimpleNamespace(toolset_override_variable="EMULEBB_TEST_TOOLSET"),
         options=SimpleNamespace(configuration="Release", platform="x64"),
     )
 
@@ -264,7 +252,7 @@ def test_package_language_resources_rebuild_serializes_msbuild(
     language_solution.write_text("solution\n", encoding="utf-8")
     captured: dict[str, object] = {}
     session = SimpleNamespace(
-        layout=SimpleNamespace(toolset_override_variable="EMULE_TEST_TOOLSET"),
+        layout=SimpleNamespace(toolset_override_variable="EMULEBB_TEST_TOOLSET"),
         options=SimpleNamespace(configuration="Release", platform="x64"),
     )
 
@@ -328,7 +316,10 @@ def test_release_manifest_records_explicit_source_provenance(
         sbom_hash="sbom-sha",
         exe_hash="exe-sha",
         expected_language_dlls=("de_DE.dll", "fr_FR.dll"),
-        package_file_hashes={"eMule/emulebb.exe": "exe-entry-sha"},
+        package_file_hashes={"eMuleBB/emulebb.exe": "exe-entry-sha"},
+        bootstrapper_asset_path=release_root / "Bootstrap-eMuleBBSuite.ps1",
+        bootstrapper_hash_path=release_root / "Bootstrap-eMuleBBSuite.ps1.sha256",
+        bootstrapper_hash="bootstrapper-sha",
     )
 
     assert manifest["appVariant"] == "main"
@@ -342,14 +333,17 @@ def test_release_manifest_records_explicit_source_provenance(
     assert manifest["toolingCommit"] == "tools12"
     assert manifest["languageDllCount"] == 2
     assert manifest["languageDlls"] == ["de_DE.dll", "fr_FR.dll"]
-    assert manifest["packageFileSha256"] == {"eMule/emulebb.exe": "exe-entry-sha"}
+    assert manifest["packageFileSha256"] == {"eMuleBB/emulebb.exe": "exe-entry-sha"}
     assert manifest["sbomFormat"] == "SPDX-2.3 JSON"
     assert manifest["sbomPath"] == "emulebb-0.7.3-rc.1-x64.sbom.spdx.json"
     assert manifest["sbomSha256"] == "sbom-sha"
-    assert "eMule/SBOM.spdx.json" in manifest["includedPaths"]
-    assert "eMule/scripts" in manifest["includedPaths"]
-    assert "eMule/skins" in manifest["includedPaths"]
-    assert "eMule/webserver" not in manifest["includedPaths"]
+    assert manifest["bootstrapperAsset"] == "Bootstrap-eMuleBBSuite.ps1"
+    assert manifest["bootstrapperSha256"] == "bootstrapper-sha"
+    assert manifest["bootstrapperSha256Path"] == "Bootstrap-eMuleBBSuite.ps1.sha256"
+    assert "eMuleBB/SBOM.spdx.json" in manifest["includedPaths"]
+    assert "eMuleBB/scripts" in manifest["includedPaths"]
+    assert "eMuleBB/skins" in manifest["includedPaths"]
+    assert "eMuleBB/webserver" not in manifest["includedPaths"]
 
 
 def test_expected_language_dlls_uses_release_language_manifest(tmp_path: Path) -> None:
@@ -364,9 +358,29 @@ def test_expected_language_dlls_uses_release_language_manifest(tmp_path: Path) -
     assert release._expected_language_dlls(tooling_root) == ("de_DE.dll", "fr_FR.dll")
 
 
+def test_standalone_bootstrapper_asset_is_hashed_next_to_release(tmp_path: Path) -> None:
+    package_root = tmp_path / "staging" / "eMuleBB"
+    release_root = tmp_path / "release"
+    bootstrapper = package_root / "scripts" / "Bootstrap-eMuleBBSuite.ps1"
+    bootstrapper.parent.mkdir(parents=True)
+    bootstrapper.write_text("#Requires -Version 5.1\nWrite-Host 'bootstrap'\n", encoding="utf-8")
+    release_root.mkdir(parents=True)
+
+    asset_path, hash_path, digest = release._write_standalone_bootstrapper_asset(
+        package_root=package_root,
+        release_root=release_root,
+    )
+
+    assert asset_path == release_root / "Bootstrap-eMuleBBSuite.ps1"
+    assert hash_path == release_root / "Bootstrap-eMuleBBSuite.ps1.sha256"
+    assert asset_path.read_text(encoding="utf-8") == bootstrapper.read_text(encoding="utf-8")
+    assert digest == hashlib.sha256(asset_path.read_bytes()).hexdigest()
+    assert hash_path.read_text(encoding="ascii") == f"{digest}  Bootstrap-eMuleBBSuite.ps1\n"
+
+
 def test_spdx_sbom_describes_staged_package_files_without_self_reference(tmp_path: Path) -> None:
     release_root = tmp_path / "state" / "release" / "emulebb-v0.7.3-rc.1"
-    package_root = release_root / "staging" / "x64" / "eMule"
+    package_root = release_root / "staging" / "x64" / "eMuleBB"
     package_root.mkdir(parents=True)
     (package_root / "emulebb.exe").write_bytes(b"exe")
     (package_root / "SBOM.spdx.json").write_text("old\n", encoding="utf-8")
@@ -394,8 +408,8 @@ def test_spdx_sbom_describes_staged_package_files_without_self_reference(tmp_pat
     assert document["spdxVersion"] == "SPDX-2.3"
     assert document["documentDescribes"] == ["SPDXRef-Package"]
     assert document["packages"][0]["packageVerificationCode"]["packageVerificationCodeValue"]
-    assert "eMule/emulebb.exe" in file_names
-    assert "eMule/SBOM.spdx.json" not in file_names
+    assert "eMuleBB/emulebb.exe" in file_names
+    assert "eMuleBB/SBOM.spdx.json" not in file_names
     assert any(package["name"] == "component" for package in document["packages"])
     assert any(relationship["relationshipType"] == "DEPENDS_ON" for relationship in document["relationships"])
 
@@ -429,7 +443,7 @@ def test_release_package_contents_reject_wrong_architecture(tmp_path: Path) -> N
 
 def test_release_package_contents_reject_forbidden_artifacts(tmp_path: Path) -> None:
     zip_path = tmp_path / "package.zip"
-    _write_release_zip(zip_path, extra_entries={"eMule/build/emule.pdb": b"symbols"})
+    _write_release_zip(zip_path, extra_entries={"eMuleBB/build/emule.pdb": b"symbols"})
 
     with pytest.raises(RuntimeError, match="build/source artifacts"):
         release._assert_release_package_contents(zip_path, ("de_DE.dll",), "x64")
@@ -437,9 +451,17 @@ def test_release_package_contents_reject_forbidden_artifacts(tmp_path: Path) -> 
 
 def test_release_package_contents_reject_legacy_webserver_payload(tmp_path: Path) -> None:
     zip_path = tmp_path / "package.zip"
-    _write_release_zip(zip_path, extra_entries={"eMule/webserver/eMule.tmpl": b"template\n"})
+    _write_release_zip(zip_path, extra_entries={"eMuleBB/webserver/eMule.tmpl": b"template\n"})
 
     with pytest.raises(RuntimeError, match="legacy webserver payload"):
+        release._assert_release_package_contents(zip_path, ("de_DE.dll",), "x64")
+
+
+def test_release_package_contents_reject_retired_emule_root(tmp_path: Path) -> None:
+    zip_path = tmp_path / "package.zip"
+    _write_release_zip(zip_path, extra_entries={"eMule/emulebb.exe": _pe_payload(0x8664)})
+
+    with pytest.raises(RuntimeError, match="retired eMule root"):
         release._assert_release_package_contents(zip_path, ("de_DE.dll",), "x64")
 
 
@@ -447,7 +469,7 @@ def test_release_package_contents_reject_runtime_script_without_powershell_51_he
     zip_path = tmp_path / "package.zip"
     _write_release_zip(
         zip_path,
-        extra_entries={"eMule/scripts/register-prowlarr.ps1": b"#Requires -Version 7.6\n"},
+        extra_entries={"eMuleBB/scripts/register-prowlarr.ps1": b"#Requires -Version 7.6\n"},
     )
 
     with pytest.raises(RuntimeError, match="PowerShell 5.1 compatibility"):
@@ -465,19 +487,19 @@ def test_release_package_contents_require_skin_and_toolbar_assets(tmp_path: Path
 def test_release_skin_assets_are_name_paired_without_source_theme_names() -> None:
     skin_names = {
         Path(relative_path).name.replace(".eMuleSkin.ini", "")
-        for relative_path in release.EMULE_SKIN_ASSET_PATHS
+        for relative_path in release.EMULEBB_SKIN_ASSET_PATHS
         if relative_path.endswith(".eMuleSkin.ini")
     }
     toolbar_names = {
         Path(relative_path).name.replace(".eMuleToolbar.kad02.bmp", "")
-        for relative_path in release.EMULE_SKIN_ASSET_PATHS
+        for relative_path in release.EMULEBB_SKIN_ASSET_PATHS
         if relative_path.endswith(".eMuleToolbar.kad02.bmp")
     }
 
     assert skin_names == toolbar_names
     assert len(skin_names) == 8
     forbidden_terms = ("bor" + "land", "mat" + "rix")
-    assert not any(term in relative_path.lower() for term in forbidden_terms for relative_path in release.EMULE_SKIN_ASSET_PATHS)
+    assert not any(term in relative_path.lower() for term in forbidden_terms for relative_path in release.EMULEBB_SKIN_ASSET_PATHS)
 
 
 def test_release_skin_profiles_define_readable_semantic_colors() -> None:
@@ -531,10 +553,10 @@ def test_release_skin_profiles_define_readable_semantic_colors() -> None:
         "SearchResultsLvFg_Incomplete",
     }
 
-    assets_root = Path(release.__file__).parent / "release_assets" / "emule"
+    assets_root = Path(release.__file__).parent / "release_assets" / "emulebb"
     skin_paths = [
         assets_root / relative_path
-        for relative_path in release.EMULE_SKIN_ASSET_PATHS
+        for relative_path in release.EMULEBB_SKIN_ASSET_PATHS
         if relative_path.endswith(".eMuleSkin.ini")
     ]
 
@@ -562,14 +584,16 @@ def test_release_package_contents_accept_full_bundle_and_hash_entries(tmp_path: 
     release._assert_release_package_contents(zip_path, ("de_DE.dll",), "x64")
 
     hashes = release._zip_entry_hashes(zip_path)
-    assert hashes["eMule/README.md"] == hashlib.sha256(b"readme\n").hexdigest()
-    assert "eMule/THIRD-PARTY-NOTICES.txt" in hashes
-    assert "eMule/SBOM.spdx.json" in hashes
-    assert "eMule/scripts/register-prowlarr.ps1" in hashes
-    assert "eMule/skins/emulebb-slate.eMuleSkin.ini" in hashes
-    assert "eMule/skins/emulebb-slate.eMuleToolbar.kad02.bmp" in hashes
-    assert "eMule/skins/emulebb-retro-teal.eMuleSkin.ini" in hashes
-    assert "eMule/skins/emulebb-retro-teal.eMuleToolbar.kad02.bmp" in hashes
+    assert hashes["eMuleBB/README.md"] == hashlib.sha256(b"readme\n").hexdigest()
+    assert "eMuleBB/THIRD-PARTY-NOTICES.txt" in hashes
+    assert "eMuleBB/SBOM.spdx.json" in hashes
+    assert "eMuleBB/scripts/Bootstrap-eMuleBBSuite.ps1" in hashes
+    assert "eMuleBB/scripts/Install-eMuleBBSuite.ps1" in hashes
+    assert "eMuleBB/scripts/register-prowlarr.ps1" in hashes
+    assert "eMuleBB/skins/emulebb-slate.eMuleSkin.ini" in hashes
+    assert "eMuleBB/skins/emulebb-slate.eMuleToolbar.kad02.bmp" in hashes
+    assert "eMuleBB/skins/emulebb-retro-teal.eMuleSkin.ini" in hashes
+    assert "eMuleBB/skins/emulebb-retro-teal.eMuleToolbar.kad02.bmp" in hashes
 
 
 def test_amutorrent_manifest_records_runtime_policy_and_source_provenance(
@@ -584,6 +608,20 @@ def test_amutorrent_manifest_records_runtime_policy_and_source_provenance(
     zip_path = release_root / "emulebb-0.7.3-rc.1-amutorrent-arm64.zip"
     for path in (amutorrent_root, build_root, tests_root, tooling_root, release_root):
         path.mkdir(parents=True)
+    (amutorrent_root / "fork-delta.json").write_text(
+        json.dumps(
+            {
+                "upstream": {
+                    "url": "https://github.com/got3nks/amutorrent.git",
+                    "branch": "main",
+                    "baseCommit": "24b13e440d39c3c4dc9ed4516d59e304ec1e61f0",
+                    "baseVersion": "3.8.5",
+                }
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
     branches = {
         amutorrent_root: "main",
@@ -614,7 +652,7 @@ def test_amutorrent_manifest_records_runtime_policy_and_source_provenance(
         zip_hash="zip-sha",
         sbom_path=release_root / "emulebb-0.7.3-rc.1-amutorrent-arm64.sbom.spdx.json",
         sbom_hash="sbom-sha",
-        package_file_hashes={"aMuTorrent/installer/windows/amutorrent.ps1": "script-sha"},
+        package_file_hashes={"aMuTorrent/server/server.js": "server-sha"},
     )
 
     assert manifest["package"] == "aMuTorrent optional controller"
@@ -623,9 +661,16 @@ def test_amutorrent_manifest_records_runtime_policy_and_source_provenance(
     assert manifest["runtimePolicy"]["minimumPathNodeMajor"] == 24
     assert manifest["runtimePolicy"]["pinnedFallbackNodeVersion"] == "v24.15.0"
     assert manifest["runtimePolicy"]["pinnedFallbackNodeArchive"] == "node-v24.15.0-win-arm64.zip"
+    assert manifest["runtimePolicy"]["runnerOwner"] == "eMuleBB suite installer"
     assert manifest["runtimePolicy"]["localAppDataUsed"] is False
     assert manifest["runtimePolicy"]["spacesInInstallPathAllowed"] is False
-    assert manifest["packageFileSha256"] == {"aMuTorrent/installer/windows/amutorrent.ps1": "script-sha"}
+    assert manifest["upstreamBase"] == {
+        "url": "https://github.com/got3nks/amutorrent.git",
+        "branch": "main",
+        "baseCommit": "24b13e440d39c3c4dc9ed4516d59e304ec1e61f0",
+        "baseVersion": "3.8.5",
+    }
+    assert manifest["packageFileSha256"] == {"aMuTorrent/server/server.js": "server-sha"}
     assert manifest["sbomFormat"] == "SPDX-2.3 JSON"
     assert manifest["sbomPath"] == "emulebb-0.7.3-rc.1-amutorrent-arm64.sbom.spdx.json"
     assert manifest["sbomSha256"] == "sbom-sha"
@@ -640,7 +685,7 @@ def test_amutorrent_package_contents_accept_runtime_bundle(tmp_path: Path) -> No
 
     hashes = release._zip_entry_hashes(zip_path)
     assert hashes["aMuTorrent/README.md"] == hashlib.sha256(b"readme\n").hexdigest()
-    assert "aMuTorrent/installer/windows/amutorrent.ps1" in hashes
+    assert "aMuTorrent/installer/windows/amutorrent.ps1" not in hashes
     assert "aMuTorrent/SBOM.spdx.json" in hashes
 
 
@@ -658,27 +703,11 @@ def test_amutorrent_package_contents_reject_generated_state_and_source_maps(tmp_
         release._assert_amutorrent_package_contents(zip_path)
 
 
-def test_amutorrent_package_contents_require_package_local_data_script(tmp_path: Path) -> None:
+def test_amutorrent_package_contents_reject_standalone_installer_payload(tmp_path: Path) -> None:
     zip_path = tmp_path / "amutorrent.zip"
-    _write_amutorrent_zip(zip_path, script_payload=_amutorrent_script(data_dir=False))
+    _write_amutorrent_zip(zip_path, extra_entries={"aMuTorrent/installer/windows/amutorrent.ps1": b"#Requires -Version 5.1\n"})
 
-    with pytest.raises(RuntimeError, match="AMUTORRENT_DATA_DIR"):
-        release._assert_amutorrent_package_contents(zip_path)
-
-
-def test_amutorrent_package_contents_reject_appdata_defaults(tmp_path: Path) -> None:
-    zip_path = tmp_path / "amutorrent.zip"
-    _write_amutorrent_zip(zip_path, script_payload=_amutorrent_script(appdata=True))
-
-    with pytest.raises(RuntimeError, match="app data"):
-        release._assert_amutorrent_package_contents(zip_path)
-
-
-def test_amutorrent_package_contents_require_space_path_rejection(tmp_path: Path) -> None:
-    zip_path = tmp_path / "amutorrent.zip"
-    _write_amutorrent_zip(zip_path, script_payload=_amutorrent_script(space_check=False))
-
-    with pytest.raises(RuntimeError, match="spaces"):
+    with pytest.raises(RuntimeError, match="forbidden generated or source artifacts"):
         release._assert_amutorrent_package_contents(zip_path)
 
 

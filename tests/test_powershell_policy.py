@@ -31,14 +31,14 @@ def workspace_root() -> Path:
 def test_basic_hygiene_accepts_emulebb_runtime_script_header(workspace_root: Path, tmp_path: Path) -> None:
     policy_guards = _load_tooling_module(workspace_root, "policy_guards_under_test", "ci/policy_guards.py")
     repo_root = tmp_path / "emulebb-build"
-    script_path = repo_root / "emule_workspace" / "release_assets" / "emule" / "scripts" / "register-prowlarr.ps1"
+    script_path = repo_root / "emule_workspace" / "release_assets" / "emulebb" / "scripts" / "register-prowlarr.ps1"
     script_path.parent.mkdir(parents=True)
     script_path.write_text("#Requires -Version 5.1\n", encoding="utf-8")
 
     issue = policy_guards.test_powershell_version_header(
         repo_root,
         "emulebb-build",
-        "emule_workspace/release_assets/emule/scripts/register-prowlarr.ps1",
+        "emule_workspace/release_assets/emulebb/scripts/register-prowlarr.ps1",
         script_path,
     )
 
@@ -48,14 +48,14 @@ def test_basic_hygiene_accepts_emulebb_runtime_script_header(workspace_root: Pat
 def test_basic_hygiene_rejects_bad_emulebb_runtime_script_header(workspace_root: Path, tmp_path: Path) -> None:
     policy_guards = _load_tooling_module(workspace_root, "policy_guards_under_test_bad_header", "ci/policy_guards.py")
     repo_root = tmp_path / "emulebb-build"
-    script_path = repo_root / "emule_workspace" / "release_assets" / "emule" / "scripts" / "register-prowlarr.ps1"
+    script_path = repo_root / "emule_workspace" / "release_assets" / "emulebb" / "scripts" / "register-prowlarr.ps1"
     script_path.parent.mkdir(parents=True)
     script_path.write_text("#Requires -Version 7.6\n", encoding="utf-8")
 
     issue = policy_guards.test_powershell_version_header(
         repo_root,
         "emulebb-build",
-        "emule_workspace/release_assets/emule/scripts/register-prowlarr.ps1",
+        "emule_workspace/release_assets/emulebb/scripts/register-prowlarr.ps1",
         script_path,
     )
 
@@ -65,14 +65,14 @@ def test_basic_hygiene_rejects_bad_emulebb_runtime_script_header(workspace_root:
 def test_basic_hygiene_keeps_emulebb_script_exception_to_direct_children(workspace_root: Path, tmp_path: Path) -> None:
     policy_guards = _load_tooling_module(workspace_root, "policy_guards_under_test_nested", "ci/policy_guards.py")
     repo_root = tmp_path / "emulebb-build"
-    script_path = repo_root / "emule_workspace" / "release_assets" / "emule" / "scripts" / "nested" / "tool.ps1"
+    script_path = repo_root / "emule_workspace" / "release_assets" / "emulebb" / "scripts" / "nested" / "tool.ps1"
     script_path.parent.mkdir(parents=True)
     script_path.write_text("#Requires -Version 5.1\n", encoding="utf-8")
 
     issue = policy_guards.test_powershell_version_header(
         repo_root,
         "emulebb-build",
-        "emule_workspace/release_assets/emule/scripts/nested/tool.ps1",
+        "emule_workspace/release_assets/emulebb/scripts/nested/tool.ps1",
         script_path,
     )
 
@@ -86,13 +86,13 @@ def test_workspace_policy_accepts_allowed_emulebb_runtime_script(
 ) -> None:
     policy = _load_tooling_module(workspace_root, "check_workspace_policy_under_test", "ci/check-workspace-policy.py")
     build_root = tmp_path / "repos" / "emulebb-build"
-    script_path = build_root / "emule_workspace" / "release_assets" / "emule" / "scripts" / "register-prowlarr.ps1"
+    script_path = build_root / "emule_workspace" / "release_assets" / "emulebb" / "scripts" / "register-prowlarr.ps1"
     script_path.parent.mkdir(parents=True)
     script_path.write_text("#Requires -Version 5.1\n", encoding="utf-8")
 
     def fake_tracked_powershell_paths(repo_root: Path) -> tuple[str, ...]:
         if repo_root == build_root.resolve():
-            return ("emule_workspace/release_assets/emule/scripts/register-prowlarr.ps1",)
+            return ("emule_workspace/release_assets/emulebb/scripts/register-prowlarr.ps1",)
         return ()
 
     monkeypatch.setattr(policy, "tracked_powershell_paths", fake_tracked_powershell_paths)
@@ -107,13 +107,13 @@ def test_workspace_policy_rejects_emulebb_runtime_script_without_required_header
 ) -> None:
     policy = _load_tooling_module(workspace_root, "check_workspace_policy_under_test_bad_header", "ci/check-workspace-policy.py")
     build_root = tmp_path / "repos" / "emulebb-build"
-    script_path = build_root / "emule_workspace" / "release_assets" / "emule" / "scripts" / "register-prowlarr.ps1"
+    script_path = build_root / "emule_workspace" / "release_assets" / "emulebb" / "scripts" / "register-prowlarr.ps1"
     script_path.parent.mkdir(parents=True)
     script_path.write_text("#Requires -Version 7.6\n", encoding="utf-8")
 
     def fake_tracked_powershell_paths(repo_root: Path) -> tuple[str, ...]:
         if repo_root == build_root.resolve():
-            return ("emule_workspace/release_assets/emule/scripts/register-prowlarr.ps1",)
+            return ("emule_workspace/release_assets/emulebb/scripts/register-prowlarr.ps1",)
         return ()
 
     monkeypatch.setattr(policy, "tracked_powershell_paths", fake_tracked_powershell_paths)
@@ -129,13 +129,13 @@ def test_workspace_policy_rejects_nested_emulebb_runtime_script(
 ) -> None:
     policy = _load_tooling_module(workspace_root, "check_workspace_policy_under_test_nested", "ci/check-workspace-policy.py")
     build_root = tmp_path / "repos" / "emulebb-build"
-    script_path = build_root / "emule_workspace" / "release_assets" / "emule" / "scripts" / "nested" / "tool.ps1"
+    script_path = build_root / "emule_workspace" / "release_assets" / "emulebb" / "scripts" / "nested" / "tool.ps1"
     script_path.parent.mkdir(parents=True)
     script_path.write_text("#Requires -Version 5.1\n", encoding="utf-8")
 
     def fake_tracked_powershell_paths(repo_root: Path) -> tuple[str, ...]:
         if repo_root == build_root.resolve():
-            return ("emule_workspace/release_assets/emule/scripts/nested/tool.ps1",)
+            return ("emule_workspace/release_assets/emulebb/scripts/nested/tool.ps1",)
         return ()
 
     monkeypatch.setattr(policy, "tracked_powershell_paths", fake_tracked_powershell_paths)
@@ -162,7 +162,7 @@ def test_runtime_scripts_set_provider_field_adds_missing_value_property(
         / "emulebb-build"
         / "emule_workspace"
         / "release_assets"
-        / "emule"
+        / "emulebb"
         / "scripts"
         / script_name
     )
@@ -231,7 +231,7 @@ def test_runtime_scripts_accept_register_unregister_action_aliases(
         / "emulebb-build"
         / "emule_workspace"
         / "release_assets"
-        / "emule"
+        / "emulebb"
         / "scripts"
         / script_name
     )
@@ -281,7 +281,7 @@ def test_register_prowlarr_unregister_deletes_named_indexer(
         / "emulebb-build"
         / "emule_workspace"
         / "release_assets"
-        / "emule"
+        / "emulebb"
         / "scripts"
         / "register-prowlarr.ps1"
     )
@@ -341,7 +341,7 @@ def test_register_prowlarr_save_indexer_returns_only_saved_provider(
         / "emulebb-build"
         / "emule_workspace"
         / "release_assets"
-        / "emule"
+        / "emulebb"
         / "scripts"
         / "register-prowlarr.ps1"
     )
@@ -426,7 +426,7 @@ def test_register_arr_stack_unregister_deletes_named_download_client(
         / "emulebb-build"
         / "emule_workspace"
         / "release_assets"
-        / "emule"
+        / "emulebb"
         / "scripts"
         / "register-arr-stack.ps1"
     )
@@ -492,7 +492,7 @@ def test_register_arr_stack_save_client_returns_only_saved_provider(
         / "emulebb-build"
         / "emule_workspace"
         / "release_assets"
-        / "emule"
+        / "emulebb"
         / "scripts"
         / "register-arr-stack.ps1"
     )
@@ -580,7 +580,7 @@ def test_register_arr_stack_save_prowlarr_application_adds_missing_root_name(
         / "emulebb-build"
         / "emule_workspace"
         / "release_assets"
-        / "emule"
+        / "emulebb"
         / "scripts"
         / "register-arr-stack.ps1"
     )
@@ -661,7 +661,7 @@ def test_register_arr_stack_waits_for_prowlarr_sync_completion(
         / "emulebb-build"
         / "emule_workspace"
         / "release_assets"
-        / "emule"
+        / "emulebb"
         / "scripts"
         / "register-arr-stack.ps1"
     )
@@ -716,7 +716,7 @@ def test_register_arr_stack_retry_wrapper_does_not_shadow_selected_action(
         / "emulebb-build"
         / "emule_workspace"
         / "release_assets"
-        / "emule"
+        / "emulebb"
         / "scripts"
         / "register-arr-stack.ps1"
     )
@@ -764,7 +764,7 @@ def test_register_arr_stack_normalizes_quoted_http_urls(
         / "emulebb-build"
         / "emule_workspace"
         / "release_assets"
-        / "emule"
+        / "emulebb"
         / "scripts"
         / "register-arr-stack.ps1"
     )

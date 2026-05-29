@@ -52,7 +52,9 @@ RELEASE_VERSION_PATTERN = re.compile(
     r"\d+\.\d+\.\d+(?:-(?:(?:rc|beta)\.\d+|nightly\.\d{8}\.[0-9a-f]{7,40}))?"
 )
 RELEASE_VERSION_FORMAT = "MAJOR.MINOR.PATCH[-rc.N|-beta.N|-nightly.YYYYMMDD.SHA]"
-EMULE_RUNTIME_SCRIPT_PATHS = (
+EMULEBB_RUNTIME_SCRIPT_PATHS = (
+    "scripts/Bootstrap-eMuleBBSuite.ps1",
+    "scripts/Install-eMuleBBSuite.ps1",
     "scripts/repair-firewall.ps1",
     "scripts/defender-exclusions.ps1",
     "scripts/enable-long-paths.ps1",
@@ -60,7 +62,7 @@ EMULE_RUNTIME_SCRIPT_PATHS = (
     "scripts/register-arr-stack.ps1",
     "scripts/register-amutorrent.ps1",
 )
-EMULE_SKIN_ASSET_PATHS = (
+EMULEBB_SKIN_ASSET_PATHS = (
     "skins/emulebb-slate.eMuleSkin.ini",
     "skins/emulebb-graphite.eMuleSkin.ini",
     "skins/emulebb-midnight.eMuleSkin.ini",
@@ -78,7 +80,9 @@ EMULE_SKIN_ASSET_PATHS = (
     "skins/emulebb-retro-teal.eMuleToolbar.kad02.bmp",
     "skins/emulebb-phosphor-green.eMuleToolbar.kad02.bmp",
 )
-EMULE_RUNTIME_ASSET_PATHS = (*EMULE_RUNTIME_SCRIPT_PATHS, *EMULE_SKIN_ASSET_PATHS)
+EMULEBB_RUNTIME_ASSET_PATHS = (*EMULEBB_RUNTIME_SCRIPT_PATHS, *EMULEBB_SKIN_ASSET_PATHS)
+EMULEBB_PACKAGE_ROOT_NAME = "eMuleBB"
+EMULEBB_RELEASE_ASSET_ROOT_NAME = "emulebb"
 
 
 def create_amutorrent_package(
@@ -214,7 +218,7 @@ def create_release_package(
     _assert_startup_profiling_not_compiled(exe_path)
 
     staging_root = release_root / "staging" / asset_arch
-    package_root = staging_root / "eMule"
+    package_root = staging_root / EMULEBB_PACKAGE_ROOT_NAME
     zip_path = release_root / f"emulebb-{package_options.release_version}-{asset_arch}.zip"
     manifest_path = release_root / f"emulebb-{package_options.release_version}-{asset_arch}.manifest.json"
     sbom_path = release_root / f"emulebb-{package_options.release_version}-{asset_arch}.sbom.spdx.json"
@@ -257,6 +261,10 @@ def create_release_package(
         release_root=release_root,
         asset_name=zip_path.name,
     )
+    bootstrapper_asset_path, bootstrapper_hash_path, bootstrapper_hash = _write_standalone_bootstrapper_asset(
+        package_root=package_root,
+        release_root=release_root,
+    )
 
     if zip_path.exists():
         zip_path.unlink()
@@ -283,6 +291,9 @@ def create_release_package(
         exe_hash=exe_hash,
         expected_language_dlls=expected_language_dlls,
         package_file_hashes=package_file_hashes,
+        bootstrapper_asset_path=bootstrapper_asset_path,
+        bootstrapper_hash_path=bootstrapper_hash_path,
+        bootstrapper_hash=bootstrapper_hash,
     )
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8", newline="\n")
     print(f"Release package: {zip_path}")
@@ -306,6 +317,9 @@ def _build_release_manifest(
     exe_hash: str,
     expected_language_dlls: tuple[str, ...],
     package_file_hashes: dict[str, str],
+    bootstrapper_asset_path: Path,
+    bootstrapper_hash_path: Path,
+    bootstrapper_hash: str,
 ) -> dict[str, object]:
     """Builds the provenance manifest written next to one release asset."""
 
@@ -322,6 +336,9 @@ def _build_release_manifest(
         "sbomFormat": "SPDX-2.3 JSON",
         "sbomPath": sbom_path.relative_to(release_root).as_posix(),
         "sbomSha256": sbom_hash,
+        "bootstrapperAsset": bootstrapper_asset_path.relative_to(release_root).as_posix(),
+        "bootstrapperSha256": bootstrapper_hash,
+        "bootstrapperSha256Path": bootstrapper_hash_path.relative_to(release_root).as_posix(),
         "emulebbExeSha256": exe_hash,
         "languageDllCount": len(expected_language_dlls),
         "languageDlls": list(expected_language_dlls),
@@ -337,19 +354,19 @@ def _build_release_manifest(
         "toolingCommit": repo_head(layout.tooling_repo_root),
         "generatedAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "includedPaths": [
-            f"eMule/{APP_EXE_NAME}",
-            "eMule/lang",
-            "eMule/README.md",
-            "eMule/RELEASE-NOTES.md",
-            "eMule/LICENSE-NOTICE.txt",
-            "eMule/GPL-2.0-or-later.txt",
-            "eMule/THIRD-PARTY-NOTICES.txt",
-            "eMule/SBOM.spdx.json",
-            "eMule/scripts",
-            "eMule/skins",
-            "eMule/docs/REST-API-CONTRACT.md",
-            "eMule/docs/REST-API-OPENAPI.yaml",
-            "eMule/docs/REST-API-PARITY-INVENTORY.md",
+            f"{EMULEBB_PACKAGE_ROOT_NAME}/{APP_EXE_NAME}",
+            f"{EMULEBB_PACKAGE_ROOT_NAME}/lang",
+            f"{EMULEBB_PACKAGE_ROOT_NAME}/README.md",
+            f"{EMULEBB_PACKAGE_ROOT_NAME}/RELEASE-NOTES.md",
+            f"{EMULEBB_PACKAGE_ROOT_NAME}/LICENSE-NOTICE.txt",
+            f"{EMULEBB_PACKAGE_ROOT_NAME}/GPL-2.0-or-later.txt",
+            f"{EMULEBB_PACKAGE_ROOT_NAME}/THIRD-PARTY-NOTICES.txt",
+            f"{EMULEBB_PACKAGE_ROOT_NAME}/SBOM.spdx.json",
+            f"{EMULEBB_PACKAGE_ROOT_NAME}/scripts",
+            f"{EMULEBB_PACKAGE_ROOT_NAME}/skins",
+            f"{EMULEBB_PACKAGE_ROOT_NAME}/docs/REST-API-CONTRACT.md",
+            f"{EMULEBB_PACKAGE_ROOT_NAME}/docs/REST-API-OPENAPI.yaml",
+            f"{EMULEBB_PACKAGE_ROOT_NAME}/docs/REST-API-PARITY-INVENTORY.md",
         ],
     }
 
@@ -370,6 +387,7 @@ def _build_amutorrent_manifest(
     """Builds the provenance manifest for one optional aMuTorrent asset."""
 
     node_archive_name, node_archive_sha256 = AMUTORRENT_NODE_ARCHIVES[workspace_options.platform]
+    upstream_base = _amutorrent_upstream_base(amutorrent_root)
     return {
         "product": "eMule broadband edition",
         "compactName": "eMuleBB",
@@ -390,14 +408,16 @@ def _build_amutorrent_manifest(
             "pinnedFallbackNodeVersion": AMUTORRENT_NODE_VERSION,
             "pinnedFallbackNodeArchive": node_archive_name,
             "pinnedFallbackNodeArchiveSha256": node_archive_sha256,
-            "pathPm2Allowed": True,
-            "packageLocalPm2Allowed": True,
+            "runnerOwner": "eMuleBB suite installer",
+            "pathPm2Allowed": False,
+            "packageLocalPm2Allowed": False,
             "packageLocalDataRoot": "aMuTorrent/data",
             "packageLocalLogRoot": "aMuTorrent/logs",
             "packageLocalRuntimeRoot": "aMuTorrent/runtime",
             "localAppDataUsed": False,
             "spacesInInstallPathAllowed": False,
         },
+        "upstreamBase": upstream_base,
         "amutorrentBranch": repo_branch(amutorrent_root),
         "amutorrentCommit": repo_head(amutorrent_root),
         "buildBranch": repo_branch(layout.build_repo_root),
@@ -411,12 +431,29 @@ def _build_amutorrent_manifest(
             "aMuTorrent/server",
             "aMuTorrent/server/node_modules",
             "aMuTorrent/static",
-            "aMuTorrent/installer/windows/amutorrent.ps1",
             "aMuTorrent/README.md",
             "aMuTorrent/LICENSE-aMuTorrent.txt",
             "aMuTorrent/SBOM.spdx.json",
         ],
     }
+
+
+def _amutorrent_upstream_base(amutorrent_root: Path) -> dict[str, str]:
+    """Reads the fork manifest's recorded upstream base for package provenance."""
+
+    manifest_path = amutorrent_root / "fork-delta.json"
+    if not manifest_path.is_file():
+        return {}
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    upstream = payload.get("upstream")
+    if not isinstance(upstream, dict):
+        return {}
+    result: dict[str, str] = {}
+    for key in ("url", "branch", "baseCommit", "baseVersion"):
+        value = upstream.get(key)
+        if isinstance(value, str) and value:
+            result[key] = value
+    return result
 
 
 def _write_release_sbom(
@@ -467,7 +504,6 @@ def _write_amutorrent_sbom(
 ) -> None:
     """Writes a package-local SPDX SBOM for the optional aMuTorrent asset."""
 
-    node_archive_name, node_archive_sha256 = AMUTORRENT_NODE_ARCHIVES[workspace_options.platform]
     sbom_path = package_root / "SBOM.spdx.json"
     _assert_path_under_root(sbom_path, package_root, "aMuTorrent package SBOM")
     components = [
@@ -475,13 +511,6 @@ def _write_amutorrent_sbom(
         _repo_spdx_package("eMule build orchestration", layout.build_repo_root),
         _repo_spdx_package("eMule build tests", layout.tests_repo_root),
         _repo_spdx_package("eMule tooling docs", layout.tooling_repo_root),
-        _component_spdx_package(
-            name=f"Node.js runtime fallback {AMUTORRENT_NODE_VERSION}",
-            declared_license="MIT",
-            version=AMUTORRENT_NODE_VERSION,
-            download_location=f"https://nodejs.org/dist/{AMUTORRENT_NODE_VERSION}/{node_archive_name}",
-            checksums=[{"algorithm": "SHA256", "checksumValue": node_archive_sha256}],
-        ),
     ]
     document = _build_spdx_sbom(
         name=f"eMuleBB aMuTorrent {package_options.release_version} {workspace_options.platform} package",
@@ -851,21 +880,17 @@ def _build_amutorrent_webapp(amutorrent_root: Path, clean: bool) -> None:
 
 
 def _copy_amutorrent_runtime(amutorrent_root: Path, package_root: Path) -> None:
-    """Copies the aMuTorrent runtime payload and owned installer asset."""
+    """Copies the aMuTorrent runtime payload."""
 
     server_root = amutorrent_root / "server"
     static_root = amutorrent_root / "static"
-    installer_script = amutorrent_root / "installer" / "windows" / "amutorrent.ps1"
     if not (server_root / "node_modules").is_dir():
         raise RuntimeError(f"Cannot package missing aMuTorrent production node_modules: {server_root / 'node_modules'}")
     if not (static_root / "dist" / "app.bundle.js").is_file():
         raise RuntimeError(f"Cannot package missing built aMuTorrent frontend bundle: {static_root / 'dist' / 'app.bundle.js'}")
-    if not installer_script.is_file():
-        raise RuntimeError(f"Cannot package missing aMuTorrent Windows setup script: {installer_script}")
 
     _copy_tree_filtered(server_root, package_root / "server", _exclude_amutorrent_server_runtime)
     _copy_tree_filtered(static_root, package_root / "static", _exclude_amutorrent_static_runtime)
-    _copy_package_file(installer_script, package_root, Path("installer/windows/amutorrent.ps1"))
 
 
 def _exclude_amutorrent_server_runtime(relative_path: Path, source_path: Path) -> bool:
@@ -938,9 +963,25 @@ def _copy_package_file(source_path: Path, package_root: Path, relative_destinati
 def _copy_emule_runtime_assets(build_repo_root: Path, package_root: Path) -> None:
     """Copies package-owned eMuleBB runtime assets."""
 
-    source_root = build_repo_root / "emule_workspace" / "release_assets" / "emule"
-    for relative_path in EMULE_RUNTIME_ASSET_PATHS:
+    source_root = build_repo_root / "emule_workspace" / "release_assets" / EMULEBB_RELEASE_ASSET_ROOT_NAME
+    for relative_path in EMULEBB_RUNTIME_ASSET_PATHS:
         _copy_package_file(source_root / relative_path, package_root, Path(relative_path))
+
+
+def _write_standalone_bootstrapper_asset(*, package_root: Path, release_root: Path) -> tuple[Path, Path, str]:
+    """Copies the web bootstrapper next to the ZIP so public setup does not depend on a branch."""
+
+    source_path = package_root / "scripts" / "Bootstrap-eMuleBBSuite.ps1"
+    if not source_path.is_file():
+        raise RuntimeError(f"Cannot publish missing suite bootstrapper: {source_path}")
+    asset_path = release_root / "Bootstrap-eMuleBBSuite.ps1"
+    hash_path = release_root / "Bootstrap-eMuleBBSuite.ps1.sha256"
+    _assert_path_under_root(asset_path, release_root, "suite bootstrapper asset")
+    _assert_path_under_root(hash_path, release_root, "suite bootstrapper hash")
+    shutil.copy2(source_path, asset_path)
+    digest = _sha256(asset_path)
+    hash_path.write_text(f"{digest}  {asset_path.name}\n", encoding="ascii", newline="\n")
+    return asset_path, hash_path, digest
 
 
 def _copy_directory_contents(source_path: Path, destination_path: Path) -> None:
@@ -1019,7 +1060,7 @@ def _write_package_release_notes(package_root: Path, release_version: str) -> No
             (
                 "# Release Notes",
                 "",
-                f"eMule broadband edition {release_version} is the first public beta line",
+                f"eMule broadband edition {release_version} is the first public release-candidate line",
                 "for eMuleBB.",
                 "",
                 "- Preserves stock eD2K/Kad protocol compatibility.",
@@ -1121,25 +1162,19 @@ def _write_amutorrent_readme(package_root: Path, release_version: str, platform:
                 f"eMule broadband edition package version: {release_version}",
                 f"Architecture: {asset_arch}",
                 "",
-                "Extract this folder to a path without spaces, then run the Windows",
-                "PowerShell setup runner from the package root:",
+                "This ZIP is a controller runtime payload. Use the eMuleBB suite",
+                "installer from the main app package to create start/stop scripts,",
+                "download Node when needed, and wire package-local runtime state.",
                 "",
-                "```powershell",
-                "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\installer\\windows\\amutorrent.ps1 Doctor",
-                "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\installer\\windows\\amutorrent.ps1 Start",
-                "```",
-                "",
-                "The runner uses Node 24 or newer from PATH when available. Otherwise it",
-                f"downloads the pinned {AMUTORRENT_NODE_VERSION} Windows runtime into `runtime\\node`.",
+                "The suite installer uses Node 24 or newer from PATH when available.",
+                f"Otherwise it downloads the pinned {AMUTORRENT_NODE_VERSION} Windows runtime",
+                "under the suite install root.",
                 "`SBOM.spdx.json` records the packaged controller files and runtime",
                 "components in SPDX 2.3 JSON format.",
-                "Persistent mode is optional and uses PM2 only when PM2 is already on PATH",
-                "or after you explicitly run the `Install-Pm2` command.",
                 "",
-                "Runtime state is package-local:",
-                "- `data\\` stores aMuTorrent configuration and databases through `AMUTORRENT_DATA_DIR`.",
-                "- `logs\\` is reserved for package-local logs.",
-                "- `runtime\\` stores downloaded Node, package-local PM2, and PM2 state.",
+                "Runtime state is provided by the suite installer through",
+                "`AMUTORRENT_DATA_DIR`; this package does not write Windows AppData",
+                "defaults and does not include a standalone installer.",
                 "",
                 "This package is a portable multi-client aMuTorrent controller. It keeps",
                 "runtime defaults under the package root.",
@@ -1162,39 +1197,43 @@ def _assert_release_package_contents(zip_path: Path, expected_language_dlls: tup
     with zipfile.ZipFile(zip_path, "r") as archive:
         entry_names = [name.replace("\\", "/") for name in archive.namelist()]
         entry_set = set(entry_names)
+        stale_root_entries = [name for name in entry_names if name.startswith("eMule/")]
+        if stale_root_entries:
+            sample = "\n".join(stale_root_entries[:20])
+            raise RuntimeError(f"Release package contains retired eMule root entries; use {EMULEBB_PACKAGE_ROOT_NAME}/:\n{sample}")
         required_entries = (
-            f"eMule/{APP_EXE_NAME}",
-            "eMule/README.md",
-            "eMule/RELEASE-NOTES.md",
-            "eMule/LICENSE-NOTICE.txt",
-            "eMule/GPL-2.0-or-later.txt",
-            "eMule/THIRD-PARTY-NOTICES.txt",
-            "eMule/SBOM.spdx.json",
-            "eMule/docs/REST-API-CONTRACT.md",
-            "eMule/docs/REST-API-OPENAPI.yaml",
-            "eMule/docs/REST-API-PARITY-INVENTORY.md",
-            *(f"eMule/{relative_path}" for relative_path in EMULE_RUNTIME_ASSET_PATHS),
+            f"{EMULEBB_PACKAGE_ROOT_NAME}/{APP_EXE_NAME}",
+            f"{EMULEBB_PACKAGE_ROOT_NAME}/README.md",
+            f"{EMULEBB_PACKAGE_ROOT_NAME}/RELEASE-NOTES.md",
+            f"{EMULEBB_PACKAGE_ROOT_NAME}/LICENSE-NOTICE.txt",
+            f"{EMULEBB_PACKAGE_ROOT_NAME}/GPL-2.0-or-later.txt",
+            f"{EMULEBB_PACKAGE_ROOT_NAME}/THIRD-PARTY-NOTICES.txt",
+            f"{EMULEBB_PACKAGE_ROOT_NAME}/SBOM.spdx.json",
+            f"{EMULEBB_PACKAGE_ROOT_NAME}/docs/REST-API-CONTRACT.md",
+            f"{EMULEBB_PACKAGE_ROOT_NAME}/docs/REST-API-OPENAPI.yaml",
+            f"{EMULEBB_PACKAGE_ROOT_NAME}/docs/REST-API-PARITY-INVENTORY.md",
+            *(f"{EMULEBB_PACKAGE_ROOT_NAME}/{relative_path}" for relative_path in EMULEBB_RUNTIME_ASSET_PATHS),
         )
         for required_entry in required_entries:
             if required_entry not in entry_set:
                 raise RuntimeError(f"Release package is missing required entry '{required_entry}': {zip_path}")
-        for relative_path in EMULE_RUNTIME_SCRIPT_PATHS:
-            entry_name = f"eMule/{relative_path}"
+        for relative_path in EMULEBB_RUNTIME_SCRIPT_PATHS:
+            entry_name = f"{EMULEBB_PACKAGE_ROOT_NAME}/{relative_path}"
             script = archive.read(entry_name).decode("utf-8-sig")
             first_non_empty = next((line.strip() for line in script.splitlines() if line.strip()), "")
             if first_non_empty != "#Requires -Version 5.1":
                 raise RuntimeError(f"Release package script '{entry_name}' must declare Windows PowerShell 5.1 compatibility.")
-        language_dlls = sorted(name for name in entry_names if re.fullmatch(r"eMule/lang/[^/]+\.dll", name))
-        expected_language_entries = tuple(f"eMule/lang/{dll}" for dll in expected_language_dlls)
+        language_dlls = sorted(name for name in entry_names if re.fullmatch(rf"{EMULEBB_PACKAGE_ROOT_NAME}/lang/[^/]+\.dll", name))
+        expected_language_entries = tuple(f"{EMULEBB_PACKAGE_ROOT_NAME}/lang/{dll}" for dll in expected_language_dlls)
         missing_language_entries = [name for name in expected_language_entries if name not in entry_set]
         extra_language_entries = [name for name in language_dlls if name not in expected_language_entries]
         if missing_language_entries:
             raise RuntimeError("Release package is missing language DLLs:\n" + "\n".join(missing_language_entries))
         if extra_language_entries:
             raise RuntimeError("Release package contains unexpected language DLLs:\n" + "\n".join(extra_language_entries))
-        for entry_name in (f"eMule/{APP_EXE_NAME}", *language_dlls):
+        for entry_name in (f"{EMULEBB_PACKAGE_ROOT_NAME}/{APP_EXE_NAME}", *language_dlls):
             _assert_pe_machine_bytes(archive.read(entry_name), platform, entry_name)
-        webserver_files = [name for name in entry_names if re.fullmatch(r"eMule/webserver/.+[^/]", name)]
+        webserver_files = [name for name in entry_names if re.fullmatch(rf"{EMULEBB_PACKAGE_ROOT_NAME}/webserver/.+[^/]", name)]
         if webserver_files:
             raise RuntimeError(
                 "Release package contains legacy webserver payload that is not shipped in RC assets:\n"
@@ -1222,7 +1261,6 @@ def _assert_amutorrent_package_contents(zip_path: Path) -> None:
             "aMuTorrent/README.md",
             "aMuTorrent/LICENSE-aMuTorrent.txt",
             "aMuTorrent/SBOM.spdx.json",
-            "aMuTorrent/installer/windows/amutorrent.ps1",
             "aMuTorrent/server/server.js",
             "aMuTorrent/server/package.json",
             "aMuTorrent/server/package-lock.json",
@@ -1243,6 +1281,7 @@ def _assert_amutorrent_package_contents(zip_path: Path) -> None:
             or name.startswith("aMuTorrent/data/")
             or name.startswith("aMuTorrent/logs/")
             or name.startswith("aMuTorrent/runtime/")
+            or name.startswith("aMuTorrent/installer/")
             or name.startswith("aMuTorrent/node_modules/")
             or name.startswith("aMuTorrent/static/components/")
             or name.startswith("aMuTorrent/static/contexts/")
@@ -1262,16 +1301,6 @@ def _assert_amutorrent_package_contents(zip_path: Path) -> None:
         if forbidden_entries:
             sample = "\n".join(forbidden_entries[:20])
             raise RuntimeError(f"aMuTorrent package contains forbidden generated or source artifacts:\n{sample}")
-
-        script = archive.read("aMuTorrent/installer/windows/amutorrent.ps1").decode("utf-8")
-        if "#Requires -Version 5.1" not in script:
-            raise RuntimeError("aMuTorrent package script must declare Windows PowerShell 5.1 compatibility.")
-        if "LOCALAPPDATA" in script.upper() or "APPDATA" in script.upper():
-            raise RuntimeError("aMuTorrent package script must not use Windows app data defaults.")
-        if "$env:AMUTORRENT_DATA_DIR = $DataRoot" not in script:
-            raise RuntimeError("aMuTorrent package script does not set AMUTORRENT_DATA_DIR to package-local data.")
-        if "PackageRoot -match \"\\s\"" not in script:
-            raise RuntimeError("aMuTorrent package script does not reject install paths containing spaces.")
     print(f"aMuTorrent package content check: {zip_path} ({len(entry_names)} entries)")
 
 

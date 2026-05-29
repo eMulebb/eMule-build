@@ -14,7 +14,7 @@ from typing import Any
 from .build import APP_EXE_NAME
 from .config import AmutorrentPackageOptions, LocalPackageInstallOptions, ReleasePackageOptions, WorkspaceOptions
 from .layout import WorkspaceLayout
-from .release import create_amutorrent_package, create_release_package
+from .release import EMULEBB_PACKAGE_ROOT_NAME, create_amutorrent_package, create_release_package
 
 LIVE_WIRE_SCHEMA = "emulebb-build-tests.live-wire-inputs.v1"
 LEGACY_LIVE_WIRE_SCHEMAS = ("emule-build-tests.live-wire-inputs.v1",)
@@ -256,7 +256,7 @@ def deploy_local_install(
         amutorrent_stage = staging_root / "amutorrent"
         _extract_zip_safe(artifacts.emule_zip, emule_stage)
         _extract_zip_safe(artifacts.amutorrent_zip, amutorrent_stage)
-        _replace_emule_tree(emule_stage / "eMule", target_root / "eMule", target_root)
+        _replace_emule_tree(emule_stage / EMULEBB_PACKAGE_ROOT_NAME, target_root / EMULEBB_PACKAGE_ROOT_NAME, target_root)
         _replace_amutorrent_tree(amutorrent_stage / "aMuTorrent", target_root / "aMuTorrent", target_root)
     finally:
         if staging_root.exists():
@@ -268,7 +268,7 @@ def deploy_local_install(
     scripts_dir = target_root / "scripts"
     for path in (symbols_dir, manifests_dir, diagnostics_dir, scripts_dir):
         path.mkdir(parents=True, exist_ok=True)
-    deployed_exe = target_root / "eMule" / APP_EXE_NAME
+    deployed_exe = target_root / EMULEBB_PACKAGE_ROOT_NAME / APP_EXE_NAME
     if _sha256(deployed_exe) != _sha256(artifacts.package_exe):
         raise RuntimeError(
             "Local package install extracted an emulebb.exe that does not match the package-build executable "
@@ -276,7 +276,7 @@ def deploy_local_install(
         )
 
     versioned_pdb = symbols_dir / "emulebb.pdb"
-    adjacent_pdb = target_root / "eMule" / "emulebb.pdb"
+    adjacent_pdb = target_root / EMULEBB_PACKAGE_ROOT_NAME / "emulebb.pdb"
     shutil.copy2(artifacts.package_pdb, versioned_pdb)
     shutil.copy2(artifacts.package_pdb, adjacent_pdb)
     for manifest in (artifacts.emule_manifest, artifacts.emule_sbom, artifacts.amutorrent_manifest, artifacts.amutorrent_sbom):
@@ -299,8 +299,9 @@ def write_local_scripts(
     """Writes package-local scripts that start, update, and diagnose the install."""
 
     scripts_dir = config.target_path / "scripts"
-    emule_exe = config.target_path / "eMule" / APP_EXE_NAME
-    amutorrent_runner = config.target_path / "aMuTorrent" / "installer" / "windows" / "amutorrent.ps1"
+    emule_exe = config.target_path / EMULEBB_PACKAGE_ROOT_NAME / APP_EXE_NAME
+    amutorrent_root = config.target_path / "aMuTorrent"
+    amutorrent_server = amutorrent_root / "server" / "server.js"
     live_wire_path = config.live_wire_inputs_file
     build_repo = layout.build_repo_root
     workspace_root = layout.emule_workspace_root
@@ -326,7 +327,22 @@ $env:EMULEBB_API_KEY = {ps_string(rest_config.api_key)}
 $env:EMULEBB_USE_SSL = '{str(rest_config.use_ssl).lower()}'
 $env:EMULEBB_ID = {ps_string(config.emulebb_id)}
 $env:EMULEBB_NAME = {ps_string(config.emulebb_name)}
-& {ps_string(amutorrent_runner)} Start -Port {config.amutorrent_port} -BindAddress {ps_string(config.amutorrent_bind_address)}
+$env:AMUTORRENT_DATA_DIR = {ps_string(config.target_path / "aMuTorrent" / "data")}
+$env:PORT = '{config.amutorrent_port}'
+$env:BIND_ADDRESS = {ps_string(config.amutorrent_bind_address)}
+$Node = (Get-Command node.exe -ErrorAction SilentlyContinue).Source
+if (-not $Node) {{
+    $Node = Join-Path {ps_string(config.target_path)} 'runtime\node\node.exe'
+}}
+if (-not (Test-Path -LiteralPath $Node)) {{
+    throw 'Node 24 or newer is required to start aMuTorrent. Install Node or use Install-eMuleBBSuite.ps1 to provision the pinned runtime.'
+}}
+Push-Location {ps_string(amutorrent_root)}
+try {{
+    & $Node {ps_string(amutorrent_server)}
+}} finally {{
+    Pop-Location
+}}
 """,
     )
     _write_text(
@@ -351,7 +367,7 @@ for ($i = 0; $i -lt 60; $i++) {{
         scripts_dir / "Status-aMuTorrent.ps1",
         f"""#Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
-& {ps_string(amutorrent_runner)} Status -Port {config.amutorrent_port}
+Invoke-RestMethod -Uri 'http://127.0.0.1:{config.amutorrent_port}/health' -TimeoutSec 5 | ConvertTo-Json -Compress
 """,
     )
     _write_text(
@@ -414,9 +430,9 @@ def write_install_manifest(
 
     target_root = config.target_path
     manifest_path = target_root / "manifests" / "local-install.json"
-    emule_exe = target_root / "eMule" / APP_EXE_NAME
+    emule_exe = target_root / EMULEBB_PACKAGE_ROOT_NAME / APP_EXE_NAME
     pdb_path = target_root / "symbols" / f"emulebb-v{release_version}" / artifacts.arch / "emulebb.pdb"
-    adjacent_pdb_path = target_root / "eMule" / "emulebb.pdb"
+    adjacent_pdb_path = target_root / EMULEBB_PACKAGE_ROOT_NAME / "emulebb.pdb"
     payload = {
         "schema": INSTALL_MANIFEST_SCHEMA,
         "installedAtUtc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),

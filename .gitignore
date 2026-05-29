@@ -1,5 +1,10 @@
 eMule
 eMule-*
+!emule_workspace/
+!emule_workspace/release_assets/
+!emule_workspace/release_assets/emulebb/
+!emule_workspace/release_assets/emulebb/scripts/
+!emule_workspace/release_assets/emulebb/scripts/*.ps1
 libs
 libs_debug
 tmp

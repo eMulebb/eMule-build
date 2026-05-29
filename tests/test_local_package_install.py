@@ -102,10 +102,10 @@ def test_local_package_install_deploys_artifacts_and_preserves_runtime_state(tmp
     package_build_root.mkdir(parents=True)
     (package_build_root / "emulebb.exe").write_bytes(b"exe")
     (package_build_root / "emulebb.pdb").write_bytes(b"pdb")
-    _write_zip(release_root / "emulebb-0.7.3-rc.1-x64.zip", {"eMule/emulebb.exe": b"exe"})
+    _write_zip(release_root / "emulebb-0.7.3-rc.1-x64.zip", {"eMuleBB/emulebb.exe": b"exe"})
     _write_zip(
         release_root / "emulebb-0.7.3-rc.1-amutorrent-x64.zip",
-        {"aMuTorrent/installer/windows/amutorrent.ps1": b"#Requires -Version 5.1\n"},
+        {"aMuTorrent/server/server.js": b"server\n"},
     )
     for name in (
         "emulebb-0.7.3-rc.1-x64.manifest.json",
@@ -126,15 +126,15 @@ def test_local_package_install_deploys_artifacts_and_preserves_runtime_state(tmp
         LocalPackageInstallOptions(skip_build=True),
     )
 
-    assert (target / "eMule" / "emulebb.exe").read_bytes() == b"exe"
-    assert (target / "aMuTorrent" / "installer" / "windows" / "amutorrent.ps1").is_file()
+    assert (target / "eMuleBB" / "emulebb.exe").read_bytes() == b"exe"
+    assert (target / "aMuTorrent" / "server" / "server.js").is_file()
     assert preserved_data.read_text(encoding="utf-8") == "keep"
     assert not stale_file.exists()
     assert (target / "symbols" / "emulebb-v0.7.3-rc.1" / "x64" / "emulebb.pdb").read_bytes() == b"pdb"
-    assert (target / "eMule" / "emulebb.pdb").read_bytes() == b"pdb"
+    assert (target / "eMuleBB" / "emulebb.pdb").read_bytes() == b"pdb"
     assert (target / "scripts" / "Update-LocalPackage.ps1").is_file()
-    assert not (target / "eMule" / "Incoming").exists()
-    assert not (target / "eMule" / "Temp").exists()
+    assert not (target / "eMuleBB" / "Incoming").exists()
+    assert not (target / "eMuleBB" / "Temp").exists()
     assert preferences.read_bytes().startswith(b"\xff\xfe")
     updated_preferences = preferences.read_text(encoding="utf-16")
     assert "IncomingDir=F:\\incoming" in updated_preferences
@@ -168,10 +168,10 @@ def test_local_package_install_rejects_zip_exe_without_matching_package_build_ex
     package_build_root.mkdir(parents=True)
     (package_build_root / "emulebb.exe").write_bytes(b"package-build-exe")
     (package_build_root / "emulebb.pdb").write_bytes(b"pdb")
-    _write_zip(release_root / "emulebb-0.7.3-rc.1-x64.zip", {"eMule/emulebb.exe": b"zip-exe"})
+    _write_zip(release_root / "emulebb-0.7.3-rc.1-x64.zip", {"eMuleBB/emulebb.exe": b"zip-exe"})
     _write_zip(
         release_root / "emulebb-0.7.3-rc.1-amutorrent-x64.zip",
-        {"aMuTorrent/installer/windows/amutorrent.ps1": b"#Requires -Version 5.1\n"},
+        {"aMuTorrent/server/server.js": b"server\n"},
     )
     for name in (
         "emulebb-0.7.3-rc.1-x64.manifest.json",
