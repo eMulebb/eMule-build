@@ -5,12 +5,16 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
 import time
 from pathlib import Path
 from typing import Any
 
 ENABLE_ENV = "EMULEBB_DEVELOPER_HIDE_ME_SPLIT_TUNNEL"
 SETTINGS_PATH_ENV = "EMULEBB_DEVELOPER_HIDE_ME_SETTINGS_PATH"
+RESTART_AFTER_REGISTER_ENV = "EMULEBB_DEVELOPER_HIDE_ME_RESTART_AFTER_REGISTER"
+HIDE_ME_EXE = Path(r"C:\Program Files (x86)\hide.me VPN\Hide.me.exe")
+HIDE_ME_SERVICE = "hmevpnsvc"
 
 
 def enabled_from_environment() -> bool:
@@ -75,6 +79,7 @@ def ensure_split_tunnel_apps(app_paths: list[Path], *, app_name: str = "eMuleBB"
         backup_path = settings_path.with_name(f"{settings_path.name}.emulebb-{time.strftime('%Y%m%dT%H%M%S')}.bak")
         shutil.copy2(settings_path, backup_path)
         settings_path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8", newline="")
+    restart = restart_hide_me_if_requested() if changed else {"requested": False, "skipped": "settings unchanged"}
 
     return {
         "enabled": True,
@@ -83,7 +88,40 @@ def ensure_split_tunnel_apps(app_paths: list[Path], *, app_name: str = "eMuleBB"
         "backup_path": str(backup_path) if backup_path else "",
         "registered_paths": [str(path) for path in resolved_paths],
         "added": added,
+        "restart": restart,
     }
+
+
+def restart_hide_me_if_requested() -> dict[str, Any]:
+    """Restarts hide.me after a registration when the local opt-in is enabled."""
+
+    if not enabled_restart_from_environment():
+        return {"requested": False, "skipped": f"{RESTART_AFTER_REGISTER_ENV} is not enabled"}
+
+    command = (
+        "$ErrorActionPreference = 'Stop'; "
+        "Get-Process -Name 'Hide.me' -ErrorAction SilentlyContinue | Stop-Process -Force; "
+        f"Restart-Service -Name {HIDE_ME_SERVICE} -Force; "
+        "Start-Sleep -Seconds 5; "
+        f"if (Test-Path -LiteralPath '{HIDE_ME_EXE}') "
+        f"{{ Start-Process -FilePath '{HIDE_ME_EXE}' -WindowStyle Hidden; Start-Sleep -Seconds 8 }}"
+    )
+    completed = subprocess.run(
+        ["powershell", "-NoProfile", "-Command", command],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(f"hide.me restart failed: {completed.stderr.strip() or completed.stdout.strip()}")
+    return {"requested": True, "returncode": completed.returncode}
+
+
+def enabled_restart_from_environment() -> bool:
+    """Returns whether hide.me should be restarted after settings changes."""
+
+    return os.environ.get(RESTART_AFTER_REGISTER_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _unique_existing_files(paths: list[Path]) -> list[Path]:

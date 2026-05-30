@@ -41,6 +41,7 @@ def test_hide_me_split_tunnel_adds_existing_exe_to_app_lists(tmp_path: Path, mon
     assert result["enabled"] is True
     assert result["changed"] is True
     assert Path(result["backup_path"]).is_file()
+    assert result["restart"]["requested"] is False
     assert payload["SplitTunneling"]["Whitelisted"][0]["Path"] == str(exe.resolve())
     assert payload["SplitTunneling"]["LimitToVpn"][0]["Path"] == str(exe.resolve())
 
@@ -70,3 +71,31 @@ def test_hide_me_split_tunnel_is_idempotent(tmp_path: Path, monkeypatch) -> None
     assert result["changed"] is False
     assert len(payload["SplitTunneling"]["Whitelisted"]) == 1
     assert len(payload["SplitTunneling"]["LimitToVpn"]) == 1
+
+
+def test_hide_me_split_tunnel_can_restart_after_registration(tmp_path: Path, monkeypatch) -> None:
+    settings = tmp_path / "vpn.settings"
+    exe = tmp_path / "emulebb.exe"
+    exe.write_bytes(b"exe")
+    settings.write_text(json.dumps({"SplitTunneling": {"Whitelisted": [], "LimitToVpn": []}}), encoding="utf-8")
+    monkeypatch.setenv(hide_me_split_tunnel.ENABLE_ENV, "1")
+    monkeypatch.setenv(hide_me_split_tunnel.RESTART_AFTER_REGISTER_ENV, "1")
+    monkeypatch.setenv(hide_me_split_tunnel.SETTINGS_PATH_ENV, str(settings))
+    calls: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        calls.append(list(command))
+
+        class Completed:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        return Completed()
+
+    monkeypatch.setattr(hide_me_split_tunnel.subprocess, "run", fake_run)
+
+    result = hide_me_split_tunnel.ensure_split_tunnel_apps([exe])
+
+    assert result["restart"]["requested"] is True
+    assert calls and calls[0][0] == "powershell"
