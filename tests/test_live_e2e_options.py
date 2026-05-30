@@ -466,7 +466,7 @@ def test_live_e2e_registers_materialized_exe_for_developer_hide_me_split_tunnel(
     node_exe = tmp_path / "runtime" / "node" / "node.exe"
     node_exe.parent.mkdir(parents=True)
     node_exe.write_bytes(b"node")
-    browser_exe = tmp_path / "local-appdata" / "ms-playwright" / "chromium-1234" / "chrome-win" / "chrome.exe"
+    browser_exe = tmp_path / "local-appdata" / "ms-playwright" / "chromium-1234" / "chrome-win64" / "chrome.exe"
     browser_exe.parent.mkdir(parents=True)
     browser_exe.write_bytes(b"chrome")
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local-appdata"))

@@ -832,7 +832,9 @@ def _playwright_browser_registration_paths() -> list[Path]:
     if local_appdata:
         playwright_root = Path(local_appdata) / "ms-playwright"
         candidates.extend(playwright_root.glob("chromium-*/chrome-win/chrome.exe"))
+        candidates.extend(playwright_root.glob("chromium-*/chrome-win64/chrome.exe"))
         candidates.extend(playwright_root.glob("chromium_headless_shell-*/chrome-win/headless_shell.exe"))
+        candidates.extend(playwright_root.glob("chromium_headless_shell-*/chrome-win64/headless_shell.exe"))
         candidates.extend(playwright_root.glob("firefox-*/firefox/firefox.exe"))
         candidates.extend(playwright_root.glob("webkit-*/Playwright.exe"))
 
@@ -840,7 +842,9 @@ def _playwright_browser_registration_paths() -> list[Path]:
     if browser_env and browser_env != "0":
         playwright_root = Path(browser_env).expanduser()
         candidates.extend(playwright_root.glob("chromium-*/chrome-win/chrome.exe"))
+        candidates.extend(playwright_root.glob("chromium-*/chrome-win64/chrome.exe"))
         candidates.extend(playwright_root.glob("chromium_headless_shell-*/chrome-win/headless_shell.exe"))
+        candidates.extend(playwright_root.glob("chromium_headless_shell-*/chrome-win64/headless_shell.exe"))
         candidates.extend(playwright_root.glob("firefox-*/firefox/firefox.exe"))
         candidates.extend(playwright_root.glob("webkit-*/Playwright.exe"))
 
