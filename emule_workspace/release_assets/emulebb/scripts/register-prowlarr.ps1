@@ -153,6 +153,19 @@ function Set-ProviderField {
     throw "Provider payload is missing field: $Name"
 }
 
+function Set-LocalCertificateValidation {
+    param([string]$BaseUrl, [string]$ApiKey)
+    $hostConfig = Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v1/config/host'
+    if ($null -eq $hostConfig) {
+        throw 'Prowlarr host config did not return a response.'
+    }
+    if ([string]$hostConfig.certificateValidation -eq 'disabledForLocalAddresses') {
+        return $hostConfig
+    }
+    Set-ObjectProperty -Target $hostConfig -Name 'certificateValidation' -Value 'disabledForLocalAddresses'
+    return Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v1/config/host' -Method 'PUT' -Body $hostConfig
+}
+
 function Get-GenericTorznabSchema {
     param([string]$BaseUrl, [string]$ApiKey)
     $schemas = Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v1/indexer/schema'
@@ -206,6 +219,7 @@ function Save-Indexer {
     [void](Set-ProviderField -Provider $payload -Name 'apiKey' -Value $TorznabApiKey)
     [void](Set-ProviderField -Provider $payload -Name 'torrentBaseSettings.preferMagnetUrl' -Value $true)
     if ($normalizedTorznabBaseUrl.StartsWith('https://', [StringComparison]::OrdinalIgnoreCase)) {
+        [void](Set-LocalCertificateValidation -BaseUrl $BaseUrl -ApiKey $ApiKey)
         [void](Set-ProviderField -Provider $payload -Name 'certificateValidation' -Value 1 -Optional)
     }
 

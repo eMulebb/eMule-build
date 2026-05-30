@@ -416,6 +416,70 @@ if ($saved.id -ne 99) { throw ('unexpected saved id: {0}' -f $saved.id) }
     assert completed.returncode == 0, completed.stderr + completed.stdout
 
 
+def test_register_prowlarr_relaxes_local_https_without_windows_cert_store(
+    workspace_root: Path,
+    tmp_path: Path,
+) -> None:
+    script_path = (
+        workspace_root
+        / "repos"
+        / "emulebb-build"
+        / "emule_workspace"
+        / "release_assets"
+        / "emulebb"
+        / "scripts"
+        / "register-prowlarr.ps1"
+    )
+    script_text = script_path.read_text(encoding="utf-8")
+    forbidden = ("Import-Certificate", "certutil", "X509Store", "StoreName", "CertOpenStore")
+    assert not any(token in script_text for token in forbidden)
+    test_script = tmp_path / "prowlarr-local-https-cert-policy-test.ps1"
+    test_script.write_text(
+        """
+$script:Calls = @()
+function Invoke-JsonApi {
+    param([string]$BaseUrl, [string]$ApiKey, [string]$Path, [string]$Method = 'GET', $Body = $null)
+    $script:Calls += [pscustomobject]@{ Path = $Path; Method = $Method; Body = $Body }
+    if ($Path -eq '/api/v1/config/host' -and $Method -eq 'GET') {
+        return [pscustomobject]@{ id = 1; certificateValidation = 'enabled' }
+    }
+    if ($Path -eq '/api/v1/config/host' -and $Method -eq 'PUT') {
+        if ($Body.certificateValidation -ne 'disabledForLocalAddresses') {
+            throw ('unexpected certificateValidation: {0}' -f $Body.certificateValidation)
+        }
+        return $Body
+    }
+    throw ('unexpected call: {0} {1}' -f $Method, $Path)
+}
+        """
+        + _extract_powershell_function(script_text, "Set-ObjectProperty")
+        + "\n"
+        + _extract_powershell_function(script_text, "Set-LocalCertificateValidation")
+        + """
+$saved = Set-LocalCertificateValidation -BaseUrl 'http://prowlarr' -ApiKey 'secret'
+if ($saved.certificateValidation -ne 'disabledForLocalAddresses') { throw 'host config was not relaxed for local HTTPS' }
+if ($script:Calls.Count -ne 2) { throw ('expected 2 API calls, got {0}' -f $script:Calls.Count) }
+""",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(test_script),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+
+
 def test_register_arr_stack_unregister_deletes_named_download_client(
     workspace_root: Path,
     tmp_path: Path,
@@ -549,6 +613,70 @@ function Invoke-JsonApi {
 $saved = Save-QbitClient -Kind 'radarr' -BaseUrl 'http://radarr' -ApiKey 'secret' -EmuleBaseUrl "'http://emule:4711/proxy/'" -EmuleApiKey 'emule-key' -Name 'eMuleBB'
 if ($saved -is [array]) { throw ('Save-QbitClient emitted an array with {0} items' -f $saved.Count) }
 if ($saved.id -ne 88) { throw ('unexpected saved id: {0}' -f $saved.id) }
+""",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(test_script),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+
+
+def test_register_arr_stack_relaxes_local_https_without_windows_cert_store(
+    workspace_root: Path,
+    tmp_path: Path,
+) -> None:
+    script_path = (
+        workspace_root
+        / "repos"
+        / "emulebb-build"
+        / "emule_workspace"
+        / "release_assets"
+        / "emulebb"
+        / "scripts"
+        / "register-arr-stack.ps1"
+    )
+    script_text = script_path.read_text(encoding="utf-8")
+    forbidden = ("Import-Certificate", "certutil", "X509Store", "StoreName", "CertOpenStore")
+    assert not any(token in script_text for token in forbidden)
+    test_script = tmp_path / "arr-local-https-cert-policy-test.ps1"
+    test_script.write_text(
+        """
+$script:Calls = @()
+function Invoke-JsonApi {
+    param([string]$BaseUrl, [string]$ApiKey, [string]$Path, [string]$Method = 'GET', $Body = $null)
+    $script:Calls += [pscustomobject]@{ Path = $Path; Method = $Method; Body = $Body }
+    if ($Path -eq '/api/v3/config/host' -and $Method -eq 'GET') {
+        return [pscustomobject]@{ id = 1; certificateValidation = 'enabled' }
+    }
+    if ($Path -eq '/api/v3/config/host' -and $Method -eq 'PUT') {
+        if ($Body.certificateValidation -ne 'disabledForLocalAddresses') {
+            throw ('unexpected certificateValidation: {0}' -f $Body.certificateValidation)
+        }
+        return $Body
+    }
+    throw ('unexpected call: {0} {1}' -f $Method, $Path)
+}
+        """
+        + _extract_powershell_function(script_text, "Set-ObjectProperty")
+        + "\n"
+        + _extract_powershell_function(script_text, "Set-LocalCertificateValidation")
+        + """
+$saved = Set-LocalCertificateValidation -BaseUrl 'http://radarr' -ApiKey 'secret'
+if ($saved.certificateValidation -ne 'disabledForLocalAddresses') { throw 'host config was not relaxed for local HTTPS' }
+if ($script:Calls.Count -ne 2) { throw ('expected 2 API calls, got {0}' -f $script:Calls.Count) }
 """,
         encoding="utf-8",
     )
