@@ -6,6 +6,22 @@ from pathlib import Path
 from emule_workspace import hide_me_split_tunnel
 
 
+def stub_hide_me_stop_start(monkeypatch) -> list[str]:
+    calls: list[str] = []
+
+    def fake_stop():
+        calls.append("stop")
+        return {"requested": True, "returncode": 0}
+
+    def fake_start():
+        calls.append("start")
+        return {"requested": True, "returncode": 0, "vpn_ipv4": "10.54.216.129"}
+
+    monkeypatch.setattr(hide_me_split_tunnel, "stop_hide_me", fake_stop)
+    monkeypatch.setattr(hide_me_split_tunnel, "start_hide_me", fake_start)
+    return calls
+
+
 def test_hide_me_split_tunnel_is_opt_in(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.delenv(hide_me_split_tunnel.ENABLE_ENV, raising=False)
 
@@ -35,6 +51,7 @@ def test_hide_me_split_tunnel_adds_existing_exe_to_whitelist_by_default(tmp_path
     )
     monkeypatch.setenv(hide_me_split_tunnel.ENABLE_ENV, "1")
     monkeypatch.setenv(hide_me_split_tunnel.SETTINGS_PATH_ENV, str(settings))
+    calls = stub_hide_me_stop_start(monkeypatch)
 
     result = hide_me_split_tunnel.ensure_split_tunnel_apps([exe])
 
@@ -42,43 +59,48 @@ def test_hide_me_split_tunnel_adds_existing_exe_to_whitelist_by_default(tmp_path
     assert result["enabled"] is True
     assert result["changed"] is True
     assert Path(result["backup_path"]).is_file()
-    assert result["restart"]["requested"] is False
-    assert result["limit_to_vpn"] is False
+    assert result["restart"]["requested"] is True
+    assert result["restart"]["vpn_ipv4"] == "10.54.216.129"
     assert result["allow_loopback"] is True
     assert result["added_loopback"] is True
+    assert calls == ["stop", "start"]
+    assert payload["SplitTunneling"]["Mode"] == 2
     assert payload["KillswitchWhitelist"] == [hide_me_split_tunnel.LOOPBACK_CIDR]
     assert payload["SplitTunneling"]["Whitelisted"][0]["Path"] == str(exe.resolve())
     assert payload["SplitTunneling"]["LimitToVpn"] == []
 
 
-def test_hide_me_split_tunnel_can_add_existing_exe_to_limit_to_vpn(tmp_path: Path, monkeypatch) -> None:
+def test_hide_me_split_tunnel_only_updates_whitelisted_apps(tmp_path: Path, monkeypatch) -> None:
     settings = tmp_path / "vpn.settings"
     exe = tmp_path / "apps" / "eMuleBB" / "emulebb.exe"
     exe.parent.mkdir(parents=True)
     exe.write_bytes(b"exe")
+    unrelated_limit_entry = {"Name": "Other", "Path": r"C:\Tools\other.exe", "Paths": None, "Icon": None}
     settings.write_text(
         json.dumps(
             {
                 "KillswitchWhitelist": [hide_me_split_tunnel.LOOPBACK_CIDR],
                 "SplitTunneling": {
+                    "Mode": 1,
                     "Whitelisted": [],
-                    "LimitToVpn": [],
+                    "LimitToVpn": [unrelated_limit_entry],
                 },
             }
         ),
         encoding="utf-8",
     )
     monkeypatch.setenv(hide_me_split_tunnel.ENABLE_ENV, "1")
-    monkeypatch.setenv(hide_me_split_tunnel.LIMIT_TO_VPN_ENV, "1")
     monkeypatch.setenv(hide_me_split_tunnel.SETTINGS_PATH_ENV, str(settings))
+    calls = stub_hide_me_stop_start(monkeypatch)
 
     result = hide_me_split_tunnel.ensure_split_tunnel_apps([exe])
 
     payload = json.loads(settings.read_text(encoding="utf-8"))
-    assert result["limit_to_vpn"] is True
     assert result["added_loopback"] is False
+    assert calls == ["stop", "start"]
+    assert payload["SplitTunneling"]["Mode"] == 2
     assert payload["SplitTunneling"]["Whitelisted"][0]["Path"] == str(exe.resolve())
-    assert payload["SplitTunneling"]["LimitToVpn"][0]["Path"] == str(exe.resolve())
+    assert payload["SplitTunneling"]["LimitToVpn"] == [unrelated_limit_entry]
 
 
 def test_hide_me_split_tunnel_can_skip_loopback_allowlist(tmp_path: Path, monkeypatch) -> None:
@@ -92,12 +114,14 @@ def test_hide_me_split_tunnel_can_skip_loopback_allowlist(tmp_path: Path, monkey
     monkeypatch.setenv(hide_me_split_tunnel.ENABLE_ENV, "1")
     monkeypatch.setenv(hide_me_split_tunnel.ALLOW_LOOPBACK_ENV, "0")
     monkeypatch.setenv(hide_me_split_tunnel.SETTINGS_PATH_ENV, str(settings))
+    calls = stub_hide_me_stop_start(monkeypatch)
 
     result = hide_me_split_tunnel.ensure_split_tunnel_apps([exe])
 
     payload = json.loads(settings.read_text(encoding="utf-8"))
     assert result["allow_loopback"] is False
     assert result["added_loopback"] is False
+    assert calls == ["stop", "start"]
     assert payload["KillswitchWhitelist"] == []
 
 
@@ -111,6 +135,7 @@ def test_hide_me_split_tunnel_is_idempotent(tmp_path: Path, monkeypatch) -> None
             {
                 "KillswitchWhitelist": [hide_me_split_tunnel.LOOPBACK_CIDR],
                 "SplitTunneling": {
+                    "Mode": 2,
                     "Whitelisted": [entry],
                     "LimitToVpn": [entry],
                 },
@@ -120,42 +145,44 @@ def test_hide_me_split_tunnel_is_idempotent(tmp_path: Path, monkeypatch) -> None
     )
     monkeypatch.setenv(hide_me_split_tunnel.ENABLE_ENV, "true")
     monkeypatch.setenv(hide_me_split_tunnel.SETTINGS_PATH_ENV, str(settings))
+    calls = stub_hide_me_stop_start(monkeypatch)
 
     result = hide_me_split_tunnel.ensure_split_tunnel_apps([exe])
 
     payload = json.loads(settings.read_text(encoding="utf-8"))
     assert result["changed"] is False
+    assert calls == []
     assert len(payload["SplitTunneling"]["Whitelisted"]) == 1
     assert len(payload["SplitTunneling"]["LimitToVpn"]) == 1
 
 
-def test_hide_me_split_tunnel_can_restart_after_registration(tmp_path: Path, monkeypatch) -> None:
+def test_hide_me_split_tunnel_stops_before_writing_and_starts_after(tmp_path: Path, monkeypatch) -> None:
     settings = tmp_path / "vpn.settings"
     exe = tmp_path / "emulebb.exe"
     exe.write_bytes(b"exe")
     settings.write_text(json.dumps({"SplitTunneling": {"Whitelisted": [], "LimitToVpn": []}}), encoding="utf-8")
     monkeypatch.setenv(hide_me_split_tunnel.ENABLE_ENV, "1")
-    monkeypatch.setenv(hide_me_split_tunnel.RESTART_AFTER_REGISTER_ENV, "1")
     monkeypatch.setenv(hide_me_split_tunnel.SETTINGS_PATH_ENV, str(settings))
-    calls: list[list[str]] = []
+    calls: list[str] = []
 
-    def fake_run(command, **kwargs):
-        calls.append(list(command))
+    def fake_stop():
+        calls.append("stop")
+        assert json.loads(settings.read_text(encoding="utf-8"))["SplitTunneling"]["Whitelisted"] == []
+        return {"requested": True, "returncode": 0}
 
-        class Completed:
-            returncode = 0
-            stdout = "10.54.216.129\n" if "Get-NetIPAddress" in command[-1] else ""
-            stderr = ""
+    def fake_start():
+        calls.append("start")
+        assert json.loads(settings.read_text(encoding="utf-8"))["SplitTunneling"]["Whitelisted"][0]["Path"] == str(exe.resolve())
+        return {"requested": True, "returncode": 0, "vpn_ipv4": "10.54.216.129"}
 
-        return Completed()
-
-    monkeypatch.setattr(hide_me_split_tunnel.subprocess, "run", fake_run)
+    monkeypatch.setattr(hide_me_split_tunnel, "stop_hide_me", fake_stop)
+    monkeypatch.setattr(hide_me_split_tunnel, "start_hide_me", fake_start)
 
     result = hide_me_split_tunnel.ensure_split_tunnel_apps([exe])
 
     assert result["restart"]["requested"] is True
     assert result["restart"]["vpn_ipv4"] == "10.54.216.129"
-    assert calls and calls[0][0] == "powershell"
+    assert calls == ["stop", "start"]
 
 
 def test_hide_me_split_tunnel_waits_for_ipv4_after_restart(monkeypatch) -> None:

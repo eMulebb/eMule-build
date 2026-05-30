@@ -12,9 +12,7 @@ from typing import Any
 
 ENABLE_ENV = "EMULEBB_DEVELOPER_HIDE_ME_SPLIT_TUNNEL"
 SETTINGS_PATH_ENV = "EMULEBB_DEVELOPER_HIDE_ME_SETTINGS_PATH"
-RESTART_AFTER_REGISTER_ENV = "EMULEBB_DEVELOPER_HIDE_ME_RESTART_AFTER_REGISTER"
 RESTART_ON_UPNP_FAILURE_ENV = "EMULEBB_DEVELOPER_HIDE_ME_RESTART_ON_UPNP_FAILURE"
-LIMIT_TO_VPN_ENV = "EMULEBB_DEVELOPER_HIDE_ME_LIMIT_TO_VPN"
 ALLOW_LOOPBACK_ENV = "EMULEBB_DEVELOPER_HIDE_ME_ALLOW_LOOPBACK"
 HIDE_ME_EXE = Path(r"C:\Program Files (x86)\hide.me VPN\Hide.me.exe")
 HIDE_ME_SERVICE = "hmevpnsvc"
@@ -53,7 +51,7 @@ def default_settings_path() -> Path:
 
 
 def ensure_split_tunnel_apps(app_paths: list[Path], *, app_name: str = "eMuleBB") -> dict[str, Any]:
-    """Adds executable paths to hide.me split-tunnel lists when explicitly enabled."""
+    """Adds executable paths to hide.me split-tunnel Whitelisted apps when explicitly enabled."""
 
     if not enabled_from_environment():
         return {"enabled": False, "reason": f"{ENABLE_ENV} is not enabled"}
@@ -72,6 +70,9 @@ def ensure_split_tunnel_apps(app_paths: list[Path], *, app_name: str = "eMuleBB"
         raise RuntimeError("hide.me settings SplitTunneling value is not an object.")
 
     changed = False
+    if split_tunneling.get("Mode") != 2:
+        split_tunneling["Mode"] = 2
+        changed = True
     allow_loopback = enabled_allow_loopback_from_environment()
     added_loopback = False
     if allow_loopback:
@@ -83,35 +84,40 @@ def ensure_split_tunnel_apps(app_paths: list[Path], *, app_name: str = "eMuleBB"
             added_loopback = True
             changed = True
 
-    list_keys = ["Whitelisted"]
-    limit_to_vpn = enabled_limit_to_vpn_from_environment()
-    if limit_to_vpn:
-        list_keys.append("LimitToVpn")
-    added: dict[str, list[str]] = {"Whitelisted": [], "LimitToVpn": []}
-    for key in list_keys:
-        entries = split_tunneling.setdefault(key, [])
-        if not isinstance(entries, list):
-            raise RuntimeError(f"hide.me settings SplitTunneling.{key} value is not an array.")
-        existing = {
-            _normalize_path(str(entry.get("Path", "")))
-            for entry in entries
-            if isinstance(entry, dict)
-        }
-        for path in resolved_paths:
-            normalized = _normalize_path(str(path))
-            if normalized in existing:
-                continue
-            entries.append({"Name": app_name, "Path": str(path), "Paths": None, "Icon": None})
-            existing.add(normalized)
-            added[key].append(str(path))
-            changed = True
+    entries = split_tunneling.setdefault("Whitelisted", [])
+    if not isinstance(entries, list):
+        raise RuntimeError("hide.me settings SplitTunneling.Whitelisted value is not an array.")
+    added: dict[str, list[str]] = {"Whitelisted": []}
+    existing = {
+        _normalize_path(str(entry.get("Path", "")))
+        for entry in entries
+        if isinstance(entry, dict)
+    }
+    for path in resolved_paths:
+        normalized = _normalize_path(str(path))
+        if normalized in existing:
+            continue
+        entries.append({"Name": app_name, "Path": str(path), "Paths": None, "Icon": None})
+        existing.add(normalized)
+        added["Whitelisted"].append(str(path))
+        changed = True
 
     backup_path = None
+    restart = {"requested": False, "skipped": "settings unchanged"}
     if changed:
         backup_path = settings_path.with_name(f"{settings_path.name}.emulebb-{time.strftime('%Y%m%dT%H%M%S')}.bak")
-        shutil.copy2(settings_path, backup_path)
-        settings_path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8", newline="")
-    restart = restart_hide_me_after_registration_if_requested() if changed else {"requested": False, "skipped": "settings unchanged"}
+        stop = stop_hide_me()
+        try:
+            shutil.copy2(settings_path, backup_path)
+            settings_path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8", newline="")
+        finally:
+            start = start_hide_me()
+        restart = {
+            "requested": True,
+            "stop": stop,
+            "start": start,
+            "vpn_ipv4": start.get("vpn_ipv4", ""),
+        }
 
     return {
         "enabled": True,
@@ -120,20 +126,10 @@ def ensure_split_tunnel_apps(app_paths: list[Path], *, app_name: str = "eMuleBB"
         "backup_path": str(backup_path) if backup_path else "",
         "registered_paths": [str(path) for path in resolved_paths],
         "added": added,
-        "limit_to_vpn": limit_to_vpn,
         "allow_loopback": allow_loopback,
         "added_loopback": added_loopback,
         "restart": restart,
     }
-
-
-def restart_hide_me_after_registration_if_requested() -> dict[str, Any]:
-    """Restarts hide.me after a registration when the local opt-in is enabled."""
-
-    if not enabled_restart_from_environment():
-        return {"requested": False, "skipped": f"{RESTART_AFTER_REGISTER_ENV} is not enabled"}
-
-    return restart_hide_me()
 
 
 def restart_hide_me_after_upnp_failure_if_requested(failure_text: str) -> dict[str, Any]:
@@ -151,14 +147,51 @@ def restart_hide_me_after_upnp_failure_if_requested(failure_text: str) -> dict[s
 def restart_hide_me() -> dict[str, Any]:
     """Restarts the local hide.me service and desktop process."""
 
+    stop = stop_hide_me()
+    start = start_hide_me()
+    return {
+        "requested": True,
+        "stop": stop,
+        "start": start,
+        "returncode": start["returncode"],
+        "vpn_ipv4": start["vpn_ipv4"],
+    }
+
+
+def stop_hide_me() -> dict[str, Any]:
+    """Stops the local hide.me desktop process and service before settings edits."""
+
     command = (
         "$ErrorActionPreference = 'Stop'; "
         "Get-Process -Name 'Hide.me' -ErrorAction SilentlyContinue | Stop-Process -Force; "
-        f"Restart-Service -Name {HIDE_ME_SERVICE} -Force; "
+        f"$service = Get-Service -Name {HIDE_ME_SERVICE} -ErrorAction SilentlyContinue; "
+        "if ($null -ne $service -and $service.Status -ne 'Stopped') "
+        f"{{ Stop-Service -Name {HIDE_ME_SERVICE} -Force; "
+        "$service.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30)) }}"
+    )
+    completed = _run_hide_me_powershell(command, "hide.me stop")
+    return {"requested": True, "returncode": completed.returncode}
+
+
+def start_hide_me() -> dict[str, Any]:
+    """Starts hide.me after settings edits and waits for the VPN adapter."""
+
+    command = (
+        "$ErrorActionPreference = 'Stop'; "
+        f"Start-Service -Name {HIDE_ME_SERVICE}; "
         "Start-Sleep -Seconds 5; "
         f"if (Test-Path -LiteralPath '{HIDE_ME_EXE}') "
         f"{{ Start-Process -FilePath '{HIDE_ME_EXE}' -WindowStyle Hidden; Start-Sleep -Seconds 8 }}"
     )
+    completed = _run_hide_me_powershell(command, "hide.me start")
+    return {
+        "requested": True,
+        "returncode": completed.returncode,
+        "vpn_ipv4": wait_for_hide_me_ipv4_after_restart(),
+    }
+
+
+def _run_hide_me_powershell(command: str, label: str) -> subprocess.CompletedProcess[str]:
     completed = subprocess.run(
         ["powershell", "-NoProfile", "-Command", command],
         stdout=subprocess.PIPE,
@@ -167,12 +200,8 @@ def restart_hide_me() -> dict[str, Any]:
         check=False,
     )
     if completed.returncode != 0:
-        raise RuntimeError(f"hide.me restart failed: {completed.stderr.strip() or completed.stdout.strip()}")
-    return {
-        "requested": True,
-        "returncode": completed.returncode,
-        "vpn_ipv4": wait_for_hide_me_ipv4_after_restart(),
-    }
+        raise RuntimeError(f"{label} failed: {completed.stderr.strip() or completed.stdout.strip()}")
+    return completed
 
 
 def wait_for_hide_me_ipv4_after_restart(timeout_seconds: float = 60.0) -> str:
@@ -203,22 +232,10 @@ def wait_for_hide_me_ipv4_after_restart(timeout_seconds: float = 60.0) -> str:
     raise RuntimeError(f"hide.me restart did not expose a usable IPv4 within {timeout_seconds:g}s. {last_error}".strip())
 
 
-def enabled_restart_from_environment() -> bool:
-    """Returns whether hide.me should be restarted after settings changes."""
-
-    return os.environ.get(RESTART_AFTER_REGISTER_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
-
-
 def enabled_restart_on_upnp_failure_from_environment() -> bool:
     """Returns whether hide.me should be restarted after UPnP-looking failures."""
 
     return os.environ.get(RESTART_ON_UPNP_FAILURE_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
-
-
-def enabled_limit_to_vpn_from_environment() -> bool:
-    """Returns whether registration should also populate hide.me's LimitToVpn list."""
-
-    return os.environ.get(LIMIT_TO_VPN_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def enabled_allow_loopback_from_environment() -> bool:
