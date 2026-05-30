@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime, timezone
+import json
 import os
 from pathlib import Path
 
@@ -469,12 +470,49 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
         python.command(args),
         label="live E2E suite",
         cwd=layout.emule_workspace_root,
-        env=_test_network_env(
-            layout,
-            test_network=live_options.test_network,
-            vpn_interface_name=live_options.p2p_bind_interface_name,
-        ),
+        env={
+            **_test_network_env(
+                layout,
+                test_network=live_options.test_network,
+                vpn_interface_name=live_options.p2p_bind_interface_name,
+            ),
+            **(_materialized_arr_service_env(materialized) if live_options.materialize_test_install else {}),
+        },
     )
+
+
+def _materialized_arr_service_env(materialized: object) -> dict[str, str]:
+    """Returns ARR service endpoints from an installer-materialized suite config."""
+
+    app_root = Path(getattr(materialized, "app_root"))
+    target_root = Path(getattr(materialized, "target_path", app_root.parent.parent))
+    config_path = target_root / "manifests" / "suite-config.json"
+    if not config_path.is_file():
+        return {}
+    payload = json.loads(config_path.read_text(encoding="utf-8-sig"))
+    services = payload.get("services")
+    if not isinstance(services, dict):
+        return {}
+
+    mappings = {
+        "prowlarr": ("PROWLARR_URL", "PROWLARR_API_KEY"),
+        "radarr": ("RADARR_URL", "RADARR_API_KEY"),
+        "sonarr": ("SONARR_URL", "SONARR_API_KEY"),
+    }
+    values: dict[str, str] = {}
+    for service_name, (url_key, api_key_key) in mappings.items():
+        service = services.get(service_name)
+        if not isinstance(service, dict):
+            continue
+        bind_address = str(service.get("bindAddress") or "").strip()
+        port = str(service.get("port") or "").strip()
+        api_key = str(service.get("apiKey") or "").strip()
+        if not bind_address or not port or not api_key:
+            continue
+        host = "127.0.0.1" if bind_address in {"0.0.0.0", "::"} else bind_address
+        values[url_key] = f"http://{host}:{port}"
+        values[api_key_key] = api_key
+    return values
 
 
 def invoke_release_campaign_report(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -351,6 +352,7 @@ def test_live_e2e_can_run_against_materialized_installer_test_install(tmp_path: 
 
     def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
         captured["command"] = list(command)
+        captured["env"] = dict(env or {})
 
     def fake_materialize(layout, workspace_options, install_options, *, run_id, suite_name, client_id):
         materialize_calls.append(
@@ -364,7 +366,22 @@ def test_live_e2e_can_run_against_materialized_installer_test_install(tmp_path: 
             )
         )
         install_root = tmp_path / "workspaces" / "workspace" / "state" / "test-installs" / "run" / "live-e2e-suite" / "main"
+        manifests = install_root / "manifests"
+        manifests.mkdir(parents=True)
+        (manifests / "suite-config.json").write_text(
+            json.dumps(
+                {
+                    "services": {
+                        "prowlarr": {"bindAddress": "192.168.1.44", "port": 9696, "apiKey": "prowlarr-secret"},
+                        "radarr": {"bindAddress": "192.168.1.44", "port": 7878, "apiKey": "radarr-secret"},
+                        "sonarr": {"bindAddress": "192.168.1.44", "port": 8989, "apiKey": "sonarr-secret"},
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
         return SimpleNamespace(
+            target_path=install_root,
             app_root=install_root / "apps" / "eMuleBB",
             app_exe=install_root / "apps" / "eMuleBB" / "emulebb.exe",
             profile_dir=install_root / "profiles" / "emulebb",
@@ -407,6 +424,14 @@ def test_live_e2e_can_run_against_materialized_installer_test_install(tmp_path: 
     assert option_values(command, "--profile-seed-dir") == [str(install_root / "harness-profile-seed" / "config")]
     assert option_values(command, "--live-process-monitor-profile-dir") == [str(install_root / "profiles" / "emulebb")]
     assert option_values(command, "--live-wire-inputs-file") == ["repos/emulebb-build-tests/live-wire-inputs.local.json"]
+    env = captured["env"]
+    assert isinstance(env, dict)
+    assert env["PROWLARR_URL"] == "http://192.168.1.44:9696"
+    assert env["PROWLARR_API_KEY"] == "prowlarr-secret"
+    assert env["RADARR_URL"] == "http://192.168.1.44:7878"
+    assert env["RADARR_API_KEY"] == "radarr-secret"
+    assert env["SONARR_URL"] == "http://192.168.1.44:8989"
+    assert env["SONARR_API_KEY"] == "sonarr-secret"
 
 
 def test_live_e2e_forwards_explicit_live_process_monitor_profile_dir(tmp_path: Path, monkeypatch) -> None:
