@@ -478,7 +478,8 @@ def test_live_e2e_registers_materialized_exe_for_developer_hide_me_split_tunnel(
         ),
     )
 
-    assert registered == [Path(option_values(captured["command"], "--app-exe")[0])]
+    assert registered[0] == Path(option_values(captured["command"], "--app-exe")[0])
+    assert any(path.name.casefold() in {"python.exe", "python"} for path in registered[1:])
 
 
 def test_live_e2e_restarts_hide_me_when_failed_report_points_at_upnp(tmp_path: Path, monkeypatch) -> None:
