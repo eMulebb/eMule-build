@@ -9,7 +9,7 @@ import pytest
 
 from emule_workspace.config import LiveE2eOptions, ReleaseCampaignOptions, WorkspaceOptions
 from emule_workspace.layout import AppVariant, TestTargets as LayoutTestTargets, WorkspaceLayout
-from emule_workspace import test_runs
+from emule_workspace import hide_me_split_tunnel, test_runs
 
 
 def make_layout(tmp_path: Path) -> WorkspaceLayout:
@@ -599,6 +599,100 @@ def test_live_e2e_starts_materialized_arr_services_for_arr_suites(tmp_path: Path
     assert stopped == ["Sonarr.exe", "Radarr.exe", "Prowlarr.exe"]
 
 
+def test_live_e2e_does_not_start_materialized_arr_services_for_non_arr_suites(tmp_path: Path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    start_calls: list[object] = []
+
+    def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
+        captured["command"] = list(command)
+
+    def fake_materialize(layout, workspace_options, install_options, *, run_id, suite_name, client_id, controller_bind_address=None):
+        install_root = tmp_path / "workspaces" / "workspace" / "state" / "test-installs" / "run" / "live-e2e-suite" / "main"
+        return SimpleNamespace(
+            target_path=install_root,
+            app_root=install_root / "apps" / "eMuleBB",
+            app_exe=install_root / "apps" / "eMuleBB" / "emulebb.exe",
+            profile_dir=install_root / "profiles" / "emulebb",
+            profile_config_dir=install_root / "profiles" / "emulebb" / "config",
+            profile_seed_config_dir=install_root / "harness-profile-seed" / "config",
+        )
+
+    layout = make_layout(tmp_path)
+    monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+    monkeypatch.setattr(test_runs, "materialize_test_local_install", fake_materialize)
+    monkeypatch.setattr(test_runs, "_start_materialized_arr_services", lambda *args: start_calls.append(args) or [])
+
+    test_runs.invoke_live_e2e_suite(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+        LiveE2eOptions(suites=("command-line-smoke",), materialize_test_install=True),
+    )
+
+    assert captured["command"]
+    assert start_calls == []
+
+
+def test_materialized_arr_service_ready_path_does_not_spawn_process(tmp_path: Path, monkeypatch) -> None:
+    install_root = tmp_path / "suite"
+    (install_root / "apps" / "prowlarr").mkdir(parents=True)
+    (install_root / "data" / "prowlarr").mkdir(parents=True)
+    materialized = SimpleNamespace(target_path=install_root, app_root=install_root / "apps" / "eMuleBB")
+    service_env = {
+        "PROWLARR_URL": "http://192.168.1.44:9696",
+        "PROWLARR_API_KEY": "prowlarr-secret",
+    }
+
+    def fail_popen(*_args, **_kwargs):
+        raise AssertionError("ready materialized services should not be spawned")
+
+    monkeypatch.setattr(test_runs, "_materialized_service_ready", lambda *_args: True)
+    monkeypatch.setattr(test_runs.subprocess, "Popen", fail_popen)
+
+    assert test_runs._start_materialized_arr_services(materialized, service_env) == []
+
+
+def test_materialized_arr_service_timeout_reports_log_tail(tmp_path: Path, monkeypatch) -> None:
+    install_root = tmp_path / "suite"
+    app_dir = install_root / "apps" / "prowlarr"
+    data_dir = install_root / "data" / "prowlarr"
+    app_dir.mkdir(parents=True)
+    data_dir.mkdir(parents=True)
+    (app_dir / "Prowlarr.exe").write_text("stub\n", encoding="utf-8")
+    materialized = SimpleNamespace(target_path=install_root, app_root=install_root / "apps" / "eMuleBB")
+    service_env = {
+        "PROWLARR_URL": "http://192.168.1.44:9696",
+        "PROWLARR_API_KEY": "prowlarr-secret",
+    }
+
+    class FakeProcess:
+        def __init__(self, command, *, cwd=None, stdout=None, stderr=None, text=None, creationflags=0):
+            self.returncode = None
+            if stdout is not None:
+                stdout.write("arr boot failed before binding\n")
+                stdout.flush()
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            self.returncode = 0
+
+        def wait(self, timeout=None):
+            self.returncode = 0
+            return 0
+
+        def kill(self):
+            self.returncode = -9
+
+    monkeypatch.setattr(test_runs.subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(test_runs, "_materialized_service_ready", lambda *_args: False)
+    monkeypatch.setattr(test_runs, "MATERIALIZED_ARR_SERVICE_WAIT_SECONDS", 0.001)
+    monkeypatch.setattr(test_runs.time, "sleep", lambda _seconds: None)
+
+    with pytest.raises(RuntimeError, match="arr boot failed before binding"):
+        test_runs._start_materialized_arr_services(materialized, service_env)
+
+
 def test_live_e2e_forwards_explicit_live_process_monitor_profile_dir(tmp_path: Path, monkeypatch) -> None:
     captured: dict[str, object] = {}
 
@@ -681,6 +775,85 @@ def test_live_e2e_registers_materialized_exe_for_developer_hide_me_split_tunnel(
     assert captured["register_kwargs"] == {"required": True}
     assert node_exe not in registered
     assert browser_exe not in registered
+
+
+def test_live_e2e_hide_me_registration_updates_only_whitelist_for_materialized_exe(tmp_path: Path, monkeypatch) -> None:
+    settings = tmp_path / "vpn.settings"
+    unrelated_limit_entry = {"Name": "Other", "Path": r"C:\Tools\other.exe", "Paths": None, "Icon": None}
+    settings.write_text(
+        json.dumps(
+            {
+                "KillswitchWhitelist": [],
+                "SplitTunneling": {
+                    "Mode": 1,
+                    "Whitelisted": [],
+                    "LimitToVpn": [unrelated_limit_entry],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    events: list[str] = []
+
+    def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
+        events.append("run")
+
+    def fake_materialize(layout_arg, workspace_options, install_options, *, run_id, suite_name, client_id, controller_bind_address=None):
+        events.append("materialize")
+        install_root = tmp_path / "workspaces" / "workspace" / "state" / "test-installs" / run_id / suite_name / client_id
+        app_exe = install_root / "apps" / "eMuleBB" / "emulebb.exe"
+        app_exe.parent.mkdir(parents=True)
+        app_exe.write_bytes(b"exe")
+        (install_root / "harness-profile-seed" / "config").mkdir(parents=True)
+        (install_root / "profiles" / "emulebb").mkdir(parents=True)
+        return SimpleNamespace(
+            target_path=install_root,
+            app_root=app_exe.parent,
+            app_exe=app_exe,
+            profile_dir=install_root / "profiles" / "emulebb",
+            profile_config_dir=install_root / "profiles" / "emulebb" / "config",
+            profile_seed_config_dir=install_root / "harness-profile-seed" / "config",
+        )
+
+    def fake_stop():
+        events.append("stop")
+        assert json.loads(settings.read_text(encoding="utf-8"))["SplitTunneling"]["Whitelisted"] == []
+        return {"requested": True, "returncode": 0}
+
+    def fake_start():
+        events.append("start")
+        payload = json.loads(settings.read_text(encoding="utf-8"))
+        assert payload["SplitTunneling"]["Whitelisted"][0]["Path"].endswith("emulebb.exe")
+        return {"requested": True, "returncode": 0, "vpn_ipv4": "10.8.0.9"}
+
+    layout = make_layout(tmp_path)
+    monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+    monkeypatch.setattr(test_runs, "materialize_test_local_install", fake_materialize)
+    monkeypatch.setattr(test_runs, "ensure_split_tunnel_apps", hide_me_split_tunnel.ensure_split_tunnel_apps)
+    monkeypatch.setattr(hide_me_split_tunnel, "stop_hide_me", fake_stop)
+    monkeypatch.setattr(hide_me_split_tunnel, "start_hide_me", fake_start)
+    monkeypatch.setenv(hide_me_split_tunnel.SETTINGS_PATH_ENV, str(settings))
+    monkeypatch.setenv(hide_me_split_tunnel.ALLOW_LOOPBACK_ENV, "0")
+
+    test_runs.invoke_live_e2e_suite(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+        LiveE2eOptions(
+            suites=("rest-api",),
+            test_network="vpn",
+            materialize_test_install=True,
+            materialize_test_install_skip_build=True,
+        ),
+    )
+
+    payload = json.loads(settings.read_text(encoding="utf-8"))
+    whitelisted = payload["SplitTunneling"]["Whitelisted"]
+    assert payload["SplitTunneling"]["Mode"] == 2
+    assert len(whitelisted) == 1
+    assert whitelisted[0]["Name"] == "eMuleBB"
+    assert whitelisted[0]["Path"].endswith("emulebb.exe")
+    assert payload["SplitTunneling"]["LimitToVpn"] == [unrelated_limit_entry]
+    assert events == ["materialize", "stop", "start", "run"]
 
 
 def test_live_e2e_restarts_hide_me_when_failed_report_points_at_upnp(tmp_path: Path, monkeypatch) -> None:

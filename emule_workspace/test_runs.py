@@ -634,7 +634,8 @@ def _start_materialized_arr_services(
             if not data_dir.is_dir():
                 raise RuntimeError(f"Materialized {spec.name} data directory not found: {data_dir}")
 
-            log_handle = (logs_dir / f"{spec.config_name}.log").open("a", encoding="utf-8", newline="\n")
+            log_path = logs_dir / f"{spec.config_name}.log"
+            log_handle = log_path.open("a", encoding="utf-8", newline="\n")
             command = [str(exe_path), f"/data={data_dir}", "/nobrowser"]
             creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
             process = subprocess.Popen(
@@ -647,7 +648,7 @@ def _start_materialized_arr_services(
             )
             started.append(StartedMaterializedService(spec=spec, process=process, log_handle=log_handle))
             print(f"Started materialized {spec.name} service from {exe_path}.")
-            _wait_for_materialized_service(spec, url, api_key)
+            _wait_for_materialized_service(spec, url, api_key, log_path=log_path)
     except Exception:
         _stop_materialized_arr_services(started)
         raise
@@ -671,13 +672,28 @@ def _stop_materialized_arr_services(started_services: Sequence[StartedMaterializ
             close()
 
 
-def _wait_for_materialized_service(spec: MaterializedArrServiceSpec, url: str, api_key: str) -> None:
+def _wait_for_materialized_service(
+    spec: MaterializedArrServiceSpec,
+    url: str,
+    api_key: str,
+    *,
+    log_path: Path | None = None,
+) -> None:
     deadline = time.monotonic() + MATERIALIZED_ARR_SERVICE_WAIT_SECONDS
     while time.monotonic() < deadline:
         if _materialized_service_ready(url, api_key, spec.status_api_path):
             return
         time.sleep(MATERIALIZED_ARR_SERVICE_POLL_SECONDS)
-    raise RuntimeError(f"Timed out waiting for materialized {spec.name} service at {url}{spec.status_api_path}.")
+    log_tail = _read_text_tail(log_path, max_chars=4000) if log_path is not None else ""
+    detail = f" Recent {spec.name} log tail:\n{log_tail}" if log_tail else ""
+    raise RuntimeError(f"Timed out waiting for materialized {spec.name} service at {url}{spec.status_api_path}.{detail}")
+
+
+def _read_text_tail(path: Path, *, max_chars: int) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")[-max_chars:]
+    except OSError:
+        return ""
 
 
 def _materialized_service_ready(url: str, api_key: str, status_api_path: str) -> bool:
