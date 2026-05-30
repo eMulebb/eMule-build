@@ -345,6 +345,50 @@ def test_suite_installer_command_uses_full_bundle_and_existing_suite_config(tmp_
     assert command[command.index("-SonarrPort") + 1] == "8989"
 
 
+def test_suite_installer_command_lets_amutorrent_inherit_control_bind_when_unset(tmp_path: Path) -> None:
+    target = tmp_path / "install"
+    live_wire_path = tmp_path / "live-wire-inputs.local.json"
+    _write_live_wire(
+        live_wire_path,
+        target,
+        control_bind_address="192.168.1.44",
+        emulebb_bind_address=None,
+    )
+    payload = json.loads(live_wire_path.read_text(encoding="utf-8"))
+    del payload["local_package_install"]["amutorrent_bind_address"]
+    live_wire_path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+    layout = _layout(tmp_path)
+    layout.tests_repo_root.mkdir(parents=True)
+    config = local_package_install.load_local_install_config(layout, str(live_wire_path))
+    release_root = tmp_path / "release"
+    release_root.mkdir()
+    artifacts = local_package_install.InstallArtifacts(
+        release_root=release_root,
+        emule_zip=release_root / "emule.zip",
+        amutorrent_zip=release_root / "amutorrent.zip",
+        emule_manifest=release_root / "emule.manifest.json",
+        emule_sbom=release_root / "emule.sbom.json",
+        amutorrent_manifest=release_root / "amutorrent.manifest.json",
+        amutorrent_sbom=release_root / "amutorrent.sbom.json",
+        package_exe=release_root / "emulebb.exe",
+        package_pdb=release_root / "emulebb.pdb",
+        arch="x64",
+        installer_script=target / ".staging" / "Install-eMuleBBSuite.ps1",
+    )
+
+    options = local_package_install.build_suite_installer_options(config, artifacts, "0.7.3-rc.1")
+    command = [str(part) for part in suite_installer.build_suite_installer_invocation(
+        powershell=Path("powershell.exe"),
+        options=options,
+    ).command]
+
+    assert config.amutorrent_bind_address == ""
+    assert options.control_bind_address == "192.168.1.44"
+    assert options.amutorrent_bind_address == ""
+    assert command[command.index("-ControlBindAddress") + 1] == "192.168.1.44"
+    assert "-AmutorrentBindAddress" not in command
+
+
 def test_update_ini_values_appends_keys_to_existing_sections() -> None:
     text = "[eMule]\nNick=test\n[WebServer]\nApiKey=abc\n"
 

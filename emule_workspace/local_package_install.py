@@ -698,6 +698,8 @@ def _optional_nullable_path(payload: dict[str, Any], key: str) -> Path | None:
 
 
 def _optional_string(payload: dict[str, Any], key: str, default: str) -> str:
+    if key not in payload and default == "":
+        return ""
     value = payload.get(key, default)
     if not isinstance(value, str) or not value.strip():
         raise RuntimeError(f"Local package install field {key!r} must be a non-empty string.")

@@ -148,6 +148,8 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
         release_root.as_uri(),
         "-DependencyManifest",
         str(dependency_manifest),
+        "-P2PBindInterface",
+        "hide.me",
     ]
     _run_powershell(install_args, cwd=repo_root)
 
@@ -163,9 +165,15 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     assert list((install_root / "apps" / "prowlarr").rglob("Prowlarr.exe"))
     assert list((install_root / "apps" / "radarr").rglob("Radarr.exe"))
     assert list((install_root / "apps" / "sonarr").rglob("Sonarr.exe"))
-    assert "ApiKey=" + first_keys["emulebb"] in (
-        install_root / "profiles" / "emulebb" / "config" / "preferences.ini"
-    ).read_text(encoding="utf-16")
+    preferences = (install_root / "profiles" / "emulebb" / "config" / "preferences.ini").read_text(encoding="utf-16")
+    assert "ApiKey=" + first_keys["emulebb"] in preferences
+    assert "BindInterface=hide.me" in preferences
+    assert "BindAddr=\n" in preferences
+    assert f"BindAddr={suite_config['services']['emulebb']['bindAddress']}" in preferences
+    for service_name in ("prowlarr", "radarr", "sonarr"):
+        arr_config = (install_root / "data" / service_name / "config.xml").read_text(encoding="utf-8-sig")
+        assert f"<BindAddress>{suite_config['services'][service_name]['bindAddress']}</BindAddress>" in arr_config
+        assert f"<ApiKey>{first_keys[service_name]}</ApiKey>" in arr_config
 
     _run_powershell(
         [
