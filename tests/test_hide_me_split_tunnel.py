@@ -23,6 +23,7 @@ def test_hide_me_split_tunnel_adds_existing_exe_to_whitelist_by_default(tmp_path
         json.dumps(
             {
                 "Version": "4.3.2",
+                "KillswitchWhitelist": [],
                 "SplitTunneling": {
                     "Mode": 2,
                     "Whitelisted": [],
@@ -43,6 +44,9 @@ def test_hide_me_split_tunnel_adds_existing_exe_to_whitelist_by_default(tmp_path
     assert Path(result["backup_path"]).is_file()
     assert result["restart"]["requested"] is False
     assert result["limit_to_vpn"] is False
+    assert result["allow_loopback"] is True
+    assert result["added_loopback"] is True
+    assert payload["KillswitchWhitelist"] == [hide_me_split_tunnel.LOOPBACK_CIDR]
     assert payload["SplitTunneling"]["Whitelisted"][0]["Path"] == str(exe.resolve())
     assert payload["SplitTunneling"]["LimitToVpn"] == []
 
@@ -55,6 +59,7 @@ def test_hide_me_split_tunnel_can_add_existing_exe_to_limit_to_vpn(tmp_path: Pat
     settings.write_text(
         json.dumps(
             {
+                "KillswitchWhitelist": [hide_me_split_tunnel.LOOPBACK_CIDR],
                 "SplitTunneling": {
                     "Whitelisted": [],
                     "LimitToVpn": [],
@@ -71,8 +76,29 @@ def test_hide_me_split_tunnel_can_add_existing_exe_to_limit_to_vpn(tmp_path: Pat
 
     payload = json.loads(settings.read_text(encoding="utf-8"))
     assert result["limit_to_vpn"] is True
+    assert result["added_loopback"] is False
     assert payload["SplitTunneling"]["Whitelisted"][0]["Path"] == str(exe.resolve())
     assert payload["SplitTunneling"]["LimitToVpn"][0]["Path"] == str(exe.resolve())
+
+
+def test_hide_me_split_tunnel_can_skip_loopback_allowlist(tmp_path: Path, monkeypatch) -> None:
+    settings = tmp_path / "vpn.settings"
+    exe = tmp_path / "emulebb.exe"
+    exe.write_bytes(b"exe")
+    settings.write_text(
+        json.dumps({"KillswitchWhitelist": [], "SplitTunneling": {"Whitelisted": [], "LimitToVpn": []}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv(hide_me_split_tunnel.ENABLE_ENV, "1")
+    monkeypatch.setenv(hide_me_split_tunnel.ALLOW_LOOPBACK_ENV, "0")
+    monkeypatch.setenv(hide_me_split_tunnel.SETTINGS_PATH_ENV, str(settings))
+
+    result = hide_me_split_tunnel.ensure_split_tunnel_apps([exe])
+
+    payload = json.loads(settings.read_text(encoding="utf-8"))
+    assert result["allow_loopback"] is False
+    assert result["added_loopback"] is False
+    assert payload["KillswitchWhitelist"] == []
 
 
 def test_hide_me_split_tunnel_is_idempotent(tmp_path: Path, monkeypatch) -> None:
@@ -83,6 +109,7 @@ def test_hide_me_split_tunnel_is_idempotent(tmp_path: Path, monkeypatch) -> None
     settings.write_text(
         json.dumps(
             {
+                "KillswitchWhitelist": [hide_me_split_tunnel.LOOPBACK_CIDR],
                 "SplitTunneling": {
                     "Whitelisted": [entry],
                     "LimitToVpn": [entry],

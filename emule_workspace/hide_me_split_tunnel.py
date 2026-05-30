@@ -15,8 +15,10 @@ SETTINGS_PATH_ENV = "EMULEBB_DEVELOPER_HIDE_ME_SETTINGS_PATH"
 RESTART_AFTER_REGISTER_ENV = "EMULEBB_DEVELOPER_HIDE_ME_RESTART_AFTER_REGISTER"
 RESTART_ON_UPNP_FAILURE_ENV = "EMULEBB_DEVELOPER_HIDE_ME_RESTART_ON_UPNP_FAILURE"
 LIMIT_TO_VPN_ENV = "EMULEBB_DEVELOPER_HIDE_ME_LIMIT_TO_VPN"
+ALLOW_LOOPBACK_ENV = "EMULEBB_DEVELOPER_HIDE_ME_ALLOW_LOOPBACK"
 HIDE_ME_EXE = Path(r"C:\Program Files (x86)\hide.me VPN\Hide.me.exe")
 HIDE_ME_SERVICE = "hmevpnsvc"
+LOOPBACK_CIDR = "127.0.0.1/8"
 UPNP_FAILURE_MARKERS = (
     "upnp",
     "miniupnp",
@@ -67,6 +69,17 @@ def ensure_split_tunnel_apps(app_paths: list[Path], *, app_name: str = "eMuleBB"
         raise RuntimeError("hide.me settings SplitTunneling value is not an object.")
 
     changed = False
+    allow_loopback = enabled_allow_loopback_from_environment()
+    added_loopback = False
+    if allow_loopback:
+        killswitch_whitelist = payload.setdefault("KillswitchWhitelist", [])
+        if not isinstance(killswitch_whitelist, list):
+            raise RuntimeError("hide.me settings KillswitchWhitelist value is not an array.")
+        if not any(str(entry).casefold() == LOOPBACK_CIDR.casefold() for entry in killswitch_whitelist):
+            killswitch_whitelist.append(LOOPBACK_CIDR)
+            added_loopback = True
+            changed = True
+
     list_keys = ["Whitelisted"]
     limit_to_vpn = enabled_limit_to_vpn_from_environment()
     if limit_to_vpn:
@@ -105,6 +118,8 @@ def ensure_split_tunnel_apps(app_paths: list[Path], *, app_name: str = "eMuleBB"
         "registered_paths": [str(path) for path in resolved_paths],
         "added": added,
         "limit_to_vpn": limit_to_vpn,
+        "allow_loopback": allow_loopback,
+        "added_loopback": added_loopback,
         "restart": restart,
     }
 
@@ -169,6 +184,13 @@ def enabled_limit_to_vpn_from_environment() -> bool:
     """Returns whether registration should also populate hide.me's LimitToVpn list."""
 
     return os.environ.get(LIMIT_TO_VPN_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def enabled_allow_loopback_from_environment() -> bool:
+    """Returns whether local loopback should be whitelisted for harness control traffic."""
+
+    value = os.environ.get(ALLOW_LOOPBACK_ENV, "").strip().lower()
+    return value not in {"0", "false", "no", "off"}
 
 
 def looks_like_upnp_failure(failure_text: str) -> bool:
