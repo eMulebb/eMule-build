@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import socket
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,6 +26,9 @@ HARNESS_PROFILE_SEED_FILES = frozenset({"preferences.ini", "preferences.dat", "s
 DEFAULT_AMUTORRENT_PORT = 4000
 DEFAULT_AMUTORRENT_BIND_ADDRESS = "0.0.0.0"
 DEFAULT_REST_PORT = 4711
+DEFAULT_PROWLARR_PORT = 9696
+DEFAULT_RADARR_PORT = 7878
+DEFAULT_SONARR_PORT = 8989
 DEFAULT_P2P_BIND_INTERFACE = "hide.me"
 RETIRED_LOCAL_INSTALL_FIELDS = ("profile_dir", "procdump_path")
 
@@ -40,6 +44,9 @@ class LocalInstallConfig:
     control_bind_address: str | None
     emulebb_bind_address: str | None
     emulebb_port: int
+    prowlarr_port: int
+    radarr_port: int
+    sonarr_port: int
     dependency_manifest: Path | None
     import_profile_dir: Path | None
     p2p_bind_interface: str
@@ -129,9 +136,18 @@ def materialize_test_local_install(
     """Materializes an isolated installer-created local install for one test client."""
 
     base_config = load_local_install_config(layout, options.live_wire_inputs_file)
+    emulebb_port, amutorrent_port, prowlarr_port, radarr_port, sonarr_port = choose_free_tcp_ports(5)
     test_config = replace(
         base_config,
         target_path=test_install_root(layout, run_id=run_id, suite_name=suite_name, client_id=client_id),
+        amutorrent_port=amutorrent_port,
+        amutorrent_bind_address="127.0.0.1",
+        control_bind_address="127.0.0.1",
+        emulebb_bind_address="127.0.0.1",
+        emulebb_port=emulebb_port,
+        prowlarr_port=prowlarr_port,
+        radarr_port=radarr_port,
+        sonarr_port=sonarr_port,
     )
     materialized = _materialize_local_install_from_config(layout, workspace_options, options, test_config)
     seed_config_dir = prepare_test_profile_seed(layout, materialized.profile_config_dir, test_config.target_path)
@@ -209,6 +225,9 @@ def load_local_install_config(layout: WorkspaceLayout, raw_inputs_path: str | No
         control_bind_address=_optional_nullable_string(raw_config, "control_bind_address"),
         emulebb_bind_address=emulebb_bind_address,
         emulebb_port=emulebb_port,
+        prowlarr_port=_optional_int(raw_config, "prowlarr_port", DEFAULT_PROWLARR_PORT),
+        radarr_port=_optional_int(raw_config, "radarr_port", DEFAULT_RADARR_PORT),
+        sonarr_port=_optional_int(raw_config, "sonarr_port", DEFAULT_SONARR_PORT),
         dependency_manifest=_optional_nullable_path(raw_config, "dependency_manifest"),
         import_profile_dir=_optional_nullable_path(raw_config, "import_profile_dir"),
         p2p_bind_interface=_optional_string(raw_config, "p2p_bind_interface", DEFAULT_P2P_BIND_INTERFACE),
@@ -340,11 +359,31 @@ def build_suite_installer_options(
         control_bind_address=config.control_bind_address,
         emulebb_bind_address=config.emulebb_bind_address,
         emulebb_port=config.emulebb_port,
+        prowlarr_port=config.prowlarr_port,
+        radarr_port=config.radarr_port,
+        sonarr_port=config.sonarr_port,
         dependency_manifest=config.dependency_manifest,
         import_profile_dir=config.import_profile_dir,
         emulebb_pdb_path=artifacts.package_pdb,
         p2p_bind_interface=config.p2p_bind_interface,
     )
+
+
+def choose_free_tcp_ports(count: int, *, host: str = "127.0.0.1") -> tuple[int, ...]:
+    """Reserves and returns distinct free TCP ports for an isolated test install."""
+
+    sockets: list[socket.socket] = []
+    try:
+        ports: list[int] = []
+        for _ in range(count):
+            probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            probe.bind((host, 0))
+            sockets.append(probe)
+            ports.append(int(probe.getsockname()[1]))
+        return tuple(ports)
+    finally:
+        for probe in sockets:
+            probe.close()
 
 
 def prepare_test_profile_seed(layout: WorkspaceLayout, installer_config_dir: Path, install_root: Path) -> Path:

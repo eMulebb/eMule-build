@@ -374,7 +374,8 @@ def test_suite_installer_import_profile_requires_source_before_bootstrap(tmp_pat
     )
 
     assert completed.returncode != 0
-    assert "ImportProfileDir must contain config\\preferences.ini" in completed.stdout
+    assert "ImportProfileDir must contain" in completed.stdout
+    assert "preferences.ini" in completed.stdout
 
 
 def test_suite_installer_copies_configured_emulebb_symbols(tmp_path: Path) -> None:

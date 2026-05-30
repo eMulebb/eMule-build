@@ -180,6 +180,9 @@ def test_local_package_install_deploys_artifacts_from_suite_profile(
     assert result.manifest_path == target / "manifests" / "local-install.json"
     assert installer_calls
     assert installer_calls[0].emulebb_port == 14711
+    assert installer_calls[0].prowlarr_port == 9696
+    assert installer_calls[0].radarr_port == 7878
+    assert installer_calls[0].sonarr_port == 8989
     assert installer_calls[0].p2p_bind_interface == "hide.me"
     assert installer_calls[0].import_profile_dir == import_profile.resolve()
     assert installer_calls[0].emulebb_pdb_path.name == "emulebb.pdb"
@@ -320,6 +323,9 @@ def test_suite_installer_command_uses_full_bundle_and_existing_suite_config(tmp_
     assert command[command.index("-ImportProfileDir") + 1] == str((tmp_path / "import-profile").resolve())
     assert command[command.index("-EmulebbPdbPath") + 1] == str((release_root / "emulebb.pdb"))
     assert command[command.index("-P2PBindInterface") + 1] == "hide.me"
+    assert command[command.index("-ProwlarrPort") + 1] == "9696"
+    assert command[command.index("-RadarrPort") + 1] == "7878"
+    assert command[command.index("-SonarrPort") + 1] == "8989"
 
 
 def test_update_ini_values_appends_keys_to_existing_sections() -> None:
@@ -391,6 +397,7 @@ def test_materialize_test_local_install_uses_isolated_test_root(
         )
 
     monkeypatch.setattr(local_package_install.suite_installer, "invoke_suite_installer", fake_invoke_suite_installer)
+    monkeypatch.setattr(local_package_install, "choose_free_tcp_ports", lambda count: (15111, 15112, 15113, 15114, 15115))
 
     result = local_package_install.materialize_test_local_install(
         layout,
@@ -414,6 +421,14 @@ def test_materialize_test_local_install_uses_isolated_test_root(
     assert result.profile_config_dir == expected_target / "profiles" / "emulebb" / "config"
     assert result.profile_seed_config_dir == expected_target / "harness-profile-seed" / "config"
     assert installer_calls[0].install_root == expected_target
+    assert installer_calls[0].control_bind_address == "127.0.0.1"
+    assert installer_calls[0].emulebb_bind_address == "127.0.0.1"
+    assert installer_calls[0].amutorrent_bind_address == "127.0.0.1"
+    assert installer_calls[0].emulebb_port == 15111
+    assert installer_calls[0].amutorrent_port == 15112
+    assert installer_calls[0].prowlarr_port == 15113
+    assert installer_calls[0].radarr_port == 15114
+    assert installer_calls[0].sonarr_port == 15115
     assert installer_calls[0].import_profile_dir == import_profile.resolve()
     assert not operator_target.exists()
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))

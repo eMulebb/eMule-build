@@ -29,6 +29,9 @@ class SuiteInstallerOptions:
     control_bind_address: str | None
     emulebb_bind_address: str | None
     emulebb_port: int
+    prowlarr_port: int
+    radarr_port: int
+    sonarr_port: int
     dependency_manifest: Path | None
     import_profile_dir: Path | None
     emulebb_pdb_path: Path | None
@@ -109,6 +112,12 @@ def build_suite_installer_invocation(*, powershell: Path, options: SuiteInstalle
         options.amutorrent_bind_address,
         "-EmulebbPort",
         str(options.emulebb_port),
+        "-ProwlarrPort",
+        str(options.prowlarr_port),
+        "-RadarrPort",
+        str(options.radarr_port),
+        "-SonarrPort",
+        str(options.sonarr_port),
         "-P2PBindInterface",
         options.p2p_bind_interface,
     ]
