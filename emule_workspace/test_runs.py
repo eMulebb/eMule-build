@@ -873,6 +873,14 @@ def invoke_amutorrent_clean_startup(
     ]
     if clean_options.live_wire_inputs_file:
         args.extend(["--live-wire-inputs-file", _resolve_workspace_argument(layout, clean_options.live_wire_inputs_file)])
+    network_env = _test_network_env(
+        layout,
+        test_network=clean_options.test_network,
+        vpn_interface_name=clean_options.p2p_bind_interface_name,
+        require_vpn=True,
+        require_lan=True,
+    )
+    _append_controller_bind_addr(args, network_env)
     _append_optional_flag(args, clean_options.keep_artifacts, "--keep-artifacts")
 
     python = get_python_invocation()
@@ -881,12 +889,7 @@ def invoke_amutorrent_clean_startup(
         python.command(args),
         label="aMuTorrent clean startup",
         cwd=layout.emule_workspace_root,
-        env=_test_network_env(
-            layout,
-            test_network=clean_options.test_network,
-            vpn_interface_name=clean_options.p2p_bind_interface_name,
-            require_vpn=True,
-        ),
+        env=network_env,
     )
 
 
@@ -931,6 +934,14 @@ def invoke_amutorrent_resilience(
     ]
     if resilience_options.live_wire_inputs_file:
         args.extend(["--live-wire-inputs-file", _resolve_workspace_argument(layout, resilience_options.live_wire_inputs_file)])
+    network_env = _test_network_env(
+        layout,
+        test_network=resilience_options.test_network,
+        vpn_interface_name=resilience_options.p2p_bind_interface_name,
+        require_vpn=True,
+        require_lan=True,
+    )
+    _append_controller_bind_addr(args, network_env)
     _append_optional_flag(args, resilience_options.keep_artifacts, "--keep-artifacts")
 
     python = get_python_invocation()
@@ -939,12 +950,7 @@ def invoke_amutorrent_resilience(
         python.command(args),
         label="aMuTorrent resilience live",
         cwd=layout.emule_workspace_root,
-        env=_test_network_env(
-            layout,
-            test_network=resilience_options.test_network,
-            vpn_interface_name=resilience_options.p2p_bind_interface_name,
-            require_vpn=True,
-        ),
+        env=network_env,
     )
 
 
@@ -987,6 +993,14 @@ def invoke_amutorrent_emulebb_ui(
     ]
     if ui_options.live_wire_inputs_file:
         args.extend(["--live-wire-inputs-file", _resolve_workspace_argument(layout, ui_options.live_wire_inputs_file)])
+    network_env = _test_network_env(
+        layout,
+        test_network=ui_options.test_network,
+        vpn_interface_name=ui_options.p2p_bind_interface_name,
+        require_vpn=True,
+        require_lan=True,
+    )
+    _append_controller_bind_addr(args, network_env)
     _append_optional_flag(args, ui_options.keep_artifacts, "--keep-artifacts")
 
     python = get_python_invocation()
@@ -995,18 +1009,19 @@ def invoke_amutorrent_emulebb_ui(
         python.command(args),
         label="aMuTorrent eMuleBB UI live",
         cwd=layout.emule_workspace_root,
-        env=_test_network_env(
-            layout,
-            test_network=ui_options.test_network,
-            vpn_interface_name=ui_options.p2p_bind_interface_name,
-            require_vpn=True,
-        ),
+        env=network_env,
     )
 
 
 def _append_optional_flag(args: list, enabled: bool, flag: str) -> None:
     if enabled:
         args.append(flag)
+
+
+def _append_controller_bind_addr(args: list[str | Path | float], env: dict[str, str]) -> None:
+    controller_bind_address = _controller_bind_address_from_env(env)
+    if controller_bind_address:
+        args.extend(["--bind-addr", controller_bind_address])
 
 
 def _run_live_native(
