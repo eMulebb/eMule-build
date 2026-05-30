@@ -1018,13 +1018,22 @@ def _run_live_native(
     cwd: Path,
     env: dict[str, str],
 ) -> None:
-    completed = run_native(command, label=label, cwd=cwd, env=env, allow_failure=True)
-    if int(getattr(completed, "returncode", 0) or 0) == 0:
-        return
+    retried_after_upnp_restart = False
+    while True:
+        completed = run_native(command, label=label, cwd=cwd, env=env, allow_failure=True)
+        if int(getattr(completed, "returncode", 0) or 0) == 0:
+            return
 
-    failure_text = _recent_live_failure_text(layout.workspace_root)
-    restart_hide_me_after_upnp_failure_if_requested(failure_text)
-    raise RuntimeError(f"{label} failed with exit code {completed.returncode}.")
+        failure_text = _recent_live_failure_text(layout.workspace_root)
+        restart = (
+            {"requested": False, "skipped": "UPnP recovery retry already used"}
+            if retried_after_upnp_restart
+            else restart_hide_me_after_upnp_failure_if_requested(failure_text)
+        )
+        if bool(restart.get("requested")) and not retried_after_upnp_restart:
+            retried_after_upnp_restart = True
+            continue
+        raise RuntimeError(f"{label} failed with exit code {completed.returncode}.")
 
 
 def _recent_live_failure_text(workspace_root: Path) -> str:

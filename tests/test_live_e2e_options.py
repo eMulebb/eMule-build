@@ -683,6 +683,45 @@ def test_live_e2e_restarts_hide_me_when_app_log_points_at_upnp(tmp_path: Path, m
     assert "PortMapping failed" in recovery_inputs[0]
 
 
+def test_live_e2e_retries_once_after_hide_me_upnp_recovery(tmp_path: Path, monkeypatch) -> None:
+    logs = tmp_path / "workspaces" / "workspace" / "state" / "test-reports" / "live-e2e-suite" / "run" / "rest-api" / "logs"
+    logs.mkdir(parents=True)
+    (logs / "emulebb-verbose.log").write_text(
+        "UPnP failed to setup port forwarding\n",
+        encoding="utf-8",
+    )
+    calls = 0
+    recovery_inputs: list[str] = []
+
+    class Completed:
+        def __init__(self, returncode: int):
+            self.returncode = returncode
+
+    def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
+        nonlocal calls
+        calls += 1
+        assert allow_failure is True
+        return Completed(1 if calls == 1 else 0)
+
+    def fake_recover(failure_text):
+        recovery_inputs.append(failure_text)
+        return {"requested": True}
+
+    layout = make_layout(tmp_path)
+    monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+    monkeypatch.setattr(test_runs, "ensure_split_tunnel_apps", lambda paths: {"enabled": False})
+    monkeypatch.setattr(test_runs, "restart_hide_me_after_upnp_failure_if_requested", fake_recover)
+
+    test_runs.invoke_live_e2e_suite(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+        LiveE2eOptions(suites=("rest-api",), test_network="vpn"),
+    )
+
+    assert calls == 2
+    assert len(recovery_inputs) == 1
+
+
 def test_live_e2e_forwards_multi_client_required_optional_clients(tmp_path: Path, monkeypatch) -> None:
     captured: dict[str, object] = {}
 
