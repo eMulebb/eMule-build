@@ -144,7 +144,7 @@ def test_hide_me_split_tunnel_can_restart_after_registration(tmp_path: Path, mon
 
         class Completed:
             returncode = 0
-            stdout = ""
+            stdout = "10.54.216.129\n" if "Get-NetIPAddress" in command[-1] else ""
             stderr = ""
 
         return Completed()
@@ -154,7 +154,28 @@ def test_hide_me_split_tunnel_can_restart_after_registration(tmp_path: Path, mon
     result = hide_me_split_tunnel.ensure_split_tunnel_apps([exe])
 
     assert result["restart"]["requested"] is True
+    assert result["restart"]["vpn_ipv4"] == "10.54.216.129"
     assert calls and calls[0][0] == "powershell"
+
+
+def test_hide_me_split_tunnel_waits_for_ipv4_after_restart(monkeypatch) -> None:
+    calls: list[int] = []
+
+    def fake_run(command, **kwargs):
+        calls.append(1)
+
+        class Completed:
+            returncode = 0
+            stdout = "" if len(calls) == 1 else "10.54.216.129\n"
+            stderr = ""
+
+        return Completed()
+
+    monkeypatch.setattr(hide_me_split_tunnel.subprocess, "run", fake_run)
+    monkeypatch.setattr(hide_me_split_tunnel.time, "sleep", lambda _seconds: None)
+
+    assert hide_me_split_tunnel.wait_for_hide_me_ipv4_after_restart(timeout_seconds=10) == "10.54.216.129"
+    assert len(calls) == 2
 
 
 def test_hide_me_split_tunnel_can_restart_after_upnp_failure(monkeypatch) -> None:

@@ -18,6 +18,7 @@ LIMIT_TO_VPN_ENV = "EMULEBB_DEVELOPER_HIDE_ME_LIMIT_TO_VPN"
 ALLOW_LOOPBACK_ENV = "EMULEBB_DEVELOPER_HIDE_ME_ALLOW_LOOPBACK"
 HIDE_ME_EXE = Path(r"C:\Program Files (x86)\hide.me VPN\Hide.me.exe")
 HIDE_ME_SERVICE = "hmevpnsvc"
+HIDE_ME_INTERFACE_ALIAS = "hide.me"
 LOOPBACK_CIDR = "127.0.0.1/8"
 UPNP_FAILURE_MARKERS = (
     "upnp",
@@ -167,7 +168,39 @@ def restart_hide_me() -> dict[str, Any]:
     )
     if completed.returncode != 0:
         raise RuntimeError(f"hide.me restart failed: {completed.stderr.strip() or completed.stdout.strip()}")
-    return {"requested": True, "returncode": completed.returncode}
+    return {
+        "requested": True,
+        "returncode": completed.returncode,
+        "vpn_ipv4": wait_for_hide_me_ipv4_after_restart(),
+    }
+
+
+def wait_for_hide_me_ipv4_after_restart(timeout_seconds: float = 60.0) -> str:
+    """Waits until hide.me exposes a usable IPv4 after a restart."""
+
+    deadline = time.monotonic() + timeout_seconds
+    last_error = ""
+    while time.monotonic() < deadline:
+        command = (
+            f"Get-NetIPAddress -InterfaceAlias '{HIDE_ME_INTERFACE_ALIAS}' -AddressFamily IPv4 "
+            "-ErrorAction SilentlyContinue | "
+            "Where-Object { $_.IPAddress -and $_.AddressState -eq 'Preferred' } | "
+            "Select-Object -First 1 -ExpandProperty IPAddress"
+        )
+        completed = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", command],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+        if completed.returncode == 0:
+            candidate = completed.stdout.strip().splitlines()[0].strip() if completed.stdout.strip() else ""
+            if candidate:
+                return candidate
+        last_error = completed.stderr.strip() or completed.stdout.strip()
+        time.sleep(2.0)
+    raise RuntimeError(f"hide.me restart did not expose a usable IPv4 within {timeout_seconds:g}s. {last_error}".strip())
 
 
 def enabled_restart_from_environment() -> bool:
