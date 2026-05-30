@@ -31,7 +31,7 @@ TEST_INSTALLS_DIR_NAME = "test-installs"
 TEST_PROFILE_SEED_DIR_NAME = "harness-profile-seed"
 HARNESS_PROFILE_SEED_FILES = frozenset({"preferences.ini", "preferences.dat", "server.met", "nodes.dat"})
 DEFAULT_AMUTORRENT_PORT = 4000
-DEFAULT_AMUTORRENT_BIND_ADDRESS = "0.0.0.0"
+DEFAULT_AMUTORRENT_BIND_ADDRESS = ""
 DEFAULT_REST_PORT = 4711
 DEFAULT_PROWLARR_PORT = 9696
 DEFAULT_RADARR_PORT = 7878
@@ -139,18 +139,20 @@ def materialize_test_local_install(
     run_id: str,
     suite_name: str,
     client_id: str = "primary",
+    controller_bind_address: str | None = None,
 ) -> MaterializedLocalInstall:
     """Materializes an isolated installer-created local install for one test client."""
 
     base_config = load_local_install_config(layout, options.live_wire_inputs_file)
-    emulebb_port, amutorrent_port, prowlarr_port, radarr_port, sonarr_port = choose_free_tcp_ports(5)
+    controller_bind = (controller_bind_address or "").strip() or "127.0.0.1"
+    emulebb_port, amutorrent_port, prowlarr_port, radarr_port, sonarr_port = choose_free_tcp_ports(5, host=controller_bind)
     test_config = replace(
         base_config,
         target_path=test_install_root(layout, run_id=run_id, suite_name=suite_name, client_id=client_id),
         amutorrent_port=amutorrent_port,
-        amutorrent_bind_address="127.0.0.1",
-        control_bind_address="127.0.0.1",
-        emulebb_bind_address="127.0.0.1",
+        amutorrent_bind_address=controller_bind,
+        control_bind_address=controller_bind,
+        emulebb_bind_address=controller_bind,
         emulebb_port=emulebb_port,
         prowlarr_port=prowlarr_port,
         radarr_port=radarr_port,

@@ -49,13 +49,16 @@ def option_values(command: list[str], option: str) -> list[str]:
 
 @pytest.fixture(autouse=True)
 def fake_network_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("X_LOCAL_IP", raising=False)
+
     def resolve(*, workspace_root, test_network, vpn_interface_name=None, require_vpn=False, require_lan=False):
-        return SimpleNamespace(
-            env=lambda: {
-                "EMULEBB_TEST_NETWORK": test_network,
-                "EMULEBB_TEST_NETWORK_CONTEXT_JSON": str(Path(workspace_root) / "state" / "network-context" / "fake.json"),
-            }
-        )
+        values = {
+            "EMULEBB_TEST_NETWORK": test_network,
+            "EMULEBB_TEST_NETWORK_CONTEXT_JSON": str(Path(workspace_root) / "state" / "network-context" / "fake.json"),
+        }
+        if require_lan:
+            values["EMULEBB_TEST_LAN_IP_RESOLVED"] = "192.168.1.44"
+        return SimpleNamespace(env=lambda: values)
 
     monkeypatch.setattr(test_runs, "resolve_workspace_network_context", resolve)
 
@@ -354,7 +357,7 @@ def test_live_e2e_can_run_against_materialized_installer_test_install(tmp_path: 
         captured["command"] = list(command)
         captured["env"] = dict(env or {})
 
-    def fake_materialize(layout, workspace_options, install_options, *, run_id, suite_name, client_id):
+    def fake_materialize(layout, workspace_options, install_options, *, run_id, suite_name, client_id, controller_bind_address=None):
         materialize_calls.append(
             SimpleNamespace(
                 layout=layout,
@@ -363,6 +366,7 @@ def test_live_e2e_can_run_against_materialized_installer_test_install(tmp_path: 
                 run_id=run_id,
                 suite_name=suite_name,
                 client_id=client_id,
+                controller_bind_address=controller_bind_address,
             )
         )
         install_root = tmp_path / "workspaces" / "workspace" / "state" / "test-installs" / "run" / "live-e2e-suite" / "main"
@@ -415,6 +419,7 @@ def test_live_e2e_can_run_against_materialized_installer_test_install(tmp_path: 
     assert call.install_options.skip_build is True
     assert call.suite_name == "live-e2e-suite"
     assert call.client_id == "main"
+    assert call.controller_bind_address is None
     assert call.run_id.endswith("-pid" + str(os.getpid()))
     install_root = call.layout.workspace_root / "state" / "test-installs" / "run" / "live-e2e-suite" / "main"
     assert option_values(command, "--app-root") == [str(install_root / "apps" / "eMuleBB")]
@@ -432,6 +437,46 @@ def test_live_e2e_can_run_against_materialized_installer_test_install(tmp_path: 
     assert env["RADARR_API_KEY"] == "radarr-secret"
     assert env["SONARR_URL"] == "http://192.168.1.44:8989"
     assert env["SONARR_API_KEY"] == "sonarr-secret"
+
+
+def test_live_e2e_materialized_vpn_uses_lan_controller_bind(tmp_path: Path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    materialize_calls: list[object] = []
+
+    def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
+        captured["command"] = list(command)
+        captured["env"] = dict(env or {})
+
+    def fake_materialize(layout, workspace_options, install_options, *, run_id, suite_name, client_id, controller_bind_address=None):
+        materialize_calls.append(SimpleNamespace(controller_bind_address=controller_bind_address))
+        install_root = tmp_path / "workspaces" / "workspace" / "state" / "test-installs" / "run" / "live-e2e-suite" / "main"
+        return SimpleNamespace(
+            target_path=install_root,
+            app_root=install_root / "apps" / "eMuleBB",
+            app_exe=install_root / "apps" / "eMuleBB" / "emulebb.exe",
+            profile_dir=install_root / "profiles" / "emulebb",
+            profile_config_dir=install_root / "profiles" / "emulebb" / "config",
+            profile_seed_config_dir=install_root / "harness-profile-seed" / "config",
+        )
+
+    layout = make_layout(tmp_path)
+    monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+    monkeypatch.setattr(test_runs, "materialize_test_local_install", fake_materialize)
+    monkeypatch.setattr(test_runs, "ensure_split_tunnel_apps", lambda paths: {"enabled": False})
+
+    test_runs.invoke_live_e2e_suite(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+        LiveE2eOptions(
+            suites=("rest-api",),
+            test_network="vpn",
+            materialize_test_install=True,
+            materialize_test_install_skip_build=True,
+        ),
+    )
+
+    assert materialize_calls[0].controller_bind_address == "192.168.1.44"
+    assert captured["env"]["X_LOCAL_IP"] == "192.168.1.44"
 
 
 def test_live_e2e_starts_materialized_arr_services_for_arr_suites(tmp_path: Path, monkeypatch) -> None:
@@ -470,7 +515,7 @@ def test_live_e2e_starts_materialized_arr_services_for_arr_suites(tmp_path: Path
         captured["command"] = list(command)
         captured["env"] = dict(env or {})
 
-    def fake_materialize(layout, workspace_options, install_options, *, run_id, suite_name, client_id):
+    def fake_materialize(layout, workspace_options, install_options, *, run_id, suite_name, client_id, controller_bind_address=None):
         install_root = tmp_path / "workspaces" / "workspace" / "state" / "test-installs" / "run" / "live-e2e-suite" / "main"
         manifests = install_root / "manifests"
         manifests.mkdir(parents=True)
@@ -560,7 +605,7 @@ def test_live_e2e_registers_materialized_exe_for_developer_hide_me_split_tunnel(
     def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
         captured["command"] = list(command)
 
-    def fake_materialize(layout_arg, workspace_options, install_options, *, run_id, suite_name, client_id):
+    def fake_materialize(layout_arg, workspace_options, install_options, *, run_id, suite_name, client_id, controller_bind_address=None):
         install_root = tmp_path / "workspaces" / "workspace" / "state" / "test-installs" / run_id / suite_name / client_id
         app_exe = install_root / "apps" / "eMuleBB" / "emulebb.exe"
         seed_config = install_root / "harness-profile-seed" / "config"
@@ -592,7 +637,6 @@ def test_live_e2e_registers_materialized_exe_for_developer_hide_me_split_tunnel(
     monkeypatch.setattr(test_runs, "run_native", fake_run_native)
     monkeypatch.setattr(test_runs, "materialize_test_local_install", fake_materialize)
     monkeypatch.setattr(test_runs, "ensure_split_tunnel_apps", fake_register)
-    monkeypatch.setattr(test_runs, "find_tool", lambda names: node_exe)
 
     test_runs.invoke_live_e2e_suite(
         layout,
@@ -605,10 +649,9 @@ def test_live_e2e_registers_materialized_exe_for_developer_hide_me_split_tunnel(
         ),
     )
 
-    assert registered[0] == Path(option_values(captured["command"], "--app-exe")[0])
-    assert any(path.name.casefold() in {"python.exe", "python"} for path in registered[1:])
-    assert node_exe in registered
-    assert browser_exe in registered
+    assert registered == [Path(option_values(captured["command"], "--app-exe")[0])]
+    assert node_exe not in registered
+    assert browser_exe not in registered
 
 
 def test_live_e2e_restarts_hide_me_when_failed_report_points_at_upnp(tmp_path: Path, monkeypatch) -> None:

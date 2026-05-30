@@ -108,8 +108,6 @@ def build_suite_installer_invocation(*, powershell: Path, options: SuiteInstalle
         options.install_kind,
         "-AmutorrentPort",
         str(options.amutorrent_port),
-        "-AmutorrentBindAddress",
-        options.amutorrent_bind_address,
         "-EmulebbPort",
         str(options.emulebb_port),
         "-ProwlarrPort",
@@ -128,6 +126,8 @@ def build_suite_installer_invocation(*, powershell: Path, options: SuiteInstalle
         command.extend(("-ControlBindAddress", options.control_bind_address))
     if options.emulebb_bind_address:
         command.extend(("-EmulebbBindAddress", options.emulebb_bind_address))
+    if options.amutorrent_bind_address:
+        command.extend(("-AmutorrentBindAddress", options.amutorrent_bind_address))
     if options.dependency_manifest:
         command.extend(("-DependencyManifest", str(options.dependency_manifest)))
     if options.import_profile_dir:

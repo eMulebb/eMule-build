@@ -414,7 +414,7 @@ def test_materialize_test_local_install_uses_isolated_test_root(
         )
 
     monkeypatch.setattr(local_package_install.suite_installer, "invoke_suite_installer", fake_invoke_suite_installer)
-    monkeypatch.setattr(local_package_install, "choose_free_tcp_ports", lambda count: (15111, 15112, 15113, 15114, 15115))
+    monkeypatch.setattr(local_package_install, "choose_free_tcp_ports", lambda count, host="127.0.0.1": (15111, 15112, 15113, 15114, 15115))
 
     result = local_package_install.materialize_test_local_install(
         layout,
@@ -460,3 +460,52 @@ def test_materialize_test_local_install_uses_isolated_test_root(
     assert (result.profile_seed_config_dir / "server.met").read_bytes() == b"fallback-servers"
     assert (result.profile_seed_config_dir / "nodes.dat").read_bytes() == b"fallback-nodes"
     assert not (result.profile_seed_config_dir / "known.met").exists()
+
+
+def test_materialize_test_local_install_accepts_controller_bind_address(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    layout = _layout(tmp_path)
+    layout.tests_repo_root.mkdir(parents=True)
+    layout.build_repo_root.mkdir(parents=True)
+    _write_harness_seed(layout.tests_repo_root)
+    live_wire_path = layout.tests_repo_root / "live-wire-inputs.local.json"
+    _write_live_wire(live_wire_path, tmp_path / "operator-install")
+    suite_install_fixtures.write_local_package_artifacts(
+        layout.workspace_root,
+        version="0.7.3-rc.1",
+    )
+    installer_calls: list[suite_installer.SuiteInstallerOptions] = []
+    port_probe_hosts: list[str] = []
+
+    def fake_invoke_suite_installer(options: suite_installer.SuiteInstallerOptions) -> suite_installer.SuiteInstallerInvocation:
+        installer_calls.append(options)
+        _write_suite_profile(options.install_root)
+        return suite_installer.SuiteInstallerInvocation(
+            command=(),
+            installer_script=options.installer_script,
+            staging_root=options.installer_script.parent,
+        )
+
+    def fake_choose_free_tcp_ports(count: int, *, host: str = "127.0.0.1") -> tuple[int, ...]:
+        port_probe_hosts.append(host)
+        return (15111, 15112, 15113, 15114, 15115)
+
+    monkeypatch.setattr(local_package_install.suite_installer, "invoke_suite_installer", fake_invoke_suite_installer)
+    monkeypatch.setattr(local_package_install, "choose_free_tcp_ports", fake_choose_free_tcp_ports)
+
+    local_package_install.materialize_test_local_install(
+        layout,
+        _workspace_options(tmp_path),
+        LocalPackageInstallOptions(skip_build=True),
+        run_id="run",
+        suite_name="live-e2e-suite",
+        client_id="main",
+        controller_bind_address="192.168.1.44",
+    )
+
+    assert port_probe_hosts == ["192.168.1.44"]
+    assert installer_calls[0].control_bind_address == "192.168.1.44"
+    assert installer_calls[0].emulebb_bind_address == "192.168.1.44"
+    assert installer_calls[0].amutorrent_bind_address == "192.168.1.44"

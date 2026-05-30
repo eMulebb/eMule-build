@@ -30,8 +30,8 @@ from .cleanup import run_pre_test_cleanup
 from .hide_me_split_tunnel import ensure_split_tunnel_apps, restart_hide_me_after_upnp_failure_if_requested
 from .layout import WorkspaceLayout, get_test_build_tag
 from .local_package_install import materialize_test_local_install
-from .network_context import TestNetwork, resolve_workspace_network_context
-from .process import find_tool, get_python_invocation, run_native
+from .network_context import LAN_IP_RESOLVED_ENV, TestNetwork, resolve_workspace_network_context
+from .process import get_python_invocation, run_native
 
 MATERIALIZED_ARR_SERVICE_WAIT_SECONDS = 120.0
 MATERIALIZED_ARR_SERVICE_POLL_SECONDS = 1.0
@@ -318,6 +318,13 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
     _assert_test_execution_platform_supported(options)
     if live_options.pre_run_cleanup:
         run_pre_test_cleanup(layout)
+    network_env = _test_network_env(
+        layout,
+        test_network=live_options.test_network,
+        vpn_interface_name=live_options.p2p_bind_interface_name,
+        require_lan=live_options.materialize_test_install and live_options.test_network in {"lan", "vpn", "all"},
+    )
+    controller_bind_address = _controller_bind_address_from_env(network_env)
     app_root = layout.get_app_variant(layout.test_targets.test_run_variant).path
     app_exe: Path | None = None
     profile_seed_config_dir: Path | None = None
@@ -335,6 +342,7 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
             run_id=_live_e2e_test_install_run_id(),
             suite_name="live-e2e-suite",
             client_id=layout.test_targets.test_run_variant,
+            controller_bind_address=controller_bind_address,
         )
         app_root = materialized.app_root
         app_exe = materialized.app_exe
@@ -346,8 +354,6 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
         )
     if live_options.test_network in {"vpn", "all"}:
         registration_paths = _hide_me_registration_paths(_resolve_live_e2e_app_exe(app_root, app_exe, options))
-        if live_options.materialize_test_install:
-            registration_paths.extend(_materialized_suite_registration_paths(materialized))
         ensure_split_tunnel_apps(registration_paths)
     script_path = layout.tests_repo_root / "scripts" / "run-live-e2e-suite.py"
     if not script_path.is_file():
@@ -547,11 +553,7 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
             label="live E2E suite",
             cwd=layout.emule_workspace_root,
             env={
-                **_test_network_env(
-                    layout,
-                    test_network=live_options.test_network,
-                    vpn_interface_name=live_options.p2p_bind_interface_name,
-                ),
+                **network_env,
                 **materialized_service_env,
             },
         )
@@ -601,20 +603,6 @@ def _live_e2e_needs_arr_services(live_options: LiveE2eOptions) -> bool:
     if not live_options.suites:
         return True
     return bool(ARR_LIVE_E2E_SUITES.intersection(live_options.suites))
-
-
-def _materialized_suite_registration_paths(materialized: object) -> list[Path]:
-    """Returns installer-staged helper executables that participate in live-wire runs."""
-
-    app_root = Path(getattr(materialized, "app_root"))
-    target_root = Path(getattr(materialized, "target_path", app_root.parent.parent))
-    paths: list[Path] = []
-    for spec in MATERIALIZED_ARR_SERVICES:
-        exe_path = _find_materialized_service_exe(target_root, spec)
-        if exe_path is not None:
-            paths.append(exe_path)
-    paths.extend((target_root / "runtime" / "node").glob("**/node.exe"))
-    return paths
 
 
 def _start_materialized_arr_services(
@@ -1061,43 +1049,7 @@ def _recent_live_failure_text(workspace_root: Path) -> str:
 
 
 def _hide_me_registration_paths(app_exe: Path) -> list[Path]:
-    paths = [app_exe]
-    try:
-        paths.append(get_python_invocation().executable)
-    except RuntimeError:
-        pass
-    node_exe = find_tool(("node.exe", "node"))
-    if node_exe is not None:
-        paths.append(node_exe)
-    paths.extend(_playwright_browser_registration_paths())
-    return paths
-
-
-def _playwright_browser_registration_paths() -> list[Path]:
-    """Returns locally installed Playwright browser executables that may drive live UI tests."""
-
-    candidates: list[Path] = []
-    local_appdata = os.environ.get("LOCALAPPDATA", "").strip()
-    if local_appdata:
-        playwright_root = Path(local_appdata) / "ms-playwright"
-        candidates.extend(playwright_root.glob("chromium-*/chrome-win/chrome.exe"))
-        candidates.extend(playwright_root.glob("chromium-*/chrome-win64/chrome.exe"))
-        candidates.extend(playwright_root.glob("chromium_headless_shell-*/chrome-win/headless_shell.exe"))
-        candidates.extend(playwright_root.glob("chromium_headless_shell-*/chrome-win64/headless_shell.exe"))
-        candidates.extend(playwright_root.glob("firefox-*/firefox/firefox.exe"))
-        candidates.extend(playwright_root.glob("webkit-*/Playwright.exe"))
-
-    browser_env = os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "").strip()
-    if browser_env and browser_env != "0":
-        playwright_root = Path(browser_env).expanduser()
-        candidates.extend(playwright_root.glob("chromium-*/chrome-win/chrome.exe"))
-        candidates.extend(playwright_root.glob("chromium-*/chrome-win64/chrome.exe"))
-        candidates.extend(playwright_root.glob("chromium_headless_shell-*/chrome-win/headless_shell.exe"))
-        candidates.extend(playwright_root.glob("chromium_headless_shell-*/chrome-win64/headless_shell.exe"))
-        candidates.extend(playwright_root.glob("firefox-*/firefox/firefox.exe"))
-        candidates.extend(playwright_root.glob("webkit-*/Playwright.exe"))
-
-    return candidates
+    return [app_exe]
 
 
 def _live_e2e_test_install_run_id() -> str:
@@ -1140,6 +1092,7 @@ def _test_network_env(
     test_network: TestNetwork,
     vpn_interface_name: str | None = None,
     require_vpn: bool = False,
+    require_lan: bool = False,
 ) -> dict[str, str]:
     """Returns the eMule workspace environment for one network-scoped child run."""
 
@@ -1148,11 +1101,22 @@ def _test_network_env(
         test_network=test_network,
         vpn_interface_name=vpn_interface_name,
         require_vpn=require_vpn,
+        require_lan=require_lan,
     )
+    context_env = context.env()
+    controller_bind_address = _controller_bind_address_from_env(context_env)
+    if controller_bind_address:
+        context_env.setdefault("X_LOCAL_IP", controller_bind_address)
     return {
         "EMULEBB_WORKSPACE_ROOT": str(layout.emule_workspace_root),
-        **context.env(),
+        **context_env,
     }
+
+
+def _controller_bind_address_from_env(env: dict[str, str]) -> str | None:
+    """Returns the resolved LAN controller bind address propagated to child launchers."""
+
+    return (env.get("X_LOCAL_IP") or env.get(LAN_IP_RESOLVED_ENV) or os.environ.get("X_LOCAL_IP", "")).strip() or None
 
 
 def _assert_test_execution_platform_supported(options: WorkspaceOptions) -> None:
