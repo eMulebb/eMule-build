@@ -48,6 +48,7 @@ def test_amutorrent_resilience_forwards_live_options(tmp_path: Path, monkeypatch
 
     layout = make_layout(tmp_path)
     monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+    monkeypatch.setattr(test_runs, "ensure_split_tunnel_apps", lambda paths, **_kwargs: {"enabled": False})
     monkeypatch.setenv(network_context.VPN_IP_ENV, "10.8.0.4")
 
     test_runs.invoke_amutorrent_resilience(
@@ -87,6 +88,7 @@ def test_amutorrent_resilience_omits_optional_inputs_by_default(tmp_path: Path, 
 
     layout = make_layout(tmp_path)
     monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+    monkeypatch.setattr(test_runs, "ensure_split_tunnel_apps", lambda paths, **_kwargs: {"enabled": False})
     monkeypatch.setenv(network_context.VPN_IP_ENV, "10.8.0.4")
 
     test_runs.invoke_amutorrent_resilience(

@@ -442,27 +442,51 @@ def test_live_e2e_can_run_against_materialized_installer_test_install(tmp_path: 
 def test_live_e2e_materialized_vpn_uses_lan_controller_bind(tmp_path: Path, monkeypatch) -> None:
     captured: dict[str, object] = {}
     materialize_calls: list[object] = []
+    events: list[str] = []
 
     def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
         captured["command"] = list(command)
         captured["env"] = dict(env or {})
 
     def fake_materialize(layout, workspace_options, install_options, *, run_id, suite_name, client_id, controller_bind_address=None):
+        events.append("materialize")
         materialize_calls.append(SimpleNamespace(controller_bind_address=controller_bind_address))
         install_root = tmp_path / "workspaces" / "workspace" / "state" / "test-installs" / "run" / "live-e2e-suite" / "main"
+        app_exe = install_root / "apps" / "eMuleBB" / "emulebb.exe"
+        app_exe.parent.mkdir(parents=True)
+        app_exe.write_bytes(b"exe")
         return SimpleNamespace(
             target_path=install_root,
             app_root=install_root / "apps" / "eMuleBB",
-            app_exe=install_root / "apps" / "eMuleBB" / "emulebb.exe",
+            app_exe=app_exe,
             profile_dir=install_root / "profiles" / "emulebb",
             profile_config_dir=install_root / "profiles" / "emulebb" / "config",
             profile_seed_config_dir=install_root / "harness-profile-seed" / "config",
         )
 
+    def fake_register(paths, **kwargs):
+        events.append("register")
+        assert kwargs == {"required": True}
+        assert Path(paths[0]).name == "emulebb.exe"
+        return {"enabled": True, "changed": True, "restart": {"requested": True, "vpn_ipv4": "10.8.0.9"}}
+
+    def fake_resolve(*, workspace_root, test_network, vpn_interface_name=None, require_vpn=False, require_lan=False):
+        events.append(f"resolve:{test_network}")
+        values = {
+            "EMULEBB_TEST_NETWORK": test_network,
+            "EMULEBB_TEST_NETWORK_CONTEXT_JSON": str(Path(workspace_root) / "state" / "network-context" / f"{test_network}.json"),
+        }
+        if require_lan:
+            values["EMULEBB_TEST_LAN_IP_RESOLVED"] = "192.168.1.44"
+        if test_network in {"vpn", "all"} or require_vpn:
+            values["EMULEBB_TEST_VPN_IP_RESOLVED"] = "10.8.0.9"
+        return SimpleNamespace(env=lambda: values)
+
     layout = make_layout(tmp_path)
     monkeypatch.setattr(test_runs, "run_native", fake_run_native)
     monkeypatch.setattr(test_runs, "materialize_test_local_install", fake_materialize)
-    monkeypatch.setattr(test_runs, "ensure_split_tunnel_apps", lambda paths: {"enabled": False})
+    monkeypatch.setattr(test_runs, "ensure_split_tunnel_apps", fake_register)
+    monkeypatch.setattr(test_runs, "resolve_workspace_network_context", fake_resolve)
 
     test_runs.invoke_live_e2e_suite(
         layout,
@@ -477,6 +501,8 @@ def test_live_e2e_materialized_vpn_uses_lan_controller_bind(tmp_path: Path, monk
 
     assert materialize_calls[0].controller_bind_address == "192.168.1.44"
     assert captured["env"]["X_LOCAL_IP"] == "192.168.1.44"
+    assert captured["env"]["EMULEBB_TEST_VPN_IP_RESOLVED"] == "10.8.0.9"
+    assert events == ["resolve:lan", "materialize", "register", "resolve:vpn"]
 
 
 def test_live_e2e_starts_materialized_arr_services_for_arr_suites(tmp_path: Path, monkeypatch) -> None:
@@ -581,6 +607,7 @@ def test_live_e2e_forwards_explicit_live_process_monitor_profile_dir(tmp_path: P
 
     layout = make_layout(tmp_path)
     monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+    monkeypatch.setattr(test_runs, "ensure_split_tunnel_apps", lambda paths, **_kwargs: {"enabled": False})
 
     profile_dir = r"F:\M\H06T01\dldz\EMULE_BIN"
     test_runs.invoke_live_e2e_suite(
@@ -622,8 +649,9 @@ def test_live_e2e_registers_materialized_exe_for_developer_hide_me_split_tunnel(
             profile_seed_config_dir=seed_config,
         )
 
-    def fake_register(paths):
+    def fake_register(paths, **kwargs):
         registered.extend(paths)
+        captured["register_kwargs"] = dict(kwargs)
         return {"enabled": True}
 
     layout = make_layout(tmp_path)
@@ -650,6 +678,7 @@ def test_live_e2e_registers_materialized_exe_for_developer_hide_me_split_tunnel(
     )
 
     assert registered == [Path(option_values(captured["command"], "--app-exe")[0])]
+    assert captured["register_kwargs"] == {"required": True}
     assert node_exe not in registered
     assert browser_exe not in registered
 
@@ -676,7 +705,7 @@ def test_live_e2e_restarts_hide_me_when_failed_report_points_at_upnp(tmp_path: P
 
     layout = make_layout(tmp_path)
     monkeypatch.setattr(test_runs, "run_native", fake_run_native)
-    monkeypatch.setattr(test_runs, "ensure_split_tunnel_apps", lambda paths: {"enabled": False})
+    monkeypatch.setattr(test_runs, "ensure_split_tunnel_apps", lambda paths, **_kwargs: {"enabled": False})
     monkeypatch.setattr(test_runs, "restart_hide_me_after_upnp_failure_if_requested", fake_recover)
 
     with pytest.raises(RuntimeError, match="live E2E suite failed with exit code 1"):
@@ -712,7 +741,7 @@ def test_live_e2e_restarts_hide_me_when_app_log_points_at_upnp(tmp_path: Path, m
 
     layout = make_layout(tmp_path)
     monkeypatch.setattr(test_runs, "run_native", fake_run_native)
-    monkeypatch.setattr(test_runs, "ensure_split_tunnel_apps", lambda paths: {"enabled": False})
+    monkeypatch.setattr(test_runs, "ensure_split_tunnel_apps", lambda paths, **_kwargs: {"enabled": False})
     monkeypatch.setattr(test_runs, "restart_hide_me_after_upnp_failure_if_requested", fake_recover)
 
     with pytest.raises(RuntimeError, match="live E2E suite failed with exit code 1"):
@@ -752,7 +781,7 @@ def test_live_e2e_retries_once_after_hide_me_upnp_recovery(tmp_path: Path, monke
 
     layout = make_layout(tmp_path)
     monkeypatch.setattr(test_runs, "run_native", fake_run_native)
-    monkeypatch.setattr(test_runs, "ensure_split_tunnel_apps", lambda paths: {"enabled": False})
+    monkeypatch.setattr(test_runs, "ensure_split_tunnel_apps", lambda paths, **_kwargs: {"enabled": False})
     monkeypatch.setattr(test_runs, "restart_hide_me_after_upnp_failure_if_requested", fake_recover)
 
     test_runs.invoke_live_e2e_suite(

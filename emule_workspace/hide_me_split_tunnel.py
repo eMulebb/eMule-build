@@ -50,10 +50,15 @@ def default_settings_path() -> Path:
     return Path(appdata) / "Hide.me" / "vpn.settings"
 
 
-def ensure_split_tunnel_apps(app_paths: list[Path], *, app_name: str = "eMuleBB") -> dict[str, Any]:
-    """Adds executable paths to hide.me split-tunnel Whitelisted apps when explicitly enabled."""
+def ensure_split_tunnel_apps(
+    app_paths: list[Path],
+    *,
+    app_name: str = "eMuleBB",
+    required: bool = False,
+) -> dict[str, Any]:
+    """Adds executable paths to hide.me split-tunnel Whitelisted apps."""
 
-    if not enabled_from_environment():
+    if not enabled_from_environment() and not required:
         return {"enabled": False, "reason": f"{ENABLE_ENV} is not enabled"}
 
     resolved_paths = _unique_existing_files(app_paths)
@@ -121,6 +126,7 @@ def ensure_split_tunnel_apps(app_paths: list[Path], *, app_name: str = "eMuleBB"
 
     return {
         "enabled": True,
+        "required": required,
         "settings_path": str(settings_path),
         "changed": changed,
         "backup_path": str(backup_path) if backup_path else "",

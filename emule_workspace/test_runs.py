@@ -318,13 +318,7 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
     _assert_test_execution_platform_supported(options)
     if live_options.pre_run_cleanup:
         run_pre_test_cleanup(layout)
-    network_env = _test_network_env(
-        layout,
-        test_network=live_options.test_network,
-        vpn_interface_name=live_options.p2p_bind_interface_name,
-        require_lan=live_options.materialize_test_install and live_options.test_network in {"lan", "vpn", "all"},
-    )
-    controller_bind_address = _controller_bind_address_from_env(network_env)
+    controller_bind_address = _pre_materialize_controller_bind_address(layout, live_options)
     app_root = layout.get_app_variant(layout.test_targets.test_run_variant).path
     app_exe: Path | None = None
     profile_seed_config_dir: Path | None = None
@@ -352,9 +346,17 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
         live_process_monitor_profile_dir = Path(
             _resolve_workspace_path_argument(layout, live_options.live_process_monitor_profile_dir)
         )
-    if live_options.test_network in {"vpn", "all"}:
-        registration_paths = _hide_me_registration_paths(_resolve_live_e2e_app_exe(app_root, app_exe, options))
-        ensure_split_tunnel_apps(registration_paths)
+    _ensure_hide_me_split_tunnel_for_live(
+        test_network=live_options.test_network,
+        p2p_bind_interface_name=live_options.p2p_bind_interface_name,
+        app_exe=_resolve_live_e2e_app_exe(app_root, app_exe, options),
+    )
+    network_env = _test_network_env(
+        layout,
+        test_network=live_options.test_network,
+        vpn_interface_name=live_options.p2p_bind_interface_name,
+        require_lan=live_options.materialize_test_install and live_options.test_network in {"lan", "vpn", "all"},
+    )
     script_path = layout.tests_repo_root / "scripts" / "run-live-e2e-suite.py"
     if not script_path.is_file():
         raise RuntimeError(f"Missing live E2E suite runner: {script_path}")
@@ -841,8 +843,11 @@ def invoke_amutorrent_clean_startup(
 
     _assert_test_execution_platform_supported(options)
     app_root = layout.get_app_variant(layout.test_targets.test_run_variant).path
-    if clean_options.test_network in {"vpn", "all"}:
-        ensure_split_tunnel_apps(_hide_me_registration_paths(_resolve_live_e2e_app_exe(app_root, None, options)))
+    _ensure_hide_me_split_tunnel_for_live(
+        test_network=clean_options.test_network,
+        p2p_bind_interface_name=clean_options.p2p_bind_interface_name,
+        app_exe=_resolve_live_e2e_app_exe(app_root, None, options),
+    )
     script_path = layout.tests_repo_root / "scripts" / "amutorrent-clean-startup.py"
     if not script_path.is_file():
         raise RuntimeError(f"Missing aMuTorrent clean-startup runner: {script_path}")
@@ -894,8 +899,11 @@ def invoke_amutorrent_resilience(
 
     _assert_test_execution_platform_supported(options)
     app_root = layout.get_app_variant(layout.test_targets.test_run_variant).path
-    if resilience_options.test_network in {"vpn", "all"}:
-        ensure_split_tunnel_apps(_hide_me_registration_paths(_resolve_live_e2e_app_exe(app_root, None, options)))
+    _ensure_hide_me_split_tunnel_for_live(
+        test_network=resilience_options.test_network,
+        p2p_bind_interface_name=resilience_options.p2p_bind_interface_name,
+        app_exe=_resolve_live_e2e_app_exe(app_root, None, options),
+    )
     script_path = layout.tests_repo_root / "scripts" / "amutorrent-resilience-live.py"
     if not script_path.is_file():
         raise RuntimeError(f"Missing aMuTorrent resilience live runner: {script_path}")
@@ -949,8 +957,11 @@ def invoke_amutorrent_emulebb_ui(
 
     _assert_test_execution_platform_supported(options)
     app_root = layout.get_app_variant(layout.test_targets.test_run_variant).path
-    if ui_options.test_network in {"vpn", "all"}:
-        ensure_split_tunnel_apps(_hide_me_registration_paths(_resolve_live_e2e_app_exe(app_root, None, options)))
+    _ensure_hide_me_split_tunnel_for_live(
+        test_network=ui_options.test_network,
+        p2p_bind_interface_name=ui_options.p2p_bind_interface_name,
+        app_exe=_resolve_live_e2e_app_exe(app_root, None, options),
+    )
     script_path = layout.tests_repo_root / "scripts" / "amutorrent-emulebb-ui-live.py"
     if not script_path.is_file():
         raise RuntimeError(f"Missing aMuTorrent eMuleBB UI live runner: {script_path}")
@@ -1050,6 +1061,38 @@ def _recent_live_failure_text(workspace_root: Path) -> str:
 
 def _hide_me_registration_paths(app_exe: Path) -> list[Path]:
     return [app_exe]
+
+
+def _ensure_hide_me_split_tunnel_for_live(
+    *,
+    test_network: TestNetwork,
+    p2p_bind_interface_name: str,
+    app_exe: Path,
+) -> dict[str, object]:
+    """Ensures hide.me sees the eMuleBB executable before public live tests start."""
+
+    if test_network not in {"vpn", "all"}:
+        return {"enabled": False, "reason": f"test_network={test_network} does not use VPN"}
+    required = p2p_bind_interface_name.strip().casefold() == "hide.me"
+    return ensure_split_tunnel_apps(_hide_me_registration_paths(app_exe), required=required)
+
+
+def _pre_materialize_controller_bind_address(
+    layout: WorkspaceLayout,
+    live_options: LiveE2eOptions,
+) -> str | None:
+    """Resolves only the LAN controller bind address needed before materialization."""
+
+    if not live_options.materialize_test_install:
+        return None
+    if live_options.test_network not in {"lan", "vpn", "all"}:
+        return None
+    context = resolve_workspace_network_context(
+        workspace_root=layout.workspace_root,
+        test_network="lan",
+        require_lan=True,
+    )
+    return _controller_bind_address_from_env(context.env())
 
 
 def _live_e2e_test_install_run_id() -> str:

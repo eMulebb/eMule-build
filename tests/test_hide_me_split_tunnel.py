@@ -30,6 +30,26 @@ def test_hide_me_split_tunnel_is_opt_in(tmp_path: Path, monkeypatch) -> None:
     assert result["enabled"] is False
 
 
+def test_hide_me_split_tunnel_required_mode_ignores_opt_in_env(tmp_path: Path, monkeypatch) -> None:
+    settings = tmp_path / "vpn.settings"
+    exe = tmp_path / "emulebb.exe"
+    exe.write_bytes(b"exe")
+    settings.write_text(json.dumps({"SplitTunneling": {"Whitelisted": [], "LimitToVpn": []}}), encoding="utf-8")
+    monkeypatch.delenv(hide_me_split_tunnel.ENABLE_ENV, raising=False)
+    monkeypatch.setenv(hide_me_split_tunnel.SETTINGS_PATH_ENV, str(settings))
+    calls = stub_hide_me_stop_start(monkeypatch)
+
+    result = hide_me_split_tunnel.ensure_split_tunnel_apps([exe], required=True)
+
+    payload = json.loads(settings.read_text(encoding="utf-8"))
+    assert result["enabled"] is True
+    assert result["required"] is True
+    assert result["changed"] is True
+    assert result["restart"]["requested"] is True
+    assert calls == ["stop", "start"]
+    assert payload["SplitTunneling"]["Whitelisted"][0]["Path"] == str(exe.resolve())
+
+
 def test_hide_me_split_tunnel_adds_existing_exe_to_whitelist_by_default(tmp_path: Path, monkeypatch) -> None:
     settings = tmp_path / "vpn.settings"
     exe = tmp_path / "apps" / "eMuleBB" / "emulebb.exe"
