@@ -205,6 +205,28 @@ def test_hide_me_split_tunnel_stops_before_writing_and_starts_after(tmp_path: Pa
     assert calls == ["stop", "start"]
 
 
+def test_hide_me_stop_command_has_balanced_service_block(monkeypatch) -> None:
+    commands: list[str] = []
+
+    class Completed:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_run(command, **_kwargs):
+        commands.append(command[-1])
+        return Completed()
+
+    monkeypatch.setattr(hide_me_split_tunnel.subprocess, "run", fake_run)
+
+    result = hide_me_split_tunnel.stop_hide_me()
+
+    assert result["returncode"] == 0
+    assert commands
+    assert commands[0].count("{") == commands[0].count("}")
+    assert commands[0].rstrip().endswith("}")
+
+
 def test_hide_me_split_tunnel_waits_for_ipv4_after_restart(monkeypatch) -> None:
     calls: list[int] = []
 

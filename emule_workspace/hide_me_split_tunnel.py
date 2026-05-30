@@ -173,7 +173,7 @@ def stop_hide_me() -> dict[str, Any]:
         f"$service = Get-Service -Name {HIDE_ME_SERVICE} -ErrorAction SilentlyContinue; "
         "if ($null -ne $service -and $service.Status -ne 'Stopped') "
         f"{{ Stop-Service -Name {HIDE_ME_SERVICE} -Force; "
-        "$service.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30)) }}"
+        "$service.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30)) }"
     )
     completed = _run_hide_me_powershell(command, "hide.me stop")
     return {"requested": True, "returncode": completed.returncode}
