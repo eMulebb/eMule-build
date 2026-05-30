@@ -434,6 +434,100 @@ def test_live_e2e_can_run_against_materialized_installer_test_install(tmp_path: 
     assert env["SONARR_API_KEY"] == "sonarr-secret"
 
 
+def test_live_e2e_starts_materialized_arr_services_for_arr_suites(tmp_path: Path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    started_commands: list[tuple[list[str], str]] = []
+    stopped: list[str] = []
+    ready_urls: set[str] = set()
+    exe_url_map = {
+        "Prowlarr.exe": "http://192.168.1.44:9696",
+        "Radarr.exe": "http://192.168.1.44:7878",
+        "Sonarr.exe": "http://192.168.1.44:8989",
+    }
+
+    class FakeProcess:
+        def __init__(self, command, *, cwd=None, stdout=None, stderr=None, text=None, creationflags=0):
+            self.command = [str(part) for part in command]
+            self.returncode = None
+            started_commands.append((self.command, str(cwd)))
+            ready_urls.add(exe_url_map[Path(self.command[0]).name])
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            self.returncode = 0
+            stopped.append(Path(self.command[0]).name)
+
+        def wait(self, timeout=None):
+            self.returncode = 0
+            return 0
+
+        def kill(self):
+            self.returncode = -9
+
+    def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
+        captured["command"] = list(command)
+        captured["env"] = dict(env or {})
+
+    def fake_materialize(layout, workspace_options, install_options, *, run_id, suite_name, client_id):
+        install_root = tmp_path / "workspaces" / "workspace" / "state" / "test-installs" / "run" / "live-e2e-suite" / "main"
+        manifests = install_root / "manifests"
+        manifests.mkdir(parents=True)
+        (manifests / "suite-config.json").write_text(
+            json.dumps(
+                {
+                    "services": {
+                        "prowlarr": {"bindAddress": "192.168.1.44", "port": 9696, "apiKey": "prowlarr-secret"},
+                        "radarr": {"bindAddress": "192.168.1.44", "port": 7878, "apiKey": "radarr-secret"},
+                        "sonarr": {"bindAddress": "192.168.1.44", "port": 8989, "apiKey": "sonarr-secret"},
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        for app_name, exe_name, data_name in (
+            ("prowlarr", "Prowlarr.exe", "prowlarr"),
+            ("radarr", "Radarr.exe", "radarr"),
+            ("sonarr", "Sonarr.exe", "sonarr"),
+        ):
+            app_dir = install_root / "apps" / app_name
+            app_dir.mkdir(parents=True)
+            (app_dir / exe_name).write_text("stub\n", encoding="utf-8")
+            (install_root / "data" / data_name).mkdir(parents=True)
+        return SimpleNamespace(
+            target_path=install_root,
+            app_root=install_root / "apps" / "eMuleBB",
+            app_exe=install_root / "apps" / "eMuleBB" / "emulebb.exe",
+            profile_dir=install_root / "profiles" / "emulebb",
+            profile_config_dir=install_root / "profiles" / "emulebb" / "config",
+            profile_seed_config_dir=install_root / "harness-profile-seed" / "config",
+        )
+
+    def fake_ready(url, api_key, status_api_path):
+        return url in ready_urls
+
+    layout = make_layout(tmp_path)
+    monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+    monkeypatch.setattr(test_runs, "materialize_test_local_install", fake_materialize)
+    monkeypatch.setattr(test_runs.subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(test_runs, "_materialized_service_ready", fake_ready)
+
+    test_runs.invoke_live_e2e_suite(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+        LiveE2eOptions(suites=("prowlarr-emulebb",), materialize_test_install=True),
+    )
+
+    command_names = [Path(command[0]).name for command, _cwd in started_commands]
+    assert command_names == ["Prowlarr.exe", "Radarr.exe", "Sonarr.exe"]
+    assert all(any(part.startswith("/data=") for part in command) for command, _cwd in started_commands)
+    env = captured["env"]
+    assert isinstance(env, dict)
+    assert env["PROWLARR_URL"] == "http://192.168.1.44:9696"
+    assert stopped == ["Sonarr.exe", "Radarr.exe", "Prowlarr.exe"]
+
+
 def test_live_e2e_forwards_explicit_live_process_monitor_profile_dir(tmp_path: Path, monkeypatch) -> None:
     captured: dict[str, object] = {}
 

@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import subprocess
+import time
+import urllib.error
+import urllib.request
 
 from .config import (
     AmutorrentCleanStartupOptions,
@@ -27,6 +32,69 @@ from .layout import WorkspaceLayout, get_test_build_tag
 from .local_package_install import materialize_test_local_install
 from .network_context import TestNetwork, resolve_workspace_network_context
 from .process import find_tool, get_python_invocation, run_native
+
+MATERIALIZED_ARR_SERVICE_WAIT_SECONDS = 120.0
+MATERIALIZED_ARR_SERVICE_POLL_SECONDS = 1.0
+
+
+@dataclass(frozen=True)
+class MaterializedArrServiceSpec:
+    """One ARR-compatible service staged by the suite installer."""
+
+    name: str
+    config_name: str
+    app_dir_name: str
+    exe_name: str
+    data_dir_name: str
+    status_api_path: str
+
+
+@dataclass
+class StartedMaterializedService:
+    """One service process started for a materialized live E2E run."""
+
+    spec: MaterializedArrServiceSpec
+    process: subprocess.Popen[str]
+    log_handle: object
+
+
+MATERIALIZED_ARR_SERVICES = (
+    MaterializedArrServiceSpec(
+        name="Prowlarr",
+        config_name="prowlarr",
+        app_dir_name="prowlarr",
+        exe_name="Prowlarr.exe",
+        data_dir_name="prowlarr",
+        status_api_path="/api/v1/system/status",
+    ),
+    MaterializedArrServiceSpec(
+        name="Radarr",
+        config_name="radarr",
+        app_dir_name="radarr",
+        exe_name="Radarr.exe",
+        data_dir_name="radarr",
+        status_api_path="/api/v3/system/status",
+    ),
+    MaterializedArrServiceSpec(
+        name="Sonarr",
+        config_name="sonarr",
+        app_dir_name="sonarr",
+        exe_name="Sonarr.exe",
+        data_dir_name="sonarr",
+        status_api_path="/api/v3/system/status",
+    ),
+)
+
+ARR_LIVE_E2E_SUITES = frozenset(
+    {
+        "prowlarr-emulebb",
+        "radarr-emulebb",
+        "sonarr-emulebb",
+        "radarr-emulebb-local",
+        "sonarr-emulebb-local",
+    }
+)
+ARR_LIVE_E2E_PROFILES = frozenset({"beta-green", "controller-surface", "controller-local"})
 
 
 def invoke_test_runs(layout: WorkspaceLayout, options: WorkspaceOptions) -> None:
@@ -277,7 +345,10 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
             _resolve_workspace_path_argument(layout, live_options.live_process_monitor_profile_dir)
         )
     if live_options.test_network in {"vpn", "all"}:
-        ensure_split_tunnel_apps(_hide_me_registration_paths(_resolve_live_e2e_app_exe(app_root, app_exe, options)))
+        registration_paths = _hide_me_registration_paths(_resolve_live_e2e_app_exe(app_root, app_exe, options))
+        if live_options.materialize_test_install:
+            registration_paths.extend(_materialized_suite_registration_paths(materialized))
+        ensure_split_tunnel_apps(registration_paths)
     script_path = layout.tests_repo_root / "scripts" / "run-live-e2e-suite.py"
     if not script_path.is_file():
         raise RuntimeError(f"Missing live E2E suite runner: {script_path}")
@@ -465,20 +536,27 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
     _append_optional_flag(args, live_options.skip_live_seed_refresh, "--skip-live-seed-refresh")
 
     python = get_python_invocation()
-    _run_live_native(
-        layout,
-        python.command(args),
-        label="live E2E suite",
-        cwd=layout.emule_workspace_root,
-        env={
-            **_test_network_env(
-                layout,
-                test_network=live_options.test_network,
-                vpn_interface_name=live_options.p2p_bind_interface_name,
-            ),
-            **(_materialized_arr_service_env(materialized) if live_options.materialize_test_install else {}),
-        },
-    )
+    materialized_service_env = _materialized_arr_service_env(materialized) if live_options.materialize_test_install else {}
+    started_services: list[StartedMaterializedService] = []
+    try:
+        if live_options.materialize_test_install and _live_e2e_needs_arr_services(live_options):
+            started_services = _start_materialized_arr_services(materialized, materialized_service_env)
+        _run_live_native(
+            layout,
+            python.command(args),
+            label="live E2E suite",
+            cwd=layout.emule_workspace_root,
+            env={
+                **_test_network_env(
+                    layout,
+                    test_network=live_options.test_network,
+                    vpn_interface_name=live_options.p2p_bind_interface_name,
+                ),
+                **materialized_service_env,
+            },
+        )
+    finally:
+        _stop_materialized_arr_services(started_services)
 
 
 def _materialized_arr_service_env(materialized: object) -> dict[str, str]:
@@ -513,6 +591,130 @@ def _materialized_arr_service_env(materialized: object) -> dict[str, str]:
         values[url_key] = f"http://{host}:{port}"
         values[api_key_key] = api_key
     return values
+
+
+def _live_e2e_needs_arr_services(live_options: LiveE2eOptions) -> bool:
+    """Returns whether a selected aggregate live run requires local ARR controllers."""
+
+    if live_options.profile in ARR_LIVE_E2E_PROFILES:
+        return True
+    if not live_options.suites:
+        return True
+    return bool(ARR_LIVE_E2E_SUITES.intersection(live_options.suites))
+
+
+def _materialized_suite_registration_paths(materialized: object) -> list[Path]:
+    """Returns installer-staged helper executables that participate in live-wire runs."""
+
+    app_root = Path(getattr(materialized, "app_root"))
+    target_root = Path(getattr(materialized, "target_path", app_root.parent.parent))
+    paths: list[Path] = []
+    for spec in MATERIALIZED_ARR_SERVICES:
+        exe_path = _find_materialized_service_exe(target_root, spec)
+        if exe_path is not None:
+            paths.append(exe_path)
+    paths.extend((target_root / "runtime" / "node").glob("**/node.exe"))
+    return paths
+
+
+def _start_materialized_arr_services(
+    materialized: object, service_env: dict[str, str]
+) -> list[StartedMaterializedService]:
+    """Starts ARR controller services from an installer-materialized live E2E install."""
+
+    app_root = Path(getattr(materialized, "app_root"))
+    target_root = Path(getattr(materialized, "target_path", app_root.parent.parent))
+    started: list[StartedMaterializedService] = []
+    logs_dir = target_root / "logs" / "live-e2e-services"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        for spec in MATERIALIZED_ARR_SERVICES:
+            url = service_env.get(_materialized_service_url_env_name(spec))
+            api_key = service_env.get(_materialized_service_api_key_env_name(spec))
+            if not url or not api_key:
+                continue
+            if _materialized_service_ready(url, api_key, spec.status_api_path):
+                print(f"Materialized {spec.name} service already available at {url}.")
+                continue
+
+            exe_path = _find_materialized_service_exe(target_root, spec)
+            if exe_path is None:
+                raise RuntimeError(f"Materialized {spec.name} executable not found under {target_root / 'apps' / spec.app_dir_name}.")
+            data_dir = target_root / "data" / spec.data_dir_name
+            if not data_dir.is_dir():
+                raise RuntimeError(f"Materialized {spec.name} data directory not found: {data_dir}")
+
+            log_handle = (logs_dir / f"{spec.config_name}.log").open("a", encoding="utf-8", newline="\n")
+            command = [str(exe_path), f"/data={data_dir}", "/nobrowser"]
+            creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+            process = subprocess.Popen(
+                command,
+                cwd=str(exe_path.parent),
+                stdout=log_handle,
+                stderr=subprocess.STDOUT,
+                text=True,
+                creationflags=creationflags,
+            )
+            started.append(StartedMaterializedService(spec=spec, process=process, log_handle=log_handle))
+            print(f"Started materialized {spec.name} service from {exe_path}.")
+            _wait_for_materialized_service(spec, url, api_key)
+    except Exception:
+        _stop_materialized_arr_services(started)
+        raise
+    return started
+
+
+def _stop_materialized_arr_services(started_services: Sequence[StartedMaterializedService]) -> None:
+    """Stops only the materialized service processes started by this runner."""
+
+    for started in reversed(tuple(started_services)):
+        process = started.process
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=20)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=20)
+        close = getattr(started.log_handle, "close", None)
+        if callable(close):
+            close()
+
+
+def _wait_for_materialized_service(spec: MaterializedArrServiceSpec, url: str, api_key: str) -> None:
+    deadline = time.monotonic() + MATERIALIZED_ARR_SERVICE_WAIT_SECONDS
+    while time.monotonic() < deadline:
+        if _materialized_service_ready(url, api_key, spec.status_api_path):
+            return
+        time.sleep(MATERIALIZED_ARR_SERVICE_POLL_SECONDS)
+    raise RuntimeError(f"Timed out waiting for materialized {spec.name} service at {url}{spec.status_api_path}.")
+
+
+def _materialized_service_ready(url: str, api_key: str, status_api_path: str) -> bool:
+    endpoint = url.rstrip("/") + status_api_path
+    request = urllib.request.Request(endpoint, headers={"X-Api-Key": api_key})
+    try:
+        with urllib.request.urlopen(request, timeout=2) as response:
+            return 200 <= response.status < 300
+    except (OSError, urllib.error.URLError):
+        return False
+
+
+def _find_materialized_service_exe(target_root: Path, spec: MaterializedArrServiceSpec) -> Path | None:
+    root = target_root / "apps" / spec.app_dir_name
+    direct = root / spec.exe_name
+    if direct.is_file():
+        return direct
+    matches = sorted(path for path in root.rglob(spec.exe_name) if path.is_file())
+    return matches[0] if matches else None
+
+
+def _materialized_service_url_env_name(spec: MaterializedArrServiceSpec) -> str:
+    return f"{spec.config_name.upper()}_URL"
+
+
+def _materialized_service_api_key_env_name(spec: MaterializedArrServiceSpec) -> str:
+    return f"{spec.config_name.upper()}_API_KEY"
 
 
 def invoke_release_campaign_report(
