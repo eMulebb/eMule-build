@@ -434,6 +434,53 @@ def test_live_e2e_forwards_explicit_live_process_monitor_profile_dir(tmp_path: P
     assert option_values(command, "--live-process-monitor-profile-dir") == [profile_dir]
 
 
+def test_live_e2e_registers_materialized_exe_for_developer_hide_me_split_tunnel(tmp_path: Path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    registered: list[Path] = []
+
+    def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
+        captured["command"] = list(command)
+
+    def fake_materialize(layout_arg, workspace_options, install_options, *, run_id, suite_name, client_id):
+        install_root = tmp_path / "workspaces" / "workspace" / "state" / "test-installs" / run_id / suite_name / client_id
+        app_exe = install_root / "apps" / "eMuleBB" / "emulebb.exe"
+        seed_config = install_root / "harness-profile-seed" / "config"
+        profile_dir = install_root / "profiles" / "emulebb"
+        app_exe.parent.mkdir(parents=True)
+        seed_config.mkdir(parents=True)
+        profile_dir.mkdir(parents=True)
+        app_exe.write_bytes(b"exe")
+        return SimpleNamespace(
+            app_root=app_exe.parent,
+            app_exe=app_exe,
+            profile_dir=profile_dir,
+            profile_config_dir=profile_dir / "config",
+            profile_seed_config_dir=seed_config,
+        )
+
+    def fake_register(paths):
+        registered.extend(paths)
+        return {"enabled": True}
+
+    layout = make_layout(tmp_path)
+    monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+    monkeypatch.setattr(test_runs, "materialize_test_local_install", fake_materialize)
+    monkeypatch.setattr(test_runs, "ensure_split_tunnel_apps", fake_register)
+
+    test_runs.invoke_live_e2e_suite(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+        LiveE2eOptions(
+            suites=("prowlarr-emulebb",),
+            test_network="vpn",
+            materialize_test_install=True,
+            materialize_test_install_skip_build=True,
+        ),
+    )
+
+    assert registered == [Path(option_values(captured["command"], "--app-exe")[0])]
+
+
 def test_live_e2e_forwards_multi_client_required_optional_clients(tmp_path: Path, monkeypatch) -> None:
     captured: dict[str, object] = {}
 

@@ -21,6 +21,7 @@ from .config import (
     WorkspaceOptions,
 )
 from .cleanup import run_pre_test_cleanup
+from .hide_me_split_tunnel import ensure_split_tunnel_apps
 from .layout import WorkspaceLayout, get_test_build_tag
 from .local_package_install import materialize_test_local_install
 from .network_context import TestNetwork, resolve_workspace_network_context
@@ -274,6 +275,8 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
         live_process_monitor_profile_dir = Path(
             _resolve_workspace_path_argument(layout, live_options.live_process_monitor_profile_dir)
         )
+    if live_options.test_network in {"vpn", "all"}:
+        ensure_split_tunnel_apps([_resolve_live_e2e_app_exe(app_root, app_exe, options)])
     script_path = layout.tests_repo_root / "scripts" / "run-live-e2e-suite.py"
     if not script_path.is_file():
         raise RuntimeError(f"Missing live E2E suite runner: {script_path}")
@@ -608,6 +611,8 @@ def invoke_amutorrent_clean_startup(
 
     _assert_test_execution_platform_supported(options)
     app_root = layout.get_app_variant(layout.test_targets.test_run_variant).path
+    if clean_options.test_network in {"vpn", "all"}:
+        ensure_split_tunnel_apps([_resolve_live_e2e_app_exe(app_root, None, options)])
     script_path = layout.tests_repo_root / "scripts" / "amutorrent-clean-startup.py"
     if not script_path.is_file():
         raise RuntimeError(f"Missing aMuTorrent clean-startup runner: {script_path}")
@@ -658,6 +663,8 @@ def invoke_amutorrent_resilience(
 
     _assert_test_execution_platform_supported(options)
     app_root = layout.get_app_variant(layout.test_targets.test_run_variant).path
+    if resilience_options.test_network in {"vpn", "all"}:
+        ensure_split_tunnel_apps([_resolve_live_e2e_app_exe(app_root, None, options)])
     script_path = layout.tests_repo_root / "scripts" / "amutorrent-resilience-live.py"
     if not script_path.is_file():
         raise RuntimeError(f"Missing aMuTorrent resilience live runner: {script_path}")
@@ -710,6 +717,8 @@ def invoke_amutorrent_emulebb_ui(
 
     _assert_test_execution_platform_supported(options)
     app_root = layout.get_app_variant(layout.test_targets.test_run_variant).path
+    if ui_options.test_network in {"vpn", "all"}:
+        ensure_split_tunnel_apps([_resolve_live_e2e_app_exe(app_root, None, options)])
     script_path = layout.tests_repo_root / "scripts" / "amutorrent-emulebb-ui-live.py"
     if not script_path.is_file():
         raise RuntimeError(f"Missing aMuTorrent eMuleBB UI live runner: {script_path}")
@@ -759,6 +768,14 @@ def _append_optional_flag(args: list, enabled: bool, flag: str) -> None:
 def _live_e2e_test_install_run_id() -> str:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     return f"{stamp}-pid{os.getpid()}"
+
+
+def _resolve_live_e2e_app_exe(app_root: Path, app_exe: Path | None, options: WorkspaceOptions) -> Path:
+    """Returns the eMuleBB executable path used by live E2E runners."""
+
+    if app_exe is not None:
+        return app_exe
+    return app_root / "srchybrid" / options.platform / options.configuration / "emulebb.exe"
 
 
 def _resolve_workspace_argument(layout: WorkspaceLayout, value: str) -> str:
