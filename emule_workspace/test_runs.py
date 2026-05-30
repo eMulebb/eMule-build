@@ -820,7 +820,31 @@ def _hide_me_registration_paths(app_exe: Path) -> list[Path]:
     node_exe = find_tool(("node.exe", "node"))
     if node_exe is not None:
         paths.append(node_exe)
+    paths.extend(_playwright_browser_registration_paths())
     return paths
+
+
+def _playwright_browser_registration_paths() -> list[Path]:
+    """Returns locally installed Playwright browser executables that may drive live UI tests."""
+
+    candidates: list[Path] = []
+    local_appdata = os.environ.get("LOCALAPPDATA", "").strip()
+    if local_appdata:
+        playwright_root = Path(local_appdata) / "ms-playwright"
+        candidates.extend(playwright_root.glob("chromium-*/chrome-win/chrome.exe"))
+        candidates.extend(playwright_root.glob("chromium_headless_shell-*/chrome-win/headless_shell.exe"))
+        candidates.extend(playwright_root.glob("firefox-*/firefox/firefox.exe"))
+        candidates.extend(playwright_root.glob("webkit-*/Playwright.exe"))
+
+    browser_env = os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "").strip()
+    if browser_env and browser_env != "0":
+        playwright_root = Path(browser_env).expanduser()
+        candidates.extend(playwright_root.glob("chromium-*/chrome-win/chrome.exe"))
+        candidates.extend(playwright_root.glob("chromium_headless_shell-*/chrome-win/headless_shell.exe"))
+        candidates.extend(playwright_root.glob("firefox-*/firefox/firefox.exe"))
+        candidates.extend(playwright_root.glob("webkit-*/Playwright.exe"))
+
+    return candidates
 
 
 def _live_e2e_test_install_run_id() -> str:

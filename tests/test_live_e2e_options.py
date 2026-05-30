@@ -466,6 +466,10 @@ def test_live_e2e_registers_materialized_exe_for_developer_hide_me_split_tunnel(
     node_exe = tmp_path / "runtime" / "node" / "node.exe"
     node_exe.parent.mkdir(parents=True)
     node_exe.write_bytes(b"node")
+    browser_exe = tmp_path / "local-appdata" / "ms-playwright" / "chromium-1234" / "chrome-win" / "chrome.exe"
+    browser_exe.parent.mkdir(parents=True)
+    browser_exe.write_bytes(b"chrome")
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local-appdata"))
     monkeypatch.setattr(test_runs, "run_native", fake_run_native)
     monkeypatch.setattr(test_runs, "materialize_test_local_install", fake_materialize)
     monkeypatch.setattr(test_runs, "ensure_split_tunnel_apps", fake_register)
@@ -485,6 +489,7 @@ def test_live_e2e_registers_materialized_exe_for_developer_hide_me_split_tunnel(
     assert registered[0] == Path(option_values(captured["command"], "--app-exe")[0])
     assert any(path.name.casefold() in {"python.exe", "python"} for path in registered[1:])
     assert node_exe in registered
+    assert browser_exe in registered
 
 
 def test_live_e2e_restarts_hide_me_when_failed_report_points_at_upnp(tmp_path: Path, monkeypatch) -> None:
