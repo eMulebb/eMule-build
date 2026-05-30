@@ -794,6 +794,7 @@ def _recent_live_failure_text(workspace_root: Path) -> str:
         root = state_root / relative_root
         if root.is_dir():
             candidates.extend(path for path in root.rglob("*.json") if path.is_file())
+            candidates.extend(path for path in root.rglob("emulebb*.log") if path.is_file())
 
     def sort_key(path: Path) -> float:
         try:

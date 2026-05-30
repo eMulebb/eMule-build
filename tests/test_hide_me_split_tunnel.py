@@ -14,7 +14,7 @@ def test_hide_me_split_tunnel_is_opt_in(tmp_path: Path, monkeypatch) -> None:
     assert result["enabled"] is False
 
 
-def test_hide_me_split_tunnel_adds_existing_exe_to_app_lists(tmp_path: Path, monkeypatch) -> None:
+def test_hide_me_split_tunnel_adds_existing_exe_to_whitelist_by_default(tmp_path: Path, monkeypatch) -> None:
     settings = tmp_path / "vpn.settings"
     exe = tmp_path / "apps" / "eMuleBB" / "emulebb.exe"
     exe.parent.mkdir(parents=True)
@@ -42,6 +42,35 @@ def test_hide_me_split_tunnel_adds_existing_exe_to_app_lists(tmp_path: Path, mon
     assert result["changed"] is True
     assert Path(result["backup_path"]).is_file()
     assert result["restart"]["requested"] is False
+    assert result["limit_to_vpn"] is False
+    assert payload["SplitTunneling"]["Whitelisted"][0]["Path"] == str(exe.resolve())
+    assert payload["SplitTunneling"]["LimitToVpn"] == []
+
+
+def test_hide_me_split_tunnel_can_add_existing_exe_to_limit_to_vpn(tmp_path: Path, monkeypatch) -> None:
+    settings = tmp_path / "vpn.settings"
+    exe = tmp_path / "apps" / "eMuleBB" / "emulebb.exe"
+    exe.parent.mkdir(parents=True)
+    exe.write_bytes(b"exe")
+    settings.write_text(
+        json.dumps(
+            {
+                "SplitTunneling": {
+                    "Whitelisted": [],
+                    "LimitToVpn": [],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv(hide_me_split_tunnel.ENABLE_ENV, "1")
+    monkeypatch.setenv(hide_me_split_tunnel.LIMIT_TO_VPN_ENV, "1")
+    monkeypatch.setenv(hide_me_split_tunnel.SETTINGS_PATH_ENV, str(settings))
+
+    result = hide_me_split_tunnel.ensure_split_tunnel_apps([exe])
+
+    payload = json.loads(settings.read_text(encoding="utf-8"))
+    assert result["limit_to_vpn"] is True
     assert payload["SplitTunneling"]["Whitelisted"][0]["Path"] == str(exe.resolve())
     assert payload["SplitTunneling"]["LimitToVpn"][0]["Path"] == str(exe.resolve())
 

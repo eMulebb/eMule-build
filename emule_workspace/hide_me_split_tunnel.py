@@ -14,6 +14,7 @@ ENABLE_ENV = "EMULEBB_DEVELOPER_HIDE_ME_SPLIT_TUNNEL"
 SETTINGS_PATH_ENV = "EMULEBB_DEVELOPER_HIDE_ME_SETTINGS_PATH"
 RESTART_AFTER_REGISTER_ENV = "EMULEBB_DEVELOPER_HIDE_ME_RESTART_AFTER_REGISTER"
 RESTART_ON_UPNP_FAILURE_ENV = "EMULEBB_DEVELOPER_HIDE_ME_RESTART_ON_UPNP_FAILURE"
+LIMIT_TO_VPN_ENV = "EMULEBB_DEVELOPER_HIDE_ME_LIMIT_TO_VPN"
 HIDE_ME_EXE = Path(r"C:\Program Files (x86)\hide.me VPN\Hide.me.exe")
 HIDE_ME_SERVICE = "hmevpnsvc"
 UPNP_FAILURE_MARKERS = (
@@ -22,6 +23,7 @@ UPNP_FAILURE_MARKERS = (
     "nat_backend_order",
     "nat mapping",
     "port mapping",
+    "portmapping",
     "openportsonstartup",
     "lowid",
 )
@@ -65,8 +67,12 @@ def ensure_split_tunnel_apps(app_paths: list[Path], *, app_name: str = "eMuleBB"
         raise RuntimeError("hide.me settings SplitTunneling value is not an object.")
 
     changed = False
+    list_keys = ["Whitelisted"]
+    limit_to_vpn = enabled_limit_to_vpn_from_environment()
+    if limit_to_vpn:
+        list_keys.append("LimitToVpn")
     added: dict[str, list[str]] = {"Whitelisted": [], "LimitToVpn": []}
-    for key in ("Whitelisted", "LimitToVpn"):
+    for key in list_keys:
         entries = split_tunneling.setdefault(key, [])
         if not isinstance(entries, list):
             raise RuntimeError(f"hide.me settings SplitTunneling.{key} value is not an array.")
@@ -98,6 +104,7 @@ def ensure_split_tunnel_apps(app_paths: list[Path], *, app_name: str = "eMuleBB"
         "backup_path": str(backup_path) if backup_path else "",
         "registered_paths": [str(path) for path in resolved_paths],
         "added": added,
+        "limit_to_vpn": limit_to_vpn,
         "restart": restart,
     }
 
@@ -156,6 +163,12 @@ def enabled_restart_on_upnp_failure_from_environment() -> bool:
     """Returns whether hide.me should be restarted after UPnP-looking failures."""
 
     return os.environ.get(RESTART_ON_UPNP_FAILURE_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def enabled_limit_to_vpn_from_environment() -> bool:
+    """Returns whether registration should also populate hide.me's LimitToVpn list."""
+
+    return os.environ.get(LIMIT_TO_VPN_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def looks_like_upnp_failure(failure_text: str) -> bool:

@@ -517,6 +517,42 @@ def test_live_e2e_restarts_hide_me_when_failed_report_points_at_upnp(tmp_path: P
     assert "nat_backend_order" in recovery_inputs[0]
 
 
+def test_live_e2e_restarts_hide_me_when_app_log_points_at_upnp(tmp_path: Path, monkeypatch) -> None:
+    logs = tmp_path / "workspaces" / "workspace" / "state" / "test-reports" / "live-e2e-suite" / "run" / "rest-api" / "logs"
+    logs.mkdir(parents=True)
+    (logs / "emulebb-verbose.log").write_text(
+        "UPnP failed to setup port forwarding\nAdding PortMapping failed for port 9447 (TCP), Error Code 501\n",
+        encoding="utf-8",
+    )
+    recovery_inputs: list[str] = []
+
+    class Completed:
+        returncode = 1
+
+    def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
+        assert allow_failure is True
+        return Completed()
+
+    def fake_recover(failure_text):
+        recovery_inputs.append(failure_text)
+        return {"requested": True}
+
+    layout = make_layout(tmp_path)
+    monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+    monkeypatch.setattr(test_runs, "ensure_split_tunnel_apps", lambda paths: {"enabled": False})
+    monkeypatch.setattr(test_runs, "restart_hide_me_after_upnp_failure_if_requested", fake_recover)
+
+    with pytest.raises(RuntimeError, match="live E2E suite failed with exit code 1"):
+        test_runs.invoke_live_e2e_suite(
+            layout,
+            WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+            LiveE2eOptions(suites=("rest-api",), test_network="vpn"),
+        )
+
+    assert len(recovery_inputs) == 1
+    assert "PortMapping failed" in recovery_inputs[0]
+
+
 def test_live_e2e_forwards_multi_client_required_optional_clients(tmp_path: Path, monkeypatch) -> None:
     captured: dict[str, object] = {}
 
