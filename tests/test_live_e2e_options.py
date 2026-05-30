@@ -505,6 +505,65 @@ def test_live_e2e_materialized_vpn_uses_lan_controller_bind(tmp_path: Path, monk
     assert events == ["resolve:lan", "materialize", "register", "resolve:vpn"]
 
 
+def test_live_e2e_installer_controller_surface_profile_materializes_by_default(tmp_path: Path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    materialize_calls: list[object] = []
+
+    def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
+        captured["command"] = list(command)
+        captured["env"] = dict(env or {})
+
+    def fake_materialize(layout, workspace_options, install_options, *, run_id, suite_name, client_id, controller_bind_address=None):
+        materialize_calls.append(SimpleNamespace(controller_bind_address=controller_bind_address))
+        install_root = tmp_path / "workspaces" / "workspace" / "state" / "test-installs" / "run" / "live-e2e-suite" / "main"
+        app_exe = install_root / "apps" / "eMuleBB" / "emulebb.exe"
+        app_exe.parent.mkdir(parents=True)
+        app_exe.write_bytes(b"exe")
+        manifests = install_root / "manifests"
+        manifests.mkdir(parents=True)
+        (manifests / "suite-config.json").write_text(
+            json.dumps(
+                {
+                    "services": {
+                        "prowlarr": {"bindAddress": "192.168.1.44", "port": 9696, "apiKey": "prowlarr-secret"},
+                        "radarr": {"bindAddress": "192.168.1.44", "port": 7878, "apiKey": "radarr-secret"},
+                        "sonarr": {"bindAddress": "192.168.1.44", "port": 8989, "apiKey": "sonarr-secret"},
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        return SimpleNamespace(
+            target_path=install_root,
+            app_root=app_exe.parent,
+            app_exe=app_exe,
+            profile_dir=install_root / "profiles" / "emulebb",
+            profile_config_dir=install_root / "profiles" / "emulebb" / "config",
+            profile_seed_config_dir=install_root / "harness-profile-seed" / "config",
+        )
+
+    layout = make_layout(tmp_path)
+    monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+    monkeypatch.setattr(test_runs, "materialize_test_local_install", fake_materialize)
+    monkeypatch.setattr(test_runs, "ensure_split_tunnel_apps", lambda paths, **_kwargs: {"enabled": True})
+    monkeypatch.setattr(test_runs, "_start_materialized_arr_services", lambda *_args: [])
+
+    test_runs.invoke_live_e2e_suite(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+        LiveE2eOptions(profile="installer-controller-surface"),
+    )
+
+    command = captured["command"]
+    assert isinstance(command, list)
+    assert materialize_calls[0].controller_bind_address == "192.168.1.44"
+    assert option_values(command, "--profile") == ["installer-controller-surface"]
+    assert option_values(command, "--test-network") == ["vpn"]
+    assert option_values(command, "--app-exe")[0].endswith("emulebb.exe")
+    assert captured["env"]["X_LOCAL_IP"] == "192.168.1.44"
+    assert captured["env"]["PROWLARR_URL"] == "http://192.168.1.44:9696"
+
+
 def test_live_e2e_starts_materialized_arr_services_for_arr_suites(tmp_path: Path, monkeypatch) -> None:
     captured: dict[str, object] = {}
     started_commands: list[tuple[list[str], str]] = []

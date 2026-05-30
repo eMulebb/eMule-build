@@ -95,6 +95,7 @@ ARR_LIVE_E2E_SUITES = frozenset(
     }
 )
 ARR_LIVE_E2E_PROFILES = frozenset({"beta-green", "controller-surface", "controller-local"})
+INSTALLER_BACKED_LIVE_E2E_PROFILES = frozenset({"installer-controller-surface"})
 
 
 def invoke_test_runs(layout: WorkspaceLayout, options: WorkspaceOptions) -> None:
@@ -318,12 +319,19 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
     _assert_test_execution_platform_supported(options)
     if live_options.pre_run_cleanup:
         run_pre_test_cleanup(layout)
-    controller_bind_address = _pre_materialize_controller_bind_address(layout, live_options)
+    effective_test_network = _live_e2e_effective_test_network(live_options)
+    materialize_test_install = _live_e2e_materialize_test_install(live_options)
+    controller_bind_address = _pre_materialize_controller_bind_address(
+        layout,
+        live_options,
+        materialize_test_install=materialize_test_install,
+        test_network=effective_test_network,
+    )
     app_root = layout.get_app_variant(layout.test_targets.test_run_variant).path
     app_exe: Path | None = None
     profile_seed_config_dir: Path | None = None
     live_process_monitor_profile_dir: Path | None = None
-    if live_options.materialize_test_install:
+    if materialize_test_install:
         materialized = materialize_test_local_install(
             layout,
             options,
@@ -353,9 +361,9 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
     )
     network_env = _test_network_env(
         layout,
-        test_network=live_options.test_network,
+        test_network=effective_test_network,
         vpn_interface_name=live_options.p2p_bind_interface_name,
-        require_lan=live_options.materialize_test_install and live_options.test_network in {"lan", "vpn", "all"},
+        require_lan=materialize_test_install and effective_test_network in {"lan", "vpn", "all"},
     )
     script_path = layout.tests_repo_root / "scripts" / "run-live-e2e-suite.py"
     if not script_path.is_file():
@@ -372,7 +380,7 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
         "--startup-trace-mode",
         live_options.startup_trace_mode,
         "--test-network",
-        live_options.test_network,
+        effective_test_network,
         "--profile-cpu-max-file-mb",
         live_options.profile_cpu_max_file_mb,
         "--profile-cpu-stack-min-hits",
@@ -544,10 +552,10 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
     _append_optional_flag(args, live_options.skip_live_seed_refresh, "--skip-live-seed-refresh")
 
     python = get_python_invocation()
-    materialized_service_env = _materialized_arr_service_env(materialized) if live_options.materialize_test_install else {}
+    materialized_service_env = _materialized_arr_service_env(materialized) if materialize_test_install else {}
     started_services: list[StartedMaterializedService] = []
     try:
-        if live_options.materialize_test_install and _live_e2e_needs_arr_services(live_options):
+        if materialize_test_install and _live_e2e_needs_arr_services(live_options):
             started_services = _start_materialized_arr_services(materialized, materialized_service_env)
         _run_live_native(
             layout,
@@ -600,7 +608,7 @@ def _materialized_arr_service_env(materialized: object) -> dict[str, str]:
 def _live_e2e_needs_arr_services(live_options: LiveE2eOptions) -> bool:
     """Returns whether a selected aggregate live run requires local ARR controllers."""
 
-    if live_options.profile in ARR_LIVE_E2E_PROFILES:
+    if live_options.profile in ARR_LIVE_E2E_PROFILES or live_options.profile in INSTALLER_BACKED_LIVE_E2E_PROFILES:
         return True
     if not live_options.suites:
         return True
@@ -1108,15 +1116,28 @@ def _ensure_hide_me_split_tunnel_for_live(
     return ensure_split_tunnel_apps(_hide_me_registration_paths(app_exe), required=required)
 
 
+def _live_e2e_materialize_test_install(live_options: LiveE2eOptions) -> bool:
+    return live_options.materialize_test_install or live_options.profile in INSTALLER_BACKED_LIVE_E2E_PROFILES
+
+
+def _live_e2e_effective_test_network(live_options: LiveE2eOptions) -> TestNetwork:
+    if live_options.profile in INSTALLER_BACKED_LIVE_E2E_PROFILES and live_options.test_network == "default":
+        return "vpn"
+    return live_options.test_network
+
+
 def _pre_materialize_controller_bind_address(
     layout: WorkspaceLayout,
     live_options: LiveE2eOptions,
+    *,
+    materialize_test_install: bool,
+    test_network: TestNetwork,
 ) -> str | None:
     """Resolves only the LAN controller bind address needed before materialization."""
 
-    if not live_options.materialize_test_install:
+    if not materialize_test_install:
         return None
-    if live_options.test_network not in {"lan", "vpn", "all"}:
+    if test_network not in {"lan", "vpn", "all"}:
         return None
     context = resolve_workspace_network_context(
         workspace_root=layout.workspace_root,

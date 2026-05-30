@@ -164,6 +164,7 @@ def _live_e2e_options(function: F) -> F:
             "protocol-parity",
             "beta-green",
             "controller-surface",
+            "installer-controller-surface",
             "controller-local",
             "package-helpers",
             "beta-release",

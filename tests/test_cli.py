@@ -73,6 +73,7 @@ def test_test_live_e2e_help_exposes_live_options() -> None:
     assert "controller-local" in result.output
     assert "release-expanded" in result.output
     assert "release-expanded-quick" in result.output
+    assert "installer-controller-surface" in result.output
     assert "stabilization-stress" in result.output
     assert "stabilization-stress-quick" in result.output
     assert "cpu-heavy-quick" in result.output
