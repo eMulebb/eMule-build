@@ -117,6 +117,7 @@ class LiveE2eOptions(BaseModel):
     materialize_test_install_release_version: str = "0.7.3-rc.1"
     materialize_test_install_clean: bool = False
     materialize_test_install_skip_build: bool = False
+    live_process_monitor_profile_dir: str | None = None
     startup_trace_mode: str = "required"
     shared_root: str | None = None
     preference_ui_directories_tree_stress: bool = False

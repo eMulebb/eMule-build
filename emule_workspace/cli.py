@@ -210,6 +210,7 @@ def _live_e2e_options(function: F) -> F:
     @click.option("--materialize-test-install-release-version", default="0.7.3-rc.1", show_default=True)
     @click.option("--materialize-test-install-clean", is_flag=True, help="Clean package outputs before materializing the test install.")
     @click.option("--materialize-test-install-skip-build", is_flag=True, help="Reuse existing package artifacts when materializing the test install.")
+    @click.option("--live-process-monitor-profile-dir", default=None, help="Existing profile directory for the live-process-monitor suite.")
     @click.option("--radarr-movie-root", default=None, help="Radarr-visible movie root for Radarr import live checks.")
     @click.option("--sonarr-series-root", default=None, help="Sonarr-visible series root for Sonarr import live checks.")
     @click.option("--acquisition-timeout-minutes", default=None, type=float, help="Arr acquisition timeout forwarded to live suites.")

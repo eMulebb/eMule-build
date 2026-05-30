@@ -409,6 +409,31 @@ def test_live_e2e_can_run_against_materialized_installer_test_install(tmp_path: 
     assert option_values(command, "--live-wire-inputs-file") == ["repos/emulebb-build-tests/live-wire-inputs.local.json"]
 
 
+def test_live_e2e_forwards_explicit_live_process_monitor_profile_dir(tmp_path: Path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
+        captured["command"] = list(command)
+
+    layout = make_layout(tmp_path)
+    monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+
+    profile_dir = r"F:\M\H06T01\dldz\EMULE_BIN"
+    test_runs.invoke_live_e2e_suite(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+        LiveE2eOptions(
+            suites=("live-process-monitor",),
+            test_network="vpn",
+            live_process_monitor_profile_dir=profile_dir,
+        ),
+    )
+
+    command = captured["command"]
+    assert isinstance(command, list)
+    assert option_values(command, "--live-process-monitor-profile-dir") == [profile_dir]
+
+
 def test_live_e2e_forwards_multi_client_required_optional_clients(tmp_path: Path, monkeypatch) -> None:
     captured: dict[str, object] = {}
 

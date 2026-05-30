@@ -270,6 +270,10 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
         app_exe = materialized.app_exe
         profile_seed_config_dir = materialized.profile_seed_config_dir
         live_process_monitor_profile_dir = materialized.profile_dir
+    if live_options.live_process_monitor_profile_dir:
+        live_process_monitor_profile_dir = Path(
+            _resolve_workspace_path_argument(layout, live_options.live_process_monitor_profile_dir)
+        )
     script_path = layout.tests_repo_root / "scripts" / "run-live-e2e-suite.py"
     if not script_path.is_file():
         raise RuntimeError(f"Missing live E2E suite runner: {script_path}")
