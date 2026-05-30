@@ -13,8 +13,18 @@ from typing import Any
 ENABLE_ENV = "EMULEBB_DEVELOPER_HIDE_ME_SPLIT_TUNNEL"
 SETTINGS_PATH_ENV = "EMULEBB_DEVELOPER_HIDE_ME_SETTINGS_PATH"
 RESTART_AFTER_REGISTER_ENV = "EMULEBB_DEVELOPER_HIDE_ME_RESTART_AFTER_REGISTER"
+RESTART_ON_UPNP_FAILURE_ENV = "EMULEBB_DEVELOPER_HIDE_ME_RESTART_ON_UPNP_FAILURE"
 HIDE_ME_EXE = Path(r"C:\Program Files (x86)\hide.me VPN\Hide.me.exe")
 HIDE_ME_SERVICE = "hmevpnsvc"
+UPNP_FAILURE_MARKERS = (
+    "upnp",
+    "miniupnp",
+    "nat_backend_order",
+    "nat mapping",
+    "port mapping",
+    "openportsonstartup",
+    "lowid",
+)
 
 
 def enabled_from_environment() -> bool:
@@ -79,7 +89,7 @@ def ensure_split_tunnel_apps(app_paths: list[Path], *, app_name: str = "eMuleBB"
         backup_path = settings_path.with_name(f"{settings_path.name}.emulebb-{time.strftime('%Y%m%dT%H%M%S')}.bak")
         shutil.copy2(settings_path, backup_path)
         settings_path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8", newline="")
-    restart = restart_hide_me_if_requested() if changed else {"requested": False, "skipped": "settings unchanged"}
+    restart = restart_hide_me_after_registration_if_requested() if changed else {"requested": False, "skipped": "settings unchanged"}
 
     return {
         "enabled": True,
@@ -92,11 +102,29 @@ def ensure_split_tunnel_apps(app_paths: list[Path], *, app_name: str = "eMuleBB"
     }
 
 
-def restart_hide_me_if_requested() -> dict[str, Any]:
+def restart_hide_me_after_registration_if_requested() -> dict[str, Any]:
     """Restarts hide.me after a registration when the local opt-in is enabled."""
 
     if not enabled_restart_from_environment():
         return {"requested": False, "skipped": f"{RESTART_AFTER_REGISTER_ENV} is not enabled"}
+
+    return restart_hide_me()
+
+
+def restart_hide_me_after_upnp_failure_if_requested(failure_text: str) -> dict[str, Any]:
+    """Restarts hide.me after a UPnP-looking live failure when explicitly enabled."""
+
+    if not enabled_restart_on_upnp_failure_from_environment():
+        return {"requested": False, "skipped": f"{RESTART_ON_UPNP_FAILURE_ENV} is not enabled"}
+    if not looks_like_upnp_failure(failure_text):
+        return {"requested": False, "skipped": "failure did not match UPnP markers"}
+    result = restart_hide_me()
+    result["reason"] = "upnp_failure"
+    return result
+
+
+def restart_hide_me() -> dict[str, Any]:
+    """Restarts the local hide.me service and desktop process."""
 
     command = (
         "$ErrorActionPreference = 'Stop'; "
@@ -122,6 +150,19 @@ def enabled_restart_from_environment() -> bool:
     """Returns whether hide.me should be restarted after settings changes."""
 
     return os.environ.get(RESTART_AFTER_REGISTER_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def enabled_restart_on_upnp_failure_from_environment() -> bool:
+    """Returns whether hide.me should be restarted after UPnP-looking failures."""
+
+    return os.environ.get(RESTART_ON_UPNP_FAILURE_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def looks_like_upnp_failure(failure_text: str) -> bool:
+    """Returns whether a live-test failure report points at UPnP/NAT mapping."""
+
+    normalized = failure_text.casefold()
+    return any(marker in normalized for marker in UPNP_FAILURE_MARKERS)
 
 
 def _unique_existing_files(paths: list[Path]) -> list[Path]:

@@ -99,3 +99,31 @@ def test_hide_me_split_tunnel_can_restart_after_registration(tmp_path: Path, mon
 
     assert result["restart"]["requested"] is True
     assert calls and calls[0][0] == "powershell"
+
+
+def test_hide_me_split_tunnel_can_restart_after_upnp_failure(monkeypatch) -> None:
+    monkeypatch.setenv(hide_me_split_tunnel.RESTART_ON_UPNP_FAILURE_ENV, "1")
+    calls: list[bool] = []
+
+    def fake_restart():
+        calls.append(True)
+        return {"requested": True, "returncode": 0}
+
+    monkeypatch.setattr(hide_me_split_tunnel, "restart_hide_me", fake_restart)
+
+    result = hide_me_split_tunnel.restart_hide_me_after_upnp_failure_if_requested(
+        "Timed out waiting for UPnP NAT backend order"
+    )
+
+    assert result["requested"] is True
+    assert result["reason"] == "upnp_failure"
+    assert calls == [True]
+
+
+def test_hide_me_split_tunnel_skips_non_upnp_failure_restart(monkeypatch) -> None:
+    monkeypatch.setenv(hide_me_split_tunnel.RESTART_ON_UPNP_FAILURE_ENV, "1")
+
+    result = hide_me_split_tunnel.restart_hide_me_after_upnp_failure_if_requested("ARR handoff timed out")
+
+    assert result["requested"] is False
+    assert result["skipped"] == "failure did not match UPnP markers"

@@ -21,7 +21,7 @@ from .config import (
     WorkspaceOptions,
 )
 from .cleanup import run_pre_test_cleanup
-from .hide_me_split_tunnel import ensure_split_tunnel_apps
+from .hide_me_split_tunnel import ensure_split_tunnel_apps, restart_hide_me_after_upnp_failure_if_requested
 from .layout import WorkspaceLayout, get_test_build_tag
 from .local_package_install import materialize_test_local_install
 from .network_context import TestNetwork, resolve_workspace_network_context
@@ -464,7 +464,8 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
     _append_optional_flag(args, live_options.skip_live_seed_refresh, "--skip-live-seed-refresh")
 
     python = get_python_invocation()
-    run_native(
+    _run_live_native(
+        layout,
         python.command(args),
         label="live E2E suite",
         cwd=layout.emule_workspace_root,
@@ -589,7 +590,8 @@ def invoke_fake_kad_trust_soak(
     _append_optional_flag(args, soak_options.require_kad_connected, "--require-kad-connected")
 
     python = get_python_invocation()
-    run_native(
+    _run_live_native(
+        layout,
         python.command(args),
         label="fake/Kad trust soak",
         cwd=layout.emule_workspace_root,
@@ -641,7 +643,8 @@ def invoke_amutorrent_clean_startup(
     _append_optional_flag(args, clean_options.keep_artifacts, "--keep-artifacts")
 
     python = get_python_invocation()
-    run_native(
+    _run_live_native(
+        layout,
         python.command(args),
         label="aMuTorrent clean startup",
         cwd=layout.emule_workspace_root,
@@ -695,7 +698,8 @@ def invoke_amutorrent_resilience(
     _append_optional_flag(args, resilience_options.keep_artifacts, "--keep-artifacts")
 
     python = get_python_invocation()
-    run_native(
+    _run_live_native(
+        layout,
         python.command(args),
         label="aMuTorrent resilience live",
         cwd=layout.emule_workspace_root,
@@ -747,7 +751,8 @@ def invoke_amutorrent_emulebb_ui(
     _append_optional_flag(args, ui_options.keep_artifacts, "--keep-artifacts")
 
     python = get_python_invocation()
-    run_native(
+    _run_live_native(
+        layout,
         python.command(args),
         label="aMuTorrent eMuleBB UI live",
         cwd=layout.emule_workspace_root,
@@ -763,6 +768,46 @@ def invoke_amutorrent_emulebb_ui(
 def _append_optional_flag(args: list, enabled: bool, flag: str) -> None:
     if enabled:
         args.append(flag)
+
+
+def _run_live_native(
+    layout: WorkspaceLayout,
+    command: Sequence[str | os.PathLike[str]],
+    *,
+    label: str,
+    cwd: Path,
+    env: dict[str, str],
+) -> None:
+    completed = run_native(command, label=label, cwd=cwd, env=env, allow_failure=True)
+    if int(getattr(completed, "returncode", 0) or 0) == 0:
+        return
+
+    failure_text = _recent_live_failure_text(layout.workspace_root)
+    restart_hide_me_after_upnp_failure_if_requested(failure_text)
+    raise RuntimeError(f"{label} failed with exit code {completed.returncode}.")
+
+
+def _recent_live_failure_text(workspace_root: Path) -> str:
+    state_root = workspace_root / "state"
+    candidates: list[Path] = []
+    for relative_root in ("test-reports", "test-artifacts"):
+        root = state_root / relative_root
+        if root.is_dir():
+            candidates.extend(path for path in root.rglob("*.json") if path.is_file())
+
+    def sort_key(path: Path) -> float:
+        try:
+            return path.stat().st_mtime
+        except OSError:
+            return 0.0
+
+    fragments: list[str] = []
+    for path in sorted(candidates, key=sort_key, reverse=True)[:32]:
+        try:
+            fragments.append(path.read_text(encoding="utf-8", errors="replace")[:65536])
+        except OSError:
+            continue
+    return "\n".join(fragments)
 
 
 def _live_e2e_test_install_run_id() -> str:

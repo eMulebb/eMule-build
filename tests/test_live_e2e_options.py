@@ -481,6 +481,42 @@ def test_live_e2e_registers_materialized_exe_for_developer_hide_me_split_tunnel(
     assert registered == [Path(option_values(captured["command"], "--app-exe")[0])]
 
 
+def test_live_e2e_restarts_hide_me_when_failed_report_points_at_upnp(tmp_path: Path, monkeypatch) -> None:
+    reports = tmp_path / "workspaces" / "workspace" / "state" / "test-reports" / "live-e2e-suite" / "run"
+    reports.mkdir(parents=True)
+    (reports / "rest-api-smoke-result.json").write_text(
+        '{"status":"failed","failed_phase":"nat_backend_order","error":"Timed out waiting for UPnP NAT backend order"}',
+        encoding="utf-8",
+    )
+    recovery_inputs: list[str] = []
+
+    class Completed:
+        returncode = 1
+
+    def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
+        assert allow_failure is True
+        return Completed()
+
+    def fake_recover(failure_text):
+        recovery_inputs.append(failure_text)
+        return {"requested": True}
+
+    layout = make_layout(tmp_path)
+    monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+    monkeypatch.setattr(test_runs, "ensure_split_tunnel_apps", lambda paths: {"enabled": False})
+    monkeypatch.setattr(test_runs, "restart_hide_me_after_upnp_failure_if_requested", fake_recover)
+
+    with pytest.raises(RuntimeError, match="live E2E suite failed with exit code 1"):
+        test_runs.invoke_live_e2e_suite(
+            layout,
+            WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+            LiveE2eOptions(suites=("rest-api",), test_network="vpn"),
+        )
+
+    assert len(recovery_inputs) == 1
+    assert "nat_backend_order" in recovery_inputs[0]
+
+
 def test_live_e2e_forwards_multi_client_required_optional_clients(tmp_path: Path, monkeypatch) -> None:
     captured: dict[str, object] = {}
 
