@@ -25,7 +25,7 @@ from .hide_me_split_tunnel import ensure_split_tunnel_apps, restart_hide_me_afte
 from .layout import WorkspaceLayout, get_test_build_tag
 from .local_package_install import materialize_test_local_install
 from .network_context import TestNetwork, resolve_workspace_network_context
-from .process import get_python_invocation, run_native
+from .process import find_tool, get_python_invocation, run_native
 
 
 def invoke_test_runs(layout: WorkspaceLayout, options: WorkspaceOptions) -> None:
@@ -817,6 +817,9 @@ def _hide_me_registration_paths(app_exe: Path) -> list[Path]:
         paths.append(get_python_invocation().executable)
     except RuntimeError:
         pass
+    node_exe = find_tool(("node.exe", "node"))
+    if node_exe is not None:
+        paths.append(node_exe)
     return paths
 
 
