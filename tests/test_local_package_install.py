@@ -254,6 +254,23 @@ def test_local_package_install_rejects_zip_exe_without_matching_package_build_ex
         raise AssertionError("Expected mismatched package executable to fail")
 
 
+def test_local_package_install_rejects_stale_packaged_runtime_script(tmp_path: Path) -> None:
+    layout = _layout(tmp_path)
+    layout.tests_repo_root.mkdir(parents=True)
+    layout.build_repo_root.mkdir(parents=True)
+    source_script = layout.build_repo_root / "emule_workspace" / "release_assets" / "emulebb" / "scripts" / "Install-eMuleBBSuite.ps1"
+    source_script.parent.mkdir(parents=True)
+    source_script.write_text("#Requires -Version 5.1\nWrite-Host 'fresh'\n", encoding="utf-8", newline="\n")
+    suite_install_fixtures.write_local_package_artifacts(
+        layout.workspace_root,
+        version="0.7.3-rc.1",
+        installer_payload=b"#Requires -Version 5.1\nWrite-Host 'stale'\n",
+    )
+
+    with pytest.raises(RuntimeError, match="stale runtime asset"):
+        local_package_install.resolve_install_artifacts(layout, _workspace_options(tmp_path), "0.7.3-rc.1")
+
+
 def test_load_local_install_config_requires_live_wire_object(tmp_path: Path) -> None:
     layout = _layout(tmp_path)
     layout.tests_repo_root.mkdir(parents=True)

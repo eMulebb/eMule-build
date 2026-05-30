@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 import socket
+import zipfile
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,7 +15,13 @@ from . import suite_installer
 from .build import APP_EXE_NAME
 from .config import AmutorrentPackageOptions, LocalPackageInstallOptions, ReleasePackageOptions, WorkspaceOptions
 from .layout import WorkspaceLayout, file_token
-from .release import EMULEBB_PACKAGE_ROOT_NAME, create_amutorrent_package, create_release_package
+from .release import (
+    EMULEBB_PACKAGE_ROOT_NAME,
+    EMULEBB_RELEASE_ASSET_ROOT_NAME,
+    EMULEBB_RUNTIME_SCRIPT_PATHS,
+    create_amutorrent_package,
+    create_release_package,
+)
 
 LIVE_WIRE_SCHEMA = "emulebb-build-tests.live-wire-inputs.v1"
 LEGACY_LIVE_WIRE_SCHEMAS = ("emule-build-tests.live-wire-inputs.v1",)
@@ -289,7 +296,32 @@ def resolve_install_artifacts(
     ]
     if missing:
         raise RuntimeError("Local package install is missing required artifacts:\n" + "\n".join(str(path) for path in missing))
+    validate_packaged_runtime_scripts(layout, artifacts.emule_zip)
     return artifacts
+
+
+def validate_packaged_runtime_scripts(layout: WorkspaceLayout, package_zip: Path) -> None:
+    """Fails when a skip-build package contains stale runtime PowerShell assets."""
+
+    source_root = layout.build_repo_root / "emule_workspace" / "release_assets" / EMULEBB_RELEASE_ASSET_ROOT_NAME
+    if not source_root.is_dir():
+        return
+    with zipfile.ZipFile(package_zip, "r") as archive:
+        for relative_path in EMULEBB_RUNTIME_SCRIPT_PATHS:
+            source_path = source_root / relative_path
+            if not source_path.is_file():
+                continue
+            package_entry_name = f"{EMULEBB_PACKAGE_ROOT_NAME}/{relative_path}".replace("\\", "/")
+            try:
+                package_payload = archive.read(package_entry_name)
+            except KeyError as exc:
+                raise RuntimeError(f"Release package is missing runtime asset {package_entry_name}. Rebuild the package.") from exc
+            source_payload = source_path.read_bytes()
+            if _sha256_bytes(package_payload) != _sha256_bytes(source_payload):
+                raise RuntimeError(
+                    "Release package contains a stale runtime asset. Rebuild the package before using "
+                    f"--materialize-test-install-skip-build:\n{package_entry_name}\n{source_path}"
+                )
 
 
 def suite_profile_dir(config: LocalInstallConfig) -> Path:
@@ -745,3 +777,7 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             hasher.update(chunk)
     return hasher.hexdigest()
+
+
+def _sha256_bytes(payload: bytes) -> str:
+    return __import__("hashlib").sha256(payload).hexdigest()
