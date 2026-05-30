@@ -176,6 +176,25 @@ def test_hide_me_split_tunnel_can_restart_after_upnp_failure(monkeypatch) -> Non
     assert calls == [True]
 
 
+def test_hide_me_split_tunnel_treats_low_id_firewalled_as_port_failure(monkeypatch) -> None:
+    monkeypatch.setenv(hide_me_split_tunnel.RESTART_ON_UPNP_FAILURE_ENV, "1")
+    calls: list[bool] = []
+
+    def fake_restart():
+        calls.append(True)
+        return {"requested": True, "returncode": 0}
+
+    monkeypatch.setattr(hide_me_split_tunnel, "restart_hide_me", fake_restart)
+
+    result = hide_me_split_tunnel.restart_hide_me_after_upnp_failure_if_requested(
+        "networkStatus ed2k Low ID and kad Firewalled"
+    )
+
+    assert result["requested"] is True
+    assert result["reason"] == "upnp_failure"
+    assert calls == [True]
+
+
 def test_hide_me_split_tunnel_skips_non_upnp_failure_restart(monkeypatch) -> None:
     monkeypatch.setenv(hide_me_split_tunnel.RESTART_ON_UPNP_FAILURE_ENV, "1")
 

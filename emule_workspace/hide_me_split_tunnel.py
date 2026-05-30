@@ -28,6 +28,8 @@ UPNP_FAILURE_MARKERS = (
     "portmapping",
     "openportsonstartup",
     "lowid",
+    "low id",
+    "firewalled",
 )
 
 
