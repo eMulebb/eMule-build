@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import shutil
 import struct
@@ -52,6 +53,12 @@ RELEASE_VERSION_PATTERN = re.compile(
     r"\d+\.\d+\.\d+(?:-(?:(?:rc|beta)\.\d+|nightly\.\d{8}\.[0-9a-f]{7,40}))?"
 )
 RELEASE_VERSION_FORMAT = "MAJOR.MINOR.PATCH[-rc.N|-beta.N|-nightly.YYYYMMDD.SHA]"
+SIGNING_CERT_SHA1_ENV = "EMULEBB_RELEASE_SIGN_CERT_SHA1"
+SIGNING_CERT_PATH_ENV = "EMULEBB_RELEASE_SIGN_CERT_PATH"
+SIGNING_CERT_PASSWORD_ENV = "EMULEBB_RELEASE_SIGN_CERT_PASSWORD"
+SIGNING_TIMESTAMP_URL_ENV = "EMULEBB_RELEASE_SIGN_TIMESTAMP_URL"
+SIGNTOOL_PATH_ENV = "EMULEBB_SIGNTOOL"
+DEFAULT_SIGNING_TIMESTAMP_URL = "http://timestamp.digicert.com"
 EMULEBB_RUNTIME_SCRIPT_PATHS = (
     "scripts/Bootstrap-eMuleBBSuite.ps1",
     "scripts/Install-eMuleBBSuite.ps1",
@@ -251,6 +258,7 @@ def create_release_package(
         Path("docs/REST-API-PARITY-INVENTORY.md"),
     )
     _copy_emule_runtime_assets(layout.build_repo_root, package_root)
+    signature_policy = _sign_release_package_files(package_root, require_signing=package_options.require_signing)
     _write_release_sbom(
         layout=layout,
         workspace_options=workspace_options,
@@ -294,6 +302,7 @@ def create_release_package(
         bootstrapper_asset_path=bootstrapper_asset_path,
         bootstrapper_hash_path=bootstrapper_hash_path,
         bootstrapper_hash=bootstrapper_hash,
+        signature_policy=signature_policy,
     )
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8", newline="\n")
     print(f"Release package: {zip_path}")
@@ -320,6 +329,7 @@ def _build_release_manifest(
     bootstrapper_asset_path: Path,
     bootstrapper_hash_path: Path,
     bootstrapper_hash: str,
+    signature_policy: dict[str, object],
 ) -> dict[str, object]:
     """Builds the provenance manifest written next to one release asset."""
 
@@ -339,6 +349,7 @@ def _build_release_manifest(
         "bootstrapperAsset": bootstrapper_asset_path.relative_to(release_root).as_posix(),
         "bootstrapperSha256": bootstrapper_hash,
         "bootstrapperSha256Path": bootstrapper_hash_path.relative_to(release_root).as_posix(),
+        "signaturePolicy": signature_policy,
         "emulebbExeSha256": exe_hash,
         "languageDllCount": len(expected_language_dlls),
         "languageDlls": list(expected_language_dlls),
@@ -960,6 +971,90 @@ def _copy_package_file(source_path: Path, package_root: Path, relative_destinati
     shutil.copy2(source_path, destination_path)
 
 
+def _sign_release_package_files(package_root: Path, *, require_signing: bool) -> dict[str, object]:
+    """Authenticode-signs staged release files when a signing identity is configured."""
+
+    config = _release_signing_config(require_signing=require_signing)
+    if config is None:
+        return {
+            "mode": "unsigned",
+            "required": False,
+            "signedFiles": [],
+            "reason": "No Authenticode signing identity configured.",
+        }
+
+    signed_files: list[str] = []
+    staging_root = package_root.parent
+    for path in _release_signing_targets(package_root):
+        command = [
+            str(config["signtool"]),
+            "sign",
+            "/fd",
+            "SHA256",
+            "/tr",
+            str(config["timestamp_url"]),
+            "/td",
+            "SHA256",
+            *config["identity_args"],
+            str(path),
+        ]
+        subprocess.run(command, check=True)
+        signed_files.append(path.relative_to(staging_root).as_posix())
+
+    return {
+        "mode": "authenticode",
+        "required": require_signing,
+        "timestampUrl": config["timestamp_url"],
+        "signedFiles": signed_files,
+    }
+
+
+def _release_signing_config(*, require_signing: bool) -> dict[str, object] | None:
+    signtool = os.environ.get(SIGNTOOL_PATH_ENV) or shutil.which("signtool.exe") or shutil.which("signtool")
+    cert_sha1 = os.environ.get(SIGNING_CERT_SHA1_ENV, "").strip()
+    cert_path = os.environ.get(SIGNING_CERT_PATH_ENV, "").strip()
+    cert_password = os.environ.get(SIGNING_CERT_PASSWORD_ENV, "")
+    timestamp_url = os.environ.get(SIGNING_TIMESTAMP_URL_ENV, DEFAULT_SIGNING_TIMESTAMP_URL).strip()
+
+    if cert_sha1 and cert_path:
+        raise RuntimeError(f"Set only one of {SIGNING_CERT_SHA1_ENV} or {SIGNING_CERT_PATH_ENV}.")
+    if not cert_sha1 and not cert_path:
+        if require_signing:
+            raise RuntimeError(
+                "Release package signing is required but no signing identity is configured. "
+                f"Set {SIGNING_CERT_SHA1_ENV} or {SIGNING_CERT_PATH_ENV}."
+            )
+        return None
+    if not signtool:
+        raise RuntimeError(f"Release package signing requires signtool.exe on PATH or {SIGNTOOL_PATH_ENV}.")
+    if not timestamp_url:
+        raise RuntimeError(f"Release package signing requires {SIGNING_TIMESTAMP_URL_ENV} or the default timestamp URL.")
+
+    if cert_path:
+        resolved_cert_path = Path(cert_path).expanduser().resolve()
+        if not resolved_cert_path.is_file():
+            raise RuntimeError(f"Release signing certificate file is missing: {resolved_cert_path}")
+        identity_args: tuple[str, ...] = ("/f", str(resolved_cert_path))
+        if cert_password:
+            identity_args = (*identity_args, "/p", cert_password)
+    else:
+        identity_args = ("/sha1", cert_sha1)
+
+    return {
+        "signtool": Path(signtool),
+        "timestamp_url": timestamp_url,
+        "identity_args": identity_args,
+    }
+
+
+def _release_signing_targets(package_root: Path) -> tuple[Path, ...]:
+    return tuple(
+        path
+        for path in sorted(package_root.rglob("*"))
+        if path.is_file() and path.suffix.lower() in {".exe", ".dll", ".ps1"}
+    )
+
+
 def _copy_emule_runtime_assets(build_repo_root: Path, package_root: Path) -> None:
     """Copies package-owned eMuleBB runtime assets."""
 
@@ -1041,7 +1136,7 @@ def _write_package_readme(package_root: Path, release_version: str, platform: st
                 f"install a compatible external `MediaInfo.dll` next to `{APP_EXE_NAME}`; it is not",
                 "bundled in this ZIP.",
                 "",
-                "This ZIP is not code-signed and does not include debug symbols.",
+                "This ZIP does not include debug symbols.",
             )
         )
         + "\n",

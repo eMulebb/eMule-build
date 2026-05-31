@@ -320,6 +320,7 @@ def test_release_manifest_records_explicit_source_provenance(
         bootstrapper_asset_path=release_root / "Bootstrap-eMuleBBSuite.ps1",
         bootstrapper_hash_path=release_root / "Bootstrap-eMuleBBSuite.ps1.sha256",
         bootstrapper_hash="bootstrapper-sha",
+        signature_policy={"mode": "unsigned", "required": False, "signedFiles": []},
     )
 
     assert manifest["appVariant"] == "main"
@@ -340,6 +341,7 @@ def test_release_manifest_records_explicit_source_provenance(
     assert manifest["bootstrapperAsset"] == "Bootstrap-eMuleBBSuite.ps1"
     assert manifest["bootstrapperSha256"] == "bootstrapper-sha"
     assert manifest["bootstrapperSha256Path"] == "Bootstrap-eMuleBBSuite.ps1.sha256"
+    assert manifest["signaturePolicy"] == {"mode": "unsigned", "required": False, "signedFiles": []}
     assert "eMuleBB/SBOM.spdx.json" in manifest["includedPaths"]
     assert "eMuleBB/scripts" in manifest["includedPaths"]
     assert "eMuleBB/skins" in manifest["includedPaths"]
@@ -376,6 +378,45 @@ def test_standalone_bootstrapper_asset_is_hashed_next_to_release(tmp_path: Path)
     assert asset_path.read_text(encoding="utf-8") == bootstrapper.read_text(encoding="utf-8")
     assert digest == hashlib.sha256(asset_path.read_bytes()).hexdigest()
     assert hash_path.read_text(encoding="ascii") == f"{digest}  Bootstrap-eMuleBBSuite.ps1\n"
+
+
+def test_release_signing_required_rejects_missing_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("EMULEBB_RELEASE_SIGN_CERT_SHA1", raising=False)
+    monkeypatch.delenv("EMULEBB_RELEASE_SIGN_CERT_PATH", raising=False)
+
+    with pytest.raises(RuntimeError, match="signing is required"):
+        release._sign_release_package_files(Path("eMuleBB"), require_signing=True)
+
+
+def test_release_signing_uses_signtool_for_authenticode_targets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    package_root = tmp_path / "staging" / "eMuleBB"
+    (package_root / "scripts").mkdir(parents=True)
+    (package_root / "lang").mkdir()
+    (package_root / "emulebb.exe").write_bytes(b"exe")
+    (package_root / "lang" / "de_DE.dll").write_bytes(b"dll")
+    (package_root / "scripts" / "Install-eMuleBBSuite.ps1").write_text("#Requires -Version 5.1\n", encoding="utf-8")
+    (package_root / "README.md").write_text("readme\n", encoding="utf-8")
+    commands: list[list[str]] = []
+
+    monkeypatch.setenv("EMULEBB_RELEASE_SIGN_CERT_SHA1", "0123456789abcdef0123456789abcdef01234567")
+    monkeypatch.setenv("EMULEBB_SIGNTOOL", str(tmp_path / "signtool.exe"))
+    monkeypatch.setattr(release.subprocess, "run", lambda command, check: commands.append([str(part) for part in command]))
+
+    result = release._sign_release_package_files(package_root, require_signing=True)
+
+    assert result["mode"] == "authenticode"
+    assert result["required"] is True
+    assert result["signedFiles"] == [
+        "eMuleBB/emulebb.exe",
+        "eMuleBB/lang/de_DE.dll",
+        "eMuleBB/scripts/Install-eMuleBBSuite.ps1",
+    ]
+    assert len(commands) == 3
+    assert all("/fd" in command and "SHA256" in command for command in commands)
+    assert all("/sha1" in command and "0123456789abcdef0123456789abcdef01234567" in command for command in commands)
 
 
 def test_spdx_sbom_describes_staged_package_files_without_self_reference(tmp_path: Path) -> None:

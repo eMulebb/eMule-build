@@ -119,7 +119,7 @@ Command behavior:
 - `test community-core-coverage` runs community-core coverage checks with live REST E2E coverage enabled.
 - `build all` runs `build libs`, `build app`, and `build tests`.
 - `full` runs `build all`, then `test all`, then prints a workspace summary.
-- `package-release` builds the main Release app, language DLLs, release ZIP, and release manifest.
+- `package-release` builds the main Release app, language DLLs, release ZIP, and release manifest. Use `--require-signing` for release-candidate or stable assets that must fail unless Authenticode signing is configured.
 
 All top-level `emule_workspace` commands are serialized per workspace root.
 This single-owner workspace lock is intentional. It prevents overlapping

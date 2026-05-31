@@ -348,6 +348,7 @@ class ReleasePackageOptions(BaseModel):
 
     release_version: str = "0.7.3-rc.1"
     clean: bool = False
+    require_signing: bool = False
 
 
 class AmutorrentPackageOptions(BaseModel):

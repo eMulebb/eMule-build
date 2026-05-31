@@ -1241,6 +1241,7 @@ def full(
 @main.command("package-release")
 @_common_options
 @click.option("--clean", is_flag=True, help="Clean selected package build outputs before building.")
+@click.option("--require-signing", is_flag=True, help="Require configured Authenticode signing for release package files.")
 @click.option(
     "--release-version",
     default="0.7.3-rc.1",
@@ -1250,13 +1251,14 @@ def full(
 def package_release(
     *,
     clean: bool,
+    require_signing: bool,
     release_version: str,
     workspace_options: WorkspaceOptions,
     layout,
 ) -> None:
     """Build the main app and create release package artifacts."""
 
-    package_options = ReleasePackageOptions(release_version=release_version, clean=clean)
+    package_options = ReleasePackageOptions(release_version=release_version, clean=clean, require_signing=require_signing)
     _locked(
         "package release",
         lambda **kwargs: create_release_package(kwargs["layout"], kwargs["workspace_options"], package_options),
