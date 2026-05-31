@@ -31,14 +31,14 @@ def workspace_root() -> Path:
 def test_basic_hygiene_accepts_emulebb_runtime_script_header(workspace_root: Path, tmp_path: Path) -> None:
     policy_guards = _load_tooling_module(workspace_root, "policy_guards_under_test", "ci/policy_guards.py")
     repo_root = tmp_path / "emulebb-build"
-    script_path = repo_root / "emule_workspace" / "release_assets" / "emulebb" / "scripts" / "register-prowlarr.ps1"
+    script_path = repo_root / "emule_workspace" / "release_assets" / "emulebb" / "scripts" / "Register-Prowlarr.ps1"
     script_path.parent.mkdir(parents=True)
     script_path.write_text("#Requires -Version 5.1\n", encoding="utf-8")
 
     issue = policy_guards.test_powershell_version_header(
         repo_root,
         "emulebb-build",
-        "emule_workspace/release_assets/emulebb/scripts/register-prowlarr.ps1",
+        "emule_workspace/release_assets/emulebb/scripts/Register-Prowlarr.ps1",
         script_path,
     )
 
@@ -48,18 +48,31 @@ def test_basic_hygiene_accepts_emulebb_runtime_script_header(workspace_root: Pat
 def test_basic_hygiene_rejects_bad_emulebb_runtime_script_header(workspace_root: Path, tmp_path: Path) -> None:
     policy_guards = _load_tooling_module(workspace_root, "policy_guards_under_test_bad_header", "ci/policy_guards.py")
     repo_root = tmp_path / "emulebb-build"
-    script_path = repo_root / "emule_workspace" / "release_assets" / "emulebb" / "scripts" / "register-prowlarr.ps1"
+    script_path = repo_root / "emule_workspace" / "release_assets" / "emulebb" / "scripts" / "Register-Prowlarr.ps1"
     script_path.parent.mkdir(parents=True)
     script_path.write_text("#Requires -Version 7.6\n", encoding="utf-8")
 
     issue = policy_guards.test_powershell_version_header(
         repo_root,
         "emulebb-build",
-        "emule_workspace/release_assets/emulebb/scripts/register-prowlarr.ps1",
+        "emule_workspace/release_assets/emulebb/scripts/Register-Prowlarr.ps1",
         script_path,
     )
 
     assert issue == "Expected PowerShell version header '#Requires -Version 5.1' but found '#Requires -Version 7.6'."
+
+
+def test_basic_hygiene_rejects_bad_emulebb_runtime_script_name(workspace_root: Path, tmp_path: Path) -> None:
+    policy_guards = _load_tooling_module(workspace_root, "policy_guards_under_test_bad_name", "ci/policy_guards.py")
+    repo_root = tmp_path / "emulebb-build"
+
+    issue = policy_guards.test_powershell_runtime_script_name(
+        repo_root,
+        "emulebb-build",
+        "emule_workspace/release_assets/emulebb/scripts/register-prowlarr.ps1",
+    )
+
+    assert issue == "eMuleBB runtime PowerShell scripts must use Verb-Noun.ps1 names."
 
 
 def test_basic_hygiene_keeps_emulebb_script_exception_to_direct_children(workspace_root: Path, tmp_path: Path) -> None:
@@ -86,13 +99,13 @@ def test_workspace_policy_accepts_allowed_emulebb_runtime_script(
 ) -> None:
     policy = _load_tooling_module(workspace_root, "check_workspace_policy_under_test", "ci/check-workspace-policy.py")
     build_root = tmp_path / "repos" / "emulebb-build"
-    script_path = build_root / "emule_workspace" / "release_assets" / "emulebb" / "scripts" / "register-prowlarr.ps1"
+    script_path = build_root / "emule_workspace" / "release_assets" / "emulebb" / "scripts" / "Register-Prowlarr.ps1"
     script_path.parent.mkdir(parents=True)
     script_path.write_text("#Requires -Version 5.1\n", encoding="utf-8")
 
     def fake_tracked_powershell_paths(repo_root: Path) -> tuple[str, ...]:
         if repo_root == build_root.resolve():
-            return ("emule_workspace/release_assets/emulebb/scripts/register-prowlarr.ps1",)
+            return ("emule_workspace/release_assets/emulebb/scripts/Register-Prowlarr.ps1",)
         return ()
 
     monkeypatch.setattr(policy, "tracked_powershell_paths", fake_tracked_powershell_paths)
@@ -107,9 +120,31 @@ def test_workspace_policy_rejects_emulebb_runtime_script_without_required_header
 ) -> None:
     policy = _load_tooling_module(workspace_root, "check_workspace_policy_under_test_bad_header", "ci/check-workspace-policy.py")
     build_root = tmp_path / "repos" / "emulebb-build"
-    script_path = build_root / "emule_workspace" / "release_assets" / "emulebb" / "scripts" / "register-prowlarr.ps1"
+    script_path = build_root / "emule_workspace" / "release_assets" / "emulebb" / "scripts" / "Register-Prowlarr.ps1"
     script_path.parent.mkdir(parents=True)
     script_path.write_text("#Requires -Version 7.6\n", encoding="utf-8")
+
+    def fake_tracked_powershell_paths(repo_root: Path) -> tuple[str, ...]:
+        if repo_root == build_root.resolve():
+            return ("emule_workspace/release_assets/emulebb/scripts/Register-Prowlarr.ps1",)
+        return ()
+
+    monkeypatch.setattr(policy, "tracked_powershell_paths", fake_tracked_powershell_paths)
+
+    with pytest.raises(RuntimeError, match="eMuleBB runtime PowerShell must declare #Requires -Version 5.1"):
+        policy.audit_powershell_boundary(tmp_path)
+
+
+def test_workspace_policy_rejects_non_verb_noun_emulebb_runtime_script_name(
+    workspace_root: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    policy = _load_tooling_module(workspace_root, "check_workspace_policy_under_test_bad_script_name", "ci/check-workspace-policy.py")
+    build_root = tmp_path / "repos" / "emulebb-build"
+    script_path = build_root / "emule_workspace" / "release_assets" / "emulebb" / "scripts" / "register-prowlarr.ps1"
+    script_path.parent.mkdir(parents=True)
+    script_path.write_text("#Requires -Version 5.1\n", encoding="utf-8")
 
     def fake_tracked_powershell_paths(repo_root: Path) -> tuple[str, ...]:
         if repo_root == build_root.resolve():
@@ -118,7 +153,7 @@ def test_workspace_policy_rejects_emulebb_runtime_script_without_required_header
 
     monkeypatch.setattr(policy, "tracked_powershell_paths", fake_tracked_powershell_paths)
 
-    with pytest.raises(RuntimeError, match="eMuleBB runtime PowerShell must declare #Requires -Version 5.1"):
+    with pytest.raises(RuntimeError, match="eMuleBB runtime PowerShell scripts must use Verb-Noun.ps1 names"):
         policy.audit_powershell_boundary(tmp_path)
 
 
@@ -147,8 +182,8 @@ def test_workspace_policy_rejects_nested_emulebb_runtime_script(
 @pytest.mark.parametrize(
     "script_name",
     [
-        "register-prowlarr.ps1",
-        "register-arr-stack.ps1",
+        "Register-Prowlarr.ps1",
+        "Register-ArrStack.ps1",
     ],
 )
 def test_runtime_scripts_set_provider_field_adds_missing_value_property(
@@ -216,8 +251,8 @@ if (Set-ProviderField -Provider $provider -Name 'missing' -Value 'ignored' -Opti
 @pytest.mark.parametrize(
     "script_name",
     [
-        "register-prowlarr.ps1",
-        "register-arr-stack.ps1",
+        "Register-Prowlarr.ps1",
+        "Register-ArrStack.ps1",
     ],
 )
 def test_runtime_scripts_accept_register_unregister_action_aliases(
@@ -283,7 +318,7 @@ def test_register_prowlarr_unregister_deletes_named_indexer(
         / "release_assets"
         / "emulebb"
         / "scripts"
-        / "register-prowlarr.ps1"
+        / "Register-Prowlarr.ps1"
     )
     script_text = script_path.read_text(encoding="utf-8")
     test_script = tmp_path / "remove-prowlarr-indexer-test.ps1"
@@ -343,7 +378,7 @@ def test_register_prowlarr_save_indexer_returns_only_saved_provider(
         / "release_assets"
         / "emulebb"
         / "scripts"
-        / "register-prowlarr.ps1"
+        / "Register-Prowlarr.ps1"
     )
     script_text = script_path.read_text(encoding="utf-8")
     test_script = tmp_path / "save-prowlarr-indexer-test.ps1"
@@ -428,7 +463,7 @@ def test_register_prowlarr_relaxes_local_https_without_windows_cert_store(
         / "release_assets"
         / "emulebb"
         / "scripts"
-        / "register-prowlarr.ps1"
+        / "Register-Prowlarr.ps1"
     )
     script_text = script_path.read_text(encoding="utf-8")
     forbidden = ("Import-Certificate", "certutil", "X509Store", "StoreName", "CertOpenStore")
@@ -492,7 +527,7 @@ def test_register_arr_stack_unregister_deletes_named_download_client(
         / "release_assets"
         / "emulebb"
         / "scripts"
-        / "register-arr-stack.ps1"
+        / "Register-ArrStack.ps1"
     )
     script_text = script_path.read_text(encoding="utf-8")
     test_script = tmp_path / "remove-arr-client-test.ps1"
@@ -558,7 +593,7 @@ def test_register_arr_stack_save_client_returns_only_saved_provider(
         / "release_assets"
         / "emulebb"
         / "scripts"
-        / "register-arr-stack.ps1"
+        / "Register-ArrStack.ps1"
     )
     script_text = script_path.read_text(encoding="utf-8")
     test_script = tmp_path / "save-arr-client-test.ps1"
@@ -646,7 +681,7 @@ def test_register_arr_stack_relaxes_local_https_without_windows_cert_store(
         / "release_assets"
         / "emulebb"
         / "scripts"
-        / "register-arr-stack.ps1"
+        / "Register-ArrStack.ps1"
     )
     script_text = script_path.read_text(encoding="utf-8")
     forbidden = ("Import-Certificate", "certutil", "X509Store", "StoreName", "CertOpenStore")
@@ -710,7 +745,7 @@ def test_register_arr_stack_save_prowlarr_application_adds_missing_root_name(
         / "release_assets"
         / "emulebb"
         / "scripts"
-        / "register-arr-stack.ps1"
+        / "Register-ArrStack.ps1"
     )
     script_text = script_path.read_text(encoding="utf-8")
     test_script = tmp_path / "save-prowlarr-application-test.ps1"
@@ -791,7 +826,7 @@ def test_register_arr_stack_waits_for_prowlarr_sync_completion(
         / "release_assets"
         / "emulebb"
         / "scripts"
-        / "register-arr-stack.ps1"
+        / "Register-ArrStack.ps1"
     )
     script_text = script_path.read_text(encoding="utf-8")
     test_script = tmp_path / "prowlarr-sync-wait-test.ps1"
@@ -846,7 +881,7 @@ def test_register_arr_stack_retry_wrapper_does_not_shadow_selected_action(
         / "release_assets"
         / "emulebb"
         / "scripts"
-        / "register-arr-stack.ps1"
+        / "Register-ArrStack.ps1"
     )
     script_text = script_path.read_text(encoding="utf-8")
     test_script = tmp_path / "run-target-action-scope-test.ps1"
@@ -894,7 +929,7 @@ def test_register_arr_stack_normalizes_quoted_http_urls(
         / "release_assets"
         / "emulebb"
         / "scripts"
-        / "register-arr-stack.ps1"
+        / "Register-ArrStack.ps1"
     )
     script_text = script_path.read_text(encoding="utf-8")
     test_script = tmp_path / "normalize-arr-url-test.ps1"

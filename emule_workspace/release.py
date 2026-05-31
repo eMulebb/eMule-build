@@ -55,12 +55,12 @@ RELEASE_VERSION_FORMAT = "MAJOR.MINOR.PATCH[-rc.N|-beta.N|-nightly.YYYYMMDD.SHA]
 EMULEBB_RUNTIME_SCRIPT_PATHS = (
     "scripts/Bootstrap-eMuleBBSuite.ps1",
     "scripts/Install-eMuleBBSuite.ps1",
-    "scripts/repair-firewall.ps1",
-    "scripts/defender-exclusions.ps1",
-    "scripts/enable-long-paths.ps1",
-    "scripts/register-prowlarr.ps1",
-    "scripts/register-arr-stack.ps1",
-    "scripts/register-amutorrent.ps1",
+    "scripts/Repair-Firewall.ps1",
+    "scripts/Set-DefenderExclusions.ps1",
+    "scripts/Enable-LongPaths.ps1",
+    "scripts/Register-Prowlarr.ps1",
+    "scripts/Register-ArrStack.ps1",
+    "scripts/Register-aMuTorrent.ps1",
 )
 EMULEBB_SKIN_ASSET_PATHS = (
     "skins/emulebb-slate.eMuleSkin.ini",

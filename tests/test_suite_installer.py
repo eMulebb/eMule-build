@@ -110,13 +110,24 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "apiKey" not in install_manifest["services"]["emulebb"]
     assert suite_config["services"]["emulebb"]["apiKey"] not in json.dumps(install_manifest)
 
-    start_all = (install_root / "scripts" / "Start-All.ps1").read_text(encoding="utf-8-sig")
-    assert "suite-config.json" in start_all
-    assert "apps\\eMuleBB\\emulebb.exe" in start_all
-    assert "$env:BIND_ADDRESS = [string]$Config.services.amutorrent.bindAddress" in start_all
-    assert "register-amutorrent.ps1" in start_all
+    start_emulebb = (install_root / "scripts" / "Start-eMuleBB.ps1").read_text(encoding="utf-8-sig")
+    assert "apps\\eMuleBB\\emulebb.exe" in start_emulebb
+    assert "profiles\\emulebb" in start_emulebb
 
-    for generated_script in ("Start-All.ps1", "Stop-All.ps1", "Status.ps1", "Doctor.ps1", "Update-Suite.ps1"):
+    start_suite = (install_root / "scripts" / "Start-Suite.ps1").read_text(encoding="utf-8-sig")
+    assert "suite-config.json" in start_suite
+    assert "Start-eMuleBB.ps1" in start_suite
+    assert "$env:BIND_ADDRESS = [string]$Config.services.amutorrent.bindAddress" in start_suite
+    assert "Register-aMuTorrent.ps1" in start_suite
+
+    for generated_script in (
+        "Start-eMuleBB.ps1",
+        "Start-Suite.ps1",
+        "Stop-Suite.ps1",
+        "Get-SuiteStatus.ps1",
+        "Test-Suite.ps1",
+        "Update-Suite.ps1",
+    ):
         _assert_powershell_parse(install_root / "scripts" / generated_script, cwd=repo_root)
 
 

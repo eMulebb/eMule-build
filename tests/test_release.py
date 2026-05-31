@@ -469,7 +469,7 @@ def test_release_package_contents_reject_runtime_script_without_powershell_51_he
     zip_path = tmp_path / "package.zip"
     _write_release_zip(
         zip_path,
-        extra_entries={"eMuleBB/scripts/register-prowlarr.ps1": b"#Requires -Version 7.6\n"},
+        extra_entries={"eMuleBB/scripts/Register-Prowlarr.ps1": b"#Requires -Version 7.6\n"},
     )
 
     with pytest.raises(RuntimeError, match="PowerShell 5.1 compatibility"):
@@ -589,7 +589,7 @@ def test_release_package_contents_accept_full_bundle_and_hash_entries(tmp_path: 
     assert "eMuleBB/SBOM.spdx.json" in hashes
     assert "eMuleBB/scripts/Bootstrap-eMuleBBSuite.ps1" in hashes
     assert "eMuleBB/scripts/Install-eMuleBBSuite.ps1" in hashes
-    assert "eMuleBB/scripts/register-prowlarr.ps1" in hashes
+    assert "eMuleBB/scripts/Register-Prowlarr.ps1" in hashes
     assert "eMuleBB/skins/emulebb-slate.eMuleSkin.ini" in hashes
     assert "eMuleBB/skins/emulebb-slate.eMuleToolbar.kad02.bmp" in hashes
     assert "eMuleBB/skins/emulebb-retro-teal.eMuleSkin.ini" in hashes

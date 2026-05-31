@@ -1030,14 +1030,22 @@ function Write-SuiteScripts {
     param([hashtable]$Config)
     $scriptsDir = Join-Path $script:Root 'scripts'
     if ($DryRun) {
-        Write-Step "Would write suite start/stop/status scripts"
+        Write-Step "Would write suite control scripts"
         return
     }
     New-Item -ItemType Directory -Force -Path $scriptsDir | Out-Null
     $rootLiteral = $script:Root.Replace("'", "''")
     $versionLiteral = ([string]$Config.version).Replace("'", "''")
     $platformLiteral = ([string]$Config.platform).Replace("'", "''")
-$startAll = @"
+$startEmuleBB = @"
+#Requires -Version 5.1
+`$ErrorActionPreference = 'Stop'
+`$Root = '$rootLiteral'
+`$Emule = Join-Path `$Root 'apps\eMuleBB\emulebb.exe'
+Start-Process -FilePath `$Emule -ArgumentList @('-c', (Join-Path `$Root 'profiles\emulebb')) | Out-Null
+"@
+    $startEmuleBB | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $scriptsDir 'Start-eMuleBB.ps1')
+$startSuite = @"
 #Requires -Version 5.1
 `$ErrorActionPreference = 'Stop'
 `$Root = '$rootLiteral'
@@ -1077,8 +1085,7 @@ function Wait-Json {
 `$env:BIND_ADDRESS = [string]`$Config.services.amutorrent.bindAddress
 `$env:WEB_AUTH_ENABLED = 'false'
 `$env:SKIP_SETUP_WIZARD = 'true'
-`$Emule = Join-Path `$Root 'apps\eMuleBB\emulebb.exe'
-Start-Process -FilePath `$Emule -ArgumentList @('-c', (Join-Path `$Root 'profiles\emulebb')) | Out-Null
+& (Join-Path `$Root 'scripts\Start-eMuleBB.ps1')
 if (`$Bundle -eq 'Full') {
     foreach (`$item in @(@('Prowlarr','Prowlarr.exe','data\prowlarr'), @('Radarr','Radarr.exe','data\radarr'), @('Sonarr','Sonarr.exe','data\sonarr'))) {
         `$exe = Get-ChildItem -Path (Join-Path `$Root ('apps\' + `$item[0])) -Filter `$item[1] -Recurse -File | Select-Object -First 1
@@ -1099,7 +1106,7 @@ if (`$Bundle -ne 'Core') {
     `$AmutorrentHost = Get-ClientHost `$Config.services.amutorrent.bindAddress
     `$AmutorrentUrl = "http://`$(`$AmutorrentHost):`$([int]`$Config.services.amutorrent.port)"
     Wait-Json -Uri "`$AmutorrentUrl/api/config/status"
-    & (Join-Path `$Root 'apps\eMuleBB\scripts\register-amutorrent.ps1') -AmutorrentUrl `$AmutorrentUrl -AmutorrentApiKey '' -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -InstanceName 'eMuleBB Suite' -InstanceId 'emulebb-suite' -NoRetry
+    & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-aMuTorrent.ps1') -AmutorrentUrl `$AmutorrentUrl -AmutorrentApiKey '' -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -InstanceName 'eMuleBB Suite' -InstanceId 'emulebb-suite' -NoRetry
 }
 if (`$Bundle -eq 'Full') {
     `$ProwlarrUrl = "http://`$(Get-ClientHost `$Config.services.prowlarr.bindAddress):`$([int]`$Config.services.prowlarr.port)"
@@ -1111,18 +1118,18 @@ if (`$Bundle -eq 'Full') {
     Wait-Json -Uri "`$ProwlarrUrl/api/v1/system/status" -Headers @{ 'X-Api-Key' = `$ProwlarrKey }
     Wait-Json -Uri "`$RadarrUrl/api/v3/system/status" -Headers @{ 'X-Api-Key' = `$RadarrKey }
     Wait-Json -Uri "`$SonarrUrl/api/v3/system/status" -Headers @{ 'X-Api-Key' = `$SonarrKey }
-    & (Join-Path `$Root 'apps\eMuleBB\scripts\register-prowlarr.ps1') -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -IndexerName 'eMuleBB Suite' -NoRetry
-    & (Join-Path `$Root 'apps\eMuleBB\scripts\register-arr-stack.ps1') -Target Radarr -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -RadarrUrl `$RadarrUrl -RadarrApiKey `$RadarrKey -DownloadClientName 'eMuleBB Suite' -NoRetry
-    & (Join-Path `$Root 'apps\eMuleBB\scripts\register-arr-stack.ps1') -Target Sonarr -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -SonarrUrl `$SonarrUrl -SonarrApiKey `$SonarrKey -DownloadClientName 'eMuleBB Suite' -NoRetry
+    & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-Prowlarr.ps1') -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -IndexerName 'eMuleBB Suite' -NoRetry
+    & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -Target Radarr -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -RadarrUrl `$RadarrUrl -RadarrApiKey `$RadarrKey -DownloadClientName 'eMuleBB Suite' -NoRetry
+    & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -Target Sonarr -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -SonarrUrl `$SonarrUrl -SonarrApiKey `$SonarrKey -DownloadClientName 'eMuleBB Suite' -NoRetry
 }
 "@
-    $startAll | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $scriptsDir 'Start-All.ps1')
+    $startSuite | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $scriptsDir 'Start-Suite.ps1')
     @"
 #Requires -Version 5.1
 `$ErrorActionPreference = 'Stop'
 `$Root = '$rootLiteral'
 Get-Process | Where-Object { `$_.Path -and `$_.Path.StartsWith(`$Root, [StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force
-"@ | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $scriptsDir 'Stop-All.ps1')
+"@ | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $scriptsDir 'Stop-Suite.ps1')
     @"
 #Requires -Version 5.1
 `$ErrorActionPreference = 'Stop'
@@ -1135,7 +1142,7 @@ foreach (`$name in @('emulebb','amutorrent','prowlarr','radarr','sonarr')) {
     Write-Host ("{0}: {1}:{2}" -f `$name, `$service.bindAddress, `$service.port)
 }
 Get-Process | Where-Object { `$_.Path -and `$_.Path.StartsWith(`$Root, [StringComparison]::OrdinalIgnoreCase) } | Select-Object Id, ProcessName, Path
-"@ | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $scriptsDir 'Status.ps1')
+"@ | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $scriptsDir 'Get-SuiteStatus.ps1')
     @"
 #Requires -Version 5.1
 `$ErrorActionPreference = 'Stop'
@@ -1143,8 +1150,8 @@ Get-Process | Where-Object { `$_.Path -and `$_.Path.StartsWith(`$Root, [StringCo
 Write-Host 'Suite root: $rootLiteral'
 Write-Host 'Config: ' (Join-Path '$rootLiteral' 'manifests\suite-config.json')
 Write-Host 'Manual reconfiguration: edit manifests\suite-config.json, profiles\emulebb\config\preferences.ini, and Arr config.xml files consistently.'
-& (Join-Path '$rootLiteral' 'scripts\Status.ps1')
-"@ | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $scriptsDir 'Doctor.ps1')
+& (Join-Path '$rootLiteral' 'scripts\Get-SuiteStatus.ps1')
+"@ | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $scriptsDir 'Test-Suite.ps1')
     @"
 #Requires -Version 5.1
 `$ErrorActionPreference = 'Stop'
@@ -1247,6 +1254,6 @@ if (-not $KeepDownloads -and -not $DryRun) {
     Remove-Item -Recurse -Force -LiteralPath (Join-Path $script:Root 'downloads-cache') -ErrorAction SilentlyContinue
 }
 if (-not $NoStart -and -not $DryRun) {
-    & (Join-Path $script:Root 'scripts\Start-All.ps1')
+    & (Join-Path $script:Root 'scripts\Start-Suite.ps1')
 }
 Write-Step "Installed $($script:SuiteConfig.bundle) bundle at $script:Root"
