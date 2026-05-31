@@ -273,7 +273,7 @@ $Action = Read-ActionValue -Value $Action
 Write-Host ('eMuleBB Prowlarr Integration - {0}' -f $Action) -ForegroundColor Cyan
 do {
     try {
-        $ProwlarrUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'Prowlarr URL (example http://localhost:9696)' -Value $ProwlarrUrl) -Name 'ProwlarrUrl'
+        $ProwlarrUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'Prowlarr URL (example http://127.0.0.1:9696)' -Value $ProwlarrUrl) -Name 'ProwlarrUrl'
         $ProwlarrApiKey = Read-SecretValue -Prompt 'Prowlarr API key' -Value $ProwlarrApiKey
         if ($Action -eq 'Unregister') {
             Remove-Indexer -BaseUrl $ProwlarrUrl -ApiKey $ProwlarrApiKey -Name $IndexerName

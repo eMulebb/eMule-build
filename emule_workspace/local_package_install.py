@@ -31,7 +31,7 @@ TEST_INSTALLS_DIR_NAME = "test-installs"
 TEST_PROFILE_SEED_DIR_NAME = "harness-profile-seed"
 HARNESS_PROFILE_SEED_FILES = frozenset({"preferences.ini", "preferences.dat", "server.met", "nodes.dat"})
 DEFAULT_AMUTORRENT_PORT = 4000
-DEFAULT_AMUTORRENT_BIND_ADDRESS = ""
+DEFAULT_AMUTORRENT_LAN_BIND_ADDRESS = ""
 DEFAULT_REST_PORT = 4711
 DEFAULT_PROWLARR_PORT = 9696
 DEFAULT_RADARR_PORT = 7878
@@ -47,9 +47,9 @@ class LocalInstallConfig:
     live_wire_inputs_file: Path
     target_path: Path
     amutorrent_port: int
-    amutorrent_bind_address: str
-    control_bind_address: str | None
-    emulebb_bind_address: str | None
+    amutorrent_lan_bind_address: str
+    lan_bind_address: str | None
+    emulebb_lan_bind_address: str | None
     emulebb_port: int
     prowlarr_port: int
     radarr_port: int
@@ -139,20 +139,20 @@ def materialize_test_local_install(
     run_id: str,
     suite_name: str,
     client_id: str = "primary",
-    controller_bind_address: str | None = None,
+    lan_bind_address: str | None = None,
 ) -> MaterializedLocalInstall:
     """Materializes an isolated installer-created local install for one test client."""
 
     base_config = load_local_install_config(layout, options.live_wire_inputs_file)
-    controller_bind = (controller_bind_address or "").strip() or "127.0.0.1"
-    emulebb_port, amutorrent_port, prowlarr_port, radarr_port, sonarr_port = choose_free_tcp_ports(5, host=controller_bind)
+    lan_bind = (lan_bind_address or "").strip() or "127.0.0.1"
+    emulebb_port, amutorrent_port, prowlarr_port, radarr_port, sonarr_port = choose_free_tcp_ports(5, host=lan_bind)
     test_config = replace(
         base_config,
         target_path=test_install_root(layout, run_id=run_id, suite_name=suite_name, client_id=client_id),
         amutorrent_port=amutorrent_port,
-        amutorrent_bind_address=controller_bind,
-        control_bind_address=controller_bind,
-        emulebb_bind_address=controller_bind,
+        amutorrent_lan_bind_address=lan_bind,
+        lan_bind_address=lan_bind,
+        emulebb_lan_bind_address=lan_bind,
         emulebb_port=emulebb_port,
         prowlarr_port=prowlarr_port,
         radarr_port=radarr_port,
@@ -222,7 +222,7 @@ def load_local_install_config(layout: WorkspaceLayout, raw_inputs_path: str | No
     if " " in str(target_path):
         raise RuntimeError(f"Local install target path must not contain spaces for aMuTorrent packaging: {target_path}")
     rest_host = _optional_nullable_string(raw_config, "rest_host")
-    emulebb_bind_address = _optional_nullable_string(raw_config, "emulebb_bind_address") or rest_host
+    emulebb_lan_bind_address = _optional_nullable_string(raw_config, "emulebb_lan_bind_address") or rest_host
     rest_port = _optional_nullable_int(raw_config, "rest_port")
     emulebb_port = _optional_nullable_int(raw_config, "emulebb_port") or rest_port or DEFAULT_REST_PORT
 
@@ -230,9 +230,9 @@ def load_local_install_config(layout: WorkspaceLayout, raw_inputs_path: str | No
         live_wire_inputs_file=inputs_path,
         target_path=target_path,
         amutorrent_port=_optional_int(raw_config, "amutorrent_port", DEFAULT_AMUTORRENT_PORT),
-        amutorrent_bind_address=_optional_string(raw_config, "amutorrent_bind_address", DEFAULT_AMUTORRENT_BIND_ADDRESS),
-        control_bind_address=_optional_nullable_string(raw_config, "control_bind_address"),
-        emulebb_bind_address=emulebb_bind_address,
+        amutorrent_lan_bind_address=_optional_string(raw_config, "amutorrent_lan_bind_address", DEFAULT_AMUTORRENT_LAN_BIND_ADDRESS),
+        lan_bind_address=_optional_nullable_string(raw_config, "lan_bind_address"),
+        emulebb_lan_bind_address=emulebb_lan_bind_address,
         emulebb_port=emulebb_port,
         prowlarr_port=_optional_int(raw_config, "prowlarr_port", DEFAULT_PROWLARR_PORT),
         radarr_port=_optional_int(raw_config, "radarr_port", DEFAULT_RADARR_PORT),
@@ -389,9 +389,9 @@ def build_suite_installer_options(
         release_version=release_version,
         platform=artifacts.arch,
         amutorrent_port=config.amutorrent_port,
-        amutorrent_bind_address=config.amutorrent_bind_address,
-        control_bind_address=config.control_bind_address,
-        emulebb_bind_address=config.emulebb_bind_address,
+        amutorrent_lan_bind_address=config.amutorrent_lan_bind_address,
+        lan_bind_address=config.lan_bind_address,
+        emulebb_lan_bind_address=config.emulebb_lan_bind_address,
         emulebb_port=config.emulebb_port,
         prowlarr_port=config.prowlarr_port,
         radarr_port=config.radarr_port,

@@ -393,7 +393,7 @@ function Run-TargetWithRetry {
 
 $Action = Read-ActionValue -Value $Action
 Write-Host ('eMuleBB aMuTorrent Integration - {0}' -f $Action) -ForegroundColor Cyan
-$AmutorrentUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'aMuTorrent URL (example http://localhost:4000)' -Value $AmutorrentUrl) -Name 'AmutorrentUrl'
+$AmutorrentUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'aMuTorrent URL (example http://127.0.0.1:4000)' -Value $AmutorrentUrl) -Name 'AmutorrentUrl'
 $AmutorrentApiKey = Read-SecretValue -Prompt 'aMuTorrent admin API key (blank only when auth is disabled)' -Value $AmutorrentApiKey -Optional
 $InstanceName = Read-RequiredValue -Prompt 'aMuTorrent eMuleBB instance name' -Value $InstanceName
 $InstanceId = Normalize-ArgumentValue -Value $InstanceId

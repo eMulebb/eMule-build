@@ -321,7 +321,7 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
         run_pre_test_cleanup(layout)
     effective_test_network = _live_e2e_effective_test_network(live_options)
     materialize_test_install = _live_e2e_materialize_test_install(live_options)
-    controller_bind_address = _pre_materialize_controller_bind_address(
+    lan_bind_address = _pre_materialize_lan_bind_address(
         layout,
         live_options,
         materialize_test_install=materialize_test_install,
@@ -344,7 +344,7 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
             run_id=_live_e2e_test_install_run_id(),
             suite_name="live-e2e-suite",
             client_id=layout.test_targets.test_run_variant,
-            controller_bind_address=controller_bind_address,
+            lan_bind_address=lan_bind_address,
         )
         app_root = materialized.app_root
         app_exe = materialized.app_exe
@@ -594,13 +594,14 @@ def _materialized_arr_service_env(materialized: object) -> dict[str, str]:
         service = services.get(service_name)
         if not isinstance(service, dict):
             continue
-        bind_address = str(service.get("bindAddress") or "").strip()
+        lan_bind_address = str(service.get("bindAddress") or "").strip()
         port = str(service.get("port") or "").strip()
         api_key = str(service.get("apiKey") or "").strip()
-        if not bind_address or not port or not api_key:
+        if not lan_bind_address or not port or not api_key:
             continue
-        host = "127.0.0.1" if bind_address in {"0.0.0.0", "::"} else bind_address
-        values[url_key] = f"http://{host}:{port}"
+        if lan_bind_address in {"0.0.0.0", "::", "[::]", "localhost", "::1"} or lan_bind_address.startswith("127."):
+            raise RuntimeError(f"Materialized {service_name} bindAddress must be an explicit LAN address.")
+        values[url_key] = f"http://{lan_bind_address}:{port}"
         values[api_key_key] = api_key
     return values
 
@@ -904,7 +905,7 @@ def invoke_amutorrent_clean_startup(
         require_vpn=True,
         require_lan=True,
     )
-    _append_controller_bind_addr(args, network_env)
+    _append_lan_bind_addr(args, network_env)
     _append_optional_flag(args, clean_options.keep_artifacts, "--keep-artifacts")
 
     python = get_python_invocation()
@@ -965,7 +966,7 @@ def invoke_amutorrent_resilience(
         require_vpn=True,
         require_lan=True,
     )
-    _append_controller_bind_addr(args, network_env)
+    _append_lan_bind_addr(args, network_env)
     _append_optional_flag(args, resilience_options.keep_artifacts, "--keep-artifacts")
 
     python = get_python_invocation()
@@ -1024,7 +1025,7 @@ def invoke_amutorrent_emulebb_ui(
         require_vpn=True,
         require_lan=True,
     )
-    _append_controller_bind_addr(args, network_env)
+    _append_lan_bind_addr(args, network_env)
     _append_optional_flag(args, ui_options.keep_artifacts, "--keep-artifacts")
 
     python = get_python_invocation()
@@ -1042,10 +1043,10 @@ def _append_optional_flag(args: list, enabled: bool, flag: str) -> None:
         args.append(flag)
 
 
-def _append_controller_bind_addr(args: list[str | Path | float], env: dict[str, str]) -> None:
-    controller_bind_address = _controller_bind_address_from_env(env)
-    if controller_bind_address:
-        args.extend(["--bind-addr", controller_bind_address])
+def _append_lan_bind_addr(args: list[str | Path | float], env: dict[str, str]) -> None:
+    lan_bind_address = _lan_bind_address_from_env(env)
+    if lan_bind_address:
+        args.extend(["--lan-bind-addr", lan_bind_address])
 
 
 def _run_live_native(
@@ -1126,7 +1127,7 @@ def _live_e2e_effective_test_network(live_options: LiveE2eOptions) -> TestNetwor
     return live_options.test_network
 
 
-def _pre_materialize_controller_bind_address(
+def _pre_materialize_lan_bind_address(
     layout: WorkspaceLayout,
     live_options: LiveE2eOptions,
     *,
@@ -1144,7 +1145,7 @@ def _pre_materialize_controller_bind_address(
         test_network="lan",
         require_lan=True,
     )
-    return _controller_bind_address_from_env(context.env())
+    return _lan_bind_address_from_env(context.env())
 
 
 def _live_e2e_test_install_run_id() -> str:
@@ -1199,16 +1200,16 @@ def _test_network_env(
         require_lan=require_lan,
     )
     context_env = context.env()
-    controller_bind_address = _controller_bind_address_from_env(context_env)
-    if controller_bind_address:
-        context_env.setdefault("X_LOCAL_IP", controller_bind_address)
+    lan_bind_address = _lan_bind_address_from_env(context_env)
+    if lan_bind_address:
+        context_env.setdefault("X_LOCAL_IP", lan_bind_address)
     return {
         "EMULEBB_WORKSPACE_ROOT": str(layout.emule_workspace_root),
         **context_env,
     }
 
 
-def _controller_bind_address_from_env(env: dict[str, str]) -> str | None:
+def _lan_bind_address_from_env(env: dict[str, str]) -> str | None:
     """Returns the resolved LAN controller bind address propagated to child launchers."""
 
     return (env.get("X_LOCAL_IP") or env.get(LAN_IP_RESOLVED_ENV) or os.environ.get("X_LOCAL_IP", "")).strip() or None

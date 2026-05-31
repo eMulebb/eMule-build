@@ -17,7 +17,7 @@ def _write_live_wire(path: Path, target: Path, **local_overrides: object) -> Non
         "target_path": str(target),
         "emulebb_port": 14711,
         "amutorrent_port": 14000,
-        "amutorrent_bind_address": "127.0.0.1",
+        "amutorrent_lan_bind_address": "127.0.0.1",
         "p2p_bind_interface": "hide.me",
     }
     local_config.update(local_overrides)
@@ -351,11 +351,11 @@ def test_suite_installer_command_lets_amutorrent_inherit_control_bind_when_unset
     _write_live_wire(
         live_wire_path,
         target,
-        control_bind_address="192.168.1.44",
-        emulebb_bind_address=None,
+        lan_bind_address="192.0.2.11",
+        emulebb_lan_bind_address=None,
     )
     payload = json.loads(live_wire_path.read_text(encoding="utf-8"))
-    del payload["local_package_install"]["amutorrent_bind_address"]
+    del payload["local_package_install"]["amutorrent_lan_bind_address"]
     live_wire_path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
     layout = _layout(tmp_path)
     layout.tests_repo_root.mkdir(parents=True)
@@ -382,10 +382,10 @@ def test_suite_installer_command_lets_amutorrent_inherit_control_bind_when_unset
         options=options,
     ).command]
 
-    assert config.amutorrent_bind_address == ""
-    assert options.control_bind_address == "192.168.1.44"
-    assert options.amutorrent_bind_address == ""
-    assert command[command.index("-ControlBindAddress") + 1] == "192.168.1.44"
+    assert config.amutorrent_lan_bind_address == ""
+    assert options.lan_bind_address == "192.0.2.11"
+    assert options.amutorrent_lan_bind_address == ""
+    assert command[command.index("-ControlBindAddress") + 1] == "192.0.2.11"
     assert "-AmutorrentBindAddress" not in command
 
 
@@ -482,9 +482,9 @@ def test_materialize_test_local_install_uses_isolated_test_root(
     assert result.profile_config_dir == expected_target / "profiles" / "emulebb" / "config"
     assert result.profile_seed_config_dir == expected_target / "harness-profile-seed" / "config"
     assert installer_calls[0].install_root == expected_target
-    assert installer_calls[0].control_bind_address == "127.0.0.1"
-    assert installer_calls[0].emulebb_bind_address == "127.0.0.1"
-    assert installer_calls[0].amutorrent_bind_address == "127.0.0.1"
+    assert installer_calls[0].lan_bind_address == "127.0.0.1"
+    assert installer_calls[0].emulebb_lan_bind_address == "127.0.0.1"
+    assert installer_calls[0].amutorrent_lan_bind_address == "127.0.0.1"
     assert installer_calls[0].emulebb_port == 15111
     assert installer_calls[0].amutorrent_port == 15112
     assert installer_calls[0].prowlarr_port == 15113
@@ -506,7 +506,7 @@ def test_materialize_test_local_install_uses_isolated_test_root(
     assert not (result.profile_seed_config_dir / "known.met").exists()
 
 
-def test_materialize_test_local_install_accepts_controller_bind_address(
+def test_materialize_test_local_install_accepts_lan_bind_address(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -546,10 +546,10 @@ def test_materialize_test_local_install_accepts_controller_bind_address(
         run_id="run",
         suite_name="live-e2e-suite",
         client_id="main",
-        controller_bind_address="192.168.1.44",
+        lan_bind_address="192.0.2.11",
     )
 
-    assert port_probe_hosts == ["192.168.1.44"]
-    assert installer_calls[0].control_bind_address == "192.168.1.44"
-    assert installer_calls[0].emulebb_bind_address == "192.168.1.44"
-    assert installer_calls[0].amutorrent_bind_address == "192.168.1.44"
+    assert port_probe_hosts == ["192.0.2.11"]
+    assert installer_calls[0].lan_bind_address == "192.0.2.11"
+    assert installer_calls[0].emulebb_lan_bind_address == "192.0.2.11"
+    assert installer_calls[0].amutorrent_lan_bind_address == "192.0.2.11"

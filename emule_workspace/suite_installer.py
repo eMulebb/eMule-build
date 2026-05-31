@@ -25,9 +25,9 @@ class SuiteInstallerOptions:
     release_version: str
     platform: str
     amutorrent_port: int
-    amutorrent_bind_address: str
-    control_bind_address: str | None
-    emulebb_bind_address: str | None
+    amutorrent_lan_bind_address: str
+    lan_bind_address: str | None
+    emulebb_lan_bind_address: str | None
     emulebb_port: int
     prowlarr_port: int
     radarr_port: int
@@ -122,12 +122,12 @@ def build_suite_installer_invocation(*, powershell: Path, options: SuiteInstalle
     suite_config = options.install_root / "manifests" / "suite-config.json"
     if suite_config.is_file():
         command.extend(("-ConfigFile", str(suite_config)))
-    if options.control_bind_address:
-        command.extend(("-ControlBindAddress", options.control_bind_address))
-    if options.emulebb_bind_address:
-        command.extend(("-EmulebbBindAddress", options.emulebb_bind_address))
-    if options.amutorrent_bind_address:
-        command.extend(("-AmutorrentBindAddress", options.amutorrent_bind_address))
+    if options.lan_bind_address:
+        command.extend(("-ControlBindAddress", options.lan_bind_address))
+    if options.emulebb_lan_bind_address:
+        command.extend(("-EmulebbBindAddress", options.emulebb_lan_bind_address))
+    if options.amutorrent_lan_bind_address:
+        command.extend(("-AmutorrentBindAddress", options.amutorrent_lan_bind_address))
     if options.dependency_manifest:
         command.extend(("-DependencyManifest", str(options.dependency_manifest)))
     if options.import_profile_dir:
