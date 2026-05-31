@@ -507,6 +507,11 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
     if live_options.rest_leak_churn_cycles >= 0:
         args.extend(["--rest-leak-churn-cycles", live_options.rest_leak_churn_cycles])
     _append_optional_flag(args, live_options.rest_stop_start_after_churn, "--rest-stop-start-after-churn")
+    if live_options.vpn_guard_live_config:
+        args.extend(["--vpn-guard-live-config", _resolve_workspace_argument(layout, live_options.vpn_guard_live_config)])
+    if live_options.vpn_guard_allowed_public_ip_cidrs:
+        args.extend(["--vpn-guard-allowed-public-ip-cidrs", live_options.vpn_guard_allowed_public_ip_cidrs])
+    args.extend(["--vpn-guard-scenario", live_options.vpn_guard_scenario])
     if live_options.shared_root:
         args.extend(["--shared-root", live_options.shared_root])
     _append_optional_flag(args, live_options.admin_volume_fixtures, "--admin-volume-fixtures")
