@@ -36,10 +36,25 @@ def write_core_release(
     version: str = "0.7.3-rc.1",
     arch: str = "x64",
     exe_payload: bytes = b"exe\n",
+    installer_payload: bytes | None = None,
 ) -> CoreRelease:
     package_zip = release_root / f"emulebb-{version}-{arch}.zip"
     manifest = release_root / f"emulebb-{version}-{arch}.manifest.json"
-    write_zip(package_zip, {"eMuleBB/emulebb.exe": exe_payload})
+    if installer_payload is None:
+        installer_payload = (
+            Path("emule_workspace")
+            / "release_assets"
+            / "emulebb"
+            / "scripts"
+            / "Install-eMuleBBSuite.ps1"
+        ).read_bytes()
+    write_zip(
+        package_zip,
+        {
+            "eMuleBB/emulebb.exe": exe_payload,
+            "eMuleBB/scripts/Install-eMuleBBSuite.ps1": installer_payload,
+        },
+    )
     write_manifest(manifest, package_zip)
     return CoreRelease(release_root=release_root, package_zip=package_zip, manifest=manifest)
 

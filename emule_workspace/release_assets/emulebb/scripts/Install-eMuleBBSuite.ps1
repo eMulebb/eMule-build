@@ -605,6 +605,13 @@ function Assert-FileHash {
     }
 }
 
+function Assert-RequiredSha256 {
+    param([string]$Value, [string]$Description)
+    if ($Value -notmatch '^[0-9a-fA-F]{64}$') {
+        throw "$Description must include a SHA256 hash."
+    }
+}
+
 function Get-Sha256 {
     param([string]$Path)
     $stream = [IO.File]::OpenRead($Path)
@@ -743,7 +750,11 @@ function Install-ReleaseZip {
     $expectedHash = ''
     if (-not $DryRun -and (Test-Path -LiteralPath $manifestPath)) {
         $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
-        $expectedHash = [string]$manifest.sha256
+        $sha256Property = @($manifest.PSObject.Properties | Where-Object { $_.Name -eq 'sha256' } | Select-Object -First 1)
+        if ($sha256Property.Count -gt 0) {
+            $expectedHash = [string]$sha256Property[0].Value
+        }
+        Assert-RequiredSha256 -Value $expectedHash -Description "$Name release manifest"
     }
     Assert-FileHash -Path $archivePath -ExpectedSha256 $expectedHash
     Expand-ZipSafe -Archive $archivePath -Destination $extractRoot
@@ -1042,6 +1053,11 @@ $startEmuleBB = @"
 `$ErrorActionPreference = 'Stop'
 `$Root = '$rootLiteral'
 `$Emule = Join-Path `$Root 'apps\eMuleBB\emulebb.exe'
+`$Existing = Get-Process | Where-Object { `$_.Path -and [string]::Equals(`$_.Path, `$Emule, [StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1
+if (`$Existing) {
+    Write-Host "eMuleBB is already running: PID `$(`$Existing.Id)"
+    return
+}
 Start-Process -FilePath `$Emule -ArgumentList @('-c', (Join-Path `$Root 'profiles\emulebb')) | Out-Null
 "@
     $startEmuleBB | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $scriptsDir 'Start-eMuleBB.ps1')
@@ -1070,6 +1086,35 @@ function Wait-Json {
     }
     throw "Timed out waiting for `$Uri"
 }
+function Test-ProcessRunning {
+    param([string]`$ExecutablePath, [string]`$CommandLineContains = '')
+    try {
+        foreach (`$process in @(Get-CimInstance Win32_Process -ErrorAction Stop)) {
+            if ([string]::IsNullOrWhiteSpace(`$process.ExecutablePath)) { continue }
+            if (-not [string]::Equals(`$process.ExecutablePath, `$ExecutablePath, [StringComparison]::OrdinalIgnoreCase)) { continue }
+            if ([string]::IsNullOrWhiteSpace(`$CommandLineContains) -or ([string]`$process.CommandLine).IndexOf(`$CommandLineContains, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+                return `$true
+            }
+        }
+    } catch {
+        return [bool](Get-Process | Where-Object { `$_.Path -and [string]::Equals(`$_.Path, `$ExecutablePath, [StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1)
+    }
+    return `$false
+}
+function Start-ProcessIfMissing {
+    param([string]`$FilePath, [string[]]`$ArgumentList = @(), [string]`$WorkingDirectory = '', [string]`$CommandLineContains = '', [switch]`$Hidden)
+    if (Test-ProcessRunning -ExecutablePath `$FilePath -CommandLineContains `$CommandLineContains) {
+        Write-Host "Already running: `$FilePath"
+        return
+    }
+    `$startArgs = @{
+        FilePath = `$FilePath
+        ArgumentList = `$ArgumentList
+    }
+    if (-not [string]::IsNullOrWhiteSpace(`$WorkingDirectory)) { `$startArgs.WorkingDirectory = `$WorkingDirectory }
+    if (`$Hidden) { `$startArgs.WindowStyle = 'Hidden' }
+    Start-Process @startArgs | Out-Null
+}
 `$Bundle = [string]`$Config.bundle
 `$EmuleHost = Get-ClientHost `$Config.services.emulebb.bindAddress
 `$EmulePort = [int]`$Config.services.emulebb.port
@@ -1089,7 +1134,7 @@ function Wait-Json {
 if (`$Bundle -eq 'Full') {
     foreach (`$item in @(@('Prowlarr','Prowlarr.exe','data\prowlarr'), @('Radarr','Radarr.exe','data\radarr'), @('Sonarr','Sonarr.exe','data\sonarr'))) {
         `$exe = Get-ChildItem -Path (Join-Path `$Root ('apps\' + `$item[0])) -Filter `$item[1] -Recurse -File | Select-Object -First 1
-        if (`$exe) { Start-Process -FilePath `$exe.FullName -ArgumentList @('/data=' + (Join-Path `$Root `$item[2]), '/nobrowser') | Out-Null }
+        if (`$exe) { Start-ProcessIfMissing -FilePath `$exe.FullName -ArgumentList @('/data=' + (Join-Path `$Root `$item[2]), '/nobrowser') }
     }
 }
 if (`$Bundle -ne 'Core') {
@@ -1099,7 +1144,8 @@ if (`$Bundle -ne 'Core') {
         if (`$nodeMatch) { `$node = `$nodeMatch.FullName }
     }
     if (-not (Test-Path -LiteralPath `$node)) { throw 'Node is not available. Re-run Install-eMuleBBSuite.ps1 to install the pinned runtime.' }
-    Start-Process -FilePath `$node -ArgumentList @(Join-Path `$Root 'apps\aMuTorrent\server\server.js') -WorkingDirectory (Join-Path `$Root 'apps\aMuTorrent') -WindowStyle Hidden | Out-Null
+    `$amutorrentServer = Join-Path `$Root 'apps\aMuTorrent\server\server.js'
+    Start-ProcessIfMissing -FilePath `$node -ArgumentList @(`$amutorrentServer) -WorkingDirectory (Join-Path `$Root 'apps\aMuTorrent') -CommandLineContains `$amutorrentServer -Hidden
 }
 Wait-Json -Uri "`$EmuleUrl/api/v1/app" -Headers @{ 'X-API-Key' = `$EmuleKey }
 if (`$Bundle -ne 'Core') {
@@ -1155,9 +1201,14 @@ Write-Host 'Manual reconfiguration: edit manifests\suite-config.json, profiles\e
     @"
 #Requires -Version 5.1
 `$ErrorActionPreference = 'Stop'
+& (Join-Path '$rootLiteral' 'scripts\Stop-Suite.ps1')
 & (Join-Path '$rootLiteral' 'scripts\Install-eMuleBBSuite.ps1') -ConfigFile (Join-Path '$rootLiteral' 'manifests\suite-config.json') -NonInteractive -Force -Version '$versionLiteral' -Platform '$platformLiteral'
 "@ | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $scriptsDir 'Update-Suite.ps1')
-    Copy-Item -Force -LiteralPath $PSCommandPath -Destination (Join-Path $scriptsDir 'Install-eMuleBBSuite.ps1')
+    $packagedInstaller = Join-Path $script:Root 'apps\eMuleBB\scripts\Install-eMuleBBSuite.ps1'
+    if (-not (Test-Path -LiteralPath $packagedInstaller)) {
+        throw "Installed eMuleBB package did not include scripts\Install-eMuleBBSuite.ps1."
+    }
+    Copy-Item -Force -LiteralPath $packagedInstaller -Destination (Join-Path $scriptsDir 'Install-eMuleBBSuite.ps1')
 }
 
 function Write-InstallManifest {

@@ -131,6 +131,77 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
         _assert_powershell_parse(install_root / "scripts" / generated_script, cwd=repo_root)
 
 
+def test_suite_installer_copies_packaged_installer_into_suite_scripts(tmp_path: Path) -> None:
+    release_root = tmp_path / "release"
+    install_root = tmp_path / "suite"
+    installer_payload = b"#Requires -Version 5.1\nWrite-Host 'fresh packaged installer'\n"
+    suite_install_fixtures.write_core_release(release_root, installer_payload=installer_payload)
+
+    repo_root = Path.cwd()
+    _run_powershell(
+        [
+            "-File",
+            str((repo_root / INSTALLER).resolve()),
+            "-NonInteractive",
+            "-NoStart",
+            "-Force",
+            "-Bundle",
+            "Core",
+            "-InstallRoot",
+            str(install_root),
+            "-ReleaseBaseUrl",
+            release_root.as_uri(),
+        ],
+        cwd=repo_root,
+    )
+
+    assert (install_root / "scripts" / "Install-eMuleBBSuite.ps1").read_bytes() == installer_payload
+
+
+def test_suite_installer_rejects_release_manifest_without_sha256(tmp_path: Path) -> None:
+    release_root = tmp_path / "release"
+    install_root = tmp_path / "suite"
+    package_zip = release_root / "emulebb-0.7.3-rc.1-x64.zip"
+    manifest = release_root / "emulebb-0.7.3-rc.1-x64.manifest.json"
+    suite_install_fixtures.write_zip(
+        package_zip,
+        {
+            "eMuleBB/emulebb.exe": b"exe\n",
+            "eMuleBB/scripts/Install-eMuleBBSuite.ps1": b"#Requires -Version 5.1\n",
+        },
+    )
+    manifest.write_text("{}\n", encoding="utf-8")
+
+    repo_root = Path.cwd()
+    completed = subprocess.run(
+        [
+            shutil.which("powershell") or "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str((repo_root / INSTALLER).resolve()),
+            "-NonInteractive",
+            "-NoStart",
+            "-Force",
+            "-Bundle",
+            "Core",
+            "-InstallRoot",
+            str(install_root),
+            "-ReleaseBaseUrl",
+            release_root.as_uri(),
+        ],
+        cwd=repo_root,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+
+    assert completed.returncode != 0
+    assert "eMuleBB release manifest must include a SHA256 hash." in completed.stdout
+
+
 def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_preserves_keys(tmp_path: Path) -> None:
     release_root = tmp_path / "release"
     dependency_root = tmp_path / "dependencies"
@@ -140,13 +211,19 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     amutorrent_zip = release_root / "emulebb-0.7.3-rc.1-amutorrent-x64.zip"
     amutorrent_manifest = release_root / "emulebb-0.7.3-rc.1-amutorrent-x64.manifest.json"
     dependency_manifest = tmp_path / "dependency-manifest.json"
-    suite_install_fixtures.write_zip(package_zip, {"eMuleBB/emulebb.exe": b"exe\n"})
+    repo_root = Path.cwd()
+    suite_install_fixtures.write_zip(
+        package_zip,
+        {
+            "eMuleBB/emulebb.exe": b"exe\n",
+            "eMuleBB/scripts/Install-eMuleBBSuite.ps1": (repo_root / INSTALLER).read_bytes(),
+        },
+    )
     _write_manifest(package_manifest, package_zip)
     suite_install_fixtures.write_zip(amutorrent_zip, {"aMuTorrent/server/server.js": b"server\n"})
     _write_manifest(amutorrent_manifest, amutorrent_zip)
     suite_install_fixtures.write_dependency_manifest(dependency_manifest, dependency_root)
 
-    repo_root = Path.cwd()
     install_args = [
         "-File",
         str((repo_root / INSTALLER).resolve()),
@@ -481,6 +558,18 @@ def test_suite_installer_global_bind_is_default_not_override() -> None:
     amutorrent_index = installer.index("@('AmutorrentBindAddress'")
     assert control_index < emulebb_index < amutorrent_index
     assert "if ($PSBoundParameters.ContainsKey('ControlBindAddress'))" not in installer
+
+
+def test_suite_generated_update_and_start_scripts_are_refresh_safe() -> None:
+    installer = INSTALLER.read_text(encoding="utf-8")
+
+    assert "& (Join-Path '$rootLiteral' 'scripts\\Stop-Suite.ps1')" in installer
+    assert "apps\\eMuleBB\\scripts\\Install-eMuleBBSuite.ps1" in installer
+    assert "Copy-Item -Force -LiteralPath $PSCommandPath -Destination (Join-Path $scriptsDir 'Install-eMuleBBSuite.ps1')" not in installer
+    assert "function Test-ProcessRunning" in installer
+    assert "function Start-ProcessIfMissing" in installer
+    assert "eMuleBB is already running" in installer
+    assert "Start-ProcessIfMissing -FilePath `$node" in installer
 
 
 def test_suite_bootstrapper_requires_emulebb_package_root() -> None:
