@@ -149,6 +149,7 @@ def test_live_e2e_forwards_vpn_guard_options(tmp_path: Path, monkeypatch) -> Non
             vpn_guard_live_config="vpn-guard-live.local.json",
             vpn_guard_allowed_public_ip_cidrs="8.8.8.8/32",
             vpn_guard_scenario="not-allowlisted",
+            vpn_guard_expected_startup_block=True,
         ),
     )
 
@@ -157,6 +158,7 @@ def test_live_e2e_forwards_vpn_guard_options(tmp_path: Path, monkeypatch) -> Non
     assert option_values(command, "--vpn-guard-live-config") == ["vpn-guard-live.local.json"]
     assert option_values(command, "--vpn-guard-allowed-public-ip-cidrs") == ["8.8.8.8/32"]
     assert option_values(command, "--vpn-guard-scenario") == ["not-allowlisted"]
+    assert "--vpn-guard-expected-startup-block" in command
 
 
 def test_live_e2e_forwards_preference_directory_tree_stress(tmp_path: Path, monkeypatch) -> None:

@@ -512,6 +512,7 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
     if live_options.vpn_guard_allowed_public_ip_cidrs:
         args.extend(["--vpn-guard-allowed-public-ip-cidrs", live_options.vpn_guard_allowed_public_ip_cidrs])
     args.extend(["--vpn-guard-scenario", live_options.vpn_guard_scenario])
+    _append_optional_flag(args, live_options.vpn_guard_expected_startup_block, "--vpn-guard-expected-startup-block")
     if live_options.shared_root:
         args.extend(["--shared-root", live_options.shared_root])
     _append_optional_flag(args, live_options.admin_volume_fixtures, "--admin-volume-fixtures")

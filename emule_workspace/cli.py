@@ -238,6 +238,7 @@ def _live_e2e_options(function: F) -> F:
     @click.option("--vpn-guard-live-config", default=None)
     @click.option("--vpn-guard-allowed-public-ip-cidrs", default="")
     @click.option("--vpn-guard-scenario", type=click.Choice(["off", "success", "not-allowlisted", "vpn-off"]), default="success")
+    @click.option("--vpn-guard-expected-startup-block", is_flag=True)
     @click.option("--multi-client-require-optional-clients", is_flag=True)
     @click.option("--search-ui-search-rounds", default=1, show_default=True, type=int)
     @click.option("--search-ui-download-lifecycle-count", default=1, show_default=True, type=int)

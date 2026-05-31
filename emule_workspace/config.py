@@ -170,6 +170,7 @@ class LiveE2eOptions(BaseModel):
     vpn_guard_live_config: str | None = None
     vpn_guard_allowed_public_ip_cidrs: str = ""
     vpn_guard_scenario: Literal["off", "success", "not-allowlisted", "vpn-off"] = "success"
+    vpn_guard_expected_startup_block: bool = False
     multi_client_require_optional_clients: bool = False
     search_ui_search_rounds: int = 1
     search_ui_download_lifecycle_count: int = 1
