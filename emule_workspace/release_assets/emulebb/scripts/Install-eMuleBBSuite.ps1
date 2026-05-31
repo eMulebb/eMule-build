@@ -156,7 +156,8 @@ function New-SuiteConfig {
         p2p = [ordered]@{
             bindInterface = (Resolve-OptionalValue -Value $P2PBindInterface -Default '')
             blockNetworkWhenBindUnavailableAtStartup = $false
-            exitOnBindInterfaceLoss = $false
+            networkGuardMode = 'Off'
+            networkGuardAllowedCIDRs = ''
         }
     }
     return $config
@@ -382,7 +383,8 @@ function Invoke-InstallWizard {
                     $Config.p2p.bindInterface = Read-WizardValue -Prompt 'P2P bind interface name' -Default $Config.p2p.bindInterface
                 }
                 $Config.p2p.blockNetworkWhenBindUnavailableAtStartup = $false
-                $Config.p2p.exitOnBindInterfaceLoss = $false
+                $Config.p2p.networkGuardMode = 'Off'
+                $Config.p2p.networkGuardAllowedCIDRs = ''
                 $step++
             }
             3 {
@@ -542,7 +544,8 @@ function Assert-SuiteConfig {
             Write-Warning "P2P bind interface '$($Config.p2p.bindInterface)' was not found now. eMuleBB will warn/fallback according to its runtime policy."
         }
         $Config.p2p.blockNetworkWhenBindUnavailableAtStartup = $false
-        $Config.p2p.exitOnBindInterfaceLoss = $false
+        $Config.p2p.networkGuardMode = 'Off'
+        $Config.p2p.networkGuardAllowedCIDRs = ''
     }
     if (-not $DryRun -and -not $Force) {
         foreach ($serviceName in @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr')) {
@@ -824,7 +827,8 @@ function New-DefaultEmulePreferencesText {
         "BindInterface=$p2pInterface"
         'BindAddr='
         'BlockNetworkWhenBindUnavailableAtStartup=0'
-        'ExitOnBindInterfaceLoss=0'
+        'NetworkGuardMode=Off'
+        'NetworkGuardAllowedCIDRs='
         '[WebServer]'
         'Enabled=1'
         "BindAddr=$($Config.services.emulebb.bindAddress)"
@@ -926,7 +930,8 @@ function Update-EmulePreferencesFile {
         [pscustomobject]@{ Section = 'eMule'; Key = 'BindInterface'; Value = [string]$Config.p2p.bindInterface }
         [pscustomobject]@{ Section = 'eMule'; Key = 'BindAddr'; Value = '' }
         [pscustomobject]@{ Section = 'eMule'; Key = 'BlockNetworkWhenBindUnavailableAtStartup'; Value = '0' }
-        [pscustomobject]@{ Section = 'eMule'; Key = 'ExitOnBindInterfaceLoss'; Value = '0' }
+        [pscustomobject]@{ Section = 'eMule'; Key = 'NetworkGuardMode'; Value = [string]$Config.p2p.networkGuardMode }
+        [pscustomobject]@{ Section = 'eMule'; Key = 'NetworkGuardAllowedCIDRs'; Value = [string]$Config.p2p.networkGuardAllowedCIDRs }
         [pscustomobject]@{ Section = 'WebServer'; Key = 'Enabled'; Value = '1' }
         [pscustomobject]@{ Section = 'WebServer'; Key = 'BindAddr'; Value = [string]$Config.services.emulebb.bindAddress }
         [pscustomobject]@{ Section = 'WebServer'; Key = 'Port'; Value = [string]$Config.services.emulebb.port }
@@ -1175,7 +1180,8 @@ function Write-InstallManifest {
         p2p = @{
             bindInterfacePresent = -not [string]::IsNullOrWhiteSpace($Config.p2p.bindInterface)
             blockNetworkWhenBindUnavailableAtStartup = [bool]$Config.p2p.blockNetworkWhenBindUnavailableAtStartup
-            exitOnBindInterfaceLoss = [bool]$Config.p2p.exitOnBindInterfaceLoss
+            networkGuardMode = [string]$Config.p2p.networkGuardMode
+            networkGuardAllowedCIDRsPresent = -not [string]::IsNullOrWhiteSpace($Config.p2p.networkGuardAllowedCIDRs)
         }
     } | ConvertTo-Json -Depth 10 | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $manifestDir 'suite-install.json')
 }

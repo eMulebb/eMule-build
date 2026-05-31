@@ -79,7 +79,8 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "BindInterface=hide.me" in preferences
     assert "BindAddr=\n" in preferences
     assert "BlockNetworkWhenBindUnavailableAtStartup=0" in preferences
-    assert "ExitOnBindInterfaceLoss=0" in preferences
+    assert "NetworkGuardMode=Off" in preferences
+    assert "NetworkGuardAllowedCIDRs=" in preferences
     assert "[WebServer]" in preferences
     assert f"BindAddr={_default_control_bind()}" in preferences
     assert "Port=14711" in preferences
@@ -93,7 +94,8 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert suite_config["p2p"] == {
         "bindInterface": "hide.me",
         "blockNetworkWhenBindUnavailableAtStartup": False,
-        "exitOnBindInterfaceLoss": False,
+        "networkGuardMode": "Off",
+        "networkGuardAllowedCIDRs": "",
     }
 
     install_manifest = json.loads((install_root / "manifests" / "suite-install.json").read_text(encoding="utf-8-sig"))
@@ -435,7 +437,8 @@ def test_suite_installer_keeps_full_suite_service_binds_config_driven() -> None:
     assert "Get-ClientHost `$Config.services.radarr.bindAddress" in installer
     assert "Get-ClientHost `$Config.services.sonarr.bindAddress" in installer
     assert "BlockNetworkWhenBindUnavailableAtStartup=0" in installer
-    assert "ExitOnBindInterfaceLoss=0" in installer
+    assert "NetworkGuardMode=Off" in installer
+    assert "NetworkGuardAllowedCIDRs=" in installer
     assert "Get-DefaultControlBindAddress" in installer
     assert "X_LOCAL_IP" in installer
 
