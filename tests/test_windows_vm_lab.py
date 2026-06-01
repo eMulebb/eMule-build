@@ -90,6 +90,21 @@ def test_load_vm_lab_config_resolves_targets(tmp_path: Path) -> None:
     assert config.targets["win11"].edition == "Windows 11 Pro"
 
 
+def test_windows_vm_profile_matrix_is_the_profile_authority() -> None:
+    matrix = windows_vm_lab.build_windows_vm_profile_matrix()
+    profiles = {profile["name"]: profile for profile in matrix["profiles"]}
+
+    assert tuple(profiles) == windows_vm_lab.SUPPORTED_TEST_PROFILES
+    assert profiles["package-smoke"]["networkScope"] == "offline"
+    assert profiles["package-smoke"]["releasePhase"] == "packaging-provenance"
+    assert profiles["package-smoke"]["requiredTargets"] == ["win10", "win11"]
+    assert profiles["local-ed2k-transfer"]["networkScope"] == "lan"
+    assert profiles["local-ed2k-transfer"]["releasePhase"] == "protocol-parity"
+    assert profiles["hideme-live-wire"]["networkScope"] == "vpn"
+    assert profiles["hideme-live-wire"]["releasePhase"] == "live-wire-release"
+    json.dumps(matrix)
+
+
 def test_preflight_requires_guest_password(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     layout = _layout(tmp_path)
     config_path = layout.build_repo_root / "vm-lab.local.json"

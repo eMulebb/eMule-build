@@ -35,9 +35,6 @@ WINDOWS_VM_SUITE_NAME = "windows-vm"
 WINDOWS_VM_RESULT_FILE_NAME = "windows-vm-result.json"
 WINDOWS_VM_SUMMARY_FILE_NAME = "windows-vm-summary.json"
 SUPPORTED_TARGETS = ("win10", "win11")
-SUPPORTED_TEST_PROFILES = ("package-smoke", "local-ed2k-transfer", "hideme-live-wire")
-LOCAL_ED2K_REQUIRED_TARGETS = ("win10", "win11")
-HIDEME_LIVE_REQUIRED_TARGETS = ("win10", "win11")
 PYTHON_INSTALLER_URL = "https://www.python.org/ftp/python/3.13.13/python-3.13.13-amd64.exe"
 PYTHON_INSTALLER_SHA256 = "3c9c81d80f91c002ced86d645422d81432c68c7d9b6b0e974768ca2e449a4d00"
 PYTHON_INSTALLER_FILE_NAME = "python-3.13.13-amd64.exe"
@@ -58,6 +55,50 @@ DOTNET_DESKTOP_RUNTIME_X86_URL = "https://builds.dotnet.microsoft.com/dotnet/Win
 DOTNET_DESKTOP_RUNTIME_X86_FILE_NAME = "windowsdesktop-runtime-6.0.36-win-x86.exe"
 DOTNET_DESKTOP_RUNTIME_X86_DIR = r"C:\Program Files (x86)\dotnet\shared\Microsoft.WindowsDesktop.App\6.0.36"
 DOTNET_SIGNER_TOKENS = ("Microsoft Corporation",)
+
+
+@dataclass(frozen=True)
+class WindowsVmProfileSpec:
+    """One supported Windows VM test profile exposed by `test windows-vm`."""
+
+    name: str
+    title: str
+    network_scope: str
+    release_phase: str
+    required_targets: tuple[str, ...]
+    result_file_name: str
+
+
+WINDOWS_VM_PROFILE_SPECS = (
+    WindowsVmProfileSpec(
+        name="package-smoke",
+        title="Windows VM package smoke",
+        network_scope="offline",
+        release_phase="packaging-provenance",
+        required_targets=SUPPORTED_TARGETS,
+        result_file_name=WINDOWS_VM_RESULT_FILE_NAME,
+    ),
+    WindowsVmProfileSpec(
+        name="local-ed2k-transfer",
+        title="Windows VM local eD2K transfer",
+        network_scope="lan",
+        release_phase="protocol-parity",
+        required_targets=("win10", "win11"),
+        result_file_name="local-ed2k-transfer-result.json",
+    ),
+    WindowsVmProfileSpec(
+        name="hideme-live-wire",
+        title="Windows VM hide.me live-wire",
+        network_scope="vpn",
+        release_phase="live-wire-release",
+        required_targets=("win10", "win11"),
+        result_file_name="hideme-live-wire-result.json",
+    ),
+)
+WINDOWS_VM_PROFILE_BY_NAME = {spec.name: spec for spec in WINDOWS_VM_PROFILE_SPECS}
+SUPPORTED_TEST_PROFILES = tuple(spec.name for spec in WINDOWS_VM_PROFILE_SPECS)
+LOCAL_ED2K_REQUIRED_TARGETS = WINDOWS_VM_PROFILE_BY_NAME["local-ed2k-transfer"].required_targets
+HIDEME_LIVE_REQUIRED_TARGETS = WINDOWS_VM_PROFILE_BY_NAME["hideme-live-wire"].required_targets
 
 
 @dataclass(frozen=True)
@@ -202,6 +243,27 @@ def parse_matrix(raw_matrix: str | Sequence[str] | None) -> tuple[str, ...]:
     return matrix
 
 
+def build_windows_vm_profile_matrix() -> dict[str, object]:
+    """Returns the supported Windows VM profile registry for audits and docs."""
+
+    return {
+        "schema": "emulebb.windows-vm-profile-matrix.v1",
+        "suite": WINDOWS_VM_SUITE_NAME,
+        "profileCount": len(WINDOWS_VM_PROFILE_SPECS),
+        "profiles": [
+            {
+                "name": spec.name,
+                "title": spec.title,
+                "networkScope": spec.network_scope,
+                "releasePhase": spec.release_phase,
+                "requiredTargets": list(spec.required_targets),
+                "resultFileName": spec.result_file_name,
+            }
+            for spec in WINDOWS_VM_PROFILE_SPECS
+        ],
+    }
+
+
 def load_vm_lab_config(layout: WorkspaceLayout, config_file: str | None = None) -> VmLabConfig:
     """Loads and validates the ignored local VM lab configuration."""
 
@@ -287,10 +349,10 @@ def invoke_windows_vm_tests(
         raise RuntimeError(f"Unsupported Windows VM test profile: {options.profile!r}.")
     config = load_vm_lab_config(layout, options.config_file)
     matrix = parse_matrix(options.matrix)
-    if options.profile == "local-ed2k-transfer" and tuple(matrix) != LOCAL_ED2K_REQUIRED_TARGETS:
-        raise RuntimeError("local-ed2k-transfer requires --matrix win10,win11.")
-    if options.profile == "hideme-live-wire" and tuple(matrix) != HIDEME_LIVE_REQUIRED_TARGETS:
-        raise RuntimeError("hideme-live-wire requires --matrix win10,win11.")
+    profile_spec = WINDOWS_VM_PROFILE_BY_NAME[options.profile]
+    if tuple(matrix) != profile_spec.required_targets:
+        expected = ",".join(profile_spec.required_targets)
+        raise RuntimeError(f"{options.profile} requires --matrix {expected}.")
     runner = PowerShellRunner(cwd=layout.emule_workspace_root, dry_run=options.dry_run)
     preflight_hyperv(config, runner=runner, require_password=not options.dry_run)
     if not options.skip_build and not options.dry_run:
