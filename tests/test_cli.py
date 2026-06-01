@@ -114,6 +114,8 @@ def test_test_windows_vm_help_exposes_vm_lab_options() -> None:
     assert "--matrix" in result.output
     assert "--profile" in result.output
     assert "package-smoke" in result.output
+    assert "local-ed2k-transfer" in result.output
+    assert "hideme-live-wire" in result.output
     assert "--skip-build" in result.output
     assert "--keep-running" in result.output
     assert "--dry-run" in result.output

@@ -73,6 +73,7 @@ from .test_runs import (
 )
 from .validation import validate_workspace
 from .windows_vm_lab import (
+    SUPPORTED_TEST_PROFILES,
     VmPrepareOptions,
     WindowsVmTestOptions,
     invoke_windows_vm_tests,
@@ -856,7 +857,7 @@ def test_live_e2e(
 @click.option("--matrix", default="win10,win11", show_default=True, help="Comma-separated Windows VM targets.")
 @click.option(
     "--profile",
-    type=click.Choice(["package-smoke", "local-ed2k-transfer"]),
+    type=click.Choice(SUPPORTED_TEST_PROFILES),
     default="package-smoke",
     show_default=True,
 )
@@ -878,7 +879,7 @@ def test_windows_vm(
     workspace_options: WorkspaceOptions,
     layout,
 ) -> None:
-    """Run clean Windows Hyper-V package-smoke tests."""
+    """Run clean Windows Hyper-V package and live tests."""
 
     vm_options = WindowsVmTestOptions(
         config_file=config_file,
