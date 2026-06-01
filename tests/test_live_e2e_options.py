@@ -710,6 +710,12 @@ def test_live_e2e_does_not_start_materialized_arr_services_for_non_arr_suites(tm
     monkeypatch.setattr(test_runs, "materialize_test_local_install", fake_materialize)
     monkeypatch.setattr(test_runs, "_start_materialized_arr_services", lambda *args: start_calls.append(args) or [])
 
+    def fake_materialized_arr_service_env(_materialized, *, require_explicit_lan=True):
+        assert require_explicit_lan is False
+        return {}
+
+    monkeypatch.setattr(test_runs, "_materialized_arr_service_env", fake_materialized_arr_service_env)
+
     test_runs.invoke_live_e2e_suite(
         layout,
         WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
@@ -737,6 +743,28 @@ def test_materialized_arr_service_ready_path_does_not_spawn_process(tmp_path: Pa
     monkeypatch.setattr(test_runs.subprocess, "Popen", fail_popen)
 
     assert test_runs._start_materialized_arr_services(materialized, service_env) == []
+
+
+def test_materialized_arr_service_env_can_ignore_loopback_when_optional(tmp_path: Path) -> None:
+    install_root = tmp_path / "suite"
+    manifest_dir = install_root / "manifests"
+    manifest_dir.mkdir(parents=True)
+    (manifest_dir / "suite-config.json").write_text(
+        json.dumps(
+            {
+                "services": {
+                    "prowlarr": {"bindAddress": "127.0.0.1", "port": 9696, "apiKey": "prowlarr-secret"},
+                }
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    materialized = SimpleNamespace(target_path=install_root, app_root=install_root / "apps" / "eMuleBB")
+
+    assert test_runs._materialized_arr_service_env(materialized, require_explicit_lan=False) == {}
+    with pytest.raises(RuntimeError, match="explicit LAN address"):
+        test_runs._materialized_arr_service_env(materialized, require_explicit_lan=True)
 
 
 def test_materialized_arr_service_timeout_reports_log_tail(tmp_path: Path, monkeypatch) -> None:

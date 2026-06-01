@@ -558,10 +558,18 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
     _append_optional_flag(args, live_options.skip_live_seed_refresh, "--skip-live-seed-refresh")
 
     python = get_python_invocation()
-    materialized_service_env = _materialized_arr_service_env(materialized) if materialize_test_install else {}
+    needs_materialized_arr_services = materialize_test_install and _live_e2e_needs_arr_services(live_options)
+    materialized_service_env = (
+        _materialized_arr_service_env(
+            materialized,
+            require_explicit_lan=needs_materialized_arr_services,
+        )
+        if materialize_test_install
+        else {}
+    )
     started_services: list[StartedMaterializedService] = []
     try:
-        if materialize_test_install and _live_e2e_needs_arr_services(live_options):
+        if needs_materialized_arr_services:
             started_services = _start_materialized_arr_services(materialized, materialized_service_env)
         _run_live_native(
             layout,
@@ -577,7 +585,7 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
         _stop_materialized_arr_services(started_services)
 
 
-def _materialized_arr_service_env(materialized: object) -> dict[str, str]:
+def _materialized_arr_service_env(materialized: object, *, require_explicit_lan: bool = True) -> dict[str, str]:
     """Returns ARR service endpoints from an installer-materialized suite config."""
 
     app_root = Path(getattr(materialized, "app_root"))
@@ -606,7 +614,9 @@ def _materialized_arr_service_env(materialized: object) -> dict[str, str]:
         if not lan_bind_address or not port or not api_key:
             continue
         if lan_bind_address in {"0.0.0.0", "::", "[::]", "localhost", "::1"} or lan_bind_address.startswith("127."):
-            raise RuntimeError(f"Materialized {service_name} bindAddress must be an explicit LAN address.")
+            if require_explicit_lan:
+                raise RuntimeError(f"Materialized {service_name} bindAddress must be an explicit LAN address.")
+            continue
         values[url_key] = f"http://{lan_bind_address}:{port}"
         values[api_key_key] = api_key
     return values
