@@ -30,7 +30,10 @@ def test_reusable_workspace_command_owns_materialized_ci_setup() -> None:
 
     assert "workflow_call:" in text
     assert "python -m emule_workspace materialize --workspace-root $env:EMULEBB_WORKSPACE_ROOT" in text
-    assert "python -m pip install \"click>=8.1\" \"pydantic>=2.0\" \"jinja2>=3\" \"jsonschema>=4\"" in text
+    assert (
+        "python -m pip install \"click>=8.1\" \"pydantic>=2.0\" \"jinja2>=3\" "
+        "\"jsonschema>=4\" \"pywin32\" \"pywinauto\""
+    ) in text
     assert "Reset-RepoRef" in text
     assert "[string]$Ref" in text
     assert "$PSNativeCommandUseErrorActionPreference = $true" in text
