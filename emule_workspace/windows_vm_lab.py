@@ -52,6 +52,9 @@ PWSH_SIGNER_TOKENS = ("Microsoft Corporation",)
 DOTNET_DESKTOP_RUNTIME_URL = "https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/6.0.36/windowsdesktop-runtime-6.0.36-win-x64.exe"
 DOTNET_DESKTOP_RUNTIME_FILE_NAME = "windowsdesktop-runtime-6.0.36-win-x64.exe"
 DOTNET_DESKTOP_RUNTIME_DIR = r"C:\Program Files\dotnet\shared\Microsoft.WindowsDesktop.App\6.0.36"
+DOTNET_DESKTOP_RUNTIME_X86_URL = "https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/6.0.36/windowsdesktop-runtime-6.0.36-win-x86.exe"
+DOTNET_DESKTOP_RUNTIME_X86_FILE_NAME = "windowsdesktop-runtime-6.0.36-win-x86.exe"
+DOTNET_DESKTOP_RUNTIME_X86_DIR = r"C:\Program Files (x86)\dotnet\shared\Microsoft.WindowsDesktop.App\6.0.36"
 DOTNET_SIGNER_TOKENS = ("Microsoft Corporation",)
 
 
@@ -430,12 +433,14 @@ def prepare_vm_target(
         hide_me_settings = default_hide_me_settings_path()
         pwsh_installer = pwsh_installer_cache_path(layout)
         dotnet_desktop_runtime = dotnet_desktop_runtime_cache_path(layout)
+        dotnet_desktop_runtime_x86 = dotnet_desktop_runtime_x86_cache_path(layout)
     else:
         python_installer = ensure_python_installer(layout)
         hide_me_installer = ensure_hide_me_installer(layout)
         hide_me_settings = resolve_hide_me_settings_path()
         pwsh_installer = ensure_pwsh_installer(layout)
         dotnet_desktop_runtime = ensure_dotnet_desktop_runtime_installer(layout)
+        dotnet_desktop_runtime_x86 = ensure_dotnet_desktop_runtime_x86_installer(layout)
     script = _ps_with_payload(
         {
             "target": target.key,
@@ -461,6 +466,8 @@ def prepare_vm_target(
             "pwshInstallDir": PWSH_INSTALL_DIR,
             "dotnetDesktopRuntimePath": str(dotnet_desktop_runtime),
             "dotnetDesktopRuntimeDir": DOTNET_DESKTOP_RUNTIME_DIR,
+            "dotnetDesktopRuntimeX86Path": str(dotnet_desktop_runtime_x86),
+            "dotnetDesktopRuntimeX86Dir": DOTNET_DESKTOP_RUNTIME_X86_DIR,
         },
         _prepare_vm_target_script(),
     )
@@ -714,6 +721,24 @@ def ensure_dotnet_desktop_runtime_installer(layout: WorkspaceLayout) -> Path:
     return output_path
 
 
+def ensure_dotnet_desktop_runtime_x86_installer(layout: WorkspaceLayout) -> Path:
+    """Downloads and verifies the x86 .NET Desktop Runtime required by hide.me services."""
+
+    output_path = dotnet_desktop_runtime_x86_cache_path(layout)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if output_path.is_file() and _is_trusted_dotnet_installer(output_path):
+        return output_path
+    if output_path.exists():
+        output_path.unlink()
+    with urllib.request.urlopen(DOTNET_DESKTOP_RUNTIME_X86_URL, timeout=180) as response:
+        with output_path.open("wb") as handle:
+            shutil.copyfileobj(response, handle)
+    if not _is_trusted_dotnet_installer(output_path):
+        output_path.unlink(missing_ok=True)
+        raise RuntimeError(f".NET Desktop Runtime x86 installer did not have a trusted Authenticode signature: {DOTNET_DESKTOP_RUNTIME_X86_URL}")
+    return output_path
+
+
 def python_installer_cache_path(layout: WorkspaceLayout) -> Path:
     """Returns the host cache path for the Python guest installer."""
 
@@ -736,6 +761,12 @@ def dotnet_desktop_runtime_cache_path(layout: WorkspaceLayout) -> Path:
     """Returns the host cache path for the .NET Desktop Runtime guest installer."""
 
     return layout.workspace_root / "state" / "tools" / "dotnet" / DOTNET_DESKTOP_RUNTIME_FILE_NAME
+
+
+def dotnet_desktop_runtime_x86_cache_path(layout: WorkspaceLayout) -> Path:
+    """Returns the host cache path for the x86 .NET Desktop Runtime guest installer."""
+
+    return layout.workspace_root / "state" / "tools" / "dotnet" / DOTNET_DESKTOP_RUNTIME_X86_FILE_NAME
 
 
 def default_hide_me_settings_path() -> Path:
@@ -1034,9 +1065,10 @@ try {
   Copy-Item -ToSession $session -Path $payload.hideMeInstallerPath -Destination 'C:\eMuleBBVmTest\hide-me-installer.exe'
   Copy-Item -ToSession $session -Path $payload.pwshInstallerPath -Destination 'C:\eMuleBBVmTest\pwsh-installer.msi'
   Copy-Item -ToSession $session -Path $payload.dotnetDesktopRuntimePath -Destination 'C:\eMuleBBVmTest\dotnet-desktop-runtime.exe'
+  Copy-Item -ToSession $session -Path $payload.dotnetDesktopRuntimeX86Path -Destination 'C:\eMuleBBVmTest\dotnet-desktop-runtime-x86.exe'
   Copy-Item -ToSession $session -Path $payload.hideMeSettingsPath -Destination 'C:\eMuleBBVmTest\hide-me-vpn.settings'
   Invoke-Command -Session $session -ScriptBlock {
-  param($pythonInstallerSha256, $pythonInstallDir, $hideMeInstallDir, $pwshInstallDir, $dotnetDesktopRuntimeDir, $guestUsername, $guestPassword)
+  param($pythonInstallerSha256, $pythonInstallDir, $hideMeInstallDir, $pwshInstallDir, $dotnetDesktopRuntimeDir, $dotnetDesktopRuntimeX86Dir, $guestUsername, $guestPassword)
   function Add-LabDefenderExclusion {
     param([string] $Path)
     if (Test-Path -LiteralPath $Path) {
@@ -1195,9 +1227,9 @@ try {
   }
 
   function Install-DotNetDesktopRuntime {
-    param([string] $RuntimeDir)
+    param([string] $RuntimeDir, [string] $InstallerPath)
     if (-not (Test-Path -LiteralPath $RuntimeDir -PathType Container)) {
-      $process = Start-Process -FilePath 'C:\eMuleBBVmTest\dotnet-desktop-runtime.exe' -ArgumentList @('/install', '/quiet', '/norestart') -Wait -PassThru
+      $process = Start-Process -FilePath $InstallerPath -ArgumentList @('/install', '/quiet', '/norestart') -Wait -PassThru
       if ($process.ExitCode -notin @(0, 3010)) {
         throw ('.NET Desktop Runtime installer failed with exit code ' + $process.ExitCode)
       }
@@ -1230,10 +1262,11 @@ try {
   }
   & $pythonExe -m pip --version | Out-Null
   Install-Pwsh -InstallDir $pwshInstallDir
-  Install-DotNetDesktopRuntime -RuntimeDir $dotnetDesktopRuntimeDir
+  Install-DotNetDesktopRuntime -RuntimeDir $dotnetDesktopRuntimeDir -InstallerPath 'C:\eMuleBBVmTest\dotnet-desktop-runtime.exe'
+  Install-DotNetDesktopRuntime -RuntimeDir $dotnetDesktopRuntimeX86Dir -InstallerPath 'C:\eMuleBBVmTest\dotnet-desktop-runtime-x86.exe'
   Install-HideMe -InstallDir $hideMeInstallDir -Username $guestUsername
   Set-LabLeanBaseline -PythonPath $pythonInstallDir -HideMePath $hideMeInstallDir -Username $guestUsername -Password $guestPassword
-  } -ArgumentList $payload.pythonInstallerSha256, $payload.pythonInstallDir, $payload.hideMeInstallDir, $payload.pwshInstallDir, $payload.dotnetDesktopRuntimeDir, $payload.username, $payload.password | Out-Null
+  } -ArgumentList $payload.pythonInstallerSha256, $payload.pythonInstallDir, $payload.hideMeInstallDir, $payload.pwshInstallDir, $payload.dotnetDesktopRuntimeDir, $payload.dotnetDesktopRuntimeX86Dir, $payload.username, $payload.password | Out-Null
 }
 finally {
   if ($session) { Remove-PSSession $session }

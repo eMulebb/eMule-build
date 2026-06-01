@@ -227,8 +227,11 @@ def test_prepare_vm_target_script_installs_dotnet_desktop_runtime() -> None:
     script = windows_vm_lab._prepare_vm_target_script()
 
     assert "dotnet-desktop-runtime.exe" in script
+    assert "dotnet-desktop-runtime-x86.exe" in script
     assert "Install-DotNetDesktopRuntime" in script
     assert "Microsoft.WindowsDesktop.App\\6.0.36" in windows_vm_lab.DOTNET_DESKTOP_RUNTIME_DIR
+    assert "Microsoft.WindowsDesktop.App\\6.0.36" in windows_vm_lab.DOTNET_DESKTOP_RUNTIME_X86_DIR
+    assert "Program Files (x86)" in windows_vm_lab.DOTNET_DESKTOP_RUNTIME_X86_DIR
 
 
 def test_windows_vm_test_dry_run_writes_report(tmp_path: Path) -> None:
@@ -388,3 +391,21 @@ def test_ensure_dotnet_desktop_runtime_installer_uses_trusted_cached_artifact(
     monkeypatch.setattr(windows_vm_lab, "_is_trusted_dotnet_installer", lambda path: path == installer)
 
     assert windows_vm_lab.ensure_dotnet_desktop_runtime_installer(layout) == installer
+
+
+def test_ensure_dotnet_desktop_runtime_x86_installer_uses_trusted_cached_artifact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    layout = _layout(tmp_path)
+    installer = (
+        layout.workspace_root
+        / "state"
+        / "tools"
+        / "dotnet"
+        / windows_vm_lab.DOTNET_DESKTOP_RUNTIME_X86_FILE_NAME
+    )
+    installer.parent.mkdir(parents=True, exist_ok=True)
+    installer.write_bytes(b"installer")
+    monkeypatch.setattr(windows_vm_lab, "_is_trusted_dotnet_installer", lambda path: path == installer)
+
+    assert windows_vm_lab.ensure_dotnet_desktop_runtime_x86_installer(layout) == installer
