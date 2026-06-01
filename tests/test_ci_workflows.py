@@ -70,8 +70,12 @@ def test_controlled_smoke_uses_reusable_core_offline_and_lan_suite() -> None:
     assert "python -m emule_workspace package-release" in text
     assert "python -m emule_workspace build app" in text
     assert "--variant tracing-harness" in text
+    assert "live-wire-inputs.ci.json" in text
+    assert "local_package_install" in text
+    assert "Get-NetAdapter" in text
     assert "--materialize-test-install" in text
     assert "--materialize-test-install-skip-build" in text
+    assert "--live-wire-inputs-file $ciLiveWireInputs" in text
     assert "--suite command-line-smoke" in text
     assert "--test-network offline" in text
     assert "--suite deterministic-two-client-transfer" in text

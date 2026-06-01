@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import time
@@ -19,6 +20,20 @@ def static_msvc_runtime_cmake_arguments() -> tuple[str, ...]:
         "-DCMAKE_POLICY_DEFAULT_CMP0091=NEW",
         "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>",
     )
+
+
+def cmake_generator_arguments(platform: str) -> tuple[str, ...]:
+    """Returns CMake generator arguments for the active Visual Studio image."""
+
+    args: list[str] = []
+    generator = os.environ.get("EMULEBB_CMAKE_GENERATOR", "").strip()
+    raw_platform = os.environ.get("EMULEBB_CMAKE_PLATFORM")
+    generator_platform = platform if raw_platform is None else raw_platform.strip()
+    if generator:
+        args.extend(("-G", generator))
+    if generator_platform:
+        args.extend(("-A", generator_platform))
+    return tuple(args)
 
 
 def invoke_cmake_dependency_build(
@@ -39,10 +54,7 @@ def invoke_cmake_dependency_build(
         str(source_directory),
         "-B",
         str(build_directory),
-        "-G",
-        "Visual Studio 17 2022",
-        "-A",
-        session.options.platform,
+        *cmake_generator_arguments(session.options.platform),
         "-DBUILD_SHARED_LIBS=OFF",
         *configure_arguments,
     ]
