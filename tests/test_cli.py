@@ -104,6 +104,33 @@ def test_test_live_e2e_help_exposes_live_options() -> None:
     assert "--rest-cold-start-dump-stress-cpu-profile-stack" in result.output
 
 
+def test_test_windows_vm_help_exposes_vm_lab_options() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(cli.main, ["test", "windows-vm", "--help"])
+
+    assert result.exit_code == 0
+    assert "--config-file" in result.output
+    assert "--matrix" in result.output
+    assert "--profile" in result.output
+    assert "package-smoke" in result.output
+    assert "--skip-build" in result.output
+    assert "--keep-running" in result.output
+    assert "--dry-run" in result.output
+
+
+def test_vm_lab_prepare_help_is_available() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(cli.main, ["vm-lab", "prepare", "--help"])
+
+    assert result.exit_code == 0
+    assert "--config-file" in result.output
+    assert "--matrix" in result.output
+    assert "--rebuild-images" in result.output
+    assert "--dry-run" in result.output
+
+
 def test_overnight_local_hammer_help_exposes_campaign_options() -> None:
     runner = CliRunner()
 

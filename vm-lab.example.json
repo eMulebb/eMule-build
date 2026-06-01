@@ -1,0 +1,26 @@
+{
+  "schema": "emulebb.windows-vm-lab.v1",
+  "hyperv": {
+    "switch_name": "emulebb-vm-private",
+    "checkpoint_name": "emulebb-clean",
+    "memory_mb": 4096,
+    "disk_gb": 64,
+    "processor_count": 2
+  },
+  "guest": {
+    "username": "emulebbtest",
+    "password_env": "EMULEBB_VM_TEST_PASSWORD"
+  },
+  "targets": {
+    "win10": {
+      "vm_name": "emulebb-win10",
+      "iso_path": "D:\\isos\\Win10.iso",
+      "edition": "Windows 10 Pro"
+    },
+    "win11": {
+      "vm_name": "emulebb-win11",
+      "iso_path": "D:\\isos\\Win11.iso",
+      "edition": "Windows 11 Pro"
+    }
+  }
+}

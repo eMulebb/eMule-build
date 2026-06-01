@@ -8,6 +8,7 @@ eMule-*
 libs
 libs_debug
 tmp
+vm-lab.local.json
 
 *.zip
 

@@ -72,6 +72,13 @@ from .test_runs import (
     invoke_test_runs,
 )
 from .validation import validate_workspace
+from .windows_vm_lab import (
+    VmPrepareOptions,
+    WindowsVmTestOptions,
+    invoke_windows_vm_tests,
+    parse_matrix,
+    prepare_vm_lab,
+)
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -843,6 +850,44 @@ def test_live_e2e(
     )(workspace_options=workspace_options, layout=layout)
 
 
+@test.command("windows-vm")
+@_common_options
+@click.option("--config-file", default=None, help="Ignored Windows VM lab JSON config. Defaults to vm-lab.local.json.")
+@click.option("--matrix", default="win10,win11", show_default=True, help="Comma-separated Windows VM targets.")
+@click.option("--profile", type=click.Choice(["package-smoke"]), default="package-smoke", show_default=True)
+@click.option("--release-version", default="0.7.3-rc.1", show_default=True)
+@click.option("--skip-build", is_flag=True, help="Reuse an existing release package artifact.")
+@click.option("--keep-running", is_flag=True, help="Leave the guest running after the test for debugging.")
+@click.option("--dry-run", is_flag=True, help="Plan the VM test commands without changing VMs.")
+def test_windows_vm(
+    *,
+    config_file: str | None,
+    matrix: str,
+    profile: str,
+    release_version: str,
+    skip_build: bool,
+    keep_running: bool,
+    dry_run: bool,
+    workspace_options: WorkspaceOptions,
+    layout,
+) -> None:
+    """Run clean Windows Hyper-V package-smoke tests."""
+
+    vm_options = WindowsVmTestOptions(
+        config_file=config_file,
+        matrix=parse_matrix(matrix),
+        profile=profile,
+        release_version=release_version,
+        skip_build=skip_build,
+        keep_running=keep_running,
+        dry_run=dry_run,
+    )
+    _locked(
+        "test windows-vm",
+        lambda **kwargs: invoke_windows_vm_tests(kwargs["layout"], kwargs["workspace_options"], vm_options),
+    )(workspace_options=workspace_options, layout=layout)
+
+
 @test.command("overnight-local-hammer")
 @_common_options
 @click.option("--until-local", default=None, help="Local wall-clock deadline, for example 2026-05-30T05:00:00.")
@@ -1262,6 +1307,40 @@ def package_release(
     _locked(
         "package release",
         lambda **kwargs: create_release_package(kwargs["layout"], kwargs["workspace_options"], package_options),
+    )(workspace_options=workspace_options, layout=layout)
+
+
+@main.group("vm-lab")
+def vm_lab() -> None:
+    """Prepare local Hyper-V Windows VM test images."""
+
+
+@vm_lab.command("prepare")
+@_common_options
+@click.option("--config-file", default=None, help="Ignored Windows VM lab JSON config. Defaults to vm-lab.local.json.")
+@click.option("--matrix", default="win10,win11", show_default=True, help="Comma-separated Windows VM targets.")
+@click.option("--rebuild-images", is_flag=True, help="Remove and rebuild existing VM images before checkpointing.")
+@click.option("--dry-run", is_flag=True, help="Plan the VM preparation commands without changing VMs.")
+def vm_lab_prepare(
+    *,
+    config_file: str | None,
+    matrix: str,
+    rebuild_images: bool,
+    dry_run: bool,
+    workspace_options: WorkspaceOptions,
+    layout,
+) -> None:
+    """Build Windows VM images and clean checkpoints from configured ISOs."""
+
+    prepare_options = VmPrepareOptions(
+        config_file=config_file,
+        matrix=parse_matrix(matrix),
+        rebuild_images=rebuild_images,
+        dry_run=dry_run,
+    )
+    _locked(
+        "vm-lab prepare",
+        lambda **kwargs: prepare_vm_lab(kwargs["layout"], prepare_options),
     )(workspace_options=workspace_options, layout=layout)
 
 

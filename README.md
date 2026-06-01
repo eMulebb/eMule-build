@@ -91,10 +91,12 @@ python -m emule_workspace test all
 python -m emule_workspace test live-diff
 python -m emule_workspace test protocol-parity
 python -m emule_workspace test live-e2e
+python -m emule_workspace test windows-vm
 python -m emule_workspace test amutorrent-session
 python -m emule_workspace test community-core-coverage
 python -m emule_workspace full
 python -m emule_workspace package-release
+python -m emule_workspace vm-lab prepare
 ```
 
 Command behavior:
@@ -115,11 +117,13 @@ Command behavior:
 - `test live-diff` runs parity and divergence comparison directly against any two configured app variants.
 - `test protocol-parity` runs the focused Kad/eD2K gate: protocol surface diff, protocol oracle golden validation, and `protocol-parity` native live-diff.
 - `test live-e2e` runs the aggregate UI, REST API, and live-wire E2E suite from `emulebb-build-tests`.
+- `test windows-vm` runs package-smoke proof inside clean local Hyper-V Windows guests restored from a configured checkpoint.
 - `test amutorrent-session` starts a disposable interactive aMuTorrent session against eMuleBB REST and leaves both processes running for operator testing.
 - `test community-core-coverage` runs community-core coverage checks with live REST E2E coverage enabled.
 - `build all` runs `build libs`, `build app`, and `build tests`.
 - `full` runs `build all`, then `test all`, then prints a workspace summary.
 - `package-release` builds the main Release app, language DLLs, release ZIP, and release manifest. Use `--require-signing` for release-candidate or stable assets that must fail unless Authenticode signing is configured.
+- `vm-lab prepare` creates or refreshes local Hyper-V Windows 10/11 guest images from operator-provided ISO paths and records the clean checkpoint used by `test windows-vm`.
 
 All top-level `emule_workspace` commands are serialized per workspace root.
 This single-owner workspace lock is intentional. It prevents overlapping
@@ -240,6 +244,13 @@ Python test examples:
 
 - `python-tests` runs the default fast pytest collection
 - `python-tests -PythonTestPath tests/python/test_auto_browse_live.py -PythonTestExpression pending -PythonTestQuiet` runs one focused pytest expression
+
+Windows VM package-smoke examples:
+
+- Copy `vm-lab.example.json` to ignored `vm-lab.local.json`, set Windows 10/11 ISO paths, and set `EMULEBB_VM_TEST_PASSWORD` in the shell.
+- `python -m emule_workspace vm-lab prepare --matrix win10,win11` prepares Hyper-V guests and the `emulebb-clean` checkpoint.
+- `python -m emule_workspace test windows-vm --matrix win10,win11 --profile package-smoke --release-version 0.7.3-rc.1 --skip-build` restores each guest, copies the release ZIP, runs local package smoke, collects artifacts, and restores the clean checkpoint.
+- Host VM orchestration is owned here; guest-side package-smoke harness templates are loaded from `repos\emulebb-build-tests\emule_test_harness`.
 
 ## Validation And Test Model
 
