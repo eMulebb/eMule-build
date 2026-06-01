@@ -205,6 +205,54 @@ def test_suite_installer_core_install_uses_diagnostics_executable_name(tmp_path:
     assert "emulebb-diagnostics.exe" not in start_emulebb
 
 
+def test_suite_installer_recomputes_executable_name_from_package_flavor(tmp_path: Path) -> None:
+    release_root = tmp_path / "release"
+    install_root = tmp_path / "suite"
+    suite_install_fixtures.write_core_release(
+        release_root,
+        package_flavor="diagnostics",
+        executable_name="emulebb-diagnostics.exe",
+    )
+    config_path = tmp_path / "stale-suite-config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "schema": "emulebb.suite-config.v1",
+                "emulebbPackageFlavor": "standard",
+                "emulebbExecutableName": "emulebb.exe",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    repo_root = Path.cwd()
+    suite_install_fixtures.run_installer(
+        (repo_root / INSTALLER).resolve(),
+        [
+            "-NonInteractive",
+            "-NoStart",
+            "-Force",
+            "-Bundle",
+            "Core",
+            "-InstallRoot",
+            str(install_root),
+            "-ConfigFile",
+            str(config_path),
+            "-ReleaseBaseUrl",
+            release_root.as_uri(),
+            "-EmulebbPackageFlavor",
+            "diagnostics",
+        ],
+        cwd=repo_root,
+    )
+
+    suite_config = suite_install_fixtures.read_suite_config(install_root)
+    assert suite_config["emulebbPackageFlavor"] == "diagnostics"
+    assert suite_config["emulebbExecutableName"] == "emulebb-diagnostics.exe"
+    assert (install_root / "apps" / "eMuleBB" / "emulebb-diagnostics.exe").is_file()
+
+
 def test_suite_installer_rejects_release_manifest_without_sha256(tmp_path: Path) -> None:
     release_root = tmp_path / "release"
     install_root = tmp_path / "suite"

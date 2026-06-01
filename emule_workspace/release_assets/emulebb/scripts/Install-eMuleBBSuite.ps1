@@ -24,7 +24,6 @@ param(
     [string]$EmulebbPdbPath,
     [ValidateSet('standard', 'diagnostics')]
     [string]$EmulebbPackageFlavor = 'standard',
-    [string]$EmulebbExecutableName,
 
     [string]$ConfigFile,
 
@@ -58,6 +57,7 @@ param(
 
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
+$script:InstallerBoundParameters = $PSBoundParameters
 
 $NodeVersion = 'v24.15.0'
 $MinimumNodeMajor = 24
@@ -131,8 +131,9 @@ function Get-DefaultControlBindAddress {
     return '127.0.0.1'
 }
 
-function Get-DefaultEmulebbExecutableName {
-    if ($EmulebbPackageFlavor -eq 'diagnostics') {
+function Get-EmulebbExecutableNameForFlavor {
+    param([string]$PackageFlavor)
+    if ($PackageFlavor -eq 'diagnostics') {
         return 'emulebb-diagnostics.exe'
     }
     return 'emulebb.exe'
@@ -144,7 +145,7 @@ function Get-EmulebbPdbFileName {
 }
 
 function Assert-EmulebbExecutableName {
-    param([string]$ExecutableName)
+    param([string]$PackageFlavor, [string]$ExecutableName)
     if ([string]::IsNullOrWhiteSpace($ExecutableName)) {
         throw 'EmulebbExecutableName must not be empty.'
     }
@@ -153,6 +154,10 @@ function Assert-EmulebbExecutableName {
     }
     if ([IO.Path]::GetExtension($ExecutableName) -ne '.exe') {
         throw "EmulebbExecutableName must end with .exe: $ExecutableName"
+    }
+    $expectedExecutableName = Get-EmulebbExecutableNameForFlavor -PackageFlavor $PackageFlavor
+    if ($ExecutableName -ne $expectedExecutableName) {
+        throw "EmulebbExecutableName must be $expectedExecutableName for package flavor $PackageFlavor."
     }
 }
 
@@ -168,7 +173,7 @@ function New-SuiteConfig {
         dependencyChannel = $DependencyChannel
         releaseBaseUrl = $ReleaseBaseUrl
         emulebbPackageFlavor = $EmulebbPackageFlavor
-        emulebbExecutableName = (Resolve-OptionalValue -Value $EmulebbExecutableName -Default (Get-DefaultEmulebbExecutableName))
+        emulebbExecutableName = (Get-EmulebbExecutableNameForFlavor -PackageFlavor $EmulebbPackageFlavor)
         nodeBaseUrl = $NodeBaseUrl
         dependencyManifest = $DependencyManifest
         importProfileDir = $ImportProfileDir
@@ -264,7 +269,6 @@ function Resolve-SuiteConfig {
         @('ImportProfileDir', { param($c, $v) $c.importProfileDir = $v }),
         @('EmulebbPdbPath', { param($c, $v) $c.symbols.emulebbPdbPath = $v }),
         @('EmulebbPackageFlavor', { param($c, $v) $c.emulebbPackageFlavor = $v }),
-        @('EmulebbExecutableName', { param($c, $v) $c.emulebbExecutableName = $v }),
         @('ControlBindAddress', {
             param($c, $v)
             foreach ($serviceName in @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr')) {
@@ -284,13 +288,14 @@ function Resolve-SuiteConfig {
         @('P2PBindInterface', { param($c, $v) $c.p2p.bindInterface = $v })
     )) {
         $name = [string]$entry[0]
-        if ($PSBoundParameters.ContainsKey($name)) {
-            & $entry[1] $config $PSBoundParameters[$name]
+        if ($script:InstallerBoundParameters.ContainsKey($name)) {
+            & $entry[1] $config $script:InstallerBoundParameters[$name]
         }
     }
-    if ($PSBoundParameters.ContainsKey('AllowRemoteServiceBind')) {
+    if ($script:InstallerBoundParameters.ContainsKey('AllowRemoteServiceBind')) {
         $config.allowRemoteServiceBind = [bool]$AllowRemoteServiceBind
     }
+    $config.emulebbExecutableName = Get-EmulebbExecutableNameForFlavor -PackageFlavor ([string]$config.emulebbPackageFlavor)
     return $config
 }
 
@@ -568,7 +573,7 @@ function Assert-SuiteConfig {
     if (@('standard', 'diagnostics') -notcontains $Config.emulebbPackageFlavor) {
         throw "EmulebbPackageFlavor must be standard or diagnostics: $($Config.emulebbPackageFlavor)"
     }
-    Assert-EmulebbExecutableName -ExecutableName ([string]$Config.emulebbExecutableName)
+    Assert-EmulebbExecutableName -PackageFlavor ([string]$Config.emulebbPackageFlavor) -ExecutableName ([string]$Config.emulebbExecutableName)
     foreach ($serviceName in @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr')) {
         $service = $Config.services[$serviceName]
         Assert-ServiceBindAddress -ServiceName $serviceName -Address $service.bindAddress -AllowRemote ([bool]$Config.allowRemoteServiceBind)

@@ -156,7 +156,8 @@ def test_local_package_install_deploys_artifacts_from_suite_profile(
 
     def fake_invoke_suite_installer(options: suite_installer.SuiteInstallerOptions) -> suite_installer.SuiteInstallerInvocation:
         installer_calls.append(options)
-        _write_suite_profile(options.install_root, executable_name=options.emulebb_executable_name)
+        executable_name = "emulebb-diagnostics.exe" if options.emulebb_package_flavor == "diagnostics" else "emulebb.exe"
+        _write_suite_profile(options.install_root, executable_name=executable_name)
         return suite_installer.SuiteInstallerInvocation(
             command=(),
             installer_script=options.installer_script,
@@ -369,6 +370,8 @@ def test_suite_installer_command_uses_full_bundle_and_existing_suite_config(tmp_
     assert command[command.index("-DependencyManifest") + 1] == str((tmp_path / "deps.json").resolve())
     assert command[command.index("-ImportProfileDir") + 1] == str((tmp_path / "import-profile").resolve())
     assert command[command.index("-EmulebbPdbPath") + 1] == str((release_root / "emulebb.pdb"))
+    assert command[command.index("-EmulebbPackageFlavor") + 1] == "standard"
+    assert "-EmulebbExecutableName" not in command
     assert command[command.index("-P2PBindInterface") + 1] == "hide.me"
     assert command[command.index("-ProwlarrPort") + 1] == "9696"
     assert command[command.index("-RadarrPort") + 1] == "7878"

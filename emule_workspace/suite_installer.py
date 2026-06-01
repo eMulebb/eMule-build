@@ -37,7 +37,6 @@ class SuiteInstallerOptions:
     emulebb_pdb_path: Path | None
     p2p_bind_interface: str
     emulebb_package_flavor: str = "standard"
-    emulebb_executable_name: str = "emulebb.exe"
     install_kind: str = LOCAL_INSTALL_KIND
     bundle: str = SUITE_BUNDLE
 
@@ -110,8 +109,6 @@ def build_suite_installer_invocation(*, powershell: Path, options: SuiteInstalle
         options.install_kind,
         "-EmulebbPackageFlavor",
         options.emulebb_package_flavor,
-        "-EmulebbExecutableName",
-        options.emulebb_executable_name,
         "-AmutorrentPort",
         str(options.amutorrent_port),
         "-EmulebbPort",

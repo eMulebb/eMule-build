@@ -414,7 +414,6 @@ def build_suite_installer_options(
         import_profile_dir=config.import_profile_dir,
         emulebb_pdb_path=artifacts.package_pdb,
         emulebb_package_flavor=artifacts.package_flavor,
-        emulebb_executable_name=artifacts.executable_name,
         p2p_bind_interface=config.p2p_bind_interface,
     )
 
