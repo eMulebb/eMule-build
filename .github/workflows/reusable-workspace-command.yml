@@ -170,6 +170,7 @@ jobs:
         working-directory: repos/emulebb-build
         run: |
           $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
           $env:PYTHONPATH = Join-Path $env:EMULEBB_WORKSPACE_ROOT "repos\emulebb-build"
           ${{ inputs.command }}
 

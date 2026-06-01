@@ -33,6 +33,7 @@ def test_reusable_workspace_command_owns_materialized_ci_setup() -> None:
     assert "python -m pip install \"click>=8.1\" \"pydantic>=2.0\" \"jinja2>=3\" \"jsonschema>=4\"" in text
     assert "Reset-RepoRef" in text
     assert "[string]$Ref" in text
+    assert "$PSNativeCommandUseErrorActionPreference = $true" in text
     assert "repos\\amutorrent" in text
     assert "workspaces\\workspace\\app\\emulebb-main" in text
 
@@ -70,7 +71,7 @@ def test_controlled_smoke_uses_reusable_core_offline_and_lan_suite() -> None:
     assert "python -m emule_workspace package-release" in text
     assert "python -m emule_workspace build app" in text
     assert "--variant tracing-harness" in text
-    assert "live-wire-inputs.ci.json" in text
+    assert "state\\ci\\live-wire-inputs.ci.json" in text
     assert "local_package_install" in text
     assert "Get-NetAdapter" in text
     assert "--materialize-test-install" in text
