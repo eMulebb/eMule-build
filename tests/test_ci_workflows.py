@@ -42,7 +42,8 @@ def test_build_baseline_uses_supported_reusable_inputs() -> None:
     script = _repo_root() / ".github" / "scripts" / "baseline-extra.cmd"
     script_text = script.read_text(encoding="utf-8")
 
-    assert "uses: emulebb/emulebb-tooling/.github/workflows/reusable-baseline.yml@ci/v8" in text
+    assert "uses: emulebb/emulebb-tooling/.github/workflows/reusable-baseline.yml@main" in text
+    assert "repo_kind: emulebb-build" in text
     assert "extra_commands:" not in text
     assert "extra_step_script: .github\\scripts\\baseline-extra.cmd" in text
     assert "python -m pip install -e .[dev]" in script_text
