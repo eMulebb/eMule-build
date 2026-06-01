@@ -9,6 +9,7 @@ libs
 libs_debug
 tmp
 vm-lab.local.json
+scripts/host-network/*.local.json
 
 *.zip
 
