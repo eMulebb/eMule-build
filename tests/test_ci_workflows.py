@@ -64,7 +64,7 @@ def test_controlled_smoke_uses_reusable_core_offline_and_lan_suite() -> None:
     assert "workflow_dispatch:" in text
     assert 'cron: "47 5 * * *"' in text
     assert "uses: emulebb/emulebb-build/.github/workflows/reusable-workspace-command.yml@main" in text
-    assert "runs_on: windows-2025-vs2026" in text
+    assert "runs_on: windows-2022" in text
     assert "app_ref: ${{ github.sha }}" in text
     assert "timeout_minutes: 360" in text
     assert "python -m emule_workspace package-release" in text
