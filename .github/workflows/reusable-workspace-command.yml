@@ -1,0 +1,192 @@
+name: Reusable Workspace Command
+
+on:
+  workflow_call:
+    inputs:
+      command:
+        required: true
+        type: string
+      runs_on:
+        required: false
+        type: string
+        default: windows-2025-vs2026
+      python_version:
+        required: false
+        type: string
+        default: "3.12"
+      node_version:
+        required: false
+        type: string
+        default: ""
+      node_cache_dependency_path:
+        required: false
+        type: string
+        default: ""
+      app_repository:
+        required: false
+        type: string
+        default: emulebb/emulebb
+      app_ref:
+        required: false
+        type: string
+        default: ""
+      amutorrent_repository:
+        required: false
+        type: string
+        default: emulebb/amutorrent
+      amutorrent_ref:
+        required: false
+        type: string
+        default: ""
+      build_ref:
+        required: false
+        type: string
+        default: main
+      artifact_name:
+        required: false
+        type: string
+        default: ""
+      artifact_path:
+        required: false
+        type: string
+        default: ""
+      artifact_retention_days:
+        required: false
+        type: number
+        default: 14
+      failure_artifact_name:
+        required: false
+        type: string
+        default: ""
+      failure_artifact_path:
+        required: false
+        type: string
+        default: ""
+      failure_artifact_retention_days:
+        required: false
+        type: number
+        default: 14
+      timeout_minutes:
+        required: false
+        type: number
+        default: 360
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    name: workspace command
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    env:
+      EMULEBB_WORKSPACE_ROOT: ${{ github.workspace }}
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+    steps:
+      - name: Checkout build orchestration
+        uses: actions/checkout@v6
+        with:
+          repository: emulebb/emulebb-build
+          ref: ${{ inputs.build_ref }}
+          path: repos/emulebb-build
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      - name: Install build orchestration dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python -m pip install --upgrade pip
+          python -m pip install "click>=8.1" "pydantic>=2.0" "jinja2>=3" "jsonschema>=4"
+
+      - name: Materialize workspace
+        shell: pwsh
+        working-directory: repos/emulebb-build
+        run: |
+          $ErrorActionPreference = "Stop"
+          python -m emule_workspace materialize --workspace-root $env:EMULEBB_WORKSPACE_ROOT
+
+      - name: Align requested source refs
+        shell: pwsh
+        env:
+          APP_REPOSITORY: ${{ inputs.app_repository }}
+          APP_REF: ${{ inputs.app_ref }}
+          AMUTORRENT_REPOSITORY: ${{ inputs.amutorrent_repository }}
+          AMUTORRENT_REF: ${{ inputs.amutorrent_ref }}
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          function Reset-RepoRef {
+            param(
+              [Parameter(Mandatory = $true)][string]$RepoPath,
+              [Parameter(Mandatory = $true)][string]$Repository,
+              [Parameter(Mandatory = $true)][string]$Ref,
+              [Parameter(Mandatory = $true)][string]$Branch
+            )
+
+            if ([string]::IsNullOrWhiteSpace($Ref)) {
+              return
+            }
+
+            $remoteUrl = "https://github.com/$Repository.git"
+            git -C $RepoPath fetch --tags $remoteUrl $Ref
+            git -C $RepoPath checkout $Branch
+            git -C $RepoPath reset --hard FETCH_HEAD
+            git -C $RepoPath status --short --branch
+          }
+
+          Reset-RepoRef `
+            -RepoPath (Join-Path $env:EMULEBB_WORKSPACE_ROOT "workspaces\workspace\app\emulebb-main") `
+            -Repository $env:APP_REPOSITORY `
+            -Ref $env:APP_REF `
+            -Branch "main"
+
+          Reset-RepoRef `
+            -RepoPath (Join-Path $env:EMULEBB_WORKSPACE_ROOT "repos\amutorrent") `
+            -Repository $env:AMUTORRENT_REPOSITORY `
+            -Ref $env:AMUTORRENT_REF `
+            -Branch "main"
+
+      - name: Set up Node
+        if: ${{ inputs.node_version != '' && inputs.node_cache_dependency_path == '' }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Set up Node with npm cache
+        if: ${{ inputs.node_version != '' && inputs.node_cache_dependency_path != '' }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node_version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.node_cache_dependency_path }}
+
+      - name: Run workspace command
+        shell: pwsh
+        working-directory: repos/emulebb-build
+        run: |
+          $ErrorActionPreference = "Stop"
+          $env:PYTHONPATH = Join-Path $env:EMULEBB_WORKSPACE_ROOT "repos\emulebb-build"
+          ${{ inputs.command }}
+
+      - name: Upload failure artifacts
+        if: ${{ failure() && inputs.failure_artifact_name != '' && inputs.failure_artifact_path != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.failure_artifact_name }}
+          path: ${{ inputs.failure_artifact_path }}
+          if-no-files-found: ignore
+          retention-days: ${{ inputs.failure_artifact_retention_days }}
+
+      - name: Upload artifacts
+        if: ${{ inputs.artifact_name != '' && inputs.artifact_path != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: ${{ inputs.artifact_path }}
+          if-no-files-found: error
+          retention-days: ${{ inputs.artifact_retention_days }}
