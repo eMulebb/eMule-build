@@ -854,11 +854,17 @@ def test_live_e2e(
 @_common_options
 @click.option("--config-file", default=None, help="Ignored Windows VM lab JSON config. Defaults to vm-lab.local.json.")
 @click.option("--matrix", default="win10,win11", show_default=True, help="Comma-separated Windows VM targets.")
-@click.option("--profile", type=click.Choice(["package-smoke"]), default="package-smoke", show_default=True)
+@click.option(
+    "--profile",
+    type=click.Choice(["package-smoke", "local-ed2k-transfer"]),
+    default="package-smoke",
+    show_default=True,
+)
 @click.option("--release-version", default="0.7.3-rc.1", show_default=True)
 @click.option("--skip-build", is_flag=True, help="Reuse an existing release package artifact.")
 @click.option("--keep-running", is_flag=True, help="Leave the guest running after the test for debugging.")
 @click.option("--dry-run", is_flag=True, help="Plan the VM test commands without changing VMs.")
+@click.option("--fixture-size-bytes", default=25 * 1024 * 1024, show_default=True, type=int)
 def test_windows_vm(
     *,
     config_file: str | None,
@@ -868,6 +874,7 @@ def test_windows_vm(
     skip_build: bool,
     keep_running: bool,
     dry_run: bool,
+    fixture_size_bytes: int,
     workspace_options: WorkspaceOptions,
     layout,
 ) -> None:
@@ -881,6 +888,7 @@ def test_windows_vm(
         skip_build=skip_build,
         keep_running=keep_running,
         dry_run=dry_run,
+        fixture_size_bytes=fixture_size_bytes,
     )
     _locked(
         "test windows-vm",

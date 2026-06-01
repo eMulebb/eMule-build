@@ -5,8 +5,11 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,6 +34,25 @@ WINDOWS_VM_SUITE_NAME = "windows-vm"
 WINDOWS_VM_RESULT_FILE_NAME = "windows-vm-result.json"
 WINDOWS_VM_SUMMARY_FILE_NAME = "windows-vm-summary.json"
 SUPPORTED_TARGETS = ("win10", "win11")
+SUPPORTED_TEST_PROFILES = ("package-smoke", "local-ed2k-transfer")
+LOCAL_ED2K_REQUIRED_TARGETS = ("win10", "win11")
+PYTHON_INSTALLER_URL = "https://www.python.org/ftp/python/3.13.13/python-3.13.13-amd64.exe"
+PYTHON_INSTALLER_SHA256 = "3c9c81d80f91c002ced86d645422d81432c68c7d9b6b0e974768ca2e449a4d00"
+PYTHON_INSTALLER_FILE_NAME = "python-3.13.13-amd64.exe"
+PYTHON_INSTALL_DIR = r"C:\Python313"
+HIDE_ME_INSTALLER_URL = "https://hide.me/en/software/windowsv4/download"
+HIDE_ME_INSTALLER_FILE_NAME = "hide-me-vpn-windows.exe"
+HIDE_ME_INSTALL_DIR = r"C:\Program Files (x86)\hide.me VPN"
+HIDE_ME_SETTINGS_PATH_ENV = "EMULEBB_VM_HIDE_ME_SETTINGS_PATH"
+HIDE_ME_SIGNER_TOKENS = ("eVenture", "hide.me")
+PWSH_RELEASE_API_URL = "https://api.github.com/repos/PowerShell/PowerShell/releases/latest"
+PWSH_INSTALLER_FILE_NAME = "PowerShell-win-x64.msi"
+PWSH_INSTALL_DIR = r"C:\Program Files\PowerShell\7"
+PWSH_SIGNER_TOKENS = ("Microsoft Corporation",)
+DOTNET_DESKTOP_RUNTIME_URL = "https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/6.0.36/windowsdesktop-runtime-6.0.36-win-x64.exe"
+DOTNET_DESKTOP_RUNTIME_FILE_NAME = "windowsdesktop-runtime-6.0.36-win-x64.exe"
+DOTNET_DESKTOP_RUNTIME_DIR = r"C:\Program Files\dotnet\shared\Microsoft.WindowsDesktop.App\6.0.36"
+DOTNET_SIGNER_TOKENS = ("Microsoft Corporation",)
 
 
 @dataclass(frozen=True)
@@ -50,6 +72,7 @@ class GuestSettings:
 
     username: str = DEFAULT_GUEST_USERNAME
     password_env: str = DEFAULT_GUEST_PASSWORD_ENV
+    password: str = ""
 
 
 @dataclass(frozen=True)
@@ -93,6 +116,7 @@ class WindowsVmTestOptions:
     skip_build: bool = False
     keep_running: bool = False
     dry_run: bool = False
+    fixture_size_bytes: int = 25 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -193,6 +217,7 @@ def load_vm_lab_config(layout: WorkspaceLayout, config_file: str | None = None) 
     guest = GuestSettings(
         username=_optional_string(raw_guest, "username", DEFAULT_GUEST_USERNAME),
         password_env=_optional_string(raw_guest, "password_env", DEFAULT_GUEST_PASSWORD_ENV),
+        password=_optional_string(raw_guest, "password", ""),
     )
     targets = {
         key: _parse_target(config_path, key, raw_targets.get(key))
@@ -251,10 +276,12 @@ def invoke_windows_vm_tests(
         raise RuntimeError("test windows-vm supports x64 packages only in v1.")
     if workspace_options.configuration != "Release":
         raise RuntimeError("test windows-vm requires --config Release.")
-    if options.profile != "package-smoke":
+    if options.profile not in SUPPORTED_TEST_PROFILES:
         raise RuntimeError(f"Unsupported Windows VM test profile: {options.profile!r}.")
     config = load_vm_lab_config(layout, options.config_file)
     matrix = parse_matrix(options.matrix)
+    if options.profile == "local-ed2k-transfer" and tuple(matrix) != LOCAL_ED2K_REQUIRED_TARGETS:
+        raise RuntimeError("local-ed2k-transfer requires --matrix win10,win11.")
     runner = PowerShellRunner(cwd=layout.emule_workspace_root, dry_run=options.dry_run)
     preflight_hyperv(config, runner=runner, require_password=not options.dry_run)
     if not options.skip_build and not options.dry_run:
@@ -271,20 +298,32 @@ def invoke_windows_vm_tests(
     report_root = _windows_vm_report_root(layout)
     run_report_dir = report_root / run_id
     run_report_dir.mkdir(parents=True, exist_ok=True)
-    rows: list[dict[str, object]] = []
-    for key in matrix:
-        rows.append(
-            run_windows_vm_package_smoke(
-                layout,
-                config,
-                config.targets[key],
-                package_zip=package_zip,
-                run_id=run_id,
-                run_report_dir=run_report_dir,
-                keep_running=options.keep_running,
-                runner=runner,
-            )
+    if options.profile == "local-ed2k-transfer":
+        rows = run_windows_vm_local_ed2k_transfer(
+            layout,
+            config,
+            package_zip=package_zip,
+            run_id=run_id,
+            run_report_dir=run_report_dir,
+            keep_running=options.keep_running,
+            fixture_size_bytes=options.fixture_size_bytes,
+            runner=runner,
         )
+    else:
+        rows = []
+        for key in matrix:
+            rows.append(
+                run_windows_vm_package_smoke(
+                    layout,
+                    config,
+                    config.targets[key],
+                    package_zip=package_zip,
+                    run_id=run_id,
+                    run_report_dir=run_report_dir,
+                    keep_running=options.keep_running,
+                    runner=runner,
+                )
+            )
     status = "passed" if all(row.get("status") == "passed" for row in rows) else "failed"
     if options.dry_run:
         status = "planned"
@@ -325,7 +364,7 @@ def invoke_windows_vm_tests(
 def preflight_hyperv(config: VmLabConfig, *, runner: PowerShellRunner, require_password: bool) -> None:
     """Verifies host prerequisites for Hyper-V VM automation."""
 
-    if require_password and not os.environ.get(config.guest.password_env):
+    if require_password and not resolve_guest_password(config):
         raise RuntimeError(f"Guest password environment variable is required: {config.guest.password_env}")
     script = _ps_with_payload(
         {
@@ -385,6 +424,18 @@ def prepare_vm_target(
     """Prepares one Hyper-V VM and its clean checkpoint."""
 
     vhd_path = _vm_image_root(layout) / f"{file_token(target.key)}.vhdx"
+    if runner.dry_run:
+        python_installer = python_installer_cache_path(layout)
+        hide_me_installer = hide_me_installer_cache_path(layout)
+        hide_me_settings = default_hide_me_settings_path()
+        pwsh_installer = pwsh_installer_cache_path(layout)
+        dotnet_desktop_runtime = dotnet_desktop_runtime_cache_path(layout)
+    else:
+        python_installer = ensure_python_installer(layout)
+        hide_me_installer = ensure_hide_me_installer(layout)
+        hide_me_settings = resolve_hide_me_settings_path()
+        pwsh_installer = ensure_pwsh_installer(layout)
+        dotnet_desktop_runtime = ensure_dotnet_desktop_runtime_installer(layout)
     script = _ps_with_payload(
         {
             "target": target.key,
@@ -398,8 +449,18 @@ def prepare_vm_target(
             "diskBytes": config.hyperv.disk_gb * 1024 * 1024 * 1024,
             "processorCount": config.hyperv.processor_count,
             "username": config.guest.username,
-            "password": os.environ.get(config.guest.password_env, ""),
+            "password": resolve_guest_password(config),
             "rebuildImages": rebuild_images,
+            "pythonInstallerPath": str(python_installer),
+            "pythonInstallerSha256": PYTHON_INSTALLER_SHA256,
+            "pythonInstallDir": PYTHON_INSTALL_DIR,
+            "hideMeInstallerPath": str(hide_me_installer),
+            "hideMeSettingsPath": str(hide_me_settings),
+            "hideMeInstallDir": HIDE_ME_INSTALL_DIR,
+            "pwshInstallerPath": str(pwsh_installer),
+            "pwshInstallDir": PWSH_INSTALL_DIR,
+            "dotnetDesktopRuntimePath": str(dotnet_desktop_runtime),
+            "dotnetDesktopRuntimeDir": DOTNET_DESKTOP_RUNTIME_DIR,
         },
         _prepare_vm_target_script(),
     )
@@ -444,7 +505,7 @@ def run_windows_vm_package_smoke(
             "vmName": target.vm_name,
             "checkpointName": config.hyperv.checkpoint_name,
             "username": config.guest.username,
-            "password": os.environ.get(config.guest.password_env, ""),
+            "password": resolve_guest_password(config),
             "packageZip": str(package_zip),
             "runId": run_id,
             "hostReportDir": str(target_report_dir),
@@ -465,6 +526,343 @@ def run_windows_vm_package_smoke(
         "checks": payload.get("checks", []),
         "errors": payload.get("errors", []),
     }
+
+
+def run_windows_vm_local_ed2k_transfer(
+    layout: WorkspaceLayout,
+    config: VmLabConfig,
+    *,
+    package_zip: Path,
+    run_id: str,
+    run_report_dir: Path,
+    keep_running: bool,
+    fixture_size_bytes: int,
+    runner: PowerShellRunner,
+) -> list[dict[str, object]]:
+    """Runs one local ED2K transfer scenario across win10 and win11."""
+
+    target_report_dirs = {
+        key: run_report_dir / key
+        for key in LOCAL_ED2K_REQUIRED_TARGETS
+    }
+    for directory in target_report_dirs.values():
+        directory.mkdir(parents=True, exist_ok=True)
+    if runner.dry_run:
+        return [
+            {
+                "target": key,
+                "vmName": config.targets[key].vm_name,
+                "status": "planned",
+                "checkpointName": config.hyperv.checkpoint_name,
+                "reportDir": str(target_report_dirs[key]),
+            }
+            for key in LOCAL_ED2K_REQUIRED_TARGETS
+        ]
+    server_exe = build_goed2k_server_exe(layout)
+    script = _ps_with_payload(
+        {
+            "win10": {
+                "target": "win10",
+                "vmName": config.targets["win10"].vm_name,
+                "tcpPort": 4662,
+                "udpPort": 4672,
+                "restPort": 4711,
+            },
+            "win11": {
+                "target": "win11",
+                "vmName": config.targets["win11"].vm_name,
+                "tcpPort": 4762,
+                "udpPort": 4772,
+                "restPort": 4711,
+            },
+            "checkpointName": config.hyperv.checkpoint_name,
+            "username": config.guest.username,
+            "password": resolve_guest_password(config),
+            "packageZip": str(package_zip),
+            "serverExe": str(server_exe),
+            "runnerPath": str(layout.tests_repo_root / "emule_test_harness" / "windows_vm_local_ed2k.py"),
+            "runId": run_id,
+            "hostReportDir": str(run_report_dir),
+            "keepRunning": keep_running,
+            "fixtureSizeBytes": fixture_size_bytes,
+            "apiKey": "vm-local-ed2k-api-key",
+            "adminToken": "vm-local-ed2k-admin-token",
+        },
+        _load_guest_local_ed2k_transfer_script(layout),
+    )
+    stdout = runner.run(script, label="Windows VM local ED2K transfer", capture_json=True)
+    payload = _parse_json_output(stdout, "Windows VM local ED2K transfer")
+    _write_json(run_report_dir / "local-ed2k-transfer-result.json", payload)
+    rows: list[dict[str, object]] = []
+    target_results = payload.get("targets", {})
+    for key in LOCAL_ED2K_REQUIRED_TARGETS:
+        target_payload = target_results.get(key, {}) if isinstance(target_results, dict) else {}
+        _write_json(target_report_dirs[key] / f"{key}-result.json", target_payload)
+        rows.append(
+            {
+                "target": key,
+                "vmName": config.targets[key].vm_name,
+                "status": target_payload.get("status", payload.get("status", "failed"))
+                if isinstance(target_payload, dict)
+                else payload.get("status", "failed"),
+                "checkpointName": config.hyperv.checkpoint_name,
+                "reportDir": str(target_report_dirs[key]),
+                "guest": target_payload.get("guest", {}) if isinstance(target_payload, dict) else {},
+                "checks": target_payload.get("checks", []) if isinstance(target_payload, dict) else [],
+                "errors": target_payload.get("errors", []) if isinstance(target_payload, dict) else [],
+            }
+        )
+    return rows
+
+
+def build_goed2k_server_exe(layout: WorkspaceLayout) -> Path:
+    """Builds the local ED2K server as a Windows executable for guest transfer tests."""
+
+    output_dir = layout.workspace_root / "state" / "tools" / "goed2k-server"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / "goed2k-server.exe"
+    go_exe = shutil.which("go")
+    if not go_exe:
+        raise RuntimeError("Go is required to build goed2k-server.exe for local-ed2k-transfer.")
+    completed = subprocess.run(
+        [go_exe, "build", "-o", str(output_path), "./cmd/goed2k-server"],
+        cwd=str(layout.ed2k_server_repo_root),
+        env={**os.environ, "GOOS": "windows", "GOARCH": "amd64", "CGO_ENABLED": "0"},
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        tail = completed.stderr.strip() or completed.stdout.strip()
+        raise RuntimeError(f"Building goed2k-server.exe failed with exit code {completed.returncode}.\n{tail}")
+    return output_path
+
+
+def ensure_python_installer(layout: WorkspaceLayout) -> Path:
+    """Downloads and verifies the official Python Windows installer for guest setup."""
+
+    output_path = python_installer_cache_path(layout)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if output_path.is_file() and _sha256(output_path).casefold() == PYTHON_INSTALLER_SHA256.casefold():
+        return output_path
+    if output_path.exists():
+        output_path.unlink()
+    with urllib.request.urlopen(PYTHON_INSTALLER_URL, timeout=120) as response:
+        with output_path.open("wb") as handle:
+            shutil.copyfileobj(response, handle)
+    actual = _sha256(output_path)
+    if actual.casefold() != PYTHON_INSTALLER_SHA256.casefold():
+        output_path.unlink(missing_ok=True)
+        raise RuntimeError(
+            f"Python installer SHA256 mismatch for {PYTHON_INSTALLER_URL}. "
+            f"Expected {PYTHON_INSTALLER_SHA256}, got {actual}."
+        )
+    return output_path
+
+
+def ensure_hide_me_installer(layout: WorkspaceLayout) -> Path:
+    """Downloads and verifies the official hide.me Windows installer for guest setup."""
+
+    output_path = hide_me_installer_cache_path(layout)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if output_path.is_file() and _is_trusted_hide_me_installer(output_path):
+        return output_path
+    if output_path.exists():
+        output_path.unlink()
+    final_url = _download_url_following_meta_refresh(HIDE_ME_INSTALLER_URL, output_path)
+    if not _is_trusted_hide_me_installer(output_path):
+        output_path.unlink(missing_ok=True)
+        raise RuntimeError(f"hide.me installer did not have a trusted Authenticode signature: {final_url}")
+    return output_path
+
+
+def ensure_pwsh_installer(layout: WorkspaceLayout) -> Path:
+    """Downloads and verifies the official PowerShell 7 Windows x64 MSI."""
+
+    output_path = pwsh_installer_cache_path(layout)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if output_path.is_file() and _is_trusted_pwsh_installer(output_path):
+        return output_path
+    if output_path.exists():
+        output_path.unlink()
+    asset = _latest_pwsh_win_x64_msi_asset()
+    with urllib.request.urlopen(asset["browser_download_url"], timeout=180) as response:
+        with output_path.open("wb") as handle:
+            shutil.copyfileobj(response, handle)
+    if not _is_trusted_pwsh_installer(output_path):
+        output_path.unlink(missing_ok=True)
+        raise RuntimeError(f"PowerShell installer did not have a trusted Authenticode signature: {asset['browser_download_url']}")
+    return output_path
+
+
+def ensure_dotnet_desktop_runtime_installer(layout: WorkspaceLayout) -> Path:
+    """Downloads and verifies the .NET Desktop Runtime required by hide.me."""
+
+    output_path = dotnet_desktop_runtime_cache_path(layout)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if output_path.is_file() and _is_trusted_dotnet_installer(output_path):
+        return output_path
+    if output_path.exists():
+        output_path.unlink()
+    with urllib.request.urlopen(DOTNET_DESKTOP_RUNTIME_URL, timeout=180) as response:
+        with output_path.open("wb") as handle:
+            shutil.copyfileobj(response, handle)
+    if not _is_trusted_dotnet_installer(output_path):
+        output_path.unlink(missing_ok=True)
+        raise RuntimeError(f".NET Desktop Runtime installer did not have a trusted Authenticode signature: {DOTNET_DESKTOP_RUNTIME_URL}")
+    return output_path
+
+
+def python_installer_cache_path(layout: WorkspaceLayout) -> Path:
+    """Returns the host cache path for the Python guest installer."""
+
+    return layout.workspace_root / "state" / "tools" / "python" / PYTHON_INSTALLER_FILE_NAME
+
+
+def hide_me_installer_cache_path(layout: WorkspaceLayout) -> Path:
+    """Returns the host cache path for the hide.me guest installer."""
+
+    return layout.workspace_root / "state" / "tools" / "hide-me" / HIDE_ME_INSTALLER_FILE_NAME
+
+
+def pwsh_installer_cache_path(layout: WorkspaceLayout) -> Path:
+    """Returns the host cache path for the PowerShell 7 guest installer."""
+
+    return layout.workspace_root / "state" / "tools" / "pwsh" / PWSH_INSTALLER_FILE_NAME
+
+
+def dotnet_desktop_runtime_cache_path(layout: WorkspaceLayout) -> Path:
+    """Returns the host cache path for the .NET Desktop Runtime guest installer."""
+
+    return layout.workspace_root / "state" / "tools" / "dotnet" / DOTNET_DESKTOP_RUNTIME_FILE_NAME
+
+
+def default_hide_me_settings_path() -> Path:
+    """Returns the default host hide.me settings file path."""
+
+    configured = os.environ.get(HIDE_ME_SETTINGS_PATH_ENV, "")
+    if configured:
+        return Path(configured).expanduser().resolve()
+    appdata = os.environ.get("APPDATA", "")
+    if appdata:
+        return (Path(appdata) / "Hide.me" / "vpn.settings").resolve()
+    return (Path.home() / "AppData" / "Roaming" / "Hide.me" / "vpn.settings").resolve()
+
+
+def resolve_hide_me_settings_path() -> Path:
+    """Returns the host hide.me settings file that should be copied into the guests."""
+
+    settings_path = default_hide_me_settings_path()
+    if not settings_path.is_file():
+        raise RuntimeError(
+            f"hide.me settings file is missing: {settings_path}. "
+            f"Set {HIDE_ME_SETTINGS_PATH_ENV} to the host vpn.settings path."
+        )
+    return settings_path
+
+
+def _is_trusted_hide_me_installer(path: Path) -> bool:
+    signature = _authenticode_signature(path)
+    if signature.get("Status") != "Valid":
+        return False
+    subject = str(signature.get("Subject", ""))
+    return any(token.casefold() in subject.casefold() for token in HIDE_ME_SIGNER_TOKENS)
+
+
+def _is_trusted_pwsh_installer(path: Path) -> bool:
+    signature = _authenticode_signature(path)
+    if signature.get("Status") != "Valid":
+        return False
+    subject = str(signature.get("Subject", ""))
+    return any(token.casefold() in subject.casefold() for token in PWSH_SIGNER_TOKENS)
+
+
+def _is_trusted_dotnet_installer(path: Path) -> bool:
+    signature = _authenticode_signature(path)
+    if signature.get("Status") != "Valid":
+        return False
+    subject = str(signature.get("Subject", ""))
+    return any(token.casefold() in subject.casefold() for token in DOTNET_SIGNER_TOKENS)
+
+
+def _latest_pwsh_win_x64_msi_asset() -> dict[str, str]:
+    request = urllib.request.Request(PWSH_RELEASE_API_URL, headers={"Accept": "application/vnd.github+json"})
+    with urllib.request.urlopen(request, timeout=60) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    assets = payload.get("assets", [])
+    if not isinstance(assets, list):
+        raise RuntimeError("PowerShell latest release API did not return an asset list.")
+    candidates: list[dict[str, str]] = []
+    for asset in assets:
+        if not isinstance(asset, dict):
+            continue
+        name = str(asset.get("name", ""))
+        download_url = str(asset.get("browser_download_url", ""))
+        if re.fullmatch(r"PowerShell-\d+\.\d+\.\d+-win-x64\.msi", name) and download_url:
+            candidates.append({"name": name, "browser_download_url": download_url})
+    if not candidates:
+        raise RuntimeError("PowerShell latest release did not include a stable win-x64 MSI asset.")
+    return sorted(candidates, key=lambda item: item["name"], reverse=True)[0]
+
+
+def _authenticode_signature(path: Path) -> dict[str, object]:
+    executable = shutil.which("powershell.exe") or shutil.which("powershell") or "powershell.exe"
+    script = (
+        "$signature = Get-AuthenticodeSignature -LiteralPath "
+        + json.dumps(str(path))
+        + "; [pscustomobject]@{ Status = $signature.Status.ToString(); "
+        + "Subject = $signature.SignerCertificate.Subject } | ConvertTo-Json -Compress"
+    )
+    completed = subprocess.run(
+        [executable, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
+        env=_powershell_subprocess_env(executable),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        return {}
+    try:
+        payload = json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _download_url_following_meta_refresh(url: str, output_path: Path) -> str:
+    """Downloads a URL, following simple HTML meta-refresh download redirects."""
+
+    current_url = url
+    for _ in range(4):
+        with urllib.request.urlopen(current_url, timeout=120) as response:
+            content_type = response.headers.get("Content-Type", "")
+            payload = response.read()
+        if _looks_like_html_download_page(content_type, payload):
+            next_url = _extract_meta_refresh_url(payload.decode("utf-8", errors="ignore"))
+            if next_url:
+                current_url = urllib.parse.urljoin(current_url, next_url)
+                continue
+        output_path.write_bytes(payload)
+        return current_url
+    raise RuntimeError(f"Too many meta-refresh redirects while downloading {url}.")
+
+
+def _looks_like_html_download_page(content_type: str, payload: bytes) -> bool:
+    head = payload[:2048].lstrip().lower()
+    return "text/html" in content_type.casefold() or head.startswith(b"<!doctype html") or b"<html" in head
+
+
+def _extract_meta_refresh_url(html: str) -> str | None:
+    for match in re.finditer(r"<meta\b[^>]*>", html, flags=re.IGNORECASE):
+        tag = match.group(0)
+        if "refresh" not in tag.casefold():
+            continue
+        url_match = re.search(r"url\s*=\s*([^\"'>\s;]+)", tag, flags=re.IGNORECASE)
+        if url_match:
+            return url_match.group(1).strip()
+    return None
 
 
 def _prepare_vm_target_script() -> str:
@@ -627,10 +1025,219 @@ do {
     if ((Get-Date) -gt $deadline) { throw }
   }
 } while ((Get-Date) -lt $deadline)
-Invoke-Command -VMName $payload.vmName -Credential $credential -ScriptBlock {
+$session = New-PSSession -VMName $payload.vmName -Credential $credential
+try {
+  Invoke-Command -Session $session -ScriptBlock {
+    New-Item -ItemType Directory -Force -Path C:\eMuleBBVmTest | Out-Null
+  } | Out-Null
+  Copy-Item -ToSession $session -Path $payload.pythonInstallerPath -Destination 'C:\eMuleBBVmTest\python-installer.exe'
+  Copy-Item -ToSession $session -Path $payload.hideMeInstallerPath -Destination 'C:\eMuleBBVmTest\hide-me-installer.exe'
+  Copy-Item -ToSession $session -Path $payload.pwshInstallerPath -Destination 'C:\eMuleBBVmTest\pwsh-installer.msi'
+  Copy-Item -ToSession $session -Path $payload.dotnetDesktopRuntimePath -Destination 'C:\eMuleBBVmTest\dotnet-desktop-runtime.exe'
+  Copy-Item -ToSession $session -Path $payload.hideMeSettingsPath -Destination 'C:\eMuleBBVmTest\hide-me-vpn.settings'
+  Invoke-Command -Session $session -ScriptBlock {
+  param($pythonInstallerSha256, $pythonInstallDir, $hideMeInstallDir, $pwshInstallDir, $dotnetDesktopRuntimeDir, $guestUsername, $guestPassword)
+  function Add-LabDefenderExclusion {
+    param([string] $Path)
+    if (Test-Path -LiteralPath $Path) {
+      try { Add-MpPreference -ExclusionPath $Path -ErrorAction Stop } catch {}
+    }
+  }
+
+  function Disable-LabScheduledTask {
+    param([string] $TaskPath, [string] $TaskName)
+    try { Disable-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -ErrorAction Stop | Out-Null } catch {}
+  }
+
+  function Set-LabLeanBaseline {
+    param([string] $PythonPath, [string] $HideMePath, [string] $Username, [string] $Password)
+    Set-LabAutoLogin -Username $Username -Password $Password
+    Set-LabNoLock
+    Remove-LabAppxBloat
+    Add-LabDefenderExclusion -Path 'C:\eMuleBBVmTest'
+    Add-LabDefenderExclusion -Path $PythonPath
+    Add-LabDefenderExclusion -Path $HideMePath
+    try { Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction Stop } catch {}
+    try { Set-MpPreference -DisableArchiveScanning $true -MAPSReporting Disabled -SubmitSamplesConsent NeverSend -ErrorAction Stop } catch {}
+    foreach ($serviceName in @(
+      'SysMain', 'WSearch', 'DiagTrack', 'DoSvc', 'WaaSMedicSvc', 'WerSvc',
+      'RetailDemo', 'MapsBroker', 'lfsvc', 'WMPNetworkSvc', 'RemoteRegistry',
+      'Fax', 'Spooler', 'BTAGService', 'bthserv', 'PhoneSvc', 'WalletService',
+      'WbioSrvc', 'TabletInputService', 'XblAuthManager', 'XblGameSave',
+      'XboxGipSvc', 'XboxNetApiSvc', 'dmwappushservice', 'PcaSvc',
+      'CDPSvc', 'CDPUserSvc_*', 'PimIndexMaintenanceSvc_*', 'OneSyncSvc_*',
+      'UnistoreSvc_*', 'UserDataSvc_*', 'MessagingService_*'
+    )) {
+      foreach ($service in Get-Service -Name $serviceName -ErrorAction SilentlyContinue) {
+        try { Stop-Service -Name $service.Name -Force -ErrorAction SilentlyContinue } catch {}
+        try { Set-Service -Name $service.Name -StartupType Disabled -ErrorAction Stop } catch {}
+        try { sc.exe config $service.Name start= disabled | Out-Null } catch {}
+      }
+    }
+    Disable-LabScheduledTask -TaskPath '\Microsoft\Windows\Application Experience\' -TaskName 'Microsoft Compatibility Appraiser'
+    Disable-LabScheduledTask -TaskPath '\Microsoft\Windows\Application Experience\' -TaskName 'ProgramDataUpdater'
+    Disable-LabScheduledTask -TaskPath '\Microsoft\Windows\Application Experience\' -TaskName 'StartupAppTask'
+    Disable-LabScheduledTask -TaskPath '\Microsoft\Windows\Autochk\' -TaskName 'Proxy'
+    Disable-LabScheduledTask -TaskPath '\Microsoft\Windows\Customer Experience Improvement Program\' -TaskName 'Consolidator'
+    Disable-LabScheduledTask -TaskPath '\Microsoft\Windows\Customer Experience Improvement Program\' -TaskName 'UsbCeip'
+    Disable-LabScheduledTask -TaskPath '\Microsoft\Windows\Windows Error Reporting\' -TaskName 'QueueReporting'
+    Disable-LabScheduledTask -TaskPath '\Microsoft\Windows\Maps\' -TaskName 'MapsToastTask'
+    Disable-LabScheduledTask -TaskPath '\Microsoft\Windows\Maps\' -TaskName 'MapsUpdateTask'
+    Disable-LabScheduledTask -TaskPath '\Microsoft\Windows\Feedback\Siuf\' -TaskName 'DmClient'
+    Disable-LabScheduledTask -TaskPath '\Microsoft\Windows\Feedback\Siuf\' -TaskName 'DmClientOnScenarioDownload'
+    try { powercfg.exe /hibernate off | Out-Null } catch {}
+    try { powercfg.exe /setactive SCHEME_MIN | Out-Null } catch {}
+    try { powercfg.exe /change monitor-timeout-ac 0 | Out-Null } catch {}
+    try { powercfg.exe /change standby-timeout-ac 0 | Out-Null } catch {}
+    try { powercfg.exe /change disk-timeout-ac 0 | Out-Null } catch {}
+    try {
+      New-Item -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' -Force | Out-Null
+      New-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' -Name DisableWindowsConsumerFeatures -PropertyType DWord -Value 1 -Force | Out-Null
+    } catch {}
+    try {
+      New-Item -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection' -Force | Out-Null
+      New-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection' -Name AllowTelemetry -PropertyType DWord -Value 0 -Force | Out-Null
+    } catch {}
+  }
+
+  function Set-LabAutoLogin {
+    param([string] $Username, [string] $Password)
+    $winlogon = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
+    New-ItemProperty -Path $winlogon -Name AutoAdminLogon -PropertyType String -Value '1' -Force | Out-Null
+    New-ItemProperty -Path $winlogon -Name ForceAutoLogon -PropertyType String -Value '1' -Force | Out-Null
+    New-ItemProperty -Path $winlogon -Name DefaultUserName -PropertyType String -Value $Username -Force | Out-Null
+    New-ItemProperty -Path $winlogon -Name DefaultPassword -PropertyType String -Value $Password -Force | Out-Null
+    New-ItemProperty -Path $winlogon -Name DefaultDomainName -PropertyType String -Value $env:COMPUTERNAME -Force | Out-Null
+  }
+
+  function Set-LabNoLock {
+    try {
+      New-Item -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization' -Force | Out-Null
+      New-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization' -Name NoLockScreen -PropertyType DWord -Value 1 -Force | Out-Null
+    } catch {}
+    try {
+      New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -Name InactivityTimeoutSecs -PropertyType DWord -Value 0 -Force | Out-Null
+    } catch {}
+    try {
+      New-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name ScreenSaveActive -PropertyType String -Value '0' -Force | Out-Null
+      New-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name ScreenSaverIsSecure -PropertyType String -Value '0' -Force | Out-Null
+      New-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name ScreenSaveTimeOut -PropertyType String -Value '0' -Force | Out-Null
+    } catch {}
+  }
+
+  function Remove-LabAppxBloat {
+    $pattern = 'Xbox|Bing|Zune|Clipchamp|Teams|Solitaire|Todos|Weather|GetHelp|Getstarted|YourPhone|3DViewer|MixedReality|People|Skype|OfficeHub|FeedbackHub'
+    try {
+      Get-AppxPackage -AllUsers | Where-Object { $_.Name -match $pattern } | ForEach-Object {
+        try { Remove-AppxPackage -Package $_.PackageFullName -AllUsers -ErrorAction Stop } catch {}
+      }
+    } catch {}
+    try {
+      Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -match $pattern } | ForEach-Object {
+        try { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName -ErrorAction Stop | Out-Null } catch {}
+      }
+    } catch {}
+  }
+
+  function Install-HideMe {
+    param([string] $InstallDir, [string] $Username)
+    $installer = 'C:\eMuleBBVmTest\hide-me-installer.exe'
+    $hideMeExe = Join-Path $InstallDir 'Hide.me.exe'
+    if (-not (Test-Path -LiteralPath $hideMeExe -PathType Leaf)) {
+      $startInfo = [Diagnostics.ProcessStartInfo]::new()
+      $startInfo.FileName = $installer
+      $startInfo.Arguments = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-'
+      $startInfo.UseShellExecute = $false
+      $process = [Diagnostics.Process]::Start($startInfo)
+      $process.WaitForExit()
+      if ($process.ExitCode -notin @(0, 3010)) {
+        throw ('hide.me installer failed with exit code ' + $process.ExitCode)
+      }
+      Get-Process -Name 'Hide.me' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    }
+    $programFilesX86 = [Environment]::GetFolderPath('ProgramFilesX86')
+    $programFiles = [Environment]::GetFolderPath('ProgramFiles')
+    $candidates = @(
+      $hideMeExe,
+      (Join-Path $programFilesX86 'hide.me VPN\Hide.me.exe'),
+      (Join-Path $programFiles 'hide.me VPN\Hide.me.exe')
+    )
+    $resolvedExe = $candidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+    if (-not $resolvedExe) {
+      throw 'hide.me executable was not found after installation.'
+    }
+    $settingsDir = Join-Path (Join-Path (Join-Path 'C:\Users' $Username) 'AppData\Roaming') 'Hide.me'
+    New-Item -ItemType Directory -Force -Path $settingsDir | Out-Null
+    Copy-Item -LiteralPath 'C:\eMuleBBVmTest\hide-me-vpn.settings' -Destination (Join-Path $settingsDir 'vpn.settings') -Force
+  }
+
+  function Install-Pwsh {
+    param([string] $InstallDir)
+    $pwshExe = Join-Path $InstallDir 'pwsh.exe'
+    if (-not (Test-Path -LiteralPath $pwshExe -PathType Leaf)) {
+      $arguments = @(
+        '/i',
+        'C:\eMuleBBVmTest\pwsh-installer.msi',
+        '/qn',
+        '/norestart',
+        'ADD_PATH=1',
+        'REGISTER_MANIFEST=1',
+        'ENABLE_PSREMOTING=1',
+        'USE_MU=0',
+        'ENABLE_MU=0'
+      )
+      $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $arguments -Wait -PassThru
+      if ($process.ExitCode -notin @(0, 3010)) {
+        throw ('PowerShell 7 installer failed with exit code ' + $process.ExitCode)
+      }
+    }
+    & $pwshExe -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()' | Out-Null
+  }
+
+  function Install-DotNetDesktopRuntime {
+    param([string] $RuntimeDir)
+    if (-not (Test-Path -LiteralPath $RuntimeDir -PathType Container)) {
+      $process = Start-Process -FilePath 'C:\eMuleBBVmTest\dotnet-desktop-runtime.exe' -ArgumentList @('/install', '/quiet', '/norestart') -Wait -PassThru
+      if ($process.ExitCode -notin @(0, 3010)) {
+        throw ('.NET Desktop Runtime installer failed with exit code ' + $process.ExitCode)
+      }
+    }
+    if (-not (Test-Path -LiteralPath $RuntimeDir -PathType Container)) {
+      throw ('.NET Desktop Runtime was not found after installation: ' + $RuntimeDir)
+    }
+  }
+
   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine -Force
   New-Item -ItemType Directory -Force -Path C:\eMuleBBVmTest | Out-Null
-} | Out-Null
+  $pythonExe = Join-Path $pythonInstallDir 'python.exe'
+  if (-not (Test-Path -LiteralPath $pythonExe -PathType Leaf)) {
+    $installer = 'C:\eMuleBBVmTest\python-installer.exe'
+    $actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash.ToLowerInvariant()
+    if ($actualHash -ne $pythonInstallerSha256) {
+      throw ('Python installer SHA256 mismatch. Expected ' + $pythonInstallerSha256 + ', got ' + $actualHash)
+    }
+    $process = Start-Process -FilePath $installer -ArgumentList @(
+      '/quiet',
+      'InstallAllUsers=1',
+      'PrependPath=1',
+      'Include_pip=1',
+      'Include_test=0',
+      ('TargetDir=' + $pythonInstallDir)
+    ) -Wait -PassThru
+    if ($process.ExitCode -ne 0) {
+      throw ('Python installer failed with exit code ' + $process.ExitCode)
+    }
+  }
+  & $pythonExe -m pip --version | Out-Null
+  Install-Pwsh -InstallDir $pwshInstallDir
+  Install-DotNetDesktopRuntime -RuntimeDir $dotnetDesktopRuntimeDir
+  Install-HideMe -InstallDir $hideMeInstallDir -Username $guestUsername
+  Set-LabLeanBaseline -PythonPath $pythonInstallDir -HideMePath $hideMeInstallDir -Username $guestUsername -Password $guestPassword
+  } -ArgumentList $payload.pythonInstallerSha256, $payload.pythonInstallDir, $payload.hideMeInstallDir, $payload.pwshInstallDir, $payload.dotnetDesktopRuntimeDir, $payload.username, $payload.password | Out-Null
+}
+finally {
+  if ($session) { Remove-PSSession $session }
+}
 Stop-VM -Name $payload.vmName -Force
 Checkpoint-VM -Name $payload.vmName -SnapshotName $payload.checkpointName
 """
@@ -653,6 +1260,26 @@ def _load_guest_package_smoke_script(layout: WorkspaceLayout) -> str:
     script = script_factory()
     if not isinstance(script, str) or not script.strip():
         raise RuntimeError(f"Windows VM guest harness package_smoke_script() returned an empty script: {module_path}")
+    return script
+
+
+def _load_guest_local_ed2k_transfer_script(layout: WorkspaceLayout) -> str:
+    """Loads the guest local-ED2K transfer script template owned by emulebb-build-tests."""
+
+    module_path = layout.tests_repo_root / "emule_test_harness" / "windows_vm_guest.py"
+    if not module_path.is_file():
+        raise RuntimeError(f"Windows VM guest harness module is missing: {module_path}")
+    spec = importlib.util.spec_from_file_location("emulebb_windows_vm_guest", module_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load Windows VM guest harness module: {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    script_factory = getattr(module, "local_ed2k_transfer_script", None)
+    if not callable(script_factory):
+        raise RuntimeError(f"Windows VM guest harness module is missing local_ed2k_transfer_script(): {module_path}")
+    script = script_factory()
+    if not isinstance(script, str) or not script.strip():
+        raise RuntimeError(f"Windows VM guest harness local_ed2k_transfer_script() returned an empty script: {module_path}")
     return script
 
 
@@ -689,6 +1316,16 @@ def _parse_target(config_path: Path, key: str, raw: object) -> VmTargetSettings:
         iso_path=Path(_required_string(raw, "iso_path")).expanduser().resolve(),
         edition=_required_string(raw, "edition"),
     )
+
+
+def resolve_guest_password(config: VmLabConfig) -> str:
+    """Returns the configured guest password from environment or local config."""
+
+    if config.guest.password_env:
+        value = os.environ.get(config.guest.password_env, "")
+        if value:
+            return value
+    return config.guest.password
 
 
 def _ps_with_payload(payload: dict[str, object], body: str) -> str:
@@ -759,7 +1396,7 @@ def _required_string(payload: dict[str, Any], key: str) -> str:
 
 def _optional_string(payload: dict[str, Any], key: str, default: str) -> str:
     value = payload.get(key, default)
-    if not isinstance(value, str) or not value.strip():
+    if not isinstance(value, str) or (default and not value.strip()):
         raise RuntimeError(f"Windows VM lab config field {key!r} must be a non-empty string.")
     return value.strip()
 
