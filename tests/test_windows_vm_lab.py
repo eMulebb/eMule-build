@@ -38,6 +38,7 @@ def _write_config(path: Path) -> None:
                 "schema": windows_vm_lab.VM_LAB_SCHEMA,
                 "hyperv": {
                     "switch_name": "emulebb-test-switch",
+                    "vpn_switch_name": "emulebb-test-vpn-switch",
                     "checkpoint_name": "emulebb-clean",
                     "memory_mb": 2048,
                     "disk_gb": 40,
@@ -81,6 +82,7 @@ def test_load_vm_lab_config_resolves_targets(tmp_path: Path) -> None:
 
     assert config.config_path == config_path.resolve()
     assert config.hyperv.switch_name == "emulebb-test-switch"
+    assert config.hyperv.vpn_switch_name == "emulebb-test-vpn-switch"
     assert config.hyperv.memory_mb == 2048
     assert config.guest.password_env == "EMULEBB_TEST_VM_PASSWORD"
     assert config.guest.password == "a"
@@ -293,6 +295,47 @@ def test_windows_vm_local_ed2k_transfer_requires_both_targets(tmp_path: Path) ->
                 config_file=str(config_path),
                 profile="local-ed2k-transfer",
                 matrix=("win11",),
+                skip_build=True,
+                dry_run=True,
+            ),
+        )
+
+
+def test_windows_vm_hideme_live_wire_dry_run_plans_both_targets(tmp_path: Path) -> None:
+    layout = _layout(tmp_path)
+    config_path = layout.build_repo_root / "vm-lab.local.json"
+    _write_config(config_path)
+
+    result = windows_vm_lab.invoke_windows_vm_tests(
+        layout,
+        _workspace_options(tmp_path),
+        windows_vm_lab.WindowsVmTestOptions(
+            config_file=str(config_path),
+            profile="hideme-live-wire",
+            matrix=("win10", "win11"),
+            skip_build=True,
+            dry_run=True,
+        ),
+    )
+
+    assert result["status"] == "planned"
+    assert result["profile"] == "hideme-live-wire"
+    assert [target["target"] for target in result["targets"]] == ["win10", "win11"]
+
+
+def test_windows_vm_hideme_live_wire_requires_both_targets(tmp_path: Path) -> None:
+    layout = _layout(tmp_path)
+    config_path = layout.build_repo_root / "vm-lab.local.json"
+    _write_config(config_path)
+
+    with pytest.raises(RuntimeError, match="requires --matrix win10,win11"):
+        windows_vm_lab.invoke_windows_vm_tests(
+            layout,
+            _workspace_options(tmp_path),
+            windows_vm_lab.WindowsVmTestOptions(
+                config_file=str(config_path),
+                profile="hideme-live-wire",
+                matrix=("win10",),
                 skip_build=True,
                 dry_run=True,
             ),

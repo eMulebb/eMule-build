@@ -24,6 +24,7 @@ VM_LAB_SCHEMA = "emulebb.windows-vm-lab.v1"
 DEFAULT_CONFIG_FILE_NAME = "vm-lab.local.json"
 EXAMPLE_CONFIG_FILE_NAME = "vm-lab.example.json"
 DEFAULT_SWITCH_NAME = "emulebb-vm-private"
+DEFAULT_VPN_SWITCH_NAME = "emulebb-vm-external"
 DEFAULT_CHECKPOINT_NAME = "emulebb-clean"
 DEFAULT_GUEST_USERNAME = "emulebbtest"
 DEFAULT_GUEST_PASSWORD_ENV = "EMULEBB_VM_TEST_PASSWORD"
@@ -34,8 +35,9 @@ WINDOWS_VM_SUITE_NAME = "windows-vm"
 WINDOWS_VM_RESULT_FILE_NAME = "windows-vm-result.json"
 WINDOWS_VM_SUMMARY_FILE_NAME = "windows-vm-summary.json"
 SUPPORTED_TARGETS = ("win10", "win11")
-SUPPORTED_TEST_PROFILES = ("package-smoke", "local-ed2k-transfer")
+SUPPORTED_TEST_PROFILES = ("package-smoke", "local-ed2k-transfer", "hideme-live-wire")
 LOCAL_ED2K_REQUIRED_TARGETS = ("win10", "win11")
+HIDEME_LIVE_REQUIRED_TARGETS = ("win10", "win11")
 PYTHON_INSTALLER_URL = "https://www.python.org/ftp/python/3.13.13/python-3.13.13-amd64.exe"
 PYTHON_INSTALLER_SHA256 = "3c9c81d80f91c002ced86d645422d81432c68c7d9b6b0e974768ca2e449a4d00"
 PYTHON_INSTALLER_FILE_NAME = "python-3.13.13-amd64.exe"
@@ -63,6 +65,7 @@ class HyperVLabSettings:
     """Hyper-V resources used by the VM lab."""
 
     switch_name: str = DEFAULT_SWITCH_NAME
+    vpn_switch_name: str = DEFAULT_VPN_SWITCH_NAME
     checkpoint_name: str = DEFAULT_CHECKPOINT_NAME
     memory_mb: int = DEFAULT_MEMORY_MB
     disk_gb: int = DEFAULT_DISK_GB
@@ -212,6 +215,7 @@ def load_vm_lab_config(layout: WorkspaceLayout, config_file: str | None = None) 
     raw_targets = _required_object(payload, "targets")
     hyperv = HyperVLabSettings(
         switch_name=_optional_string(raw_hyperv, "switch_name", DEFAULT_SWITCH_NAME),
+        vpn_switch_name=_optional_string(raw_hyperv, "vpn_switch_name", DEFAULT_VPN_SWITCH_NAME),
         checkpoint_name=_optional_string(raw_hyperv, "checkpoint_name", DEFAULT_CHECKPOINT_NAME),
         memory_mb=_optional_positive_int(raw_hyperv, "memory_mb", DEFAULT_MEMORY_MB),
         disk_gb=_optional_positive_int(raw_hyperv, "disk_gb", DEFAULT_DISK_GB),
@@ -285,6 +289,8 @@ def invoke_windows_vm_tests(
     matrix = parse_matrix(options.matrix)
     if options.profile == "local-ed2k-transfer" and tuple(matrix) != LOCAL_ED2K_REQUIRED_TARGETS:
         raise RuntimeError("local-ed2k-transfer requires --matrix win10,win11.")
+    if options.profile == "hideme-live-wire" and tuple(matrix) != HIDEME_LIVE_REQUIRED_TARGETS:
+        raise RuntimeError("hideme-live-wire requires --matrix win10,win11.")
     runner = PowerShellRunner(cwd=layout.emule_workspace_root, dry_run=options.dry_run)
     preflight_hyperv(config, runner=runner, require_password=not options.dry_run)
     if not options.skip_build and not options.dry_run:
@@ -310,6 +316,16 @@ def invoke_windows_vm_tests(
             run_report_dir=run_report_dir,
             keep_running=options.keep_running,
             fixture_size_bytes=options.fixture_size_bytes,
+            runner=runner,
+        )
+    elif options.profile == "hideme-live-wire":
+        rows = run_windows_vm_hideme_live_wire(
+            layout,
+            config,
+            package_zip=package_zip,
+            run_id=run_id,
+            run_report_dir=run_report_dir,
+            keep_running=options.keep_running,
             runner=runner,
         )
     else:
@@ -615,6 +631,90 @@ def run_windows_vm_local_ed2k_transfer(
                 "checkpointName": config.hyperv.checkpoint_name,
                 "reportDir": str(target_report_dirs[key]),
                 "guest": target_payload.get("guest", {}) if isinstance(target_payload, dict) else {},
+                "checks": target_payload.get("checks", []) if isinstance(target_payload, dict) else [],
+                "errors": target_payload.get("errors", []) if isinstance(target_payload, dict) else [],
+            }
+        )
+    return rows
+
+
+def run_windows_vm_hideme_live_wire(
+    layout: WorkspaceLayout,
+    config: VmLabConfig,
+    *,
+    package_zip: Path,
+    run_id: str,
+    run_report_dir: Path,
+    keep_running: bool,
+    runner: PowerShellRunner,
+) -> list[dict[str, object]]:
+    """Runs one real hide.me live-wire scenario on win10 and win11."""
+
+    target_report_dirs = {
+        key: run_report_dir / key
+        for key in HIDEME_LIVE_REQUIRED_TARGETS
+    }
+    for directory in target_report_dirs.values():
+        directory.mkdir(parents=True, exist_ok=True)
+    if runner.dry_run:
+        return [
+            {
+                "target": key,
+                "vmName": config.targets[key].vm_name,
+                "status": "planned",
+                "checkpointName": config.hyperv.checkpoint_name,
+                "reportDir": str(target_report_dirs[key]),
+            }
+            for key in HIDEME_LIVE_REQUIRED_TARGETS
+        ]
+    script = _ps_with_payload(
+        {
+            "win10": {
+                "target": "win10",
+                "vmName": config.targets["win10"].vm_name,
+                "tcpPort": 4862,
+                "udpPort": 4872,
+                "restPort": 4711,
+            },
+            "win11": {
+                "target": "win11",
+                "vmName": config.targets["win11"].vm_name,
+                "tcpPort": 4962,
+                "udpPort": 4972,
+                "restPort": 4711,
+            },
+            "checkpointName": config.hyperv.checkpoint_name,
+            "vpnSwitchName": config.hyperv.vpn_switch_name,
+            "username": config.guest.username,
+            "password": resolve_guest_password(config),
+            "packageZip": str(package_zip),
+            "runnerPath": str(layout.tests_repo_root / "emule_test_harness" / "windows_vm_hideme_live.py"),
+            "runId": run_id,
+            "hostReportDir": str(run_report_dir),
+            "keepRunning": keep_running,
+            "apiKey": "vm-hideme-live-api-key",
+        },
+        _load_guest_hideme_live_wire_script(layout),
+    )
+    stdout = runner.run(script, label="Windows VM hide.me live-wire", capture_json=True)
+    payload = _parse_json_output(stdout, "Windows VM hide.me live-wire")
+    _write_json(run_report_dir / "hideme-live-wire-result.json", payload)
+    rows: list[dict[str, object]] = []
+    target_results = payload.get("targets", {})
+    for key in HIDEME_LIVE_REQUIRED_TARGETS:
+        target_payload = target_results.get(key, {}) if isinstance(target_results, dict) else {}
+        _write_json(target_report_dirs[key] / f"{key}-result.json", target_payload)
+        rows.append(
+            {
+                "target": key,
+                "vmName": config.targets[key].vm_name,
+                "status": target_payload.get("status", payload.get("status", "failed"))
+                if isinstance(target_payload, dict)
+                else payload.get("status", "failed"),
+                "checkpointName": config.hyperv.checkpoint_name,
+                "reportDir": str(target_report_dirs[key]),
+                "guest": target_payload.get("guest", {}) if isinstance(target_payload, dict) else {},
+                "vpn": target_payload.get("vpn", {}) if isinstance(target_payload, dict) else {},
                 "checks": target_payload.get("checks", []) if isinstance(target_payload, dict) else [],
                 "errors": target_payload.get("errors", []) if isinstance(target_payload, dict) else [],
             }
@@ -1313,6 +1413,26 @@ def _load_guest_local_ed2k_transfer_script(layout: WorkspaceLayout) -> str:
     script = script_factory()
     if not isinstance(script, str) or not script.strip():
         raise RuntimeError(f"Windows VM guest harness local_ed2k_transfer_script() returned an empty script: {module_path}")
+    return script
+
+
+def _load_guest_hideme_live_wire_script(layout: WorkspaceLayout) -> str:
+    """Loads the guest hide.me live-wire script template owned by emulebb-build-tests."""
+
+    module_path = layout.tests_repo_root / "emule_test_harness" / "windows_vm_guest.py"
+    if not module_path.is_file():
+        raise RuntimeError(f"Windows VM guest harness module is missing: {module_path}")
+    spec = importlib.util.spec_from_file_location("emulebb_windows_vm_guest", module_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load Windows VM guest harness module: {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    script_factory = getattr(module, "hideme_live_wire_script", None)
+    if not callable(script_factory):
+        raise RuntimeError(f"Windows VM guest harness module is missing hideme_live_wire_script(): {module_path}")
+    script = script_factory()
+    if not isinstance(script, str) or not script.strip():
+        raise RuntimeError(f"Windows VM guest harness hideme_live_wire_script() returned an empty script: {module_path}")
     return script
 
 
