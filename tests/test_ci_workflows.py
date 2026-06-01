@@ -39,15 +39,13 @@ def test_reusable_workspace_command_keeps_hyperv_local_only() -> None:
 def test_build_baseline_uses_supported_reusable_inputs() -> None:
     workflow = _repo_root() / ".github" / "workflows" / "baseline.yml"
     text = workflow.read_text(encoding="utf-8")
-    script = _repo_root() / ".github" / "scripts" / "baseline-extra.cmd"
-    script_text = script.read_text(encoding="utf-8")
 
     assert "uses: emulebb/emulebb-tooling/.github/workflows/reusable-baseline.yml@main" in text
     assert "repo_kind: emulebb-build" in text
-    assert "extra_commands:" not in text
-    assert "extra_step_script: .github\\scripts\\baseline-extra.cmd" in text
-    assert "python -m pip install -e .[dev]" in script_text
-    assert "python -m pytest" in script_text
+    assert "extra_step_script:" not in text
+    assert "extra_commands:" in text
+    assert "python -m pip install -e .[dev]" in text
+    assert "python -m pytest" in text
 
 
 def test_controlled_smoke_uses_reusable_core_offline_and_lan_suite() -> None:

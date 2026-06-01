@@ -10,5 +10,7 @@ jobs:
     with:
       policy_path: manifests/privacy-guard/policy.v1.json
       repo_kind: emulebb-build
-      extra_step_script: .github\scripts\baseline-extra.cmd
+      extra_commands: |
+        python -m pip install -e .[dev]
+        python -m pytest
       tooling_ref: main
