@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from . import suite_installer
-from .build import APP_EXE_NAME
+from .build import APP_EXE_NAME, app_pdb_name_for_exe, package_app_exe_name
 from .config import AmutorrentPackageOptions, LocalPackageInstallOptions, ReleasePackageOptions, WorkspaceOptions
 from .layout import WorkspaceLayout, file_token
 from .release import (
@@ -86,6 +86,8 @@ class InstallArtifacts:
     package_exe: Path
     package_pdb: Path
     arch: str
+    executable_name: str = APP_EXE_NAME
+    package_flavor: str = "standard"
     installer_script: Path | None = None
 
 
@@ -185,7 +187,7 @@ def _materialize_local_install_from_config(
             AmutorrentPackageOptions(release_version=options.release_version, clean=options.clean),
         )
 
-    artifacts = resolve_install_artifacts(layout, workspace_options, options.release_version)
+    artifacts = resolve_install_artifacts(layout, workspace_options, options.release_version, package_flavor=options.package_flavor)
     installer_path = suite_installer.extract_packaged_installer(
         package_zip=artifacts.emule_zip,
         install_root=config.target_path,
@@ -196,7 +198,7 @@ def _materialize_local_install_from_config(
     profile_dir = suite_profile_dir(config)
     rest_config = prepare_profile_preferences(config, profile_dir)
     deploy_local_install(layout, config, rest_config, artifacts, options.release_version)
-    return materialized_local_install_from_config(config)
+    return materialized_local_install_from_config(config, executable_name=artifacts.executable_name)
 
 
 def load_local_install_config(layout: WorkspaceLayout, raw_inputs_path: str | None) -> LocalInstallConfig:
@@ -264,23 +266,34 @@ def resolve_install_artifacts(
     layout: WorkspaceLayout,
     workspace_options: WorkspaceOptions,
     release_version: str,
+    *,
+    package_flavor: str = "standard",
 ) -> InstallArtifacts:
     """Returns the release artifacts and private symbols used by the installer."""
 
     arch = "arm64" if workspace_options.platform == "ARM64" else "x64"
     release_root = layout.workspace_root / "state" / "release" / f"emulebb-v{release_version}"
-    package_build_root = layout.workspace_root / "state" / "package-build" / f"emulebb-v{release_version}" / arch / "app"
+    if package_flavor not in {"standard", "diagnostics"}:
+        raise RuntimeError(f"Unsupported eMuleBB package flavor: {package_flavor}")
+    flavor_asset_suffix = "" if package_flavor == "standard" else f"-{package_flavor}"
+    executable_name = package_app_exe_name(package_flavor)
+    pdb_name = app_pdb_name_for_exe(executable_name)
+    package_build_root = (
+        layout.workspace_root / "state" / "package-build" / f"emulebb-v{release_version}" / arch / package_flavor / "app"
+    )
     artifacts = InstallArtifacts(
         release_root=release_root,
-        emule_zip=release_root / f"emulebb-{release_version}-{arch}.zip",
+        emule_zip=release_root / f"emulebb-{release_version}{flavor_asset_suffix}-{arch}.zip",
         amutorrent_zip=release_root / f"emulebb-{release_version}-amutorrent-{arch}.zip",
-        emule_manifest=release_root / f"emulebb-{release_version}-{arch}.manifest.json",
-        emule_sbom=release_root / f"emulebb-{release_version}-{arch}.sbom.spdx.json",
+        emule_manifest=release_root / f"emulebb-{release_version}{flavor_asset_suffix}-{arch}.manifest.json",
+        emule_sbom=release_root / f"emulebb-{release_version}{flavor_asset_suffix}-{arch}.sbom.spdx.json",
         amutorrent_manifest=release_root / f"emulebb-{release_version}-amutorrent-{arch}.manifest.json",
         amutorrent_sbom=release_root / f"emulebb-{release_version}-amutorrent-{arch}.sbom.spdx.json",
-        package_exe=package_build_root / APP_EXE_NAME,
-        package_pdb=package_build_root / "emulebb.pdb",
+        package_exe=package_build_root / executable_name,
+        package_pdb=package_build_root / pdb_name,
         arch=arch,
+        executable_name=executable_name,
+        package_flavor=package_flavor,
     )
     missing = [
         path
@@ -335,6 +348,7 @@ def suite_profile_dir(config: LocalInstallConfig) -> Path:
 def materialized_local_install_from_config(
     config: LocalInstallConfig,
     *,
+    executable_name: str = APP_EXE_NAME,
     profile_seed_config_dir: Path | None = None,
 ) -> MaterializedLocalInstall:
     """Builds typed metadata for the installer-owned local install layout."""
@@ -346,7 +360,7 @@ def materialized_local_install_from_config(
     return MaterializedLocalInstall(
         target_path=target_path,
         app_root=app_root,
-        app_exe=app_root / APP_EXE_NAME,
+        app_exe=app_root / executable_name,
         profile_dir=profile_dir,
         profile_config_dir=profile_config_dir,
         profile_seed_config_dir=profile_seed_config_dir or profile_config_dir,
@@ -399,6 +413,8 @@ def build_suite_installer_options(
         dependency_manifest=config.dependency_manifest,
         import_profile_dir=config.import_profile_dir,
         emulebb_pdb_path=artifacts.package_pdb,
+        emulebb_package_flavor=artifacts.package_flavor,
+        emulebb_executable_name=artifacts.executable_name,
         p2p_bind_interface=config.p2p_bind_interface,
     )
 
@@ -500,15 +516,16 @@ def deploy_local_install(
     diagnostics_dir = target_root / "diagnostics"
     for path in (symbols_dir, manifests_dir, diagnostics_dir):
         path.mkdir(parents=True, exist_ok=True)
-    deployed_exe = target_root / "apps" / EMULEBB_PACKAGE_ROOT_NAME / APP_EXE_NAME
+    deployed_exe = target_root / "apps" / EMULEBB_PACKAGE_ROOT_NAME / artifacts.executable_name
     if _sha256(deployed_exe) != _sha256(artifacts.package_exe):
         raise RuntimeError(
-            "Local package install extracted an emulebb.exe that does not match the package-build executable "
+            f"Local package install extracted {artifacts.executable_name} that does not match the package-build executable "
             f"used for symbols:\n{deployed_exe}\n{artifacts.package_exe}"
         )
 
-    adjacent_pdb = target_root / "apps" / EMULEBB_PACKAGE_ROOT_NAME / "emulebb.pdb"
-    versioned_pdb = symbols_dir / "emulebb.pdb"
+    pdb_name = app_pdb_name_for_exe(artifacts.executable_name)
+    adjacent_pdb = target_root / "apps" / EMULEBB_PACKAGE_ROOT_NAME / pdb_name
+    versioned_pdb = symbols_dir / pdb_name
     if not adjacent_pdb.is_file() or not versioned_pdb.is_file():
         raise RuntimeError(
             "The suite installer did not deploy required eMuleBB debug symbols beside the executable "
@@ -537,9 +554,10 @@ def write_install_manifest(
 
     target_root = config.target_path
     manifest_path = target_root / "manifests" / "local-install.json"
-    emule_exe = target_root / "apps" / EMULEBB_PACKAGE_ROOT_NAME / APP_EXE_NAME
-    pdb_path = target_root / "symbols" / f"emulebb-v{release_version}" / artifacts.arch / "emulebb.pdb"
-    adjacent_pdb_path = target_root / "apps" / EMULEBB_PACKAGE_ROOT_NAME / "emulebb.pdb"
+    emule_exe = target_root / "apps" / EMULEBB_PACKAGE_ROOT_NAME / artifacts.executable_name
+    pdb_name = app_pdb_name_for_exe(artifacts.executable_name)
+    pdb_path = target_root / "symbols" / f"emulebb-v{release_version}" / artifacts.arch / pdb_name
+    adjacent_pdb_path = target_root / "apps" / EMULEBB_PACKAGE_ROOT_NAME / pdb_name
     suite_config_path = target_root / "manifests" / "suite-config.json"
     suite_install_path = target_root / "manifests" / "suite-install.json"
     payload = {
@@ -547,6 +565,8 @@ def write_install_manifest(
         "installedAtUtc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "releaseVersion": release_version,
         "platform": artifacts.arch,
+        "packageFlavor": artifacts.package_flavor,
+        "executableName": artifacts.executable_name,
         "installKind": suite_installer.LOCAL_INSTALL_KIND,
         "bundle": suite_installer.SUITE_BUNDLE,
         "workspaceRoot": str(layout.emule_workspace_root),

@@ -81,12 +81,13 @@ def _contrast_ratio(first: tuple[int, int, int], second: tuple[int, int, int]) -
 def _write_release_zip(
     path: Path,
     *,
+    executable_name: str = "emulebb.exe",
     language_payloads: dict[str, bytes] | None = None,
     extra_entries: dict[str, bytes] | None = None,
     include_skin_assets: bool = True,
 ) -> None:
     entries = {
-        "eMuleBB/emulebb.exe": _pe_payload(0x8664),
+        f"eMuleBB/{executable_name}": _pe_payload(0x8664),
         "eMuleBB/README.md": b"readme\n",
         "eMuleBB/RELEASE-NOTES.md": b"notes\n",
         "eMuleBB/LICENSE-NOTICE.txt": b"notice\n",
@@ -222,9 +223,42 @@ def test_package_build_disables_startup_profiling(
     assert captured["target"] == "Rebuild"
     assert "/p:DependencyRoot=test" in captured["extra_properties"]
     assert "/p:EnableStartupProfiling=false" in captured["extra_properties"]
+    assert "/p:EnablePacketDiagnostics=false" in captured["extra_properties"]
     assert f"/p:OutDir={release.with_trailing_separator(package_app_output_root)}" in captured["extra_properties"]
     assert f"/p:IntDir={release.with_trailing_separator(package_app_intermediate_root)}" in captured["extra_properties"]
     assert cfg_checks == [package_app_output_root / "emulebb.exe"]
+
+
+def test_diagnostics_package_build_enables_diagnostic_features(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app_root = tmp_path / "app"
+    captured: dict[str, object] = {}
+    session = SimpleNamespace(
+        layout=SimpleNamespace(toolset_override_variable="EMULEBB_TEST_TOOLSET"),
+        options=SimpleNamespace(configuration="Release", platform="x64"),
+    )
+
+    monkeypatch.setattr(release, "ensure_app_dependency_artifacts", lambda _layout, _options, *, clean: None)
+    monkeypatch.setattr(release, "app_property_overrides", lambda _layout, _platform: ())
+    monkeypatch.setattr(release, "env_override", lambda _name: None)
+    monkeypatch.setattr(release, "verify_app_control_flow_guard", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(release, "invoke_msbuild_project", lambda *_args, **kwargs: captured.update(kwargs))
+
+    release._build_package_app(
+        session,
+        app_root,
+        flavor=release.RELEASE_PACKAGE_FLAVORS[1],
+        package_app_output_root=tmp_path / "out",
+        package_app_intermediate_root=tmp_path / "obj",
+        clean=False,
+    )
+
+    assert "/p:EnableStartupProfiling=true" in captured["extra_properties"]
+    assert "/p:EnablePacketDiagnostics=true" in captured["extra_properties"]
+    assert "/p:TargetName=emulebb-diagnostics" in captured["extra_properties"]
+    assert captured["step_name"] == "APP main diagnostics package binary"
 
 
 def test_release_package_rejects_startup_profiling_binary_marker(tmp_path: Path) -> None:
@@ -240,6 +274,25 @@ def test_release_package_accepts_binary_without_startup_profiling_marker(tmp_pat
     exe_path.write_bytes(_pe_payload(0x8664) + b"regular release payload")
 
     release._assert_startup_profiling_not_compiled(exe_path)
+
+
+def test_release_package_validates_diagnostics_markers(tmp_path: Path) -> None:
+    exe_path = tmp_path / "emulebb.exe"
+    exe_path.write_bytes(
+        _pe_payload(0x8664)
+        + "startup-profile.trace.json".encode("utf-16le")
+        + b"emulebb-packet-diagnostics.log"
+    )
+
+    release._assert_release_binary_diagnostics(exe_path, release.RELEASE_PACKAGE_FLAVORS[1])
+
+
+def test_standard_release_package_rejects_packet_diagnostics_marker(tmp_path: Path) -> None:
+    exe_path = tmp_path / "emulebb.exe"
+    exe_path.write_bytes(_pe_payload(0x8664) + b"emulebb-packet-diagnostics.log")
+
+    with pytest.raises(RuntimeError, match="packet diagnostics support"):
+        release._assert_release_binary_diagnostics(exe_path, release.RELEASE_PACKAGE_FLAVORS[0])
 
 
 def test_package_language_resources_rebuild_serializes_msbuild(
@@ -324,6 +377,10 @@ def test_release_manifest_records_explicit_source_provenance(
     )
 
     assert manifest["appVariant"] == "main"
+    assert manifest["packageFlavor"] == "standard"
+    assert manifest["diagnosticFeatures"] == []
+    assert manifest["executableName"] == "emulebb.exe"
+    assert manifest["executablePath"] == "eMuleBB/emulebb.exe"
     assert manifest["appBranch"] == "main"
     assert manifest["appCommit"] == "app1234"
     assert manifest["buildBranch"] == "main"
@@ -504,6 +561,32 @@ def test_release_package_contents_reject_retired_emule_root(tmp_path: Path) -> N
 
     with pytest.raises(RuntimeError, match="retired eMule root"):
         release._assert_release_package_contents(zip_path, ("de_DE.dll",), "x64")
+
+
+def test_diagnostics_release_package_contents_require_named_executable_without_alias(tmp_path: Path) -> None:
+    zip_path = tmp_path / "package.zip"
+    _write_release_zip(zip_path, executable_name="emulebb-diagnostics.exe")
+
+    release._assert_release_package_contents(
+        zip_path,
+        ("de_DE.dll",),
+        "x64",
+        flavor=release.RELEASE_PACKAGE_FLAVORS[1],
+    )
+
+    zip_with_alias = tmp_path / "package-with-alias.zip"
+    _write_release_zip(
+        zip_with_alias,
+        executable_name="emulebb-diagnostics.exe",
+        extra_entries={"eMuleBB/emulebb.exe": _pe_payload(0x8664)},
+    )
+    with pytest.raises(RuntimeError, match="compatibility alias"):
+        release._assert_release_package_contents(
+            zip_with_alias,
+            ("de_DE.dll",),
+            "x64",
+            flavor=release.RELEASE_PACKAGE_FLAVORS[1],
+        )
 
 
 def test_release_package_contents_reject_runtime_script_without_powershell_51_header(tmp_path: Path) -> None:

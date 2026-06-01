@@ -35,11 +35,16 @@ def write_core_release(
     *,
     version: str = "0.7.3-rc.1",
     arch: str = "x64",
+    package_flavor: str = "standard",
+    executable_name: str | None = None,
     exe_payload: bytes = b"exe\n",
     installer_payload: bytes | None = None,
 ) -> CoreRelease:
-    package_zip = release_root / f"emulebb-{version}-{arch}.zip"
-    manifest = release_root / f"emulebb-{version}-{arch}.manifest.json"
+    if executable_name is None:
+        executable_name = "emulebb-diagnostics.exe" if package_flavor == "diagnostics" else "emulebb.exe"
+    flavor_asset_suffix = "" if package_flavor == "standard" else f"-{package_flavor}"
+    package_zip = release_root / f"emulebb-{version}{flavor_asset_suffix}-{arch}.zip"
+    manifest = release_root / f"emulebb-{version}{flavor_asset_suffix}-{arch}.manifest.json"
     if installer_payload is None:
         installer_payload = (
             Path("emule_workspace")
@@ -51,7 +56,7 @@ def write_core_release(
     write_zip(
         package_zip,
         {
-            "eMuleBB/emulebb.exe": exe_payload,
+            f"eMuleBB/{executable_name}": exe_payload,
             "eMuleBB/scripts/Install-eMuleBBSuite.ps1": installer_payload,
         },
     )
@@ -106,32 +111,36 @@ def write_local_package_artifacts(
     *,
     version: str,
     arch: str = "x64",
+    package_flavor: str = "standard",
     package_exe_payload: bytes = b"exe",
     zip_exe_payload: bytes | None = None,
     package_pdb_payload: bytes = b"pdb",
     installer_payload: bytes = b"#Requires -Version 5.1\n",
 ) -> LocalPackageArtifacts:
     release_root = workspace_root / "state" / "release" / f"emulebb-v{version}"
-    package_build_root = workspace_root / "state" / "package-build" / f"emulebb-v{version}" / arch / "app"
+    package_build_root = workspace_root / "state" / "package-build" / f"emulebb-v{version}" / arch / package_flavor / "app"
     package_build_root.mkdir(parents=True)
-    package_exe = package_build_root / "emulebb.exe"
-    package_pdb = package_build_root / "emulebb.pdb"
+    executable_name = "emulebb-diagnostics.exe" if package_flavor == "diagnostics" else "emulebb.exe"
+    pdb_name = Path(executable_name).with_suffix(".pdb").name
+    package_exe = package_build_root / executable_name
+    package_pdb = package_build_root / pdb_name
     package_exe.write_bytes(package_exe_payload)
     package_pdb.write_bytes(package_pdb_payload)
 
-    emule_zip = release_root / f"emulebb-{version}-{arch}.zip"
+    flavor_asset_suffix = "" if package_flavor == "standard" else f"-{package_flavor}"
+    emule_zip = release_root / f"emulebb-{version}{flavor_asset_suffix}-{arch}.zip"
     amutorrent_zip = release_root / f"emulebb-{version}-amutorrent-{arch}.zip"
     write_zip(
         emule_zip,
         {
-            "eMuleBB/emulebb.exe": zip_exe_payload if zip_exe_payload is not None else package_exe_payload,
+            f"eMuleBB/{executable_name}": zip_exe_payload if zip_exe_payload is not None else package_exe_payload,
             "eMuleBB/scripts/Install-eMuleBBSuite.ps1": installer_payload,
         },
     )
     write_zip(amutorrent_zip, {"aMuTorrent/server/server.js": b"server\n"})
 
-    emule_manifest = release_root / f"emulebb-{version}-{arch}.manifest.json"
-    emule_sbom = release_root / f"emulebb-{version}-{arch}.sbom.spdx.json"
+    emule_manifest = release_root / f"emulebb-{version}{flavor_asset_suffix}-{arch}.manifest.json"
+    emule_sbom = release_root / f"emulebb-{version}{flavor_asset_suffix}-{arch}.sbom.spdx.json"
     amutorrent_manifest = release_root / f"emulebb-{version}-amutorrent-{arch}.manifest.json"
     amutorrent_sbom = release_root / f"emulebb-{version}-amutorrent-{arch}.sbom.spdx.json"
     for path in (emule_manifest, emule_sbom, amutorrent_manifest, amutorrent_sbom):

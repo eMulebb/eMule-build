@@ -69,18 +69,18 @@ def _workspace_options(tmp_path: Path) -> WorkspaceOptions:
     )
 
 
-def _write_suite_profile(target: Path, *, exe_payload: bytes = b"exe") -> None:
+def _write_suite_profile(target: Path, *, exe_payload: bytes = b"exe", executable_name: str = "emulebb.exe") -> None:
     app_root = target / "apps" / "eMuleBB"
     profile_config = target / "profiles" / "emulebb" / "config"
     manifest_root = target / "manifests"
     (app_root).mkdir(parents=True, exist_ok=True)
     profile_config.mkdir(parents=True, exist_ok=True)
     manifest_root.mkdir(parents=True, exist_ok=True)
-    (app_root / "emulebb.exe").write_bytes(exe_payload)
-    (app_root / "emulebb.pdb").write_bytes(b"pdb")
+    (app_root / executable_name).write_bytes(exe_payload)
+    (app_root / Path(executable_name).with_suffix(".pdb").name).write_bytes(b"pdb")
     symbols_dir = target / "symbols" / "emulebb-v0.7.3-rc.1" / "x64"
     symbols_dir.mkdir(parents=True, exist_ok=True)
-    (symbols_dir / "emulebb.pdb").write_bytes(b"pdb")
+    (symbols_dir / Path(executable_name).with_suffix(".pdb").name).write_bytes(b"pdb")
     (target / "apps" / "aMuTorrent" / "server").mkdir(parents=True, exist_ok=True)
     (target / "apps" / "aMuTorrent" / "server" / "server.js").write_text("server\n", encoding="utf-8")
     (profile_config / "preferences.ini").write_text(
@@ -156,7 +156,7 @@ def test_local_package_install_deploys_artifacts_from_suite_profile(
 
     def fake_invoke_suite_installer(options: suite_installer.SuiteInstallerOptions) -> suite_installer.SuiteInstallerInvocation:
         installer_calls.append(options)
-        _write_suite_profile(options.install_root)
+        _write_suite_profile(options.install_root, executable_name=options.emulebb_executable_name)
         return suite_installer.SuiteInstallerInvocation(
             command=(),
             installer_script=options.installer_script,
@@ -212,6 +212,36 @@ def test_local_package_install_deploys_artifacts_from_suite_profile(
     assert manifest["artifacts"]["packagePdb"]["sha256"] == manifest["artifacts"]["deployedAdjacentPdb"]["sha256"]
     assert manifest["suite"]["config"]["path"].endswith("suite-config.json")
     assert "suite-secret-key" not in json.dumps(manifest)
+
+
+def test_local_package_install_can_select_diagnostics_package(
+    tmp_path: Path,
+) -> None:
+    layout = _layout(tmp_path)
+    suite_install_fixtures.write_local_package_artifacts(
+        layout.workspace_root,
+        version="0.7.3-rc.1",
+        package_flavor="diagnostics",
+    )
+    suite_install_fixtures.write_local_package_artifacts(
+        layout.workspace_root,
+        version="0.7.3-rc.1",
+        package_flavor="standard",
+    )
+
+    artifacts = local_package_install.resolve_install_artifacts(
+        layout,
+        _workspace_options(tmp_path),
+        "0.7.3-rc.1",
+        package_flavor="diagnostics",
+    )
+
+    assert artifacts.package_flavor == "diagnostics"
+    assert artifacts.emule_zip.name == "emulebb-0.7.3-rc.1-diagnostics-x64.zip"
+    assert artifacts.emule_manifest.name == "emulebb-0.7.3-rc.1-diagnostics-x64.manifest.json"
+    assert artifacts.package_exe.name == "emulebb-diagnostics.exe"
+    assert artifacts.package_pdb.name == "emulebb-diagnostics.pdb"
+    assert "\\diagnostics\\app\\emulebb-diagnostics.exe" in str(artifacts.package_exe)
 
 
 def test_local_package_install_rejects_zip_exe_without_matching_package_build_exe(

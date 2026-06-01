@@ -19,6 +19,23 @@ from .process import find_tool
 from .toolchain import get_cmake_path, get_dumpbin_path, get_perl_path
 
 APP_EXE_NAME = "emulebb.exe"
+DIAGNOSTICS_APP_EXE_NAME = "emulebb-diagnostics.exe"
+
+
+def package_app_exe_name(package_flavor: str = "standard") -> str:
+    """Returns the eMuleBB executable name for a release package flavor."""
+
+    if package_flavor == "standard":
+        return APP_EXE_NAME
+    if package_flavor == "diagnostics":
+        return DIAGNOSTICS_APP_EXE_NAME
+    raise RuntimeError(f"Unsupported eMuleBB package flavor: {package_flavor}")
+
+
+def app_pdb_name_for_exe(executable_name: str) -> str:
+    """Returns the PDB file name matching one executable name."""
+
+    return Path(executable_name).with_suffix(".pdb").name
 
 
 def build_libs(layout: WorkspaceLayout, options: WorkspaceOptions, *, clean: bool) -> None:

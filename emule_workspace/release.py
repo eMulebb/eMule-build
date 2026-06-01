@@ -10,10 +10,18 @@ import shutil
 import struct
 import subprocess
 import zipfile
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .build import APP_EXE_NAME, app_property_overrides, ensure_app_dependency_artifacts, verify_app_control_flow_guard, with_trailing_separator
+from .build import (
+    APP_EXE_NAME,
+    DIAGNOSTICS_APP_EXE_NAME,
+    app_property_overrides,
+    ensure_app_dependency_artifacts,
+    verify_app_control_flow_guard,
+    with_trailing_separator,
+)
 from .artifact_names import utc_run_id
 from .build_state import BuildSession
 from .config import AmutorrentPackageOptions, ReleasePackageOptions, WorkspaceOptions
@@ -25,8 +33,10 @@ PE_MACHINES = {"x64": 0x8664, "ARM64": 0xAA64}
 STARTUP_PROFILING_BINARY_MARKERS = (
     b"startup-profile.trace.json",
     "startup-profile.trace.json".encode("utf-16le"),
-    b"EMULEBB_STARTUP_PROFILE",
-    "EMULEBB_STARTUP_PROFILE".encode("utf-16le"),
+)
+PACKET_DIAGNOSTICS_BINARY_MARKERS = (
+    b"emulebb-packet-diagnostics.log",
+    "emulebb-packet-diagnostics.log".encode("utf-16le"),
 )
 AMUTORRENT_NODE_VERSION = "v24.15.0"
 AMUTORRENT_NODE_ARCHIVES = {
@@ -88,6 +98,37 @@ EMULEBB_SKIN_ASSET_PATHS = (
     "skins/emulebb-phosphor-green.eMuleToolbar.kad02.bmp",
 )
 EMULEBB_RUNTIME_ASSET_PATHS = (*EMULEBB_RUNTIME_SCRIPT_PATHS, *EMULEBB_SKIN_ASSET_PATHS)
+
+
+@dataclass(frozen=True)
+class ReleasePackageFlavorSpec:
+    """Build and artifact naming policy for one eMuleBB package flavor."""
+
+    name: str
+    asset_suffix: str
+    enable_startup_profiling: bool
+    enable_packet_diagnostics: bool
+    executable_name: str
+    diagnostic_features: tuple[str, ...] = ()
+
+
+RELEASE_PACKAGE_FLAVORS = (
+    ReleasePackageFlavorSpec(
+        name="standard",
+        asset_suffix="",
+        enable_startup_profiling=False,
+        enable_packet_diagnostics=False,
+        executable_name=APP_EXE_NAME,
+    ),
+    ReleasePackageFlavorSpec(
+        name="diagnostics",
+        asset_suffix="-diagnostics",
+        enable_startup_profiling=True,
+        enable_packet_diagnostics=True,
+        executable_name=DIAGNOSTICS_APP_EXE_NAME,
+        diagnostic_features=("packet-diagnostics", "startup-profiling"),
+    ),
+)
 EMULEBB_PACKAGE_ROOT_NAME = "eMuleBB"
 EMULEBB_RELEASE_ASSET_ROOT_NAME = "emulebb"
 
@@ -189,12 +230,12 @@ def create_release_package(
 
     asset_arch = _release_asset_arch(workspace_options.platform)
     release_root = _release_root(layout, package_options)
-    package_build_root = _package_build_root(layout, package_options, workspace_options.platform)
-    package_app_output_root = package_build_root / "app"
-    package_app_intermediate_root = package_build_root / "app-obj"
-    _assert_path_under_root(package_build_root, layout.workspace_root / "state", "release package build path")
-    if package_options.clean and package_build_root.exists():
-        shutil.rmtree(package_build_root)
+    package_build_arch_root = (
+        layout.workspace_root / "state" / "package-build" / f"emulebb-v{package_options.release_version}" / asset_arch
+    )
+    _assert_path_under_root(package_build_arch_root, layout.workspace_root / "state", "release package build path")
+    if package_options.clean and package_build_arch_root.exists():
+        shutil.rmtree(package_build_arch_root)
 
     session = BuildSession(
         layout=layout,
@@ -204,111 +245,121 @@ def create_release_package(
         stamp=utc_run_id(),
     )
     try:
-        _build_package_app(
-            session,
-            app_root,
-            package_app_output_root=package_app_output_root,
-            package_app_intermediate_root=package_app_intermediate_root,
-            clean=package_options.clean,
-        )
+        for flavor in RELEASE_PACKAGE_FLAVORS:
+            package_build_root = _package_build_root(layout, package_options, workspace_options.platform, flavor.name)
+            _build_package_app(
+                session,
+                app_root,
+                flavor=flavor,
+                package_app_output_root=package_build_root / "app",
+                package_app_intermediate_root=package_build_root / "app-obj",
+                clean=package_options.clean,
+            )
         _build_language_resources(session, app_root, package_options.clean)
     finally:
         session.write_recap()
 
-    exe_path = package_app_output_root / APP_EXE_NAME
     expected_language_dlls = _expected_language_dlls(layout.tooling_repo_root)
     lang_path = _package_language_path(app_root, workspace_options.platform, expected_language_dlls)
-    for required_path in (exe_path, lang_path):
-        if not required_path.exists():
-            raise RuntimeError(f"Cannot package missing release runtime path: {required_path}")
-    _assert_pe_machine(exe_path, workspace_options.platform)
-    _assert_startup_profiling_not_compiled(exe_path)
+    if not lang_path.exists():
+        raise RuntimeError(f"Cannot package missing release runtime path: {lang_path}")
 
-    staging_root = release_root / "staging" / asset_arch
-    package_root = staging_root / EMULEBB_PACKAGE_ROOT_NAME
-    zip_path = release_root / f"emulebb-{package_options.release_version}-{asset_arch}.zip"
-    manifest_path = release_root / f"emulebb-{package_options.release_version}-{asset_arch}.manifest.json"
-    sbom_path = release_root / f"emulebb-{package_options.release_version}-{asset_arch}.sbom.spdx.json"
-    for path_to_check in (staging_root, package_root, zip_path, manifest_path, sbom_path):
-        _assert_path_under_root(path_to_check, release_root, "release package path")
+    for flavor in RELEASE_PACKAGE_FLAVORS:
+        package_build_root = _package_build_root(layout, package_options, workspace_options.platform, flavor.name)
+        exe_path = package_build_root / "app" / flavor.executable_name
+        if not exe_path.exists():
+            raise RuntimeError(f"Cannot package missing release runtime path: {exe_path}")
+        _assert_pe_machine(exe_path, workspace_options.platform)
+        _assert_release_binary_diagnostics(exe_path, flavor)
 
-    if staging_root.exists():
-        shutil.rmtree(staging_root)
-    package_root.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(exe_path, package_root / APP_EXE_NAME)
-    _copy_directory_contents(lang_path, package_root / "lang")
-    _write_package_readme(package_root, package_options.release_version, workspace_options.platform)
-    _write_package_release_notes(package_root, package_options.release_version)
-    _write_package_license_notice(package_root)
-    _write_package_third_party_notices(package_root)
-    _write_package_gpl_text(layout, package_root)
-    _copy_package_file(
-        layout.tooling_repo_root / "docs" / "rest" / "REST-API-CONTRACT.md",
-        package_root,
-        Path("docs/REST-API-CONTRACT.md"),
-    )
-    _copy_package_file(
-        layout.tooling_repo_root / "docs" / "rest" / "REST-API-OPENAPI.yaml",
-        package_root,
-        Path("docs/REST-API-OPENAPI.yaml"),
-    )
-    _copy_package_file(
-        layout.tooling_repo_root / "docs" / "rest" / "REST-API-PARITY-INVENTORY.md",
-        package_root,
-        Path("docs/REST-API-PARITY-INVENTORY.md"),
-    )
-    _copy_emule_runtime_assets(layout.build_repo_root, package_root)
-    signature_policy = _sign_release_package_files(package_root, require_signing=package_options.require_signing)
-    _write_release_sbom(
-        layout=layout,
-        workspace_options=workspace_options,
-        package_options=package_options,
-        app_variant=app_variant,
-        app_root=app_root,
-        package_root=package_root,
-        release_root=release_root,
-        asset_name=zip_path.name,
-    )
-    bootstrapper_asset_path, bootstrapper_hash_path, bootstrapper_hash = _write_standalone_bootstrapper_asset(
-        package_root=package_root,
-        release_root=release_root,
-    )
+        asset_stem = _release_asset_stem(package_options.release_version, asset_arch, flavor)
+        staging_root = release_root / "staging" / asset_arch / flavor.name
+        package_root = staging_root / EMULEBB_PACKAGE_ROOT_NAME
+        zip_path = release_root / f"{asset_stem}.zip"
+        manifest_path = release_root / f"{asset_stem}.manifest.json"
+        sbom_path = release_root / f"{asset_stem}.sbom.spdx.json"
+        for path_to_check in (staging_root, package_root, zip_path, manifest_path, sbom_path):
+            _assert_path_under_root(path_to_check, release_root, "release package path")
 
-    if zip_path.exists():
-        zip_path.unlink()
-    release_root.mkdir(parents=True, exist_ok=True)
-    _write_zip(staging_root, package_root, zip_path)
-    _assert_release_package_contents(zip_path, expected_language_dlls, workspace_options.platform)
+        if staging_root.exists():
+            shutil.rmtree(staging_root)
+        package_root.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(exe_path, package_root / flavor.executable_name)
+        _copy_directory_contents(lang_path, package_root / "lang")
+        _write_package_readme(package_root, package_options.release_version, workspace_options.platform, flavor=flavor)
+        _write_package_release_notes(package_root, package_options.release_version)
+        _write_package_license_notice(package_root)
+        _write_package_third_party_notices(package_root)
+        _write_package_gpl_text(layout, package_root)
+        _copy_package_file(
+            layout.tooling_repo_root / "docs" / "rest" / "REST-API-CONTRACT.md",
+            package_root,
+            Path("docs/REST-API-CONTRACT.md"),
+        )
+        _copy_package_file(
+            layout.tooling_repo_root / "docs" / "rest" / "REST-API-OPENAPI.yaml",
+            package_root,
+            Path("docs/REST-API-OPENAPI.yaml"),
+        )
+        _copy_package_file(
+            layout.tooling_repo_root / "docs" / "rest" / "REST-API-PARITY-INVENTORY.md",
+            package_root,
+            Path("docs/REST-API-PARITY-INVENTORY.md"),
+        )
+        _copy_emule_runtime_assets(layout.build_repo_root, package_root)
+        signature_policy = _sign_release_package_files(package_root, require_signing=package_options.require_signing)
+        _write_release_sbom(
+            layout=layout,
+            workspace_options=workspace_options,
+            package_options=package_options,
+            app_variant=app_variant,
+            app_root=app_root,
+            package_root=package_root,
+            release_root=release_root,
+            asset_name=zip_path.name,
+            flavor=flavor,
+        )
+        bootstrapper_asset_path, bootstrapper_hash_path, bootstrapper_hash = _write_standalone_bootstrapper_asset(
+            package_root=package_root,
+            release_root=release_root,
+        )
 
-    zip_hash = _sha256(zip_path)
-    exe_hash = _sha256(exe_path)
-    package_file_hashes = _zip_entry_hashes(zip_path)
-    shutil.copy2(package_root / "SBOM.spdx.json", sbom_path)
-    sbom_hash = _sha256(sbom_path)
-    manifest = _build_release_manifest(
-        layout=layout,
-        workspace_options=workspace_options,
-        package_options=package_options,
-        app_variant=app_variant,
-        app_root=app_root,
-        zip_path=zip_path,
-        release_root=release_root,
-        zip_hash=zip_hash,
-        sbom_path=sbom_path,
-        sbom_hash=sbom_hash,
-        exe_hash=exe_hash,
-        expected_language_dlls=expected_language_dlls,
-        package_file_hashes=package_file_hashes,
-        bootstrapper_asset_path=bootstrapper_asset_path,
-        bootstrapper_hash_path=bootstrapper_hash_path,
-        bootstrapper_hash=bootstrapper_hash,
-        signature_policy=signature_policy,
-    )
-    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8", newline="\n")
-    print(f"Release package: {zip_path}")
-    print(f"Release manifest: {manifest_path}")
-    print(f"Release SBOM: {sbom_path}")
-    print(f"SHA256: {zip_hash}")
+        if zip_path.exists():
+            zip_path.unlink()
+        release_root.mkdir(parents=True, exist_ok=True)
+        _write_zip(staging_root, package_root, zip_path)
+        _assert_release_package_contents(zip_path, expected_language_dlls, workspace_options.platform, flavor=flavor)
+
+        zip_hash = _sha256(zip_path)
+        exe_hash = _sha256(exe_path)
+        package_file_hashes = _zip_entry_hashes(zip_path)
+        shutil.copy2(package_root / "SBOM.spdx.json", sbom_path)
+        sbom_hash = _sha256(sbom_path)
+        manifest = _build_release_manifest(
+            layout=layout,
+            workspace_options=workspace_options,
+            package_options=package_options,
+            app_variant=app_variant,
+            app_root=app_root,
+            zip_path=zip_path,
+            release_root=release_root,
+            zip_hash=zip_hash,
+            sbom_path=sbom_path,
+            sbom_hash=sbom_hash,
+            exe_hash=exe_hash,
+            expected_language_dlls=expected_language_dlls,
+            package_file_hashes=package_file_hashes,
+            bootstrapper_asset_path=bootstrapper_asset_path,
+            bootstrapper_hash_path=bootstrapper_hash_path,
+            bootstrapper_hash=bootstrapper_hash,
+            signature_policy=signature_policy,
+            flavor=flavor,
+        )
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8", newline="\n")
+        print(f"Release package ({flavor.name}): {zip_path}")
+        print(f"Release manifest ({flavor.name}): {manifest_path}")
+        print(f"Release SBOM ({flavor.name}): {sbom_path}")
+        print(f"SHA256 ({flavor.name}): {zip_hash}")
 
 
 def _build_release_manifest(
@@ -330,6 +381,7 @@ def _build_release_manifest(
     bootstrapper_hash_path: Path,
     bootstrapper_hash: str,
     signature_policy: dict[str, object],
+    flavor: ReleasePackageFlavorSpec = RELEASE_PACKAGE_FLAVORS[0],
 ) -> dict[str, object]:
     """Builds the provenance manifest written next to one release asset."""
 
@@ -340,6 +392,10 @@ def _build_release_manifest(
         "tag": f"emulebb-v{package_options.release_version}",
         "configuration": workspace_options.configuration,
         "platform": workspace_options.platform,
+        "packageFlavor": flavor.name,
+        "diagnosticFeatures": list(flavor.diagnostic_features),
+        "executableName": flavor.executable_name,
+        "executablePath": f"{EMULEBB_PACKAGE_ROOT_NAME}/{flavor.executable_name}",
         "asset": zip_path.name,
         "assetPath": zip_path.relative_to(release_root).as_posix(),
         "sha256": zip_hash,
@@ -365,7 +421,7 @@ def _build_release_manifest(
         "toolingCommit": repo_head(layout.tooling_repo_root),
         "generatedAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "includedPaths": [
-            f"{EMULEBB_PACKAGE_ROOT_NAME}/{APP_EXE_NAME}",
+            f"{EMULEBB_PACKAGE_ROOT_NAME}/{flavor.executable_name}",
             f"{EMULEBB_PACKAGE_ROOT_NAME}/lang",
             f"{EMULEBB_PACKAGE_ROOT_NAME}/README.md",
             f"{EMULEBB_PACKAGE_ROOT_NAME}/RELEASE-NOTES.md",
@@ -477,6 +533,7 @@ def _write_release_sbom(
     package_root: Path,
     release_root: Path,
     asset_name: str,
+    flavor: ReleasePackageFlavorSpec = RELEASE_PACKAGE_FLAVORS[0],
 ) -> None:
     """Writes a package-local SPDX SBOM for the main release asset."""
 
@@ -490,12 +547,15 @@ def _write_release_sbom(
     ]
     components.extend(_third_party_spdx_packages())
     document = _build_spdx_sbom(
-        name=f"eMuleBB {package_options.release_version} {workspace_options.platform} release package",
+        name=f"eMuleBB {package_options.release_version} {workspace_options.platform} {flavor.name} release package",
         namespace=f"https://github.com/emulebb/emulebb/releases/download/emulebb-v{package_options.release_version}/{asset_name}.sbom",
-        package_name=f"emulebb-{package_options.release_version}-{workspace_options.platform}",
+        package_name=f"emulebb-{package_options.release_version}{flavor.asset_suffix}-{workspace_options.platform}",
         package_version=package_options.release_version,
         package_license="GPL-2.0-or-later",
-        package_comment=f"Main app release package built from app variant {app_variant.name}.",
+        package_comment=(
+            f"Main app {flavor.name} release package built from app variant {app_variant.name}. "
+            f"Diagnostic features: {', '.join(flavor.diagnostic_features) or 'none'}."
+        ),
         package_root=package_root,
         release_root=release_root,
         components=components,
@@ -785,16 +845,35 @@ def _release_root(layout: WorkspaceLayout, package_options: ReleasePackageOption
     return layout.workspace_root / "state" / "release" / f"emulebb-v{package_options.release_version}"
 
 
-def _package_build_root(layout: WorkspaceLayout, package_options: ReleasePackageOptions, platform: str) -> Path:
+def _package_build_root(
+    layout: WorkspaceLayout,
+    package_options: ReleasePackageOptions,
+    platform: str,
+    flavor: str,
+) -> Path:
     """Returns the package-only app build output root for one release asset."""
 
-    return layout.workspace_root / "state" / "package-build" / f"emulebb-v{package_options.release_version}" / _release_asset_arch(platform)
+    return (
+        layout.workspace_root
+        / "state"
+        / "package-build"
+        / f"emulebb-v{package_options.release_version}"
+        / _release_asset_arch(platform)
+        / flavor
+    )
+
+
+def _release_asset_stem(release_version: str, asset_arch: str, flavor: ReleasePackageFlavorSpec) -> str:
+    """Returns the file stem for one eMuleBB release package flavor."""
+
+    return f"emulebb-{release_version}{flavor.asset_suffix}-{asset_arch}"
 
 
 def _build_package_app(
     session: BuildSession,
     app_root: Path,
     *,
+    flavor: ReleasePackageFlavorSpec = RELEASE_PACKAGE_FLAVORS[0],
     package_app_output_root: Path,
     package_app_intermediate_root: Path,
     clean: bool,
@@ -802,7 +881,10 @@ def _build_package_app(
     target = "Rebuild" if clean else "Build"
     ensure_app_dependency_artifacts(session.layout, session.options, clean=clean)
     extra_properties = [*app_property_overrides(session.layout, session.options.platform)]
-    extra_properties.append("/p:EnableStartupProfiling=false")
+    extra_properties.append(f"/p:EnableStartupProfiling={'true' if flavor.enable_startup_profiling else 'false'}")
+    extra_properties.append(f"/p:EnablePacketDiagnostics={'true' if flavor.enable_packet_diagnostics else 'false'}")
+    if flavor.executable_name != APP_EXE_NAME:
+        extra_properties.append(f"/p:TargetName={Path(flavor.executable_name).stem}")
     extra_properties.append(f"/p:OutDir={with_trailing_separator(package_app_output_root)}")
     extra_properties.append(f"/p:IntDir={with_trailing_separator(package_app_intermediate_root)}")
     override = env_override(session.layout.toolset_override_variable)
@@ -813,12 +895,12 @@ def _build_package_app(
         project_path=app_root / "srchybrid" / "emule.vcxproj",
         extra_properties=extra_properties,
         target=target,
-        step_name="APP main package binary",
+        step_name=f"APP main {flavor.name} package binary",
     )
     verify_app_control_flow_guard(
         session,
-        binary_path=package_app_output_root / APP_EXE_NAME,
-        step_name="APP main package binary CFG",
+        binary_path=package_app_output_root / flavor.executable_name,
+        step_name=f"APP main {flavor.name} package binary CFG",
     )
 
 
@@ -1106,7 +1188,13 @@ def _copy_tree_filtered(source_path: Path, destination_path: Path, exclude) -> N
             shutil.copy2(source_child, target)
 
 
-def _write_package_readme(package_root: Path, release_version: str, platform: str) -> None:
+def _write_package_readme(
+    package_root: Path,
+    release_version: str,
+    platform: str,
+    *,
+    flavor: ReleasePackageFlavorSpec = RELEASE_PACKAGE_FLAVORS[0],
+) -> None:
     """Writes the package-facing README."""
 
     readme_path = package_root / "README.md"
@@ -1119,9 +1207,16 @@ def _write_package_readme(package_root: Path, release_version: str, platform: st
                 "",
                 f"Version: {release_version}",
                 f"Architecture: {asset_arch}",
+                f"Package flavor: {flavor.name}",
                 "",
-                f"Run `{APP_EXE_NAME}` from this directory. The package is portable and keeps the",
+                f"Run `{flavor.executable_name}` from this directory. The package is portable and keeps the",
                 "stock eMule language DLLs under `lang/`.",
+                "",
+                (
+                    "Diagnostics enabled: " + ", ".join(flavor.diagnostic_features)
+                    if flavor.diagnostic_features
+                    else "Diagnostics enabled: none"
+                ),
                 "",
                 "REST API documentation is included under `docs/`. Language DLLs are built",
                 "from the stock eMule language resource set and are architecture-specific.",
@@ -1133,7 +1228,7 @@ def _write_package_readme(package_root: Path, release_version: str, platform: st
                 "toolbar bitmap strips are included under `skins/`.",
                 "",
                 "MediaInfo integration remains optional. To enable audio/video metadata,",
-                f"install a compatible external `MediaInfo.dll` next to `{APP_EXE_NAME}`; it is not",
+                f"install a compatible external `MediaInfo.dll` next to `{flavor.executable_name}`; it is not",
                 "bundled in this ZIP.",
                 "",
                 "This ZIP does not include debug symbols.",
@@ -1288,7 +1383,13 @@ def _write_zip(staging_root: Path, package_root: Path, zip_path: Path) -> None:
                 archive.write(path, path.relative_to(staging_root).as_posix())
 
 
-def _assert_release_package_contents(zip_path: Path, expected_language_dlls: tuple[str, ...], platform: str) -> None:
+def _assert_release_package_contents(
+    zip_path: Path,
+    expected_language_dlls: tuple[str, ...],
+    platform: str,
+    *,
+    flavor: ReleasePackageFlavorSpec = RELEASE_PACKAGE_FLAVORS[0],
+) -> None:
     with zipfile.ZipFile(zip_path, "r") as archive:
         entry_names = [name.replace("\\", "/") for name in archive.namelist()]
         entry_set = set(entry_names)
@@ -1297,7 +1398,7 @@ def _assert_release_package_contents(zip_path: Path, expected_language_dlls: tup
             sample = "\n".join(stale_root_entries[:20])
             raise RuntimeError(f"Release package contains retired eMule root entries; use {EMULEBB_PACKAGE_ROOT_NAME}/:\n{sample}")
         required_entries = (
-            f"{EMULEBB_PACKAGE_ROOT_NAME}/{APP_EXE_NAME}",
+            f"{EMULEBB_PACKAGE_ROOT_NAME}/{flavor.executable_name}",
             f"{EMULEBB_PACKAGE_ROOT_NAME}/README.md",
             f"{EMULEBB_PACKAGE_ROOT_NAME}/RELEASE-NOTES.md",
             f"{EMULEBB_PACKAGE_ROOT_NAME}/LICENSE-NOTICE.txt",
@@ -1312,6 +1413,11 @@ def _assert_release_package_contents(zip_path: Path, expected_language_dlls: tup
         for required_entry in required_entries:
             if required_entry not in entry_set:
                 raise RuntimeError(f"Release package is missing required entry '{required_entry}': {zip_path}")
+        if flavor.executable_name != APP_EXE_NAME and f"{EMULEBB_PACKAGE_ROOT_NAME}/{APP_EXE_NAME}" in entry_set:
+            raise RuntimeError(
+                "Diagnostics release package must not include an emulebb.exe compatibility alias; "
+                f"use {flavor.executable_name} only."
+            )
         for relative_path in EMULEBB_RUNTIME_SCRIPT_PATHS:
             entry_name = f"{EMULEBB_PACKAGE_ROOT_NAME}/{relative_path}"
             script = archive.read(entry_name).decode("utf-8-sig")
@@ -1326,7 +1432,7 @@ def _assert_release_package_contents(zip_path: Path, expected_language_dlls: tup
             raise RuntimeError("Release package is missing language DLLs:\n" + "\n".join(missing_language_entries))
         if extra_language_entries:
             raise RuntimeError("Release package contains unexpected language DLLs:\n" + "\n".join(extra_language_entries))
-        for entry_name in (f"{EMULEBB_PACKAGE_ROOT_NAME}/{APP_EXE_NAME}", *language_dlls):
+        for entry_name in (f"{EMULEBB_PACKAGE_ROOT_NAME}/{flavor.executable_name}", *language_dlls):
             _assert_pe_machine_bytes(archive.read(entry_name), platform, entry_name)
         webserver_files = [name for name in entry_names if re.fullmatch(rf"{EMULEBB_PACKAGE_ROOT_NAME}/webserver/.+[^/]", name)]
         if webserver_files:
@@ -1406,16 +1512,63 @@ def _assert_pe_machine(path: Path, platform: str) -> None:
         raise RuntimeError(f"PE architecture mismatch for {path}: expected {platform}.")
 
 
-def _assert_startup_profiling_not_compiled(path: Path) -> None:
-    """Rejects release package binaries that still include startup profiling support."""
+def _assert_release_binary_diagnostics(path: Path, flavor: ReleasePackageFlavorSpec) -> None:
+    """Checks that one package binary has exactly the diagnostics expected for its flavor."""
+
+    _assert_binary_marker_state(
+        path,
+        markers=STARTUP_PROFILING_BINARY_MARKERS,
+        expected=flavor.enable_startup_profiling,
+        description="startup profiling support",
+        enable_property="/p:EnableStartupProfiling=true",
+        disable_property="/p:EnableStartupProfiling=false",
+    )
+    _assert_binary_marker_state(
+        path,
+        markers=PACKET_DIAGNOSTICS_BINARY_MARKERS,
+        expected=flavor.enable_packet_diagnostics,
+        description="packet diagnostics support",
+        enable_property="/p:EnablePacketDiagnostics=true",
+        disable_property="/p:EnablePacketDiagnostics=false",
+    )
+
+
+def _assert_binary_marker_state(
+    path: Path,
+    *,
+    markers: tuple[bytes, ...],
+    expected: bool,
+    description: str,
+    enable_property: str,
+    disable_property: str,
+) -> None:
+    """Checks marker presence or absence in a compiled binary."""
 
     payload = path.read_bytes()
-    for marker in STARTUP_PROFILING_BINARY_MARKERS:
-        if marker in payload:
-            raise RuntimeError(
-                "Release package binary still contains startup profiling support; "
-                f"rebuild {path} with /p:EnableStartupProfiling=false."
-            )
+    found = any(marker in payload for marker in markers)
+    if expected and not found:
+        raise RuntimeError(
+            f"Release diagnostics package binary is missing {description}; "
+            f"rebuild {path} with {enable_property}."
+        )
+    if not expected and found:
+        raise RuntimeError(
+            f"Release standard package binary still contains {description}; "
+            f"rebuild {path} with {disable_property}."
+        )
+
+
+def _assert_startup_profiling_not_compiled(path: Path) -> None:
+    """Rejects standard release package binaries that still include startup profiling support."""
+
+    _assert_binary_marker_state(
+        path,
+        markers=STARTUP_PROFILING_BINARY_MARKERS,
+        expected=False,
+        description="startup profiling support",
+        enable_property="/p:EnableStartupProfiling=true",
+        disable_property="/p:EnableStartupProfiling=false",
+    )
 
 
 def _assert_pe_machine_bytes(payload: bytes, platform: str, label: str) -> None:

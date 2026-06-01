@@ -22,6 +22,9 @@ param(
     [string]$DependencyManifest,
     [string]$ImportProfileDir,
     [string]$EmulebbPdbPath,
+    [ValidateSet('standard', 'diagnostics')]
+    [string]$EmulebbPackageFlavor = 'standard',
+    [string]$EmulebbExecutableName,
 
     [string]$ConfigFile,
 
@@ -128,6 +131,31 @@ function Get-DefaultControlBindAddress {
     return '127.0.0.1'
 }
 
+function Get-DefaultEmulebbExecutableName {
+    if ($EmulebbPackageFlavor -eq 'diagnostics') {
+        return 'emulebb-diagnostics.exe'
+    }
+    return 'emulebb.exe'
+}
+
+function Get-EmulebbPdbFileName {
+    param([string]$ExecutableName)
+    return [IO.Path]::ChangeExtension($ExecutableName, '.pdb')
+}
+
+function Assert-EmulebbExecutableName {
+    param([string]$ExecutableName)
+    if ([string]::IsNullOrWhiteSpace($ExecutableName)) {
+        throw 'EmulebbExecutableName must not be empty.'
+    }
+    if ($ExecutableName -ne [IO.Path]::GetFileName($ExecutableName)) {
+        throw "EmulebbExecutableName must be a file name, not a path: $ExecutableName"
+    }
+    if ([IO.Path]::GetExtension($ExecutableName) -ne '.exe') {
+        throw "EmulebbExecutableName must end with .exe: $ExecutableName"
+    }
+}
+
 function New-SuiteConfig {
     $controlBind = Resolve-OptionalValue -Value $ControlBindAddress -Default (Get-DefaultControlBindAddress)
     $config = [ordered]@{
@@ -139,6 +167,8 @@ function New-SuiteConfig {
         installRoot = $InstallRoot
         dependencyChannel = $DependencyChannel
         releaseBaseUrl = $ReleaseBaseUrl
+        emulebbPackageFlavor = $EmulebbPackageFlavor
+        emulebbExecutableName = (Resolve-OptionalValue -Value $EmulebbExecutableName -Default (Get-DefaultEmulebbExecutableName))
         nodeBaseUrl = $NodeBaseUrl
         dependencyManifest = $DependencyManifest
         importProfileDir = $ImportProfileDir
@@ -233,6 +263,8 @@ function Resolve-SuiteConfig {
         @('DependencyManifest', { param($c, $v) $c.dependencyManifest = $v }),
         @('ImportProfileDir', { param($c, $v) $c.importProfileDir = $v }),
         @('EmulebbPdbPath', { param($c, $v) $c.symbols.emulebbPdbPath = $v }),
+        @('EmulebbPackageFlavor', { param($c, $v) $c.emulebbPackageFlavor = $v }),
+        @('EmulebbExecutableName', { param($c, $v) $c.emulebbExecutableName = $v }),
         @('ControlBindAddress', {
             param($c, $v)
             foreach ($serviceName in @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr')) {
@@ -533,6 +565,10 @@ function Assert-SuiteConfig {
     if (($Config.bundle -eq 'Controller' -or $Config.bundle -eq 'Full') -and $Config.platform -ne 'x64') {
         throw 'Controller and Full bundles are x64-only in v1 because aMuTorrent native node_modules are packaged for the selected Node architecture.'
     }
+    if (@('standard', 'diagnostics') -notcontains $Config.emulebbPackageFlavor) {
+        throw "EmulebbPackageFlavor must be standard or diagnostics: $($Config.emulebbPackageFlavor)"
+    }
+    Assert-EmulebbExecutableName -ExecutableName ([string]$Config.emulebbExecutableName)
     foreach ($serviceName in @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr')) {
         $service = $Config.services[$serviceName]
         Assert-ServiceBindAddress -ServiceName $serviceName -Address $service.bindAddress -AllowRemote ([bool]$Config.allowRemoteServiceBind)
@@ -1008,9 +1044,10 @@ function Copy-OptionalEmuleSymbols {
     if (-not (Test-Path -LiteralPath $sourcePdb)) {
         throw "EmulebbPdbPath is missing: $sourcePdb"
     }
-    $adjacentPdb = Join-Path (Join-Path $script:Root 'apps\eMuleBB') 'emulebb.pdb'
+    $pdbFileName = Get-EmulebbPdbFileName -ExecutableName ([string]$Config.emulebbExecutableName)
+    $adjacentPdb = Join-Path (Join-Path $script:Root 'apps\eMuleBB') $pdbFileName
     $symbolsDir = Join-Path (Join-Path (Join-Path $script:Root 'symbols') "emulebb-v$($Config.version)") ([string]$Config.platform)
-    $versionedPdb = Join-Path $symbolsDir 'emulebb.pdb'
+    $versionedPdb = Join-Path $symbolsDir $pdbFileName
     $result.adjacentPdb = $adjacentPdb
     $result.versionedPdb = $versionedPdb
     $result.sourceSha256 = Get-Sha256 -Path $sourcePdb
@@ -1025,6 +1062,17 @@ function Copy-OptionalEmuleSymbols {
     Copy-Item -Force -LiteralPath $sourcePdb -Destination $versionedPdb
     $result.action = 'copied'
     return $result
+}
+
+function Assert-EmulebbExecutableInstalled {
+    param([hashtable]$Config)
+    if ($DryRun) {
+        return
+    }
+    $exePath = Join-Path (Join-Path $script:Root 'apps\eMuleBB') ([string]$Config.emulebbExecutableName)
+    if (-not (Test-Path -LiteralPath $exePath)) {
+        throw "Installed eMuleBB package did not include selected executable: $($Config.emulebbExecutableName)"
+    }
 }
 
 function Write-SuiteConfigFile {
@@ -1052,7 +1100,9 @@ $startEmuleBB = @"
 #Requires -Version 5.1
 `$ErrorActionPreference = 'Stop'
 `$Root = '$rootLiteral'
-`$Emule = Join-Path `$Root 'apps\eMuleBB\emulebb.exe'
+`$Config = Get-Content -Raw -LiteralPath (Join-Path `$Root 'manifests\suite-config.json') | ConvertFrom-Json
+`$EmuleExe = if ([string]::IsNullOrWhiteSpace([string]`$Config.emulebbExecutableName)) { 'emulebb.exe' } else { [string]`$Config.emulebbExecutableName }
+`$Emule = Join-Path (Join-Path `$Root 'apps\eMuleBB') `$EmuleExe
 `$Existing = Get-Process | Where-Object { `$_.Path -and [string]::Equals(`$_.Path, `$Emule, [StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1
 if (`$Existing) {
     Write-Host "eMuleBB is already running: PID `$(`$Existing.Id)"
@@ -1226,6 +1276,8 @@ function Write-InstallManifest {
         platform = $Config.platform
         installKind = $Config.installKind
         installRoot = $script:Root
+        emulebbPackageFlavor = $Config.emulebbPackageFlavor
+        emulebbExecutableName = $Config.emulebbExecutableName
         profileImport = $ProfileImport
         symbols = $Symbols
         services = @{
@@ -1270,8 +1322,10 @@ $releaseBase = Resolve-OptionalValue -Value $script:SuiteConfig.releaseBaseUrl -
 $nodeBase = Resolve-OptionalValue -Value $script:SuiteConfig.nodeBaseUrl -Default "https://nodejs.org/dist/$NodeVersion"
 $dependencyManifestPayload = Load-DependencyManifestPayload -ManifestPath $script:SuiteConfig.dependencyManifest
 $assetArch = if ($script:SuiteConfig.platform -eq 'ARM64') { 'arm64' } else { 'x64' }
+$emulebbAssetSuffix = if ($script:SuiteConfig.emulebbPackageFlavor -eq 'diagnostics') { '-diagnostics' } else { '' }
 $appRoot = Join-Path $script:Root 'apps'
-Install-ReleaseZip -Name 'eMuleBB' -ZipUrl "$releaseBase/emulebb-$($script:SuiteConfig.version)-$assetArch.zip" -ManifestUrl "$releaseBase/emulebb-$($script:SuiteConfig.version)-$assetArch.manifest.json" -Destination $appRoot
+Install-ReleaseZip -Name 'eMuleBB' -ZipUrl "$releaseBase/emulebb-$($script:SuiteConfig.version)$emulebbAssetSuffix-$assetArch.zip" -ManifestUrl "$releaseBase/emulebb-$($script:SuiteConfig.version)$emulebbAssetSuffix-$assetArch.manifest.json" -Destination $appRoot
+Assert-EmulebbExecutableInstalled -Config $script:SuiteConfig
 
 if ($script:SuiteConfig.bundle -ne 'Core') {
     Install-ReleaseZip -Name 'aMuTorrent' -ZipUrl "$releaseBase/emulebb-$($script:SuiteConfig.version)-amutorrent-x64.zip" -ManifestUrl "$releaseBase/emulebb-$($script:SuiteConfig.version)-amutorrent-x64.manifest.json" -Destination $appRoot

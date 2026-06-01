@@ -1346,6 +1346,13 @@ def package_miniupnpc(
 @click.option("--skip-build", is_flag=True, help="Deploy existing package artifacts without rebuilding them.")
 @click.option("--live-wire-inputs-file", default=None, help="Ignored live-wire JSON containing local_package_install settings.")
 @click.option(
+    "--package-flavor",
+    type=click.Choice(["standard", "diagnostics"]),
+    default="standard",
+    show_default=True,
+    help="eMuleBB release package flavor to install locally.",
+)
+@click.option(
     "--release-version",
     default="0.7.3-rc.1",
     show_default=True,
@@ -1356,6 +1363,7 @@ def install_local_package_command(
     clean: bool,
     skip_build: bool,
     live_wire_inputs_file: str | None,
+    package_flavor: str,
     release_version: str,
     workspace_options: WorkspaceOptions,
     layout,
@@ -1367,6 +1375,7 @@ def install_local_package_command(
         clean=clean,
         skip_build=skip_build,
         live_wire_inputs_file=live_wire_inputs_file,
+        package_flavor=package_flavor,
     )
     _locked(
         "install local-package",

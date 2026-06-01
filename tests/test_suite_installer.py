@@ -88,6 +88,8 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     suite_config = json.loads((install_root / "manifests" / "suite-config.json").read_text(encoding="utf-8-sig"))
     assert suite_config["schema"] == "emulebb.suite-config.v1"
     assert suite_config["installKind"] == "Production"
+    assert suite_config["emulebbPackageFlavor"] == "standard"
+    assert suite_config["emulebbExecutableName"] == "emulebb.exe"
     assert suite_config["services"]["emulebb"]["bindAddress"] == _default_control_bind()
     assert suite_config["services"]["emulebb"]["port"] == 14711
     assert suite_config["services"]["amutorrent"]["bindAddress"] == _default_control_bind()
@@ -106,12 +108,16 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
         "sourcePreferencesSha256": None,
     }
     assert install_manifest["installKind"] == "Production"
+    assert install_manifest["emulebbPackageFlavor"] == "standard"
+    assert install_manifest["emulebbExecutableName"] == "emulebb.exe"
     assert install_manifest["services"]["emulebb"]["apiKeyPresent"] is True
     assert "apiKey" not in install_manifest["services"]["emulebb"]
     assert suite_config["services"]["emulebb"]["apiKey"] not in json.dumps(install_manifest)
 
     start_emulebb = (install_root / "scripts" / "Start-eMuleBB.ps1").read_text(encoding="utf-8-sig")
-    assert "apps\\eMuleBB\\emulebb.exe" in start_emulebb
+    assert "apps\\eMuleBB" in start_emulebb
+    assert "emulebbExecutableName" in start_emulebb
+    assert "'emulebb.exe'" in start_emulebb
     assert "profiles\\emulebb" in start_emulebb
 
     start_suite = (install_root / "scripts" / "Start-Suite.ps1").read_text(encoding="utf-8-sig")
@@ -156,6 +162,47 @@ def test_suite_installer_copies_packaged_installer_into_suite_scripts(tmp_path: 
     )
 
     assert (install_root / "scripts" / "Install-eMuleBBSuite.ps1").read_bytes() == installer_payload
+
+
+def test_suite_installer_core_install_uses_diagnostics_executable_name(tmp_path: Path) -> None:
+    release_root = tmp_path / "release"
+    install_root = tmp_path / "suite"
+    suite_install_fixtures.write_core_release(
+        release_root,
+        package_flavor="diagnostics",
+        executable_name="emulebb-diagnostics.exe",
+    )
+
+    repo_root = Path.cwd()
+    suite_install_fixtures.run_installer(
+        (repo_root / INSTALLER).resolve(),
+        [
+            "-NonInteractive",
+            "-NoStart",
+            "-Force",
+            "-Bundle",
+            "Core",
+            "-InstallRoot",
+            str(install_root),
+            "-ReleaseBaseUrl",
+            release_root.as_uri(),
+            "-EmulebbPackageFlavor",
+            "diagnostics",
+        ],
+        cwd=repo_root,
+    )
+
+    assert (install_root / "apps" / "eMuleBB" / "emulebb-diagnostics.exe").is_file()
+    assert not (install_root / "apps" / "eMuleBB" / "emulebb.exe").exists()
+    suite_config = suite_install_fixtures.read_suite_config(install_root)
+    assert suite_config["emulebbPackageFlavor"] == "diagnostics"
+    assert suite_config["emulebbExecutableName"] == "emulebb-diagnostics.exe"
+    install_manifest = suite_install_fixtures.read_suite_install_manifest(install_root)
+    assert install_manifest["emulebbPackageFlavor"] == "diagnostics"
+    assert install_manifest["emulebbExecutableName"] == "emulebb-diagnostics.exe"
+    start_emulebb = (install_root / "scripts" / "Start-eMuleBB.ps1").read_text(encoding="utf-8-sig")
+    assert "emulebbExecutableName" in start_emulebb
+    assert "emulebb-diagnostics.exe" not in start_emulebb
 
 
 def test_suite_installer_rejects_release_manifest_without_sha256(tmp_path: Path) -> None:

@@ -13,6 +13,7 @@ from .network_context import TestNetwork, VpnTestNetwork
 BuildConfiguration = Literal["Debug", "Release"]
 BuildPlatform = Literal["x64", "ARM64"]
 BuildOutputMode = Literal["Full", "Warnings", "ErrorsOnly"]
+PackageFlavor = Literal["standard", "diagnostics"]
 ClientBuildTarget = Literal["amule"]
 LiveE2eProfile = Literal[
     "default",
@@ -387,6 +388,7 @@ class LocalPackageInstallOptions(BaseModel):
     clean: bool = False
     skip_build: bool = False
     live_wire_inputs_file: str | None = None
+    package_flavor: PackageFlavor = "standard"
 
 
 class LocalHammerCampaignOptions(BaseModel):
