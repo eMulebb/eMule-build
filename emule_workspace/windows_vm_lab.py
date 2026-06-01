@@ -122,6 +122,7 @@ class PowerShellRunner:
         completed = subprocess.run(
             command,
             cwd=str(self.cwd),
+            env=_powershell_subprocess_env(executable),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -131,6 +132,24 @@ class PowerShellRunner:
             tail = completed.stderr.strip() or completed.stdout.strip()
             raise RuntimeError(f"{label} failed with exit code {completed.returncode}.\n{tail}")
         return completed.stdout
+
+
+def _powershell_subprocess_env(executable: str) -> dict[str, str]:
+    """Builds an environment that keeps Windows PowerShell on Windows modules."""
+
+    env = os.environ.copy()
+    if Path(executable).name.lower() != "powershell.exe":
+        return env
+    module_path_key = next((key for key in env if key.lower() == "psmodulepath"), "PSModulePath")
+    module_path = env.get(module_path_key)
+    if not module_path:
+        return env
+    parts = [part for part in module_path.split(os.pathsep) if part]
+    windows_parts = [part for part in parts if "windowspowershell" in part.lower()]
+    other_parts = [part for part in parts if part not in windows_parts]
+    if windows_parts:
+        env[module_path_key] = os.pathsep.join(windows_parts + other_parts)
+    return env
 
 
 def parse_matrix(raw_matrix: str | Sequence[str] | None) -> tuple[str, ...]:
@@ -480,12 +499,22 @@ $mountedVhd = Mount-VHD -Path $payload.vhdPath -Passthru
 $disk = $mountedVhd | Get-Disk
 try {
   Initialize-Disk -Number $disk.Number -PartitionStyle GPT
-  $efi = New-Partition -DiskNumber $disk.Number -Size 260MB -GptType '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}' -AssignDriveLetter
-  $windows = New-Partition -DiskNumber $disk.Number -UseMaximumSize -AssignDriveLetter
+  $efi = New-Partition -DiskNumber $disk.Number -Size 260MB -GptType '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}'
+  $windows = New-Partition -DiskNumber $disk.Number -UseMaximumSize
   Format-Volume -Partition $efi -FileSystem FAT32 -NewFileSystemLabel System -Confirm:$false | Out-Null
   Format-Volume -Partition $windows -FileSystem NTFS -NewFileSystemLabel Windows -Confirm:$false | Out-Null
-  $efiRoot = "$($efi.DriveLetter):"
-  $windowsRoot = "$($windows.DriveLetter):"
+  Add-PartitionAccessPath -DiskNumber $disk.Number -PartitionNumber $efi.PartitionNumber -AssignDriveLetter
+  Add-PartitionAccessPath -DiskNumber $disk.Number -PartitionNumber $windows.PartitionNumber -AssignDriveLetter
+  $efiVolume = Get-Partition -DiskNumber $disk.Number -PartitionNumber $efi.PartitionNumber | Get-Volume
+  $windowsVolume = Get-Partition -DiskNumber $disk.Number -PartitionNumber $windows.PartitionNumber | Get-Volume
+  if (-not $efiVolume.DriveLetter) {
+    throw 'EFI partition did not receive a drive letter.'
+  }
+  if (-not $windowsVolume.DriveLetter) {
+    throw 'Windows partition did not receive a drive letter.'
+  }
+  $efiRoot = "$($efiVolume.DriveLetter):"
+  $windowsRoot = "$($windowsVolume.DriveLetter):"
   Mount-DiskImage -ImagePath $payload.isoPath | Out-Null
   $iso = Get-DiskImage -ImagePath $payload.isoPath | Get-Volume
   $isoRoot = "$($iso.DriveLetter):"
@@ -508,10 +537,29 @@ try {
   New-Item -ItemType Directory -Force -Path $unattendDir | Out-Null
   $escapedPassword = [Security.SecurityElement]::Escape($payload.password)
   $escapedUser = [Security.SecurityElement]::Escape($payload.username)
-  $unattend = @"
+$unattend = @"
 <?xml version="1.0" encoding="utf-8"?>
-<unattend xmlns="urn:schemas-microsoft-com:unattend">
+<unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+  <settings pass="specialize">
+    <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <InputLocale>en-US</InputLocale>
+      <SystemLocale>en-US</SystemLocale>
+      <UILanguage>en-US</UILanguage>
+      <UserLocale>en-US</UserLocale>
+    </component>
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <ComputerName>*</ComputerName>
+      <RegisteredOwner>eMuleBB</RegisteredOwner>
+      <TimeZone>UTC</TimeZone>
+    </component>
+  </settings>
   <settings pass="oobeSystem">
+    <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <InputLocale>en-US</InputLocale>
+      <SystemLocale>en-US</SystemLocale>
+      <UILanguage>en-US</UILanguage>
+      <UserLocale>en-US</UserLocale>
+    </component>
     <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
       <OOBE>
         <HideEULAPage>true</HideEULAPage>
@@ -519,11 +567,13 @@ try {
         <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
         <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
         <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+        <SkipMachineOOBE>true</SkipMachineOOBE>
+        <SkipUserOOBE>true</SkipUserOOBE>
         <ProtectYourPC>3</ProtectYourPC>
       </OOBE>
       <UserAccounts>
         <LocalAccounts>
-          <LocalAccount wcm:action="add" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+          <LocalAccount wcm:action="add">
             <Name>$escapedUser</Name>
             <Group>Administrators</Group>
             <Password><Value>$escapedPassword</Value><PlainText>true</PlainText></Password>
@@ -532,6 +582,7 @@ try {
       </UserAccounts>
       <AutoLogon>
         <Enabled>true</Enabled>
+        <LogonCount>999</LogonCount>
         <Username>$escapedUser</Username>
         <Password><Value>$escapedPassword</Value><PlainText>true</PlainText></Password>
       </AutoLogon>
@@ -540,10 +591,23 @@ try {
 </unattend>
 "@
   Set-Content -Path (Join-Path $unattendDir 'Unattend.xml') -Value $unattend -Encoding UTF8
+  New-Item -ItemType Directory -Force -Path "$efiRoot\EFI\Microsoft\Boot" | Out-Null
+  New-Item -ItemType Directory -Force -Path "$efiRoot\EFI\Microsoft\Recovery" | Out-Null
   bcdboot.exe "$windowsRoot\Windows" /s $efiRoot /f UEFI | Out-Host
   if ($LASTEXITCODE -ne 0) {
     throw ('BCDBoot failed with exit code ' + $LASTEXITCODE)
   }
+  $sourceBootMgr = Join-Path $windowsRoot 'Windows\Boot\EFI\bootmgfw.efi'
+  $microsoftBootMgr = Join-Path $efiRoot 'EFI\Microsoft\Boot\bootmgfw.efi'
+  $fallbackBootMgr = Join-Path $efiRoot 'EFI\Boot\bootx64.efi'
+  if (-not (Test-Path -LiteralPath $microsoftBootMgr)) {
+    if (-not (Test-Path -LiteralPath $sourceBootMgr)) {
+      throw ('Windows image is missing EFI boot manager: ' + $sourceBootMgr)
+    }
+    Copy-Item -LiteralPath $sourceBootMgr -Destination $microsoftBootMgr -Force
+  }
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $fallbackBootMgr) | Out-Null
+  Copy-Item -LiteralPath $microsoftBootMgr -Destination $fallbackBootMgr -Force
 }
 finally {
   Dismount-DiskImage -ImagePath $payload.isoPath -ErrorAction SilentlyContinue

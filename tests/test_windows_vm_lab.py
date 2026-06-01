@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -97,6 +98,27 @@ def test_preflight_requires_guest_password(tmp_path: Path, monkeypatch: pytest.M
         windows_vm_lab.preflight_hyperv(config, runner=runner, require_password=True)
 
 
+def test_powershell_subprocess_env_prefers_windows_powershell_modules(monkeypatch: pytest.MonkeyPatch) -> None:
+    module_path = os.pathsep.join(
+        [
+            r"C:\Program Files\PowerShell\Modules",
+            r"c:\program files\powershell\7\Modules",
+            r"C:\Program Files\WindowsPowerShell\Modules",
+            r"C:\Windows\system32\WindowsPowerShell\v1.0\Modules",
+        ]
+    )
+    monkeypatch.setenv("PSModulePath", module_path)
+
+    env = windows_vm_lab._powershell_subprocess_env(
+        r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+    )
+
+    module_path_key = next(key for key in env if key.lower() == "psmodulepath")
+    parts = env[module_path_key].split(os.pathsep)
+    assert parts[0] == r"C:\Program Files\WindowsPowerShell\Modules"
+    assert parts[1] == r"C:\Windows\system32\WindowsPowerShell\v1.0\Modules"
+
+
 def test_prepare_vm_lab_dry_run_plans_targets(tmp_path: Path) -> None:
     layout = _layout(tmp_path)
     config_path = layout.build_repo_root / "vm-lab.local.json"
@@ -111,6 +133,15 @@ def test_prepare_vm_lab_dry_run_plans_targets(tmp_path: Path) -> None:
     assert result["matrix"] == ["win10"]
     assert result["targets"][0]["vmName"] == "emulebb-win10-test"
     assert result["targets"][0]["checkpointName"] == "emulebb-clean"
+
+
+def test_prepare_vm_target_script_skips_oobe_and_installs_efi_fallback() -> None:
+    script = windows_vm_lab._prepare_vm_target_script()
+
+    assert "<SkipMachineOOBE>true</SkipMachineOOBE>" in script
+    assert "<SkipUserOOBE>true</SkipUserOOBE>" in script
+    assert "<LogonCount>999</LogonCount>" in script
+    assert "bootx64.efi" in script
 
 
 def test_windows_vm_test_dry_run_writes_report(tmp_path: Path) -> None:
