@@ -130,7 +130,31 @@ def _write_suite_profile(target: Path, *, exe_payload: bytes = b"exe", executabl
 def _write_harness_seed(tests_repo_root: Path) -> Path:
     seed_config = tests_repo_root / "manifests" / "live-profile-seed" / "config"
     seed_config.mkdir(parents=True, exist_ok=True)
-    (seed_config / "preferences.ini").write_text("[eMule]\nNick=fallback\n", encoding="utf-16")
+    (seed_config / "preferences.ini").write_text(
+        "\n".join(
+            [
+                "[eMule]",
+                "AppVersion=0.72a x64",
+                "Nick=fallback",
+                "Port=27198",
+                "UDPPort=27208",
+                "ServerUDPPort=65535",
+                "Language=1033",
+                "StartupMinimized=0",
+                "BringToFront=1",
+                "ConfirmExit=0",
+                "RestoreLastMainWndDlg=0",
+                "Splashscreen=0",
+                "Autoconnect=0",
+                "Reconnect=0",
+                "NetworkED2K=0",
+                "NetworkKademlia=0",
+                "ShowSharedFilesDetails=0",
+                "",
+            ]
+        ),
+        encoding="utf-16",
+    )
     (seed_config / "preferences.dat").write_bytes(b"fallback-prefs")
     (seed_config / "server.met").write_bytes(b"fallback-servers")
     (seed_config / "nodes.dat").write_bytes(b"fallback-nodes")
@@ -531,7 +555,7 @@ def test_materialize_test_local_install_uses_isolated_test_root(
     seed_files = {path.name for path in result.profile_seed_config_dir.iterdir()}
     assert seed_files == {"preferences.ini", "preferences.dat", "server.met", "nodes.dat"}
     assert (result.profile_seed_config_dir / "preferences.ini").read_bytes() == (
-        result.profile_config_dir / "preferences.ini"
+        layout.tests_repo_root / "manifests" / "live-profile-seed" / "config" / "preferences.ini"
     ).read_bytes()
     assert (result.profile_seed_config_dir / "preferences.dat").read_bytes() == b"fallback-prefs"
     assert (result.profile_seed_config_dir / "server.met").read_bytes() == b"fallback-servers"

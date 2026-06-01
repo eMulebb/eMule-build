@@ -436,7 +436,7 @@ def choose_free_tcp_ports(count: int, *, host: str = "127.0.0.1") -> tuple[int, 
 
 
 def prepare_test_profile_seed(layout: WorkspaceLayout, installer_config_dir: Path, install_root: Path) -> Path:
-    """Builds a curated harness seed from the installer-owned profile config."""
+    """Builds a curated harness seed for deterministic live suites."""
 
     if not installer_config_dir.is_dir():
         raise RuntimeError(f"Installer profile config directory is missing: {installer_config_dir}")
@@ -449,7 +449,7 @@ def prepare_test_profile_seed(layout: WorkspaceLayout, installer_config_dir: Pat
     seed_config_dir.mkdir(parents=True, exist_ok=True)
 
     for file_name in sorted(HARNESS_PROFILE_SEED_FILES):
-        source = installer_config_dir / file_name
+        source = fallback_seed_dir / file_name if file_name == "preferences.ini" else installer_config_dir / file_name
         if not source.is_file():
             source = fallback_seed_dir / file_name
         if not source.is_file():
