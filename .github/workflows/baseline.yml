@@ -12,5 +12,5 @@ jobs:
       repo_kind: emulebb-build
       extra_commands: |
         python -m pip install -e .[dev]
-        python -m pytest
+        python -m pytest tests/test_ci_workflows.py
       tooling_ref: main

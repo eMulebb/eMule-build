@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
@@ -15,6 +17,13 @@ def _app_workflow(name: str) -> Path:
     return _workspace_root() / "workspaces" / "workspace" / "app" / "emulebb-main" / ".github" / "workflows" / name
 
 
+def _read_app_workflow(name: str) -> str:
+    workflow = _app_workflow(name)
+    if not workflow.is_file():
+        pytest.skip(f"app workflow is not available in this checkout: {workflow}")
+    return workflow.read_text(encoding="utf-8")
+
+
 def test_reusable_workspace_command_owns_materialized_ci_setup() -> None:
     workflow = _repo_root() / ".github" / "workflows" / "reusable-workspace-command.yml"
     text = workflow.read_text(encoding="utf-8")
@@ -23,6 +32,7 @@ def test_reusable_workspace_command_owns_materialized_ci_setup() -> None:
     assert "python -m emule_workspace materialize --workspace-root $env:EMULEBB_WORKSPACE_ROOT" in text
     assert "python -m pip install \"click>=8.1\" \"pydantic>=2.0\" \"jinja2>=3\" \"jsonschema>=4\"" in text
     assert "Reset-RepoRef" in text
+    assert "[string]$Ref" in text
     assert "repos\\amutorrent" in text
     assert "workspaces\\workspace\\app\\emulebb-main" in text
 
@@ -45,12 +55,11 @@ def test_build_baseline_uses_supported_reusable_inputs() -> None:
     assert "extra_step_script:" not in text
     assert "extra_commands:" in text
     assert "python -m pip install -e .[dev]" in text
-    assert "python -m pytest" in text
+    assert "python -m pytest tests/test_ci_workflows.py" in text
 
 
 def test_controlled_smoke_uses_reusable_core_offline_and_lan_suite() -> None:
-    workflow = _app_workflow("controlled-smoke.yml")
-    text = workflow.read_text(encoding="utf-8")
+    text = _read_app_workflow("controlled-smoke.yml")
 
     assert "workflow_dispatch:" in text
     assert 'cron: "47 5 * * *"' in text
@@ -73,8 +82,7 @@ def test_controlled_smoke_uses_reusable_core_offline_and_lan_suite() -> None:
 
 
 def test_controlled_smoke_keeps_first_lane_narrow() -> None:
-    workflow = _app_workflow("controlled-smoke.yml")
-    text = workflow.read_text(encoding="utf-8").lower()
+    text = _read_app_workflow("controlled-smoke.yml").lower()
 
     assert "--fixture-size-bytes" not in text
     assert "package-helper-integration" not in text

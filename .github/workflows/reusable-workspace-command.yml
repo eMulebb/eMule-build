@@ -124,7 +124,7 @@ jobs:
             param(
               [Parameter(Mandatory = $true)][string]$RepoPath,
               [Parameter(Mandatory = $true)][string]$Repository,
-              [Parameter(Mandatory = $true)][string]$Ref,
+              [string]$Ref,
               [Parameter(Mandatory = $true)][string]$Branch
             )
 
