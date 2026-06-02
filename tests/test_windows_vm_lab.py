@@ -411,7 +411,7 @@ def test_prepare_vm_target_script_installs_python_and_pip_in_guest() -> None:
 
     assert "python-installer.exe" in script
     assert "Include_pip=1" in script
-    assert windows_vm_lab.VM_GUEST_LIVE_PYTHON_PACKAGES == ("pywin32", "pywinauto")
+    assert windows_vm_lab.VM_GUEST_LIVE_PYTHON_PACKAGES == ("pywin32", "pywinauto", "jsonschema", "PyYAML")
     assert "Install-PythonLiveHarnessDependencies" in script
     assert "--disable-pip-version-check" in script
     assert "2>&1" in script
