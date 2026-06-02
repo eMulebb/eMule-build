@@ -1725,10 +1725,12 @@ try {
       return
     }
     $arguments = @('-m', 'pip', 'install', '--disable-pip-version-check') + $Packages
-    & $PythonExe @arguments
+    $output = & $PythonExe @arguments 2>&1
     if ($LASTEXITCODE -ne 0) {
-      throw ('Python live harness dependency install failed with exit code ' + $LASTEXITCODE)
+      $details = ($output | ForEach-Object { $_.ToString() }) -join "`n"
+      throw ('Python live harness dependency install failed with exit code ' + $LASTEXITCODE + ":`n" + $details)
     }
+    $output | ForEach-Object { Write-Output $_ }
   }
 
   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine -Force

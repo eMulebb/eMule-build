@@ -414,6 +414,8 @@ def test_prepare_vm_target_script_installs_python_and_pip_in_guest() -> None:
     assert windows_vm_lab.VM_GUEST_LIVE_PYTHON_PACKAGES == ("pywin32", "pywinauto")
     assert "Install-PythonLiveHarnessDependencies" in script
     assert "--disable-pip-version-check" in script
+    assert "2>&1" in script
+    assert "Python live harness dependency install failed" in script
     assert "--no-index" not in script
     assert "python-wheels" not in script
     assert windows_vm_lab.PYTHON_INSTALL_DIR == r"C:\Python313"
