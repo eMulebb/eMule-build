@@ -419,7 +419,7 @@ def invoke_windows_vm_tests(
     if tuple(matrix) != profile_spec.required_targets:
         expected = ",".join(profile_spec.required_targets)
         raise RuntimeError(f"{options.profile} requires --matrix {expected}.")
-    uses_local_swarm = options.profile in set(getattr(profile_catalog, "LOCAL_SWARM_VM_PROFILES", ()))
+    uses_local_swarm = bool(getattr(profile_spec, "uses_local_swarm", False))
     runner = PowerShellRunner(cwd=layout.emule_workspace_root, dry_run=options.dry_run)
     preflight_hyperv(config, runner=runner, require_password=not options.dry_run)
     if not options.skip_build and not options.dry_run:
