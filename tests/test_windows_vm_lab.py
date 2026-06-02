@@ -38,6 +38,7 @@ def _write_config(path: Path) -> None:
                 "schema": windows_vm_lab.VM_LAB_SCHEMA,
                 "hyperv": {
                     "switch_name": "emulebb-test-switch",
+                    "provisioning_switch_name": "Default Switch",
                     "vpn_switch_name": "emulebb-test-vpn-switch",
                     "checkpoint_name": "emulebb-clean",
                     "memory_mb": 2048,
@@ -239,6 +240,7 @@ def test_load_vm_lab_config_resolves_targets(tmp_path: Path) -> None:
 
     assert config.config_path == config_path.resolve()
     assert config.hyperv.switch_name == "emulebb-test-switch"
+    assert config.hyperv.provisioning_switch_name == "Default Switch"
     assert config.hyperv.vpn_switch_name == "emulebb-test-vpn-switch"
     assert config.hyperv.memory_mb == 2048
     assert config.guest.password_env == "EMULEBB_TEST_VM_PASSWORD"
@@ -375,6 +377,16 @@ def test_prepare_vm_target_script_skips_oobe_and_installs_efi_fallback() -> None
     assert "bootx64.efi" in script
 
 
+def test_prepare_vm_target_script_uses_provisioning_switch_for_internet() -> None:
+    script = windows_vm_lab._prepare_vm_target_script()
+
+    assert windows_vm_lab.DEFAULT_PROVISIONING_SWITCH_NAME == "Default Switch"
+    assert "provisioningSwitchName" in script
+    assert "Hyper-V provisioning switch is missing" in script
+    assert "New-VM -Name $payload.vmName" in script
+    assert "-SwitchName $provisioningSwitchName" in script
+
+
 def test_prepare_vm_target_script_installs_python_and_pip_in_guest() -> None:
     script = windows_vm_lab._prepare_vm_target_script()
 
@@ -383,6 +395,8 @@ def test_prepare_vm_target_script_installs_python_and_pip_in_guest() -> None:
     assert windows_vm_lab.VM_GUEST_LIVE_PYTHON_PACKAGES == ("pywin32", "pywinauto")
     assert "Install-PythonLiveHarnessDependencies" in script
     assert "--disable-pip-version-check" in script
+    assert "--no-index" not in script
+    assert "python-wheels" not in script
     assert windows_vm_lab.PYTHON_INSTALL_DIR == r"C:\Python313"
     assert "Get-FileHash -Algorithm SHA256" in script
     assert "Copy-Item -ToSession" in script

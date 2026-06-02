@@ -26,6 +26,7 @@ VM_LAB_SCHEMA = "emulebb.windows-vm-lab.v1"
 DEFAULT_CONFIG_FILE_NAME = "vm-lab.local.json"
 EXAMPLE_CONFIG_FILE_NAME = "vm-lab.example.json"
 DEFAULT_SWITCH_NAME = "emulebb-vm-private"
+DEFAULT_PROVISIONING_SWITCH_NAME = "Default Switch"
 DEFAULT_VPN_SWITCH_NAME = "emulebb-vm-external"
 DEFAULT_CHECKPOINT_NAME = "emulebb-clean"
 DEFAULT_GUEST_USERNAME = "emulebbtest"
@@ -65,6 +66,7 @@ class HyperVLabSettings:
     """Hyper-V resources used by the VM lab."""
 
     switch_name: str = DEFAULT_SWITCH_NAME
+    provisioning_switch_name: str = DEFAULT_PROVISIONING_SWITCH_NAME
     vpn_switch_name: str = DEFAULT_VPN_SWITCH_NAME
     checkpoint_name: str = DEFAULT_CHECKPOINT_NAME
     memory_mb: int = DEFAULT_MEMORY_MB
@@ -291,6 +293,11 @@ def load_vm_lab_config(layout: WorkspaceLayout, config_file: str | None = None) 
     raw_targets = _required_object(payload, "targets")
     hyperv = HyperVLabSettings(
         switch_name=_optional_string(raw_hyperv, "switch_name", DEFAULT_SWITCH_NAME),
+        provisioning_switch_name=_optional_string(
+            raw_hyperv,
+            "provisioning_switch_name",
+            DEFAULT_PROVISIONING_SWITCH_NAME,
+        ),
         vpn_switch_name=_optional_string(raw_hyperv, "vpn_switch_name", DEFAULT_VPN_SWITCH_NAME),
         checkpoint_name=_optional_string(raw_hyperv, "checkpoint_name", DEFAULT_CHECKPOINT_NAME),
         memory_mb=_optional_positive_int(raw_hyperv, "memory_mb", DEFAULT_MEMORY_MB),
@@ -567,6 +574,7 @@ def prepare_vm_target(
             "edition": target.edition,
             "vhdPath": str(vhd_path),
             "switchName": config.hyperv.switch_name,
+            "provisioningSwitchName": config.hyperv.provisioning_switch_name,
             "checkpointName": config.hyperv.checkpoint_name,
             "memoryBytes": config.hyperv.memory_mb * 1024 * 1024,
             "diskBytes": config.hyperv.disk_gb * 1024 * 1024 * 1024,
@@ -1241,6 +1249,13 @@ if (-not (Test-Path -LiteralPath $payload.isoPath)) {
 if (-not (Get-VMSwitch -Name $payload.switchName -ErrorAction SilentlyContinue)) {
   New-VMSwitch -Name $payload.switchName -SwitchType Private | Out-Null
 }
+$provisioningSwitchName = $payload.provisioningSwitchName
+if (-not $provisioningSwitchName) {
+  $provisioningSwitchName = $payload.switchName
+}
+if (-not (Get-VMSwitch -Name $provisioningSwitchName -ErrorAction SilentlyContinue)) {
+  throw ('Hyper-V provisioning switch is missing: ' + $provisioningSwitchName)
+}
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $payload.vhdPath) | Out-Null
 New-VHD -Path $payload.vhdPath -SizeBytes ([int64] $payload.diskBytes) -Dynamic | Out-Null
 $mountedVhd = Mount-VHD -Path $payload.vhdPath -Passthru
@@ -1361,7 +1376,7 @@ finally {
   Dismount-DiskImage -ImagePath $payload.isoPath -ErrorAction SilentlyContinue
   Dismount-VHD -Path $payload.vhdPath -ErrorAction SilentlyContinue
 }
-New-VM -Name $payload.vmName -Generation 2 -MemoryStartupBytes ([int64] $payload.memoryBytes) -VHDPath $payload.vhdPath -SwitchName $payload.switchName | Out-Null
+New-VM -Name $payload.vmName -Generation 2 -MemoryStartupBytes ([int64] $payload.memoryBytes) -VHDPath $payload.vhdPath -SwitchName $provisioningSwitchName | Out-Null
 Set-VMProcessor -VMName $payload.vmName -Count ([int] $payload.processorCount)
 Set-VMFirmware -VMName $payload.vmName -EnableSecureBoot On -SecureBootTemplate 'MicrosoftWindows'
 Start-VM -Name $payload.vmName
