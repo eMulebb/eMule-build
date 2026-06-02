@@ -175,17 +175,28 @@ def build_windows_vm_profile_matrix():
 def _write_harness_vm_host(layout: SimpleNamespace) -> None:
     module_dir = layout.tests_repo_root / "emule_test_harness"
     module_dir.mkdir(parents=True, exist_ok=True)
+    (module_dir / "__init__.py").write_text("", encoding="utf-8")
+    (module_dir / "vm_host_fixture_contracts.py").write_text(
+        """
+from __future__ import annotations
+
+SCRIPT_PREFIX = "# script for"
+""".lstrip(),
+        encoding="utf-8",
+    )
     (module_dir / "windows_vm_host.py").write_text(
         """
 from __future__ import annotations
 
 from pathlib import Path
 
+from emule_test_harness import vm_host_fixture_contracts
+
 LOCAL_SWARM_VM_PROFILES = ("search-ui-local-swarm-vm",)
 
 
 def load_guest_script(tests_repo_root, profile_name):
-    return f"# script for {profile_name}"
+    return f"{vm_host_fixture_contracts.SCRIPT_PREFIX} {profile_name}"
 
 
 def guest_runner_path(tests_repo_root, profile_name):

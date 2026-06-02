@@ -257,8 +257,20 @@ def _load_harness_module(
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Unable to load {description}: {module_path}")
     module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
+    added_repo_root = False
+    repo_root = str(layout.tests_repo_root)
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+        added_repo_root = True
+    try:
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+    finally:
+        if added_repo_root:
+            try:
+                sys.path.remove(repo_root)
+            except ValueError:
+                pass
     missing = [name for name in required if not hasattr(module, name)]
     if missing:
         raise RuntimeError(f"{description} is missing field(s): {', '.join(missing)}")
