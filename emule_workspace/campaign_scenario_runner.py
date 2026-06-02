@@ -14,53 +14,6 @@ from .test_runs import invoke_live_e2e_suite
 from .windows_vm_lab import WindowsVmTestOptions, invoke_windows_vm_tests
 
 
-GODZILLA_SWARM_TIERS: dict[int, dict[str, object]] = {
-    1: {
-        "stage": "launch-scale",
-        "total_client_count": 4,
-        "peer_transfer_count": 24,
-        "harness_transfer_count": 24,
-        "emulebb_files": 80,
-        "extra_emulebb_files": 8,
-        "harness_files": 60,
-        "amule_files": 20,
-        "adverse_kill_cycles": 0,
-        "adverse_kill_warmup_seconds": 0.0,
-        "adverse_recovery_timeout_seconds": 180.0,
-        "cpu_profile": False,
-        "fail_fast": True,
-    },
-    2: {
-        "stage": "launch-scale",
-        "total_client_count": 10,
-        "peer_transfer_count": 120,
-        "harness_transfer_count": 120,
-        "emulebb_files": 240,
-        "extra_emulebb_files": 24,
-        "harness_files": 180,
-        "amule_files": 60,
-        "adverse_kill_cycles": 0,
-        "adverse_kill_warmup_seconds": 0.0,
-        "adverse_recovery_timeout_seconds": 180.0,
-        "cpu_profile": True,
-        "fail_fast": False,
-    },
-    3: {
-        "stage": "full",
-        "total_client_count": 18,
-        "peer_transfer_count": 360,
-        "harness_transfer_count": 360,
-        "emulebb_files": 720,
-        "extra_emulebb_files": 72,
-        "harness_files": 480,
-        "amule_files": 120,
-        "adverse_kill_cycles": 2,
-        "adverse_kill_warmup_seconds": 20.0,
-        "adverse_recovery_timeout_seconds": 180.0,
-        "cpu_profile": True,
-        "fail_fast": False,
-    },
-}
 GODZILLA_LOCAL_SWARM_SUITE = "godzilla-local-swarm"
 
 
@@ -71,12 +24,17 @@ def invoke_campaign_scenario(
 ) -> None:
     """Runs one reusable campaign scenario in local or VM mode."""
 
-    spec = resolve_campaign_scenario(layout, scenario_options.scenario)
+    catalog = load_campaign_scenario_catalog(layout)
+    spec = resolve_campaign_scenario_from_catalog(catalog, scenario_options.scenario)
     if scenario_options.mode == "local":
         invoke_live_e2e_suite(
             layout,
             workspace_options,
-            local_live_e2e_options(spec, scenario_options),
+            local_live_e2e_options(
+                spec,
+                scenario_options,
+                godzilla_tier_options(catalog, scenario_options.swarm_tier),
+            ),
         )
         return
     if scenario_options.mode == "vm":
@@ -89,13 +47,16 @@ def invoke_campaign_scenario(
     raise ValueError(f"Unsupported campaign scenario mode: {scenario_options.mode!r}.")
 
 
-def local_live_e2e_options(spec: Any, scenario_options: CampaignScenarioOptions) -> LiveE2eOptions:
+def local_live_e2e_options(
+    spec: Any,
+    scenario_options: CampaignScenarioOptions,
+    godzilla: dict[str, object],
+) -> LiveE2eOptions:
     """Returns the local live E2E options for one shared campaign scenario."""
 
     suites = tuple(str(suite) for suite in spec.local_suites)
     if bool(getattr(spec, "uses_local_swarm", False)) and GODZILLA_LOCAL_SWARM_SUITE not in suites:
         suites = (*suites, GODZILLA_LOCAL_SWARM_SUITE)
-    godzilla = godzilla_tier_options(scenario_options.swarm_tier)
     return LiveE2eOptions(
         profile=str(spec.local_profile or "default"),
         suites=suites,
@@ -118,13 +79,17 @@ def local_live_e2e_options(spec: Any, scenario_options: CampaignScenarioOptions)
     )
 
 
-def godzilla_tier_options(swarm_tier: int) -> dict[str, object]:
-    """Returns the existing local-swarm scale profile for a campaign tier."""
+def godzilla_tier_options(catalog: ModuleType, swarm_tier: int) -> dict[str, object]:
+    """Returns the test-owned local-swarm scale profile for a campaign tier."""
 
     try:
-        return GODZILLA_SWARM_TIERS[swarm_tier]
+        tier_options = getattr(catalog, "LOCAL_SWARM_TIER_OPTIONS")
+        selected = tier_options[swarm_tier]
     except KeyError as exc:
         raise ValueError(f"Unsupported campaign swarm tier: {swarm_tier}") from exc
+    if not isinstance(selected, dict):
+        raise ValueError(f"Campaign swarm tier {swarm_tier} is not a mapping.")
+    return selected
 
 
 def vm_test_options(spec: Any, scenario_options: CampaignScenarioOptions) -> WindowsVmTestOptions:
@@ -145,6 +110,12 @@ def resolve_campaign_scenario(layout: WorkspaceLayout, scenario: str) -> Any:
     """Loads a shared scenario by key, scenario id, or VM profile name."""
 
     catalog = load_campaign_scenario_catalog(layout)
+    return resolve_campaign_scenario_from_catalog(catalog, scenario)
+
+
+def resolve_campaign_scenario_from_catalog(catalog: ModuleType, scenario: str) -> Any:
+    """Resolves a shared scenario from an already-loaded catalog module."""
+
     for mapping_name in (
         "REUSABLE_CAMPAIGN_SCENARIO_BY_KEY",
         "REUSABLE_CAMPAIGN_SCENARIO_BY_SCENARIO_ID",
@@ -164,7 +135,11 @@ def load_campaign_scenario_catalog(layout: WorkspaceLayout) -> ModuleType:
         layout.tests_repo_root,
         module_path,
         "emulebb_campaign_scenario_catalog",
-        ("REUSABLE_CAMPAIGN_SCENARIO_BY_KEY", "REUSABLE_CAMPAIGN_SCENARIO_BY_SCENARIO_ID"),
+        (
+            "LOCAL_SWARM_TIER_OPTIONS",
+            "REUSABLE_CAMPAIGN_SCENARIO_BY_KEY",
+            "REUSABLE_CAMPAIGN_SCENARIO_BY_SCENARIO_ID",
+        ),
     )
 
 

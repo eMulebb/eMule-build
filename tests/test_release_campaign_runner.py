@@ -74,6 +74,53 @@ SPEC = Spec(
 REUSABLE_CAMPAIGN_SCENARIO_BY_KEY = {SPEC.key: SPEC}
 REUSABLE_CAMPAIGN_SCENARIO_BY_SCENARIO_ID = {SPEC.scenario_id: SPEC}
 REUSABLE_CAMPAIGN_SCENARIO_BY_VM_PROFILE = {SPEC.vm_profile: SPEC}
+LOCAL_SWARM_TIER_OPTIONS = {
+    1: {
+        "stage": "launch-scale",
+        "total_client_count": 4,
+        "peer_transfer_count": 24,
+        "harness_transfer_count": 24,
+        "emulebb_files": 80,
+        "extra_emulebb_files": 8,
+        "harness_files": 60,
+        "amule_files": 20,
+        "adverse_kill_cycles": 0,
+        "adverse_kill_warmup_seconds": 0.0,
+        "adverse_recovery_timeout_seconds": 180.0,
+        "cpu_profile": False,
+        "fail_fast": True,
+    },
+    2: {
+        "stage": "launch-scale",
+        "total_client_count": 12,
+        "peer_transfer_count": 144,
+        "harness_transfer_count": 144,
+        "emulebb_files": 288,
+        "extra_emulebb_files": 28,
+        "harness_files": 216,
+        "amule_files": 66,
+        "adverse_kill_cycles": 1,
+        "adverse_kill_warmup_seconds": 5.0,
+        "adverse_recovery_timeout_seconds": 210.0,
+        "cpu_profile": True,
+        "fail_fast": False,
+    },
+    3: {
+        "stage": "full",
+        "total_client_count": 18,
+        "peer_transfer_count": 360,
+        "harness_transfer_count": 360,
+        "emulebb_files": 720,
+        "extra_emulebb_files": 72,
+        "harness_files": 480,
+        "amule_files": 120,
+        "adverse_kill_cycles": 2,
+        "adverse_kill_warmup_seconds": 20.0,
+        "adverse_recovery_timeout_seconds": 180.0,
+        "cpu_profile": True,
+        "fail_fast": False,
+    },
+}
 """.lstrip(),
         encoding="utf-8",
     )

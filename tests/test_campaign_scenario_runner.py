@@ -43,8 +43,8 @@ def test_campaign_scenario_local_mode_reuses_local_live_suites_and_tiered_swarm(
             "multi-client-p2p",
             ("local-ed2k-search-soak", "local-kad-swarm", "godzilla-local-swarm"),
             "lan",
-            10,
-            60,
+            12,
+            66,
             "launch-scale",
             True,
             True,
@@ -52,10 +52,15 @@ def test_campaign_scenario_local_mode_reuses_local_live_suites_and_tiered_swarm(
     ]
 
 
-def test_godzilla_tier_options_reuse_local_hammer_shapes() -> None:
-    assert campaign_scenario_runner.godzilla_tier_options(1)["total_client_count"] == 4
-    assert campaign_scenario_runner.godzilla_tier_options(2)["total_client_count"] == 10
-    assert campaign_scenario_runner.godzilla_tier_options(3)["total_client_count"] == 18
+def test_godzilla_tier_options_come_from_campaign_catalog(tmp_path: Path) -> None:
+    layout = make_layout(tmp_path)
+    write_campaign_scenario_catalog(layout)
+    catalog = campaign_scenario_runner.load_campaign_scenario_catalog(layout)
+
+    assert campaign_scenario_runner.godzilla_tier_options(catalog, 1)["total_client_count"] == 4
+    assert campaign_scenario_runner.godzilla_tier_options(catalog, 2)["total_client_count"] == 12
+    assert campaign_scenario_runner.godzilla_tier_options(catalog, 2)["amule_files"] == 66
+    assert campaign_scenario_runner.godzilla_tier_options(catalog, 3)["total_client_count"] == 18
 
 
 def test_campaign_scenario_vm_mode_reuses_vm_profile(tmp_path: Path, monkeypatch) -> None:
