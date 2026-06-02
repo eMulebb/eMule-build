@@ -164,6 +164,10 @@ WINDOWS_VM_PROFILE_SPECS = (
         local_suites=("local-ed2k-search-soak", "local-kad-swarm"),
         execution_modes=("local", "vm"),
         uses_local_swarm=True,
+        control_bind_scope="lan",
+        amutorrent_bind_scope="lan",
+        p2p_mode="local-swarm",
+        p2p_bind_scope="lan",
     ),
 )
 WINDOWS_VM_PROFILE_BY_NAME = {spec.name: spec for spec in WINDOWS_VM_PROFILE_SPECS}
@@ -587,6 +591,10 @@ def test_windows_vm_reusable_campaign_summary_records_scenario_metadata(tmp_path
         "localSuites": ["local-ed2k-search-soak", "local-kad-swarm"],
         "executionModes": ["local", "vm"],
         "usesLocalSwarm": True,
+        "controlBindScope": "lan",
+        "amutorrentBindScope": "lan",
+        "p2pMode": "local-swarm",
+        "p2pBindScope": "lan",
     }
     assert result["campaignScenario"] == expected
     assert summary["campaignScenario"] == expected

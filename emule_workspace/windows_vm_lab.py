@@ -584,6 +584,10 @@ def _windows_vm_campaign_scenario_metadata(profile_spec: object) -> dict[str, ob
         "localSuites": list(local_suites),
         "executionModes": list(execution_modes),
         "usesLocalSwarm": uses_local_swarm,
+        "controlBindScope": str(getattr(profile_spec, "control_bind_scope", "")),
+        "amutorrentBindScope": str(getattr(profile_spec, "amutorrent_bind_scope", "")),
+        "p2pMode": str(getattr(profile_spec, "p2p_mode", "")),
+        "p2pBindScope": str(getattr(profile_spec, "p2p_bind_scope", "")),
     }
 
 
