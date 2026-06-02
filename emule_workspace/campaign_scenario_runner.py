@@ -62,6 +62,7 @@ def local_live_e2e_options(
         suites=suites,
         test_network=str(getattr(spec, "local_test_network", "default")),
         pre_run_cleanup=False,
+        plan_only=scenario_options.dry_run,
         fail_fast=bool(godzilla["fail_fast"]) if GODZILLA_LOCAL_SWARM_SUITE in suites else False,
         admin_volume_fixtures=GODZILLA_LOCAL_SWARM_SUITE in suites,
         godzilla_stage=str(godzilla["stage"]) if GODZILLA_LOCAL_SWARM_SUITE in suites else None,  # type: ignore[arg-type]

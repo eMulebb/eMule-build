@@ -114,6 +114,7 @@ class LiveE2eOptions(BaseModel):
     profile: LiveE2eProfile = "default"
     test_network: TestNetwork = "default"
     pre_run_cleanup: bool = False
+    plan_only: bool = False
     fail_fast: bool = False
     skip_live_seed_refresh: bool = False
     materialize_test_install: bool = False

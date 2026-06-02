@@ -63,6 +63,26 @@ def fake_network_context(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(test_runs, "resolve_workspace_network_context", resolve)
 
 
+def test_live_e2e_forwards_plan_only_option(tmp_path: Path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
+        captured["command"] = list(command)
+
+    layout = make_layout(tmp_path)
+    monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+
+    test_runs.invoke_live_e2e_suite(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+        LiveE2eOptions(suites=("local-ed2k-search-soak",), plan_only=True),
+    )
+
+    command = captured["command"]
+    assert isinstance(command, list)
+    assert "--plan-only" in command
+
+
 def test_live_e2e_forwards_cold_stress_cpu_profile_options(tmp_path: Path, monkeypatch) -> None:
     captured: dict[str, object] = {}
 

@@ -554,6 +554,7 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
         args.extend(["--profile", live_options.profile])
     for suite_name in live_options.suites:
         args.extend(["--suite", suite_name])
+    _append_optional_flag(args, live_options.plan_only, "--plan-only")
     _append_optional_flag(args, live_options.fail_fast, "--fail-fast")
     _append_optional_flag(args, live_options.skip_live_seed_refresh, "--skip-live-seed-refresh")
 

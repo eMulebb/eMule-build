@@ -13,7 +13,7 @@ def test_campaign_scenario_local_mode_reuses_local_live_suites_and_tiered_swarm(
 ) -> None:
     layout = make_layout(tmp_path)
     write_campaign_scenario_catalog(layout)
-    calls: list[tuple[str, tuple[str, ...], str, int, int, str, bool, bool]] = []
+    calls: list[tuple[str, tuple[str, ...], str, bool, int, int, str, bool, bool]] = []
 
     monkeypatch.setattr(
         campaign_scenario_runner,
@@ -23,6 +23,7 @@ def test_campaign_scenario_local_mode_reuses_local_live_suites_and_tiered_swarm(
                 options.profile,
                 options.suites,
                 options.test_network,
+                options.plan_only,
                 options.godzilla_total_client_count,
                 options.godzilla_amule_files,
                 options.godzilla_stage or "",
@@ -43,6 +44,7 @@ def test_campaign_scenario_local_mode_reuses_local_live_suites_and_tiered_swarm(
             "multi-client-p2p",
             ("local-ed2k-search-soak", "local-kad-swarm", "godzilla-local-swarm"),
             "default",
+            False,
             12,
             66,
             "launch-scale",
@@ -50,6 +52,33 @@ def test_campaign_scenario_local_mode_reuses_local_live_suites_and_tiered_swarm(
             True,
         )
     ]
+
+
+def test_campaign_scenario_local_dry_run_plans_local_live_suites(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    layout = make_layout(tmp_path)
+    write_campaign_scenario_catalog(layout)
+    calls: list[bool] = []
+
+    monkeypatch.setattr(
+        campaign_scenario_runner,
+        "invoke_live_e2e_suite",
+        lambda _layout, _workspace_options, options: calls.append(options.plan_only),
+    )
+
+    campaign_scenario_runner.invoke_campaign_scenario(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path),
+        CampaignScenarioOptions(
+            scenario="emulebb.flow.ui.search.local-swarm.v1",
+            mode="local",
+            dry_run=True,
+        ),
+    )
+
+    assert calls == [True]
 
 
 def test_godzilla_tier_options_come_from_campaign_catalog(tmp_path: Path) -> None:
