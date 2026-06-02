@@ -437,15 +437,16 @@ def invoke_windows_vm_tests(
     package_zip = _release_package_zip(layout, options.release_version, workspace_options.platform)
     if not options.dry_run and not package_zip.is_file():
         raise RuntimeError(f"Windows VM package-smoke is missing release package: {package_zip}")
-    amutorrent_package_zip = (
-        _release_amutorrent_package_zip(layout, options.release_version, workspace_options.platform)
+    local_swarm_release_asset_paths = (
+        _local_swarm_release_asset_paths(layout, options.release_version, workspace_options.platform)
         if uses_local_swarm
-        else None
+        else ()
     )
-    if not options.dry_run and uses_local_swarm and (
-        amutorrent_package_zip is None or not amutorrent_package_zip.is_file()
-    ):
-        raise RuntimeError(f"Windows VM local-swarm profile is missing aMuTorrent package: {amutorrent_package_zip}")
+    if not options.dry_run and uses_local_swarm:
+        missing_release_assets = [path for path in local_swarm_release_asset_paths if not path.is_file()]
+        if missing_release_assets:
+            formatted = ", ".join(str(path) for path in missing_release_assets)
+            raise RuntimeError(f"Windows VM local-swarm profile is missing suite installer release asset(s): {formatted}")
 
     run_id = utc_run_id()
     report_root = _windows_vm_report_root(layout)
@@ -497,7 +498,9 @@ def invoke_windows_vm_tests(
                     config.targets[key],
                     profile=options.profile,
                     package_zip=package_zip,
-                    amutorrent_package_zip=amutorrent_package_zip,
+                    local_swarm_release_asset_paths=local_swarm_release_asset_paths,
+                    release_version=options.release_version,
+                    platform=workspace_options.platform,
                     run_id=run_id,
                     run_report_dir=run_report_dir,
                     keep_running=options.keep_running,
@@ -764,7 +767,9 @@ def run_windows_vm_profile_smoke(
     *,
     profile: str,
     package_zip: Path,
-    amutorrent_package_zip: Path | None,
+    local_swarm_release_asset_paths: Sequence[Path],
+    release_version: str,
+    platform: str,
     run_id: str,
     run_report_dir: Path,
     keep_running: bool,
@@ -829,7 +834,9 @@ def run_windows_vm_profile_smoke(
             "localSwarmHarnessPackagePath": str(local_swarm_payload["harnessPackage"]),
             "localSwarmManifestsPath": str(local_swarm_payload["manifests"]),
             "localSwarmScriptPaths": [str(path) for path in local_swarm_payload["scripts"]],
-            "localSwarmAmutorrentZip": str(amutorrent_package_zip) if amutorrent_package_zip is not None else "",
+            "localSwarmReleaseAssetPaths": [str(path) for path in local_swarm_release_asset_paths],
+            "releaseVersion": release_version,
+            "platform": platform,
             "localSwarmRestOpenApiPath": (
                 str(local_swarm_rest_openapi_path)
                 if local_swarm_rest_openapi_path is not None
@@ -1853,14 +1860,14 @@ def _release_package_zip(layout: WorkspaceLayout, release_version: str, platform
     return layout.workspace_root / "state" / "release" / f"emulebb-v{release_version}" / f"emulebb-{release_version}-{arch}.zip"
 
 
-def _release_amutorrent_package_zip(layout: WorkspaceLayout, release_version: str, platform: str) -> Path:
+def _local_swarm_release_asset_paths(layout: WorkspaceLayout, release_version: str, platform: str) -> tuple[Path, ...]:
     arch = "arm64" if platform == "ARM64" else "x64"
+    release_root = layout.workspace_root / "state" / "release" / f"emulebb-v{release_version}"
     return (
-        layout.workspace_root
-        / "state"
-        / "release"
-        / f"emulebb-v{release_version}"
-        / f"emulebb-{release_version}-amutorrent-{arch}.zip"
+        release_root / f"emulebb-{release_version}-{arch}.zip",
+        release_root / f"emulebb-{release_version}-{arch}.manifest.json",
+        release_root / f"emulebb-{release_version}-amutorrent-{arch}.zip",
+        release_root / f"emulebb-{release_version}-amutorrent-{arch}.manifest.json",
     )
 
 

@@ -9,7 +9,6 @@ import pytest
 
 from emule_workspace.config import WorkspaceOptions
 from emule_workspace import windows_vm_lab
-from tests.suite_install_fixtures import write_zip
 
 
 def _layout(tmp_path: Path) -> SimpleNamespace:
@@ -614,14 +613,7 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
     )
     amule_daemon_exe = layout.workspace_root / "state" / "tools" / "amule" / "bin" / "amuled.exe"
     amule_control_exe = layout.workspace_root / "state" / "tools" / "amule" / "bin" / "amulecmd.exe"
-    amutorrent_zip = (
-        layout.workspace_root
-        / "state"
-        / "release"
-        / "emulebb-v0.7.3-rc.1"
-        / "emulebb-0.7.3-rc.1-amutorrent-x64.zip"
-    )
-    write_zip(amutorrent_zip, {"aMuTorrent/server/server.js": b"server\n"})
+    release_asset_paths = windows_vm_lab._local_swarm_release_asset_paths(layout, "0.7.3-rc.1", "x64")
     for path in (tracing_harness_exe, amule_daemon_exe, amule_control_exe):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("", encoding="utf-8")
@@ -645,7 +637,9 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
             config.targets["win10"],
             profile="search-ui-local-swarm-vm",
             package_zip=tmp_path / "package.zip",
-            amutorrent_package_zip=amutorrent_zip,
+            local_swarm_release_asset_paths=release_asset_paths,
+            release_version="0.7.3-rc.1",
+            platform="x64",
             run_id="run",
             run_report_dir=tmp_path / "report",
             keep_running=False,
@@ -663,7 +657,8 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
     assert "localSwarmHarnessPackagePath" in captured[0]
     assert "localSwarmManifestsPath" in captured[0]
     assert "localSwarmScriptPaths" in captured[0]
-    assert "localSwarmAmutorrentZip" in captured[0]
+    assert "localSwarmReleaseAssetPaths" in captured[0]
+    assert "releaseVersion" in captured[0]
     assert "localSwarmRestOpenApiPath" in captured[0]
     assert "localSwarmAppSourcePaths" in captured[0]
     assert "localSwarmGoed2kServerExe" in captured[0]
