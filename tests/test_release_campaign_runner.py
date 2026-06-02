@@ -645,6 +645,86 @@ def test_campaign_execute_can_override_shared_campaign_scenario_to_local_mode(
     assert calls == [("emulebb.flow.ui.search.local-swarm.v1", "local", 1)]
 
 
+def test_campaign_plan_can_force_shared_local_campaign_scenario_to_plan() -> None:
+    campaign = campaign_payload()
+    local_command = (
+        "python -m emule_workspace test campaign-scenario "
+        "--scenario emulebb.flow.ui.search.local-swarm.v1 --mode local --swarm-tier 1"
+    )
+    vm_command = (
+        "python -m emule_workspace test campaign-scenario "
+        "--scenario emulebb.flow.ui.search.local-swarm.v1 --mode vm "
+        "--release-version 0.7.4-rc.2 --skip-build --swarm-tier 2 --dry-run"
+    )
+    campaign["phases"][1]["scenarios"] = [
+        {
+            "id": "shared-local",
+            "flowCategory": "local-vm-swarm",
+            "command": local_command,
+            "localCommand": local_command,
+            "vmCommand": vm_command,
+            "executionMode": "local",
+            "blocking": True,
+        }
+    ]
+
+    plan = release_campaign_runner.build_release_campaign_execution_plan(
+        campaign,
+        ReleaseCampaignOptions(
+            campaign="test-campaign",
+            phase="controller-surface",
+            execute=True,
+            local_vm_swarm_mode="local",
+            local_vm_swarm_execution_mode="plan",
+        ),
+    )
+
+    assert len(plan) == 1
+    assert "--mode local" in plan[0].command
+    assert "--dry-run" in plan[0].command
+    assert "--local-swarm-mode" not in plan[0].command
+
+
+def test_campaign_plan_can_force_shared_local_campaign_scenario_to_execute() -> None:
+    campaign = campaign_payload()
+    local_command = (
+        "python -m emule_workspace test campaign-scenario "
+        "--scenario emulebb.flow.ui.search.local-swarm.v1 --mode local --swarm-tier 1 --dry-run"
+    )
+    vm_command = (
+        "python -m emule_workspace test campaign-scenario "
+        "--scenario emulebb.flow.ui.search.local-swarm.v1 --mode vm "
+        "--release-version 0.7.4-rc.2 --skip-build --swarm-tier 2 --dry-run"
+    )
+    campaign["phases"][1]["scenarios"] = [
+        {
+            "id": "shared-local",
+            "flowCategory": "local-vm-swarm",
+            "command": local_command,
+            "localCommand": local_command,
+            "vmCommand": vm_command,
+            "executionMode": "local",
+            "blocking": True,
+        }
+    ]
+
+    plan = release_campaign_runner.build_release_campaign_execution_plan(
+        campaign,
+        ReleaseCampaignOptions(
+            campaign="test-campaign",
+            phase="controller-surface",
+            execute=True,
+            local_vm_swarm_mode="local",
+            local_vm_swarm_execution_mode="execute",
+        ),
+    )
+
+    assert len(plan) == 1
+    assert "--mode local" in plan[0].command
+    assert "--dry-run" not in plan[0].command
+    assert "--local-swarm-mode" not in plan[0].command
+
+
 def test_campaign_execute_can_override_shared_campaign_scenario_to_vm_mode(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

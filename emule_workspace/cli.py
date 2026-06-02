@@ -1017,7 +1017,7 @@ def test_overnight_local_hammer(
     type=click.Choice(["manifest", "plan", "execute"]),
     default="manifest",
     show_default=True,
-    help="Override selected VM local-swarm rows to plan or execute their in-guest local swarm.",
+    help="Override selected reusable local/VM swarm rows to plan or execute.",
 )
 @click.option("--include-nonblocking", is_flag=True, help="Include nonblocking optional campaign scenarios during execution.")
 @click.option("--continue-on-failure", is_flag=True, help="Run remaining campaign commands after a failure.")

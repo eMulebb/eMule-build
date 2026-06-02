@@ -292,14 +292,15 @@ def _selected_scenario_command(scenario: dict[str, Any], campaign_options: Relea
 
 
 def _apply_local_vm_swarm_execution_mode(command: str, campaign_options: ReleaseCampaignOptions) -> str:
-    """Applies the release-level local-swarm plan/execute override to VM scenario commands."""
+    """Applies the release-level local-swarm plan/execute override to reusable scenario commands."""
 
     if campaign_options.local_vm_swarm_execution_mode == "manifest" or not command:
         return command
     tokens = _parse_command(command)
     if tokens[3:5] != ["test", "campaign-scenario"]:
         return command
-    if _option_value(tokens, "--mode") != "vm":
+    mode = _option_value(tokens, "--mode")
+    if mode not in {"local", "vm"}:
         return command
     if campaign_options.local_vm_swarm_execution_mode == "plan":
         return " ".join(
@@ -308,9 +309,12 @@ def _apply_local_vm_swarm_execution_mode(command: str, campaign_options: Release
                 "--dry-run",
             )
         )
+    tokens = _remove_flag(tokens, "--dry-run")
+    if mode == "local":
+        return " ".join(_remove_value_option(tokens, "--local-swarm-mode"))
     return " ".join(
         _replace_or_append_option(
-            _remove_flag(tokens, "--dry-run"),
+            tokens,
             "--local-swarm-mode",
             "execute",
         )
