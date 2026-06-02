@@ -132,6 +132,39 @@ def build_windows_vm_profile_matrix():
     )
 
 
+def _write_harness_vm_host(layout: SimpleNamespace) -> None:
+    module_dir = layout.tests_repo_root / "emule_test_harness"
+    module_dir.mkdir(parents=True, exist_ok=True)
+    (module_dir / "windows_vm_host.py").write_text(
+        """
+from __future__ import annotations
+
+from pathlib import Path
+
+
+def load_guest_script(tests_repo_root, profile_name):
+    return f"# script for {profile_name}"
+
+
+def guest_runner_path(tests_repo_root, profile_name):
+    return Path(tests_repo_root) / "emule_test_harness" / f"{profile_name}.py"
+
+
+def profile_helper_path(tests_repo_root):
+    return Path(tests_repo_root) / "emule_test_harness" / "vm_guest_profiles.py"
+
+
+def build_local_ed2k_target_payloads(vm_names):
+    return {key: {"target": key, "vmName": value, "tcpPort": 1, "udpPort": 2, "restPort": 3} for key, value in vm_names.items()}
+
+
+def build_hideme_live_target_payloads(vm_names):
+    return {key: {"target": key, "vmName": value, "tcpPort": 4, "udpPort": 5, "restPort": 6} for key, value in vm_names.items()}
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+
 def test_parse_matrix_rejects_unknown_target() -> None:
     with pytest.raises(RuntimeError, match="Unsupported Windows VM matrix"):
         windows_vm_lab.parse_matrix("win10,win12")
@@ -170,6 +203,19 @@ def test_windows_vm_profile_matrix_loads_harness_authority(tmp_path: Path) -> No
     assert profiles["hideme-live-wire"]["networkScope"] == "vpn"
     assert profiles["hideme-live-wire"]["releasePhase"] == "live-wire-release"
     json.dumps(matrix)
+
+
+def test_windows_vm_host_contracts_load_from_harness(tmp_path: Path) -> None:
+    layout = _layout(tmp_path)
+    _write_harness_vm_host(layout)
+
+    host_contracts = windows_vm_lab.load_windows_vm_host_contracts(layout)
+
+    assert host_contracts.load_guest_script(layout.tests_repo_root, "package-smoke") == "# script for package-smoke"
+    assert host_contracts.guest_runner_path(layout.tests_repo_root, "local-ed2k-transfer").name == (
+        "local-ed2k-transfer.py"
+    )
+    assert host_contracts.build_hideme_live_target_payloads({"win10": "vm"})["win10"]["tcpPort"] == 4
 
 
 def test_preflight_requires_guest_password(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

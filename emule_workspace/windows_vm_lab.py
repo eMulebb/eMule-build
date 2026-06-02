@@ -232,6 +232,31 @@ def build_windows_vm_profile_matrix(layout: WorkspaceLayout) -> dict[str, object
     return load_windows_vm_profile_catalog(layout).build_windows_vm_profile_matrix()
 
 
+def load_windows_vm_host_contracts(layout: WorkspaceLayout) -> ModuleType:
+    """Loads host-side Windows VM contracts from emulebb-build-tests."""
+
+    module_path = layout.tests_repo_root / "emule_test_harness" / "windows_vm_host.py"
+    if not module_path.is_file():
+        raise RuntimeError(f"Windows VM host harness module is missing: {module_path}")
+    spec = importlib.util.spec_from_file_location("emulebb_windows_vm_host", module_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load Windows VM host harness module: {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    required = (
+        "load_guest_script",
+        "guest_runner_path",
+        "profile_helper_path",
+        "build_local_ed2k_target_payloads",
+        "build_hideme_live_target_payloads",
+    )
+    missing = [name for name in required if not hasattr(module, name)]
+    if missing:
+        raise RuntimeError(f"Windows VM host harness module is missing field(s): {', '.join(missing)}")
+    return module
+
+
 def load_vm_lab_config(layout: WorkspaceLayout, config_file: str | None = None) -> VmLabConfig:
     """Loads and validates the ignored local VM lab configuration."""
 
@@ -554,6 +579,7 @@ def run_windows_vm_package_smoke(
             "checkpointName": config.hyperv.checkpoint_name,
             "reportDir": str(target_report_dir),
         }
+    host_contracts = load_windows_vm_host_contracts(layout)
     script = _ps_with_payload(
         {
             "target": target.key,
@@ -566,7 +592,7 @@ def run_windows_vm_package_smoke(
             "hostReportDir": str(target_report_dir),
             "keepRunning": keep_running,
         },
-        _load_guest_package_smoke_script(layout),
+        host_contracts.load_guest_script(layout.tests_repo_root, "package-smoke"),
     )
     stdout = runner.run(script, label=f"Windows VM package-smoke {target.key}", capture_json=True)
     payload = _parse_json_output(stdout, f"Windows VM package-smoke {target.key}")
@@ -614,30 +640,21 @@ def run_windows_vm_local_ed2k_transfer(
             }
             for key in required_targets
         ]
+    host_contracts = load_windows_vm_host_contracts(layout)
+    target_payloads = host_contracts.build_local_ed2k_target_payloads(
+        {key: config.targets[key].vm_name for key in required_targets}
+    )
     server_exe = build_goed2k_server_exe(layout)
     script = _ps_with_payload(
         {
-            "win10": {
-                "target": "win10",
-                "vmName": config.targets["win10"].vm_name,
-                "tcpPort": 4662,
-                "udpPort": 4672,
-                "restPort": 4711,
-            },
-            "win11": {
-                "target": "win11",
-                "vmName": config.targets["win11"].vm_name,
-                "tcpPort": 4762,
-                "udpPort": 4772,
-                "restPort": 4711,
-            },
+            **target_payloads,
             "checkpointName": config.hyperv.checkpoint_name,
             "username": config.guest.username,
             "password": resolve_guest_password(config),
             "packageZip": str(package_zip),
             "serverExe": str(server_exe),
-            "runnerPath": str(layout.tests_repo_root / "emule_test_harness" / "windows_vm_local_ed2k.py"),
-            "profileHelperPath": str(layout.tests_repo_root / "emule_test_harness" / "vm_guest_profiles.py"),
+            "runnerPath": str(host_contracts.guest_runner_path(layout.tests_repo_root, "local-ed2k-transfer")),
+            "profileHelperPath": str(host_contracts.profile_helper_path(layout.tests_repo_root)),
             "runId": run_id,
             "hostReportDir": str(run_report_dir),
             "keepRunning": keep_running,
@@ -645,7 +662,7 @@ def run_windows_vm_local_ed2k_transfer(
             "apiKey": "vm-local-ed2k-api-key",
             "adminToken": "vm-local-ed2k-admin-token",
         },
-        _load_guest_local_ed2k_transfer_script(layout),
+        host_contracts.load_guest_script(layout.tests_repo_root, "local-ed2k-transfer"),
     )
     stdout = runner.run(script, label="Windows VM local ED2K transfer", capture_json=True)
     payload = _parse_json_output(stdout, "Windows VM local ED2K transfer")
@@ -702,35 +719,26 @@ def run_windows_vm_hideme_live_wire(
             }
             for key in required_targets
         ]
+    host_contracts = load_windows_vm_host_contracts(layout)
+    target_payloads = host_contracts.build_hideme_live_target_payloads(
+        {key: config.targets[key].vm_name for key in required_targets}
+    )
     script = _ps_with_payload(
         {
-            "win10": {
-                "target": "win10",
-                "vmName": config.targets["win10"].vm_name,
-                "tcpPort": 4862,
-                "udpPort": 4872,
-                "restPort": 4711,
-            },
-            "win11": {
-                "target": "win11",
-                "vmName": config.targets["win11"].vm_name,
-                "tcpPort": 4962,
-                "udpPort": 4972,
-                "restPort": 4711,
-            },
+            **target_payloads,
             "checkpointName": config.hyperv.checkpoint_name,
             "vpnSwitchName": config.hyperv.vpn_switch_name,
             "username": config.guest.username,
             "password": resolve_guest_password(config),
             "packageZip": str(package_zip),
-            "runnerPath": str(layout.tests_repo_root / "emule_test_harness" / "windows_vm_hideme_live.py"),
-            "profileHelperPath": str(layout.tests_repo_root / "emule_test_harness" / "vm_guest_profiles.py"),
+            "runnerPath": str(host_contracts.guest_runner_path(layout.tests_repo_root, "hideme-live-wire")),
+            "profileHelperPath": str(host_contracts.profile_helper_path(layout.tests_repo_root)),
             "runId": run_id,
             "hostReportDir": str(run_report_dir),
             "keepRunning": keep_running,
             "apiKey": "vm-hideme-live-api-key",
         },
-        _load_guest_hideme_live_wire_script(layout),
+        host_contracts.load_guest_script(layout.tests_repo_root, "hideme-live-wire"),
     )
     stdout = runner.run(script, label="Windows VM hide.me live-wire", capture_json=True)
     payload = _parse_json_output(stdout, "Windows VM hide.me live-wire")
@@ -1410,66 +1418,6 @@ finally {
 Stop-VM -Name $payload.vmName -Force
 Checkpoint-VM -Name $payload.vmName -SnapshotName $payload.checkpointName
 """
-
-
-def _load_guest_package_smoke_script(layout: WorkspaceLayout) -> str:
-    """Loads the guest package-smoke script template owned by emulebb-build-tests."""
-
-    module_path = layout.tests_repo_root / "emule_test_harness" / "windows_vm_guest.py"
-    if not module_path.is_file():
-        raise RuntimeError(f"Windows VM guest harness module is missing: {module_path}")
-    spec = importlib.util.spec_from_file_location("emulebb_windows_vm_guest", module_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Unable to load Windows VM guest harness module: {module_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    script_factory = getattr(module, "package_smoke_script", None)
-    if not callable(script_factory):
-        raise RuntimeError(f"Windows VM guest harness module is missing package_smoke_script(): {module_path}")
-    script = script_factory()
-    if not isinstance(script, str) or not script.strip():
-        raise RuntimeError(f"Windows VM guest harness package_smoke_script() returned an empty script: {module_path}")
-    return script
-
-
-def _load_guest_local_ed2k_transfer_script(layout: WorkspaceLayout) -> str:
-    """Loads the guest local-ED2K transfer script template owned by emulebb-build-tests."""
-
-    module_path = layout.tests_repo_root / "emule_test_harness" / "windows_vm_guest.py"
-    if not module_path.is_file():
-        raise RuntimeError(f"Windows VM guest harness module is missing: {module_path}")
-    spec = importlib.util.spec_from_file_location("emulebb_windows_vm_guest", module_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Unable to load Windows VM guest harness module: {module_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    script_factory = getattr(module, "local_ed2k_transfer_script", None)
-    if not callable(script_factory):
-        raise RuntimeError(f"Windows VM guest harness module is missing local_ed2k_transfer_script(): {module_path}")
-    script = script_factory()
-    if not isinstance(script, str) or not script.strip():
-        raise RuntimeError(f"Windows VM guest harness local_ed2k_transfer_script() returned an empty script: {module_path}")
-    return script
-
-
-def _load_guest_hideme_live_wire_script(layout: WorkspaceLayout) -> str:
-    """Loads the guest hide.me live-wire script template owned by emulebb-build-tests."""
-
-    module_path = layout.tests_repo_root / "emule_test_harness" / "windows_vm_guest.py"
-    if not module_path.is_file():
-        raise RuntimeError(f"Windows VM guest harness module is missing: {module_path}")
-    spec = importlib.util.spec_from_file_location("emulebb_windows_vm_guest", module_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Unable to load Windows VM guest harness module: {module_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    script_factory = getattr(module, "hideme_live_wire_script", None)
-    if not callable(script_factory):
-        raise RuntimeError(f"Windows VM guest harness module is missing hideme_live_wire_script(): {module_path}")
-    script = script_factory()
-    if not isinstance(script, str) or not script.strip():
-        raise RuntimeError(f"Windows VM guest harness hideme_live_wire_script() returned an empty script: {module_path}")
-    return script
 
 
 def _release_package_zip(layout: WorkspaceLayout, release_version: str, platform: str) -> Path:
