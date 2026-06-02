@@ -535,6 +535,7 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
             keep_running=False,
             fixture_size_bytes=4096,
             swarm_tier=3,
+            local_swarm_mode="execute",
             runner=CaptureRunner(),
         )
     finally:
@@ -542,12 +543,14 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
 
     assert result["status"] == "passed"
     assert result["swarmTier"] == 3
+    assert result["localSwarmMode"] == "execute"
     assert "localSwarmHarnessPackagePath" in captured[0]
     assert "localSwarmScriptPaths" in captured[0]
     assert "localSwarmGoed2kServerExe" in captured[0]
     assert "localSwarmClient2AppExe" in captured[0]
     assert "localSwarmAmuleDaemonExe" in captured[0]
     assert "localSwarmAmuleControlExe" in captured[0]
+    assert "localSwarmMode" in captured[0]
     assert "goed2k-server.exe" in captured[0]
     assert "emule.exe" in captured[0]
     assert "amuled.exe" in captured[0]

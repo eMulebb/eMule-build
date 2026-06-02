@@ -96,6 +96,7 @@ _WINDOWS_VM_VALUE_OPTIONS = {
     "--profile",
     "--release-version",
     "--fixture-size-bytes",
+    "--local-swarm-mode",
 }
 _WINDOWS_VM_FLAG_OPTIONS = {"--skip-build", "--keep-running", "--dry-run"}
 _CAMPAIGN_SCENARIO_VALUE_OPTIONS = {
@@ -104,6 +105,7 @@ _CAMPAIGN_SCENARIO_VALUE_OPTIONS = {
     "--release-version",
     "--fixture-size-bytes",
     "--swarm-tier",
+    "--local-swarm-mode",
 }
 _CAMPAIGN_SCENARIO_FLAG_OPTIONS = {"--skip-build", "--dry-run"}
 
@@ -518,6 +520,7 @@ def _windows_vm_options_from_tokens(tokens: list[str]) -> WindowsVmTestOptions:
         keep_running="--keep-running" in tokens,
         dry_run="--dry-run" in tokens,
         fixture_size_bytes=_option_int(tokens, "--fixture-size-bytes") or 25 * 1024 * 1024,
+        local_swarm_mode=_option_value(tokens, "--local-swarm-mode") or "plan",
     )
 
 
@@ -533,6 +536,7 @@ def _campaign_scenario_options_from_tokens(tokens: list[str]) -> CampaignScenari
         dry_run="--dry-run" in tokens,
         fixture_size_bytes=_option_int(tokens, "--fixture-size-bytes") or 25 * 1024 * 1024,
         swarm_tier=_option_int(tokens, "--swarm-tier") or 1,  # type: ignore[arg-type]
+        local_swarm_mode=_option_value(tokens, "--local-swarm-mode") or "plan",  # type: ignore[arg-type]
     )
 
 

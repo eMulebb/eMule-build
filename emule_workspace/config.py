@@ -232,6 +232,7 @@ class CampaignScenarioOptions(BaseModel):
     dry_run: bool = False
     fixture_size_bytes: int = 25 * 1024 * 1024
     swarm_tier: Literal[1, 2, 3] = 1
+    local_swarm_mode: Literal["plan", "execute"] = "plan"
 
 
 class AmutorrentSessionOptions(BaseModel):

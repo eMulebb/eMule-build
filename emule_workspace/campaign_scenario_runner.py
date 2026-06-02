@@ -103,6 +103,7 @@ def vm_test_options(spec: Any, scenario_options: CampaignScenarioOptions) -> Win
         dry_run=scenario_options.dry_run,
         fixture_size_bytes=scenario_options.fixture_size_bytes,
         swarm_tier=scenario_options.swarm_tier,
+        local_swarm_mode=scenario_options.local_swarm_mode,
     )
 
 

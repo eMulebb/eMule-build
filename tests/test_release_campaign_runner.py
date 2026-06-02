@@ -457,13 +457,13 @@ def test_campaign_execute_dispatches_windows_vm_command(tmp_path: Path, monkeypa
             "command": (
                 "python -m emule_workspace test windows-vm --matrix win10,win11 "
                 "--profile hideme-live-wire --release-version 0.7.3-rc.1 --skip-build --keep-running "
-                "--fixture-size-bytes 4096"
+                "--fixture-size-bytes 4096 --local-swarm-mode execute"
             ),
             "blocking": True,
         }
     ]
     write_campaign(layout, campaign)
-    calls: list[tuple[tuple[str, ...], str, str, bool, bool, int]] = []
+    calls: list[tuple[tuple[str, ...], str, str, bool, bool, int, str]] = []
 
     monkeypatch.setattr(
         release_campaign_runner,
@@ -481,6 +481,7 @@ def test_campaign_execute_dispatches_windows_vm_command(tmp_path: Path, monkeypa
                 options.skip_build,
                 options.keep_running,
                 options.fixture_size_bytes,
+                options.local_swarm_mode,
             )
         ),
     )
@@ -491,7 +492,7 @@ def test_campaign_execute_dispatches_windows_vm_command(tmp_path: Path, monkeypa
         ReleaseCampaignOptions(campaign="test-campaign", phase="controller-surface", execute=True),
     )
 
-    assert calls == [(("win10", "win11"), "hideme-live-wire", "0.7.3-rc.1", True, True, 4096)]
+    assert calls == [(("win10", "win11"), "hideme-live-wire", "0.7.3-rc.1", True, True, 4096, "execute")]
 
 
 def test_campaign_execute_dispatches_shared_campaign_scenario_local_mode(
@@ -547,13 +548,14 @@ def test_campaign_execute_dispatches_shared_campaign_scenario_vm_mode(
             "command": (
                 "python -m emule_workspace test campaign-scenario "
                 "--scenario emulebb.flow.ui.search.local-swarm.v1 --mode vm "
-                "--release-version 0.7.4-rc.2 --skip-build --dry-run --fixture-size-bytes 4096 --swarm-tier 2"
+                "--release-version 0.7.4-rc.2 --skip-build --dry-run --fixture-size-bytes 4096 "
+                "--swarm-tier 2 --local-swarm-mode execute"
             ),
             "blocking": True,
         }
     ]
     write_campaign(layout, campaign)
-    calls: list[tuple[str, str, str, bool, bool, int, int]] = []
+    calls: list[tuple[str, str, str, bool, bool, int, int, str]] = []
 
     monkeypatch.setattr(
         release_campaign_runner,
@@ -572,6 +574,7 @@ def test_campaign_execute_dispatches_shared_campaign_scenario_vm_mode(
                 options.dry_run,
                 options.fixture_size_bytes,
                 options.swarm_tier,
+                options.local_swarm_mode,
             )
         ),
     )
@@ -582,7 +585,7 @@ def test_campaign_execute_dispatches_shared_campaign_scenario_vm_mode(
         ReleaseCampaignOptions(campaign="test-campaign", phase="controller-surface", execute=True),
     )
 
-    assert calls == [("emulebb.flow.ui.search.local-swarm.v1", "vm", "0.7.4-rc.2", True, True, 4096, 2)]
+    assert calls == [("emulebb.flow.ui.search.local-swarm.v1", "vm", "0.7.4-rc.2", True, True, 4096, 2, "execute")]
 
 
 def test_campaign_execute_records_pre_run_cleanup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

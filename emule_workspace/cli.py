@@ -867,6 +867,7 @@ def test_live_e2e(
 @click.option("--keep-running", is_flag=True, help="Leave the guest running after the test for debugging.")
 @click.option("--dry-run", is_flag=True, help="Plan the VM test commands without changing VMs.")
 @click.option("--fixture-size-bytes", default=25 * 1024 * 1024, show_default=True, type=int)
+@click.option("--local-swarm-mode", type=click.Choice(["plan", "execute"]), default="plan", show_default=True)
 def test_windows_vm(
     *,
     config_file: str | None,
@@ -877,6 +878,7 @@ def test_windows_vm(
     keep_running: bool,
     dry_run: bool,
     fixture_size_bytes: int,
+    local_swarm_mode: str,
     workspace_options: WorkspaceOptions,
     layout,
 ) -> None:
@@ -891,6 +893,7 @@ def test_windows_vm(
         keep_running=keep_running,
         dry_run=dry_run,
         fixture_size_bytes=fixture_size_bytes,
+        local_swarm_mode=local_swarm_mode,
     )
     _locked(
         "test windows-vm",
@@ -907,6 +910,7 @@ def test_windows_vm(
 @click.option("--dry-run", is_flag=True, help="Plan VM commands without changing VMs.")
 @click.option("--fixture-size-bytes", default=25 * 1024 * 1024, show_default=True, type=int)
 @click.option("--swarm-tier", type=click.Choice(["1", "2", "3"]), default="1", show_default=True)
+@click.option("--local-swarm-mode", type=click.Choice(["plan", "execute"]), default="plan", show_default=True)
 def test_campaign_scenario(
     *,
     scenario: str,
@@ -916,6 +920,7 @@ def test_campaign_scenario(
     dry_run: bool,
     fixture_size_bytes: int,
     swarm_tier: str,
+    local_swarm_mode: str,
     workspace_options: WorkspaceOptions,
     layout,
 ) -> None:
@@ -929,6 +934,7 @@ def test_campaign_scenario(
         dry_run=dry_run,
         fixture_size_bytes=fixture_size_bytes,
         swarm_tier=int(swarm_tier),  # type: ignore[arg-type]
+        local_swarm_mode=local_swarm_mode,  # type: ignore[arg-type]
     )
     _locked(
         "test campaign-scenario",

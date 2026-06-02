@@ -66,7 +66,7 @@ def test_godzilla_tier_options_come_from_campaign_catalog(tmp_path: Path) -> Non
 def test_campaign_scenario_vm_mode_reuses_vm_profile(tmp_path: Path, monkeypatch) -> None:
     layout = make_layout(tmp_path)
     write_campaign_scenario_catalog(layout)
-    calls: list[tuple[tuple[str, ...], str, str, bool, bool, int, int]] = []
+    calls: list[tuple[tuple[str, ...], str, str, bool, bool, int, int, str]] = []
 
     monkeypatch.setattr(
         campaign_scenario_runner,
@@ -80,6 +80,7 @@ def test_campaign_scenario_vm_mode_reuses_vm_profile(tmp_path: Path, monkeypatch
                 options.dry_run,
                 options.fixture_size_bytes,
                 options.swarm_tier,
+                options.local_swarm_mode,
             )
         ),
     )
@@ -95,7 +96,8 @@ def test_campaign_scenario_vm_mode_reuses_vm_profile(tmp_path: Path, monkeypatch
             dry_run=True,
             fixture_size_bytes=4096,
             swarm_tier=3,
+            local_swarm_mode="execute",
         ),
     )
 
-    assert calls == [(("win10", "win11"), "search-ui-local-swarm-vm", "0.7.4-rc.2", True, True, 4096, 3)]
+    assert calls == [(("win10", "win11"), "search-ui-local-swarm-vm", "0.7.4-rc.2", True, True, 4096, 3, "execute")]

@@ -119,6 +119,7 @@ def test_test_windows_vm_help_exposes_vm_lab_options() -> None:
     assert "--skip-build" in result.output
     assert "--keep-running" in result.output
     assert "--dry-run" in result.output
+    assert "--local-swarm-mode" in result.output
 
 
 def test_test_campaign_scenario_help_exposes_mode_options() -> None:
@@ -133,6 +134,7 @@ def test_test_campaign_scenario_help_exposes_mode_options() -> None:
     assert "--skip-build" in result.output
     assert "--build" in result.output
     assert "--swarm-tier" in result.output
+    assert "--local-swarm-mode" in result.output
 
 
 def test_vm_lab_prepare_help_is_available() -> None:
