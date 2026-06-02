@@ -85,6 +85,7 @@ def test_test_live_e2e_help_exposes_live_options() -> None:
     assert "--materialize-test-install-release-version" in result.output
     assert "--materialize-test-install-clean" in result.output
     assert "--materialize-test-install-skip-build" in result.output
+    assert "--plan-only" in result.output
     assert "--arr-download-proof-mode" in result.output
     assert "--pre-run-cleanup" in result.output
     assert "--skip-pre-run-cleanup" in result.output
@@ -102,6 +103,81 @@ def test_test_live_e2e_help_exposes_live_options() -> None:
     assert "--keep-admin-fixtures" in result.output
     assert "--rest-cold-start-dump-stress-cpu-profile" in result.output
     assert "--rest-cold-start-dump-stress-cpu-profile-stack" in result.output
+
+
+def test_live_e2e_command_defaults_model_options(tmp_path: Path, monkeypatch) -> None:
+    runner = CliRunner()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        cli,
+        "resolve_workspace_options",
+        lambda **_kwargs: cli.WorkspaceOptions(workspace_root=tmp_path),
+    )
+    monkeypatch.setattr(cli, "load_layout", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(cli, "_locked", lambda _command_name, function: function)
+    monkeypatch.setattr(
+        cli,
+        "invoke_live_e2e_suite",
+        lambda _layout, _workspace_options, options: captured.update(
+            plan_only=options.plan_only,
+            suites=options.suites,
+            skip_live_seed_refresh=options.skip_live_seed_refresh,
+        ),
+    )
+
+    result = runner.invoke(
+        cli.main,
+        [
+            "test",
+            "live-e2e",
+            "--workspace-root",
+            str(tmp_path),
+            "--suite",
+            "command-line-smoke",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured == {
+        "plan_only": False,
+        "suites": ("command-line-smoke",),
+        "skip_live_seed_refresh": False,
+    }
+
+
+def test_live_e2e_command_accepts_plan_only(tmp_path: Path, monkeypatch) -> None:
+    runner = CliRunner()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        cli,
+        "resolve_workspace_options",
+        lambda **_kwargs: cli.WorkspaceOptions(workspace_root=tmp_path),
+    )
+    monkeypatch.setattr(cli, "load_layout", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(cli, "_locked", lambda _command_name, function: function)
+    monkeypatch.setattr(
+        cli,
+        "invoke_live_e2e_suite",
+        lambda _layout, _workspace_options, options: captured.update(plan_only=options.plan_only),
+    )
+
+    result = runner.invoke(
+        cli.main,
+        [
+            "test",
+            "live-e2e",
+            "--workspace-root",
+            str(tmp_path),
+            "--suite",
+            "command-line-smoke",
+            "--plan-only",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured == {"plan_only": True}
 
 
 def test_test_windows_vm_help_exposes_vm_lab_options() -> None:

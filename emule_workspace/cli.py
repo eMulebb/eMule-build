@@ -313,11 +313,17 @@ def _live_e2e_options(function: F) -> F:
         default=None,
         help="Prune old generated outcomes before broad live E2E profiles.",
     )
+    @click.option("--plan-only", is_flag=True, help="Plan live E2E child commands without executing them.")
     @click.option("--rest-cold-start-dump-stress-skip-dumps", is_flag=True)
     @wraps(function)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
-        pre_run_cleanup = kwargs.pop("pre_run_cleanup")
-        values = {key: kwargs.pop(key) for key in LiveE2eOptions.model_fields if key != "pre_run_cleanup"}
+        defaults = LiveE2eOptions()
+        pre_run_cleanup = kwargs.pop("pre_run_cleanup", None)
+        values = {
+            key: kwargs.pop(key, getattr(defaults, key))
+            for key in LiveE2eOptions.model_fields
+            if key != "pre_run_cleanup"
+        }
         if pre_run_cleanup is None:
             pre_run_cleanup = values["profile"] in BROAD_LIVE_E2E_PRE_RUN_CLEANUP_PROFILES
         live_options = LiveE2eOptions(**values, pre_run_cleanup=pre_run_cleanup)
