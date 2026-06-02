@@ -194,6 +194,13 @@ def profile_helper_path(tests_repo_root):
     return Path(tests_repo_root) / "emule_test_harness" / "vm_guest_profiles.py"
 
 
+def local_swarm_payload_paths(tests_repo_root):
+    return {
+        "harnessPackage": Path(tests_repo_root) / "emule_test_harness",
+        "scripts": [Path(tests_repo_root) / "scripts" / "godzilla-local-swarm.py"],
+    }
+
+
 def build_local_ed2k_target_payloads(vm_names):
     return {key: {"target": key, "vmName": value, "tcpPort": 1, "udpPort": 2, "restPort": 3} for key, value in vm_names.items()}
 
@@ -475,6 +482,42 @@ def test_windows_vm_generic_profile_dry_run_plans_both_targets(tmp_path: Path) -
     assert result["swarmTier"] == 2
     assert [target["target"] for target in result["targets"]] == ["win10", "win11"]
     assert {target["swarmTier"] for target in result["targets"]} == {2}
+
+
+def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: Path) -> None:
+    layout = _layout(tmp_path)
+    _write_harness_vm_host(layout)
+    config_path = layout.build_repo_root / "vm-lab.local.json"
+    _write_config(config_path)
+    config = windows_vm_lab.load_vm_lab_config(layout, config_file=str(config_path))
+    captured: list[str] = []
+
+    class CaptureRunner:
+        dry_run = False
+
+        def run(self, script: str, *, label: str, capture_json: bool = False) -> str:
+            captured.append(script)
+            return json.dumps({"status": "passed", "guest": {}, "checks": [], "errors": []})
+
+    result = windows_vm_lab.run_windows_vm_profile_smoke(
+        layout,
+        config,
+        config.targets["win10"],
+        profile="search-ui-local-swarm-vm",
+        package_zip=tmp_path / "package.zip",
+        run_id="run",
+        run_report_dir=tmp_path / "report",
+        keep_running=False,
+        fixture_size_bytes=4096,
+        swarm_tier=3,
+        runner=CaptureRunner(),
+    )
+
+    assert result["status"] == "passed"
+    assert result["swarmTier"] == 3
+    assert "localSwarmHarnessPackagePath" in captured[0]
+    assert "localSwarmScriptPaths" in captured[0]
+    assert "godzilla-local-swarm.py" in captured[0]
 
 
 def test_windows_vm_local_ed2k_transfer_dry_run_plans_both_targets(tmp_path: Path) -> None:

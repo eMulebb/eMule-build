@@ -667,6 +667,7 @@ def run_windows_vm_profile_smoke(
             "reportDir": str(target_report_dir),
         }
     host_contracts = load_windows_vm_host_contracts(layout)
+    local_swarm_payload = host_contracts.local_swarm_payload_paths(layout.tests_repo_root)
     script = _ps_with_payload(
         {
             "target": target.key,
@@ -679,6 +680,8 @@ def run_windows_vm_profile_smoke(
             "packageZip": str(package_zip),
             "runnerPath": str(host_contracts.guest_runner_path(layout.tests_repo_root, profile)),
             "profileHelperPath": str(host_contracts.profile_helper_path(layout.tests_repo_root)),
+            "localSwarmHarnessPackagePath": str(local_swarm_payload["harnessPackage"]),
+            "localSwarmScriptPaths": [str(path) for path in local_swarm_payload["scripts"]],
             "runId": run_id,
             "hostReportDir": str(target_report_dir),
             "keepRunning": keep_running,
