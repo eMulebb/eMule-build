@@ -130,6 +130,10 @@ def build_apps(
         variants = selected_app_variants(layout, app_variant_names)
         for variant in variants:
             extra_properties = [*app_property_overrides(layout, options.platform)]
+            upload_slot_instrumentation = env_override("EMULEBB_ENABLE_UPLOAD_SLOT_INSTRUMENTATION")
+            if upload_slot_instrumentation:
+                enabled = upload_slot_instrumentation.strip().lower() not in {"0", "false", "no", "off"}
+                extra_properties.append(f"/p:EnableUploadSlotInstrumentation={'true' if enabled else 'false'}")
             override = env_override(layout.toolset_override_variable)
             if override:
                 extra_properties.append(f"/p:PlatformToolset={override}")
