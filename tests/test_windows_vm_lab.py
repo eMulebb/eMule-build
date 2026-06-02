@@ -605,6 +605,8 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
     assert "localSwarmAmuleDaemonExe" in captured[0]
     assert "localSwarmAmuleControlExe" in captured[0]
     assert "localSwarmMode" in captured[0]
+    assert "localSwarmLanBindAddr" in captured[0]
+    assert "192.168.251.10" in captured[0]
     assert "goed2k-server.exe" in captured[0]
     assert "emule.exe" in captured[0]
     assert "amuled.exe" in captured[0]

@@ -771,6 +771,8 @@ def run_windows_vm_profile_smoke(
         if is_local_swarm_profile
         else ()
     )
+    provisioning_guest_ips = config.hyperv.provisioning_guest_ips or DEFAULT_PROVISIONING_GUEST_IPS
+    local_swarm_lan_bind_addr = provisioning_guest_ips.get(target.key, "")
     script = _ps_with_payload(
         {
             "target": target.key,
@@ -818,6 +820,7 @@ def run_windows_vm_profile_smoke(
             "fixtureSizeBytes": fixture_size_bytes,
             "swarmTier": swarm_tier,
             "localSwarmMode": local_swarm_mode,
+            "localSwarmLanBindAddr": local_swarm_lan_bind_addr,
         },
         host_contracts.load_guest_script(layout.tests_repo_root, profile),
     )
