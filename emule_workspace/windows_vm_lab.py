@@ -41,6 +41,7 @@ PYTHON_INSTALLER_URL = "https://www.python.org/ftp/python/3.13.13/python-3.13.13
 PYTHON_INSTALLER_SHA256 = "3c9c81d80f91c002ced86d645422d81432c68c7d9b6b0e974768ca2e449a4d00"
 PYTHON_INSTALLER_FILE_NAME = "python-3.13.13-amd64.exe"
 PYTHON_INSTALL_DIR = r"C:\Python313"
+VM_GUEST_LIVE_PYTHON_PACKAGES = ("pywin32", "pywinauto")
 HIDE_ME_INSTALLER_URL = "https://hide.me/en/software/windowsv4/download"
 HIDE_ME_INSTALLER_FILE_NAME = "hide-me-vpn-windows.exe"
 HIDE_ME_INSTALL_DIR = r"C:\Program Files (x86)\hide.me VPN"
@@ -576,6 +577,7 @@ def prepare_vm_target(
             "pythonInstallerPath": str(python_installer),
             "pythonInstallerSha256": PYTHON_INSTALLER_SHA256,
             "pythonInstallDir": PYTHON_INSTALL_DIR,
+            "pythonLivePackages": list(VM_GUEST_LIVE_PYTHON_PACKAGES),
             "hideMeInstallerPath": str(hide_me_installer),
             "hideMeSettingsPath": str(hide_me_settings),
             "hideMeInstallDir": HIDE_ME_INSTALL_DIR,
@@ -1385,7 +1387,7 @@ try {
   Copy-Item -ToSession $session -Path $payload.dotnetDesktopRuntimeX86Path -Destination 'C:\eMuleBBVmTest\dotnet-desktop-runtime-x86.exe'
   Copy-Item -ToSession $session -Path $payload.hideMeSettingsPath -Destination 'C:\eMuleBBVmTest\hide-me-vpn.settings'
   Invoke-Command -Session $session -ScriptBlock {
-  param($pythonInstallerSha256, $pythonInstallDir, $hideMeInstallDir, $pwshInstallDir, $dotnetDesktopRuntimeDir, $dotnetDesktopRuntimeX86Dir, $guestUsername, $guestPassword)
+  param($pythonInstallerSha256, $pythonInstallDir, [string[]] $pythonLivePackages, $hideMeInstallDir, $pwshInstallDir, $dotnetDesktopRuntimeDir, $dotnetDesktopRuntimeX86Dir, $guestUsername, $guestPassword)
   function Add-LabDefenderExclusion {
     param([string] $Path)
     if (Test-Path -LiteralPath $Path) {
@@ -1592,6 +1594,18 @@ try {
     }
   }
 
+  function Install-PythonLiveHarnessDependencies {
+    param([string] $PythonExe, [string[]] $Packages)
+    if ($Packages.Count -eq 0) {
+      return
+    }
+    $arguments = @('-m', 'pip', 'install', '--disable-pip-version-check') + $Packages
+    & $PythonExe @arguments
+    if ($LASTEXITCODE -ne 0) {
+      throw ('Python live harness dependency install failed with exit code ' + $LASTEXITCODE)
+    }
+  }
+
   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine -Force
   New-Item -ItemType Directory -Force -Path C:\eMuleBBVmTest | Out-Null
   $pythonExe = Join-Path $pythonInstallDir 'python.exe'
@@ -1614,12 +1628,13 @@ try {
     }
   }
   & $pythonExe -m pip --version | Out-Null
+  Install-PythonLiveHarnessDependencies -PythonExe $pythonExe -Packages $pythonLivePackages
   Install-Pwsh -InstallDir $pwshInstallDir
   Install-DotNetDesktopRuntime -RuntimeDir $dotnetDesktopRuntimeDir -InstallerPath 'C:\eMuleBBVmTest\dotnet-desktop-runtime.exe'
   Install-DotNetDesktopRuntime -RuntimeDir $dotnetDesktopRuntimeX86Dir -InstallerPath 'C:\eMuleBBVmTest\dotnet-desktop-runtime-x86.exe'
   Install-HideMe -InstallDir $hideMeInstallDir -Username $guestUsername
   Set-LabLeanBaseline -PythonPath $pythonInstallDir -HideMePath $hideMeInstallDir -Username $guestUsername -Password $guestPassword
-  } -ArgumentList $payload.pythonInstallerSha256, $payload.pythonInstallDir, $payload.hideMeInstallDir, $payload.pwshInstallDir, $payload.dotnetDesktopRuntimeDir, $payload.dotnetDesktopRuntimeX86Dir, $payload.username, $payload.password | Out-Null
+  } -ArgumentList $payload.pythonInstallerSha256, $payload.pythonInstallDir, $payload.pythonLivePackages, $payload.hideMeInstallDir, $payload.pwshInstallDir, $payload.dotnetDesktopRuntimeDir, $payload.dotnetDesktopRuntimeX86Dir, $payload.username, $payload.password | Out-Null
 }
 finally {
   if ($session) { Remove-PSSession $session }

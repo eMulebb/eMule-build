@@ -380,6 +380,9 @@ def test_prepare_vm_target_script_installs_python_and_pip_in_guest() -> None:
 
     assert "python-installer.exe" in script
     assert "Include_pip=1" in script
+    assert windows_vm_lab.VM_GUEST_LIVE_PYTHON_PACKAGES == ("pywin32", "pywinauto")
+    assert "Install-PythonLiveHarnessDependencies" in script
+    assert "--disable-pip-version-check" in script
     assert windows_vm_lab.PYTHON_INSTALL_DIR == r"C:\Python313"
     assert "Get-FileHash -Algorithm SHA256" in script
     assert "Copy-Item -ToSession" in script
