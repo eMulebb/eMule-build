@@ -668,10 +668,17 @@ def run_windows_vm_profile_smoke(
         }
     host_contracts = load_windows_vm_host_contracts(layout)
     local_swarm_payload = host_contracts.local_swarm_payload_paths(layout.tests_repo_root)
+    is_local_swarm_profile = profile in set(host_contracts.LOCAL_SWARM_VM_PROFILES)
     local_swarm_goed2k_server_exe = (
         build_goed2k_server_exe(layout)
-        if profile in set(host_contracts.LOCAL_SWARM_VM_PROFILES)
+        if is_local_swarm_profile
         else None
+    )
+    local_swarm_client2_app_exe = local_swarm_tracing_harness_app_exe(layout) if is_local_swarm_profile else None
+    local_swarm_amule_daemon_exe, local_swarm_amule_control_exe = (
+        local_swarm_amule_exes(layout)
+        if is_local_swarm_profile
+        else (None, None)
     )
     script = _ps_with_payload(
         {
@@ -690,6 +697,21 @@ def run_windows_vm_profile_smoke(
             "localSwarmGoed2kServerExe": (
                 str(local_swarm_goed2k_server_exe)
                 if local_swarm_goed2k_server_exe is not None
+                else ""
+            ),
+            "localSwarmClient2AppExe": (
+                str(local_swarm_client2_app_exe)
+                if local_swarm_client2_app_exe is not None
+                else ""
+            ),
+            "localSwarmAmuleDaemonExe": (
+                str(local_swarm_amule_daemon_exe)
+                if local_swarm_amule_daemon_exe is not None
+                else ""
+            ),
+            "localSwarmAmuleControlExe": (
+                str(local_swarm_amule_control_exe)
+                if local_swarm_amule_control_exe is not None
                 else ""
             ),
             "runId": run_id,
@@ -795,6 +817,29 @@ def run_windows_vm_local_ed2k_transfer(
             }
         )
     return rows
+
+
+def local_swarm_tracing_harness_app_exe(layout: WorkspaceLayout) -> Path | None:
+    """Returns the built tracing-harness executable staged into reusable VM swarm payloads."""
+
+    root = layout.workspace_root / "app" / "emulebb-community-tracing-harness" / "srchybrid" / "x64" / "Release"
+    for name in ("emule.exe", "emulebb.exe"):
+        candidate = root / name
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def local_swarm_amule_exes(layout: WorkspaceLayout) -> tuple[Path | None, Path | None]:
+    """Returns the staged aMule daemon/control binaries for reusable VM swarm payloads."""
+
+    root = layout.workspace_root / "state" / "tools" / "amule" / "bin"
+    daemon = root / "amuled.exe"
+    control = root / "amulecmd.exe"
+    return (
+        daemon if daemon.is_file() else None,
+        control if control.is_file() else None,
+    )
 
 
 def run_windows_vm_hideme_live_wire(

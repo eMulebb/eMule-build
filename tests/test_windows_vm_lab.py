@@ -496,6 +496,20 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
     goed2k_server_exe = tmp_path / "tools" / "goed2k-server.exe"
     goed2k_server_exe.parent.mkdir()
     goed2k_server_exe.write_text("", encoding="utf-8")
+    tracing_harness_exe = (
+        layout.workspace_root
+        / "app"
+        / "emulebb-community-tracing-harness"
+        / "srchybrid"
+        / "x64"
+        / "Release"
+        / "emule.exe"
+    )
+    amule_daemon_exe = layout.workspace_root / "state" / "tools" / "amule" / "bin" / "amuled.exe"
+    amule_control_exe = layout.workspace_root / "state" / "tools" / "amule" / "bin" / "amulecmd.exe"
+    for path in (tracing_harness_exe, amule_daemon_exe, amule_control_exe):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
 
     class CaptureRunner:
         dry_run = False
@@ -531,8 +545,21 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
     assert "localSwarmHarnessPackagePath" in captured[0]
     assert "localSwarmScriptPaths" in captured[0]
     assert "localSwarmGoed2kServerExe" in captured[0]
+    assert "localSwarmClient2AppExe" in captured[0]
+    assert "localSwarmAmuleDaemonExe" in captured[0]
+    assert "localSwarmAmuleControlExe" in captured[0]
     assert "goed2k-server.exe" in captured[0]
+    assert "emule.exe" in captured[0]
+    assert "amuled.exe" in captured[0]
+    assert "amulecmd.exe" in captured[0]
     assert "godzilla-local-swarm.py" in captured[0]
+
+
+def test_local_swarm_companion_exes_are_optional(tmp_path: Path) -> None:
+    layout = _layout(tmp_path)
+
+    assert windows_vm_lab.local_swarm_tracing_harness_app_exe(layout) is None
+    assert windows_vm_lab.local_swarm_amule_exes(layout) == (None, None)
 
 
 def test_windows_vm_local_ed2k_transfer_dry_run_plans_both_targets(tmp_path: Path) -> None:
