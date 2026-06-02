@@ -215,6 +215,7 @@ def test_campaign_execute_dry_run_writes_planned_report(tmp_path: Path) -> None:
     assert reports
     payload = json.loads(reports[-1].read_text(encoding="utf-8"))
     assert payload["status"] == "planned"
+    assert payload["options"]["localVmSwarmExecutionMode"] == "manifest"
     assert len(payload["plannedCommands"]) == 3
     assert all(row["status"] == "planned" for row in payload["commands"])
 
@@ -671,7 +672,7 @@ def test_campaign_execute_can_override_shared_campaign_scenario_to_vm_mode(
         }
     ]
     write_campaign(layout, campaign)
-    calls: list[tuple[str, str, str, bool, int]] = []
+    calls: list[tuple[str, str, str, bool, int, str]] = []
 
     monkeypatch.setattr(
         release_campaign_runner,
@@ -682,7 +683,14 @@ def test_campaign_execute_can_override_shared_campaign_scenario_to_vm_mode(
         release_campaign_runner,
         "invoke_campaign_scenario",
         lambda _layout, _workspace_options, options: calls.append(
-            (options.scenario, options.mode, options.release_version, options.skip_build, options.swarm_tier)
+            (
+                options.scenario,
+                options.mode,
+                options.release_version,
+                options.skip_build,
+                options.swarm_tier,
+                options.local_swarm_mode,
+            )
         ),
     )
 
@@ -697,7 +705,99 @@ def test_campaign_execute_can_override_shared_campaign_scenario_to_vm_mode(
         ),
     )
 
-    assert calls == [("emulebb.flow.ui.search.local-swarm.v1", "vm", "0.7.4-rc.2", True, 2)]
+    assert calls == [("emulebb.flow.ui.search.local-swarm.v1", "vm", "0.7.4-rc.2", True, 2, "plan")]
+
+
+def test_campaign_execute_can_force_shared_vm_campaign_scenario_to_execute_swarm(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    layout = make_layout(tmp_path)
+    write_campaign_scenario_catalog(layout)
+    campaign = campaign_payload()
+    vm_command = (
+        "python -m emule_workspace test campaign-scenario "
+        "--scenario emulebb.flow.ui.search.local-swarm.v1 --mode vm "
+        "--release-version 0.7.4-rc.2 --skip-build --swarm-tier 2"
+    )
+    campaign["phases"][1]["scenarios"] = [
+        {
+            "id": "shared-vm",
+            "flowCategory": "local-vm-swarm",
+            "command": vm_command,
+            "localCommand": (
+                "python -m emule_workspace test campaign-scenario "
+                "--scenario emulebb.flow.ui.search.local-swarm.v1 --mode local --swarm-tier 1"
+            ),
+            "vmCommand": vm_command,
+            "executionMode": "vm",
+            "blocking": True,
+        }
+    ]
+    write_campaign(layout, campaign)
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "run_pre_test_cleanup",
+        lambda _layout: release_campaign_runner.CleanupRunSummary("routine", True, "passed", 0, 0, 0, {}),
+    )
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "invoke_campaign_scenario",
+        lambda _layout, _workspace_options, options: calls.append(options.local_swarm_mode),
+    )
+
+    release_campaign_runner.invoke_release_campaign(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path),
+        ReleaseCampaignOptions(
+            campaign="test-campaign",
+            phase="controller-surface",
+            execute=True,
+            local_vm_swarm_mode="vm",
+            local_vm_swarm_execution_mode="execute",
+        ),
+    )
+
+    assert calls == ["execute"]
+
+
+def test_campaign_plan_replaces_existing_shared_vm_swarm_execution_mode() -> None:
+    campaign = campaign_payload()
+    vm_command = (
+        "python -m emule_workspace test campaign-scenario "
+        "--scenario emulebb.flow.ui.search.local-swarm.v1 --mode vm "
+        "--release-version 0.7.4-rc.2 --skip-build --swarm-tier 2 --local-swarm-mode plan"
+    )
+    campaign["phases"][1]["scenarios"] = [
+        {
+            "id": "shared-vm",
+            "flowCategory": "local-vm-swarm",
+            "command": vm_command,
+            "localCommand": (
+                "python -m emule_workspace test campaign-scenario "
+                "--scenario emulebb.flow.ui.search.local-swarm.v1 --mode local --swarm-tier 1"
+            ),
+            "vmCommand": vm_command,
+            "executionMode": "vm",
+            "blocking": True,
+        }
+    ]
+
+    plan = release_campaign_runner.build_release_campaign_execution_plan(
+        campaign,
+        ReleaseCampaignOptions(
+            campaign="test-campaign",
+            phase="controller-surface",
+            execute=True,
+            local_vm_swarm_execution_mode="execute",
+        ),
+    )
+
+    assert len(plan) == 1
+    assert "--local-swarm-mode execute" in plan[0].command
+    assert "--local-swarm-mode plan" not in plan[0].command
 
 
 def test_campaign_plan_rejects_missing_local_vm_swarm_local_override_command() -> None:

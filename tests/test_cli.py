@@ -144,6 +144,7 @@ def test_test_release_campaign_help_exposes_local_vm_swarm_mode() -> None:
 
     assert result.exit_code == 0
     assert "--local-vm-swarm-mode" in result.output
+    assert "--local-vm-swarm-execution-mode" in result.output
 
 
 def test_vm_lab_prepare_help_is_available() -> None:

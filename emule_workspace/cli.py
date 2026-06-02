@@ -1009,6 +1009,13 @@ def test_overnight_local_hammer(
     show_default=True,
     help="Override reusable local/VM swarm rows to run in local or VM mode during execution.",
 )
+@click.option(
+    "--local-vm-swarm-execution-mode",
+    type=click.Choice(["manifest", "plan", "execute"]),
+    default="manifest",
+    show_default=True,
+    help="Override selected VM local-swarm rows to plan or execute their in-guest local swarm.",
+)
 @click.option("--include-nonblocking", is_flag=True, help="Include nonblocking optional campaign scenarios during execution.")
 @click.option("--continue-on-failure", is_flag=True, help="Run remaining campaign commands after a failure.")
 @click.option("--dry-run", is_flag=True, help="Write an execution plan report without running campaign commands.")
@@ -1028,6 +1035,7 @@ def test_release_campaign(
     json_output: bool,
     execute: bool,
     local_vm_swarm_mode: str,
+    local_vm_swarm_execution_mode: str,
     include_nonblocking: bool,
     continue_on_failure: bool,
     dry_run: bool,
@@ -1052,6 +1060,7 @@ def test_release_campaign(
         json_output=json_output,
         execute=execute,
         local_vm_swarm_mode=local_vm_swarm_mode,  # type: ignore[arg-type]
+        local_vm_swarm_execution_mode=local_vm_swarm_execution_mode,  # type: ignore[arg-type]
         include_nonblocking=include_nonblocking,
         continue_on_failure=continue_on_failure,
         dry_run=dry_run,

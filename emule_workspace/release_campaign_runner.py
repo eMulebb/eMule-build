@@ -271,6 +271,7 @@ def _scenario_selected(scenario: dict[str, Any], campaign_options: ReleaseCampai
 def _selected_scenario_command(scenario: dict[str, Any], campaign_options: ReleaseCampaignOptions) -> str:
     """Returns the command selected for one campaign scenario."""
 
+    command = ""
     if (
         campaign_options.local_vm_swarm_mode != "manifest"
         and scenario.get("flowCategory") == "local-vm-swarm"
@@ -282,8 +283,42 @@ def _selected_scenario_command(scenario: dict[str, Any], campaign_options: Relea
             raise ValueError(
                 f"Release campaign local-vm-swarm scenario {scenario_id} is missing {command_key}."
             )
+    else:
+        command = str(scenario.get("command", "")).strip()
+    if scenario.get("flowCategory") == "local-vm-swarm":
+        return _apply_local_vm_swarm_execution_mode(command, campaign_options)
+    return command
+
+
+def _apply_local_vm_swarm_execution_mode(command: str, campaign_options: ReleaseCampaignOptions) -> str:
+    """Applies the release-level local-swarm plan/execute override to VM scenario commands."""
+
+    if campaign_options.local_vm_swarm_execution_mode == "manifest" or not command:
         return command
-    return str(scenario.get("command", "")).strip()
+    tokens = _parse_command(command)
+    if tokens[3:5] != ["test", "campaign-scenario"]:
+        return command
+    if _option_value(tokens, "--mode") != "vm":
+        return command
+    return " ".join(
+        _replace_or_append_option(
+            tokens,
+            "--local-swarm-mode",
+            campaign_options.local_vm_swarm_execution_mode,
+        )
+    )
+
+
+def _replace_or_append_option(tokens: list[str], option: str, value: str) -> list[str]:
+    """Returns command tokens with one value option replaced or appended."""
+
+    updated = list(tokens)
+    for index, token in enumerate(updated[:-1]):
+        if token == option:
+            updated[index + 1] = value
+            return updated
+    updated.extend([option, value])
+    return updated
 
 
 def _run_campaign_command(
@@ -843,6 +878,7 @@ def _write_report(
         "options": {
             "testNetwork": campaign_options.test_network,
             "localVmSwarmMode": campaign_options.local_vm_swarm_mode,
+            "localVmSwarmExecutionMode": campaign_options.local_vm_swarm_execution_mode,
             "includeNonblocking": campaign_options.include_nonblocking,
             "continueOnFailure": campaign_options.continue_on_failure,
             "dryRun": campaign_options.dry_run,

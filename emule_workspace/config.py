@@ -330,6 +330,7 @@ class ReleaseCampaignOptions(BaseModel):
     json_output: bool = False
     execute: bool = False
     local_vm_swarm_mode: Literal["manifest", "local", "vm"] = "manifest"
+    local_vm_swarm_execution_mode: Literal["manifest", "plan", "execute"] = "manifest"
     include_nonblocking: bool = False
     continue_on_failure: bool = False
     dry_run: bool = False
