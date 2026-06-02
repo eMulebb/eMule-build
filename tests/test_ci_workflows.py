@@ -105,3 +105,25 @@ def test_controlled_smoke_keeps_first_lane_narrow() -> None:
     assert "hyper-v" not in text
     assert "hyperv" not in text
     assert "windows-vm" not in text
+
+
+def test_vs2026_v145_probe_exercises_native_build_without_smoke_or_package() -> None:
+    text = _read_app_workflow("vs2026-v145-probe.yml")
+
+    assert "workflow_dispatch:" in text
+    assert "runs_on: windows-2025-vs2026" in text
+    assert '$env:EMULEBB_VS_PLATFORM_TOOLSET = "v145"' in text
+    assert '$env:EMULEBB_CMAKE_GENERATOR = "Visual Studio 18 2026"' in text
+    assert "python -m emule_workspace build libs" in text
+    assert "python -m emule_workspace build app" in text
+    assert "--config Release" in text
+    assert "--platform x64" in text
+    assert "--clean" in text
+    assert "--variant main" in text
+    assert "workspaces/workspace/state/v145-probe/**" in text
+    assert "workspaces/workspace/state/build-logs/**" in text
+    assert "package-release" not in text
+    assert "package-amutorrent" not in text
+    assert "test live-e2e" not in text
+    assert "hyper-v" not in text.lower()
+    assert "hyperv" not in text.lower()

@@ -22,7 +22,7 @@ def static_msvc_runtime_cmake_arguments() -> tuple[str, ...]:
     )
 
 
-def cmake_generator_arguments(platform: str) -> tuple[str, ...]:
+def cmake_generator_arguments(platform: str, *, toolset: str = "") -> tuple[str, ...]:
     """Returns CMake generator arguments for the active Visual Studio image."""
 
     args: list[str] = []
@@ -33,6 +33,8 @@ def cmake_generator_arguments(platform: str) -> tuple[str, ...]:
         args.extend(("-G", generator))
     if generator_platform:
         args.extend(("-A", generator_platform))
+    if toolset and (not generator or generator.startswith("Visual Studio ")):
+        args.extend(("-T", toolset))
     return tuple(args)
 
 
@@ -54,7 +56,10 @@ def invoke_cmake_dependency_build(
         str(source_directory),
         "-B",
         str(build_directory),
-        *cmake_generator_arguments(session.options.platform),
+        *cmake_generator_arguments(
+            session.options.platform,
+            toolset=os.environ.get(session.layout.toolset_override_variable, "").strip(),
+        ),
         "-DBUILD_SHARED_LIBS=OFF",
         *configure_arguments,
     ]
