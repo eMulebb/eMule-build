@@ -550,13 +550,13 @@ def test_campaign_execute_dispatches_shared_campaign_scenario_vm_mode(
                 "python -m emule_workspace test campaign-scenario "
                 "--scenario emulebb.flow.ui.search.local-swarm.v1 --mode vm "
                 "--release-version 0.7.4-rc.2 --skip-build --dry-run --fixture-size-bytes 4096 "
-                "--swarm-tier 2 --local-swarm-mode execute"
+                "--matrix win10 --swarm-tier 2 --local-swarm-mode execute"
             ),
             "blocking": True,
         }
     ]
     write_campaign(layout, campaign)
-    calls: list[tuple[str, str, str, bool, bool, int, int, str]] = []
+    calls: list[tuple[str, str, str, bool, bool, int, tuple[str, ...], int, str]] = []
 
     monkeypatch.setattr(
         release_campaign_runner,
@@ -574,6 +574,7 @@ def test_campaign_execute_dispatches_shared_campaign_scenario_vm_mode(
                 options.skip_build,
                 options.dry_run,
                 options.fixture_size_bytes,
+                options.vm_matrix,
                 options.swarm_tier,
                 options.local_swarm_mode,
             )
@@ -586,7 +587,7 @@ def test_campaign_execute_dispatches_shared_campaign_scenario_vm_mode(
         ReleaseCampaignOptions(campaign="test-campaign", phase="controller-surface", execute=True),
     )
 
-    assert calls == [("emulebb.flow.ui.search.local-swarm.v1", "vm", "0.7.4-rc.2", True, True, 4096, 2, "execute")]
+    assert calls == [("emulebb.flow.ui.search.local-swarm.v1", "vm", "0.7.4-rc.2", True, True, 4096, ("win10",), 2, "execute")]
 
 
 def test_campaign_execute_can_override_shared_campaign_scenario_to_local_mode(

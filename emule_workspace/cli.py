@@ -909,6 +909,7 @@ def test_windows_vm(
 @click.option("--skip-build/--build", default=True, show_default=True, help="Reuse or rebuild the release package in VM mode.")
 @click.option("--dry-run", is_flag=True, help="Plan VM commands without changing VMs.")
 @click.option("--fixture-size-bytes", default=25 * 1024 * 1024, show_default=True, type=int)
+@click.option("--matrix", default="win10,win11", show_default=True, help="Comma-separated VM targets for VM mode.")
 @click.option("--swarm-tier", type=click.Choice(["1", "2", "3"]), default="1", show_default=True)
 @click.option("--local-swarm-mode", type=click.Choice(["plan", "execute"]), default="plan", show_default=True)
 def test_campaign_scenario(
@@ -919,6 +920,7 @@ def test_campaign_scenario(
     skip_build: bool,
     dry_run: bool,
     fixture_size_bytes: int,
+    matrix: str,
     swarm_tier: str,
     local_swarm_mode: str,
     workspace_options: WorkspaceOptions,
@@ -933,6 +935,7 @@ def test_campaign_scenario(
         skip_build=skip_build,
         dry_run=dry_run,
         fixture_size_bytes=fixture_size_bytes,
+        vm_matrix=parse_matrix(matrix),
         swarm_tier=int(swarm_tier),  # type: ignore[arg-type]
         local_swarm_mode=local_swarm_mode,  # type: ignore[arg-type]
     )

@@ -130,3 +130,27 @@ def test_campaign_scenario_vm_mode_reuses_vm_profile(tmp_path: Path, monkeypatch
     )
 
     assert calls == [(("win10", "win11"), "search-ui-local-swarm-vm", "0.7.4-rc.2", True, True, 4096, 3, "execute")]
+
+
+def test_campaign_scenario_vm_mode_accepts_target_matrix(tmp_path: Path, monkeypatch) -> None:
+    layout = make_layout(tmp_path)
+    write_campaign_scenario_catalog(layout)
+    calls: list[tuple[str, ...]] = []
+
+    monkeypatch.setattr(
+        campaign_scenario_runner,
+        "invoke_windows_vm_tests",
+        lambda _layout, _workspace_options, options: calls.append(options.matrix),
+    )
+
+    campaign_scenario_runner.invoke_campaign_scenario(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path),
+        CampaignScenarioOptions(
+            scenario="search-ui-local-swarm",
+            mode="vm",
+            vm_matrix=("win10",),
+        ),
+    )
+
+    assert calls == [("win10",)]

@@ -103,6 +103,7 @@ _CAMPAIGN_SCENARIO_VALUE_OPTIONS = {
     "--scenario",
     "--mode",
     "--release-version",
+    "--matrix",
     "--fixture-size-bytes",
     "--swarm-tier",
     "--local-swarm-mode",
@@ -588,6 +589,7 @@ def _campaign_scenario_options_from_tokens(tokens: list[str]) -> CampaignScenari
         skip_build="--skip-build" in tokens,
         dry_run="--dry-run" in tokens,
         fixture_size_bytes=_option_int(tokens, "--fixture-size-bytes") or 25 * 1024 * 1024,
+        vm_matrix=parse_matrix(_option_value(tokens, "--matrix") or None),
         swarm_tier=_option_int(tokens, "--swarm-tier") or 1,  # type: ignore[arg-type]
         local_swarm_mode=_option_value(tokens, "--local-swarm-mode") or "plan",  # type: ignore[arg-type]
     )

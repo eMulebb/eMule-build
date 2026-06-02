@@ -97,7 +97,7 @@ def vm_test_options(spec: Any, scenario_options: CampaignScenarioOptions) -> Win
     """Returns the Windows VM options for one shared campaign scenario."""
 
     return WindowsVmTestOptions(
-        matrix=("win10", "win11"),
+        matrix=scenario_options.vm_matrix,
         profile=str(spec.vm_profile),
         release_version=scenario_options.release_version,
         skip_build=scenario_options.skip_build,

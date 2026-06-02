@@ -133,6 +133,7 @@ def test_test_campaign_scenario_help_exposes_mode_options() -> None:
     assert "--release-version" in result.output
     assert "--skip-build" in result.output
     assert "--build" in result.output
+    assert "--matrix" in result.output
     assert "--swarm-tier" in result.output
     assert "--local-swarm-mode" in result.output
 
