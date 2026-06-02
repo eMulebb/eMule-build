@@ -31,9 +31,23 @@ def test_build_libs_honors_toolset_env_override(tmp_path: Path, monkeypatch: pyt
         assert "/p:PlatformToolset=v143" not in call["extra_properties"]
 
 
+def test_build_libs_clean_release_x64_removes_generated_dependency_outputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    removed: list[tuple[Path, str]] = []
+
+    capture_build_libs_msbuild_calls(tmp_path, monkeypatch, clean=True, removed_generated=removed)
+
+    assert [kind for _repo, kind in removed] == ["zlib", "mbedtls"]
+
+
 def capture_build_libs_msbuild_calls(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    clean: bool = False,
+    removed_generated: list[tuple[Path, str]] | None = None,
 ) -> list[dict[str, object]]:
     layout = make_layout(tmp_path)
     calls: list[dict[str, object]] = []
@@ -42,6 +56,12 @@ def capture_build_libs_msbuild_calls(
     monkeypatch.setattr(build, "get_perl_path", lambda: Path("perl.exe"))
     monkeypatch.setattr(build, "invoke_cmake_dependency_build", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(build, "ensure_arm64_override_targets", lambda _layout: None)
+    if removed_generated is not None:
+        monkeypatch.setattr(
+            build,
+            "remove_stale_generated_artifacts",
+            lambda repo_path, kind: removed_generated.append((repo_path, kind)),
+        )
 
     def fake_invoke_msbuild_project(*_args, **kwargs):
         calls.append(
@@ -57,7 +77,7 @@ def capture_build_libs_msbuild_calls(
     build.build_libs(
         layout,
         WorkspaceOptions(workspace_root=layout.emule_workspace_root, configuration="Release", platform="x64"),
-        clean=False,
+        clean=clean,
     )
 
     return calls

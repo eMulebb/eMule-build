@@ -88,7 +88,7 @@ def build_libs(layout: WorkspaceLayout, options: WorkspaceOptions, *, clean: boo
             target=target,
             step_name="DEP ResizableLib",
         )
-        if clean and options.configuration == "Debug" and options.platform == "x64":
+        if clean and options.platform == "x64":
             remove_stale_generated_artifacts(third_party / "emulebb-zlib", "zlib")
             remove_stale_generated_artifacts(third_party / "emulebb-mbedtls", "mbedtls")
         invoke_msbuild_project(
@@ -607,7 +607,7 @@ def arm64_overrides_targets_path(layout: WorkspaceLayout) -> Path:
 
 
 def remove_stale_generated_artifacts(repo_path: Path, kind: str) -> None:
-    """Removes stale generated dependency artifacts for clean Debug x64 rebuilds."""
+    """Removes stale generated dependency artifacts for clean x64 rebuilds."""
 
     paths = {
         "zlib": (repo_path / "cmake-build-x64",),
