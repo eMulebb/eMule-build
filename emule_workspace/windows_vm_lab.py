@@ -18,9 +18,9 @@ from types import ModuleType
 from typing import Any, Sequence
 
 from .artifact_names import utc_run_id
-from .config import ReleasePackageOptions, WorkspaceOptions
+from .config import AmutorrentPackageOptions, ReleasePackageOptions, WorkspaceOptions
 from .layout import WorkspaceLayout, file_token
-from .release import create_release_package
+from .release import create_amutorrent_package, create_release_package
 
 VM_LAB_SCHEMA = "emulebb.windows-vm-lab.v1"
 DEFAULT_CONFIG_FILE_NAME = "vm-lab.local.json"
@@ -419,6 +419,7 @@ def invoke_windows_vm_tests(
     if tuple(matrix) != profile_spec.required_targets:
         expected = ",".join(profile_spec.required_targets)
         raise RuntimeError(f"{options.profile} requires --matrix {expected}.")
+    uses_local_swarm = options.profile in set(getattr(profile_catalog, "LOCAL_SWARM_VM_PROFILES", ()))
     runner = PowerShellRunner(cwd=layout.emule_workspace_root, dry_run=options.dry_run)
     preflight_hyperv(config, runner=runner, require_password=not options.dry_run)
     if not options.skip_build and not options.dry_run:
@@ -427,9 +428,24 @@ def invoke_windows_vm_tests(
             workspace_options,
             ReleasePackageOptions(release_version=options.release_version, clean=False, require_signing=False),
         )
+        if uses_local_swarm:
+            create_amutorrent_package(
+                layout,
+                workspace_options,
+                AmutorrentPackageOptions(release_version=options.release_version, clean=False),
+            )
     package_zip = _release_package_zip(layout, options.release_version, workspace_options.platform)
     if not options.dry_run and not package_zip.is_file():
         raise RuntimeError(f"Windows VM package-smoke is missing release package: {package_zip}")
+    amutorrent_package_zip = (
+        _release_amutorrent_package_zip(layout, options.release_version, workspace_options.platform)
+        if uses_local_swarm
+        else None
+    )
+    if not options.dry_run and uses_local_swarm and (
+        amutorrent_package_zip is None or not amutorrent_package_zip.is_file()
+    ):
+        raise RuntimeError(f"Windows VM local-swarm profile is missing aMuTorrent package: {amutorrent_package_zip}")
 
     run_id = utc_run_id()
     report_root = _windows_vm_report_root(layout)
@@ -481,6 +497,7 @@ def invoke_windows_vm_tests(
                     config.targets[key],
                     profile=options.profile,
                     package_zip=package_zip,
+                    amutorrent_package_zip=amutorrent_package_zip,
                     run_id=run_id,
                     run_report_dir=run_report_dir,
                     keep_running=options.keep_running,
@@ -747,6 +764,7 @@ def run_windows_vm_profile_smoke(
     *,
     profile: str,
     package_zip: Path,
+    amutorrent_package_zip: Path | None,
     run_id: str,
     run_report_dir: Path,
     keep_running: bool,
@@ -784,7 +802,6 @@ def run_windows_vm_profile_smoke(
         if is_local_swarm_profile
         else (None, None)
     )
-    local_swarm_amutorrent_root = local_swarm_amutorrent_repo_root(layout) if is_local_swarm_profile else None
     local_swarm_rest_openapi_path = (
         layout.tooling_repo_root / LOCAL_SWARM_REST_OPENAPI_RELATIVE_PATH
         if is_local_swarm_profile
@@ -812,11 +829,7 @@ def run_windows_vm_profile_smoke(
             "localSwarmHarnessPackagePath": str(local_swarm_payload["harnessPackage"]),
             "localSwarmManifestsPath": str(local_swarm_payload["manifests"]),
             "localSwarmScriptPaths": [str(path) for path in local_swarm_payload["scripts"]],
-            "localSwarmAmutorrentRoot": (
-                str(local_swarm_amutorrent_root)
-                if local_swarm_amutorrent_root is not None
-                else ""
-            ),
+            "localSwarmAmutorrentZip": str(amutorrent_package_zip) if amutorrent_package_zip is not None else "",
             "localSwarmRestOpenApiPath": (
                 str(local_swarm_rest_openapi_path)
                 if local_swarm_rest_openapi_path is not None
@@ -979,13 +992,6 @@ def local_swarm_amule_exes(layout: WorkspaceLayout) -> tuple[Path | None, Path |
         daemon if daemon.is_file() else None,
         control if control.is_file() else None,
     )
-
-
-def local_swarm_amutorrent_repo_root(layout: WorkspaceLayout) -> Path | None:
-    """Returns the aMuTorrent repo staged into reusable VM swarm payloads."""
-
-    root = layout.emule_workspace_root / "repos" / "amutorrent"
-    return root if root.is_dir() else None
 
 
 def run_windows_vm_hideme_live_wire(
@@ -1845,6 +1851,17 @@ Checkpoint-VM -Name $payload.vmName -SnapshotName $payload.checkpointName
 def _release_package_zip(layout: WorkspaceLayout, release_version: str, platform: str) -> Path:
     arch = "arm64" if platform == "ARM64" else "x64"
     return layout.workspace_root / "state" / "release" / f"emulebb-v{release_version}" / f"emulebb-{release_version}-{arch}.zip"
+
+
+def _release_amutorrent_package_zip(layout: WorkspaceLayout, release_version: str, platform: str) -> Path:
+    arch = "arm64" if platform == "ARM64" else "x64"
+    return (
+        layout.workspace_root
+        / "state"
+        / "release"
+        / f"emulebb-v{release_version}"
+        / f"emulebb-{release_version}-amutorrent-{arch}.zip"
+    )
 
 
 def _vm_image_root(layout: WorkspaceLayout) -> Path:
