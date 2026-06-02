@@ -17,6 +17,7 @@ def _layout(tmp_path: Path) -> SimpleNamespace:
         workspace_root=tmp_path / "workspaces" / "workspace",
         build_repo_root=tmp_path / "repos" / "emulebb-build",
         tests_repo_root=tmp_path / "repos" / "emulebb-build-tests",
+        tooling_repo_root=tmp_path / "repos" / "emulebb-tooling",
     )
 
 
@@ -595,6 +596,8 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
     assert result["localSwarmMode"] == "execute"
     assert "localSwarmHarnessPackagePath" in captured[0]
     assert "localSwarmScriptPaths" in captured[0]
+    assert "localSwarmRestOpenApiPath" in captured[0]
+    assert "localSwarmAppSourcePaths" in captured[0]
     assert "localSwarmGoed2kServerExe" in captured[0]
     assert "localSwarmClient2AppExe" in captured[0]
     assert "localSwarmAmuleDaemonExe" in captured[0]
@@ -605,6 +608,11 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
     assert "amuled.exe" in captured[0]
     assert "amulecmd.exe" in captured[0]
     assert "godzilla-local-swarm.py" in captured[0]
+    assert "REST-API-OPENAPI.yaml" in captured[0]
+    assert "WebServerJsonSeams.h" in captured[0]
+    assert "WebServerQBitCompatSeams.h" in captured[0]
+    assert "WebServerArrCompatSeams.h" in captured[0]
+    assert "WebServerArrCompat.cpp" in captured[0]
 
 
 def test_local_swarm_companion_exes_are_optional(tmp_path: Path) -> None:

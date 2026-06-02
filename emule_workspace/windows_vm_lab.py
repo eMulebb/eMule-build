@@ -43,6 +43,14 @@ WINDOWS_VM_SUITE_NAME = "windows-vm"
 WINDOWS_VM_RESULT_FILE_NAME = "windows-vm-result.json"
 WINDOWS_VM_SUMMARY_FILE_NAME = "windows-vm-summary.json"
 SUPPORTED_TARGETS = ("win10", "win11")
+LOCAL_SWARM_REST_OPENAPI_RELATIVE_PATH = Path("docs") / "rest" / "REST-API-OPENAPI.yaml"
+LOCAL_SWARM_APP_SOURCE_RELATIVE_DIR = Path("app") / "emulebb-main" / "srchybrid"
+LOCAL_SWARM_APP_SOURCE_FILES = (
+    "WebServerJsonSeams.h",
+    "WebServerQBitCompatSeams.h",
+    "WebServerArrCompatSeams.h",
+    "WebServerArrCompat.cpp",
+)
 PYTHON_INSTALLER_URL = "https://www.python.org/ftp/python/3.13.13/python-3.13.13-amd64.exe"
 PYTHON_INSTALLER_SHA256 = "3c9c81d80f91c002ced86d645422d81432c68c7d9b6b0e974768ca2e449a4d00"
 PYTHON_INSTALLER_FILE_NAME = "python-3.13.13-amd64.exe"
@@ -753,6 +761,16 @@ def run_windows_vm_profile_smoke(
         if is_local_swarm_profile
         else (None, None)
     )
+    local_swarm_rest_openapi_path = (
+        layout.tooling_repo_root / LOCAL_SWARM_REST_OPENAPI_RELATIVE_PATH
+        if is_local_swarm_profile
+        else None
+    )
+    local_swarm_app_source_paths = (
+        local_swarm_rest_source_contract_paths(layout)
+        if is_local_swarm_profile
+        else ()
+    )
     script = _ps_with_payload(
         {
             "target": target.key,
@@ -767,6 +785,12 @@ def run_windows_vm_profile_smoke(
             "profileHelperPath": str(host_contracts.profile_helper_path(layout.tests_repo_root)),
             "localSwarmHarnessPackagePath": str(local_swarm_payload["harnessPackage"]),
             "localSwarmScriptPaths": [str(path) for path in local_swarm_payload["scripts"]],
+            "localSwarmRestOpenApiPath": (
+                str(local_swarm_rest_openapi_path)
+                if local_swarm_rest_openapi_path is not None
+                else ""
+            ),
+            "localSwarmAppSourcePaths": [str(path) for path in local_swarm_app_source_paths],
             "localSwarmGoed2kServerExe": (
                 str(local_swarm_goed2k_server_exe)
                 if local_swarm_goed2k_server_exe is not None
@@ -903,6 +927,13 @@ def local_swarm_tracing_harness_app_exe(layout: WorkspaceLayout) -> Path | None:
         if candidate.is_file():
             return candidate
     return None
+
+
+def local_swarm_rest_source_contract_paths(layout: WorkspaceLayout) -> tuple[Path, ...]:
+    """Returns native REST contract source files staged into reusable VM swarm payloads."""
+
+    source_root = layout.workspace_root / LOCAL_SWARM_APP_SOURCE_RELATIVE_DIR
+    return tuple(source_root / file_name for file_name in LOCAL_SWARM_APP_SOURCE_FILES)
 
 
 def local_swarm_amule_exes(layout: WorkspaceLayout) -> tuple[Path | None, Path | None]:
