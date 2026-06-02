@@ -781,6 +781,94 @@ def test_campaign_plan_can_force_shared_local_campaign_scenario_to_execute() -> 
     assert "--local-swarm-mode" not in plan[0].command
 
 
+def test_campaign_plan_applies_local_vm_swarm_overrides_to_all_reusable_rows() -> None:
+    scenario_ids = (
+        "emulebb.flow.controller.installer-swarm.v1",
+        "emulebb.flow.amutorrent.clean-startup.swarm.v1",
+        "emulebb.flow.amutorrent.emulebb-ui.swarm.v1",
+        "emulebb.flow.arr.prowlarr-handoff.swarm.v1",
+        "emulebb.flow.ui.search.local-swarm.v1",
+    )
+    campaign = campaign_payload()
+    campaign["phases"][1]["scenarios"] = []
+    for index, scenario_id in enumerate(scenario_ids, start=1):
+        swarm_tier = ((index - 1) % 3) + 1
+        local_command = (
+            "python -m emule_workspace test campaign-scenario "
+            f"--scenario {scenario_id} --mode local --swarm-tier {swarm_tier}"
+        )
+        vm_command = (
+            "python -m emule_workspace test campaign-scenario "
+            f"--scenario {scenario_id} --mode vm --release-version 0.7.4-rc.2 "
+            f"--skip-build --swarm-tier {swarm_tier} --dry-run"
+        )
+        campaign["phases"][1]["scenarios"].append(
+            {
+                "id": scenario_id,
+                "flowCategory": "local-vm-swarm",
+                "command": vm_command,
+                "localCommand": local_command,
+                "vmCommand": vm_command,
+                "executionMode": "vm",
+                "executionModes": ["local", "vm"],
+                "blocking": True,
+            }
+        )
+
+    expected_local_plan = [
+        (
+            "python -m emule_workspace test campaign-scenario "
+            f"--scenario {scenario_id} --mode local --swarm-tier {((index - 1) % 3) + 1} --dry-run"
+        )
+        for index, scenario_id in enumerate(scenario_ids, start=1)
+    ]
+    expected_local_execute = [
+        (
+            "python -m emule_workspace test campaign-scenario "
+            f"--scenario {scenario_id} --mode local --swarm-tier {((index - 1) % 3) + 1}"
+        )
+        for index, scenario_id in enumerate(scenario_ids, start=1)
+    ]
+    expected_vm_plan = [
+        (
+            "python -m emule_workspace test campaign-scenario "
+            f"--scenario {scenario_id} --mode vm --release-version 0.7.4-rc.2 "
+            f"--skip-build --swarm-tier {((index - 1) % 3) + 1} --dry-run"
+        )
+        for index, scenario_id in enumerate(scenario_ids, start=1)
+    ]
+    expected_vm_execute = [
+        (
+            "python -m emule_workspace test campaign-scenario "
+            f"--scenario {scenario_id} --mode vm --release-version 0.7.4-rc.2 "
+            f"--skip-build --swarm-tier {((index - 1) % 3) + 1} --local-swarm-mode execute"
+        )
+        for index, scenario_id in enumerate(scenario_ids, start=1)
+    ]
+
+    matrix = {
+        ("local", "plan"): expected_local_plan,
+        ("local", "execute"): expected_local_execute,
+        ("vm", "plan"): expected_vm_plan,
+        ("vm", "execute"): expected_vm_execute,
+    }
+    for (mode, execution_mode), expected_commands in matrix.items():
+        plan = release_campaign_runner.build_release_campaign_execution_plan(
+            campaign,
+            ReleaseCampaignOptions(
+                campaign="test-campaign",
+                phase="controller-surface",
+                execute=True,
+                local_vm_swarm_mode=mode,  # type: ignore[arg-type]
+                local_vm_swarm_execution_mode=execution_mode,  # type: ignore[arg-type]
+            ),
+        )
+
+        assert [item.command for item in plan] == expected_commands
+        assert [context.scenario_id for item in plan for context in item.scenario_contexts] == list(scenario_ids)
+        assert {context.flow_category for item in plan for context in item.scenario_contexts} == {"local-vm-swarm"}
+
+
 def test_campaign_execute_can_override_shared_campaign_scenario_to_vm_mode(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
