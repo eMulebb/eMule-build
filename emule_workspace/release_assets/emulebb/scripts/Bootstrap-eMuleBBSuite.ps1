@@ -61,9 +61,23 @@ function Get-DefaultPlatform {
     return $Platform
 }
 
+function Get-ReleaseTag {
+    if ([string]::IsNullOrWhiteSpace($Version)) {
+        return $null
+    }
+    if ($Version -match '^emulebb-(v|nightly-)') {
+        return $Version
+    }
+    if ($Version -match '^\d+\.\d+\.\d+-nightly\.(\d{8})\.([0-9a-fA-F]+)$') {
+        return "emulebb-nightly-$($Matches[1])-$($Matches[2])"
+    }
+    return "emulebb-v$Version"
+}
+
 function Get-Release {
     if (-not [string]::IsNullOrWhiteSpace($Version)) {
-        return Invoke-RestMethod -Uri "$ApiBase/repos/$Repository/releases/tags/emulebb-v$Version" -Headers @{ 'User-Agent' = $UserAgent }
+        $tag = Get-ReleaseTag
+        return Invoke-RestMethod -Uri "$ApiBase/repos/$Repository/releases/tags/$tag" -Headers @{ 'User-Agent' = $UserAgent }
     }
     $releases = Invoke-RestMethod -Uri "$ApiBase/repos/$Repository/releases" -Headers @{ 'User-Agent' = $UserAgent }
     foreach ($release in @($releases)) {
@@ -79,12 +93,30 @@ function Get-Release {
 }
 
 function Get-ReleaseVersion {
-    param([object]$Release)
+    param([object]$Release, [string]$AssetArch)
     $tag = [string]$Release.tag_name
-    if ($tag -notmatch '^emulebb-v(.+)$') {
-        throw "Unexpected release tag: $tag"
+    if ($tag -match '^emulebb-v(.+)$') {
+        return $Matches[1]
     }
-    return $Matches[1]
+    if ($tag -match '^emulebb-nightly-\d{8}-[0-9a-fA-F]+(-run\d+)?$') {
+        if ([string]::IsNullOrWhiteSpace($AssetArch)) {
+            throw "Cannot resolve nightly package version without an asset architecture."
+        }
+        $escapedAssetArch = [regex]::Escape($AssetArch)
+        foreach ($asset in @($Release.assets)) {
+            $name = [string]$asset.name
+            if ($name -match "^emulebb-(.+)-$escapedAssetArch\.zip$") {
+                return $Matches[1]
+            }
+        }
+        throw "Nightly release $tag does not contain an eMuleBB $AssetArch ZIP asset."
+    }
+    throw "Unexpected release tag: $tag"
+}
+
+function Get-ReleaseBaseUrl {
+    param([object]$Release)
+    return "https://github.com/$Repository/releases/download/$($Release.tag_name)"
 }
 
 function Get-AssetUrl {
@@ -170,8 +202,9 @@ function Expand-Installer {
 
 $resolvedPlatform = Get-DefaultPlatform
 $release = Get-Release
-$resolvedVersion = Get-ReleaseVersion -Release $release
 $assetArch = if ($resolvedPlatform -eq 'ARM64') { 'arm64' } else { 'x64' }
+$resolvedVersion = Get-ReleaseVersion -Release $release -AssetArch $assetArch
+$releaseBaseUrl = Get-ReleaseBaseUrl -Release $release
 $zipName = "emulebb-$resolvedVersion-$assetArch.zip"
 $manifestName = "emulebb-$resolvedVersion-$assetArch.manifest.json"
 $zipUrl = Get-AssetUrl -Release $release -Name $zipName
@@ -193,7 +226,8 @@ $args = @(
     '-Bundle', $Bundle,
     '-InstallRoot', $InstallRoot,
     '-Version', $resolvedVersion,
-    '-Platform', $resolvedPlatform
+    '-Platform', $resolvedPlatform,
+    '-ReleaseBaseUrl', $releaseBaseUrl
 )
 if ($NonInteractive) { $args += '-NonInteractive' }
 if ($NoStart) { $args += '-NoStart' }

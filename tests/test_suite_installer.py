@@ -6,6 +6,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
+
 import suite_install_fixtures
 
 
@@ -680,3 +682,50 @@ def test_suite_bootstrapper_requires_emulebb_package_root() -> None:
     assert "-EmulebbBindAddress" in bootstrapper
     assert "-AmutorrentPort" in bootstrapper
     assert "-AllowRemoteServiceBind" in bootstrapper
+    assert "-ReleaseBaseUrl" in bootstrapper
+    assert "emulebb-nightly-" in bootstrapper
+
+
+@pytest.mark.parametrize(
+    "version_arg",
+    [
+        "0.7.3-nightly.20260524.ae562c1",
+        "emulebb-nightly-20260524-ae562c1",
+    ],
+)
+def test_suite_bootstrapper_resolves_nightly_release_assets(version_arg: str) -> None:
+    repo_root = Path.cwd()
+    bootstrapper_path = (repo_root / BOOTSTRAPPER).resolve()
+    command = rf"""
+function Invoke-RestMethod {{
+    param([string]$Uri, [hashtable]$Headers)
+    if ($Uri -ne 'https://api.github.com/repos/emulebb/emulebb/releases/tags/emulebb-nightly-20260524-ae562c1') {{
+        throw "Unexpected release URI: $Uri"
+    }}
+    return [pscustomobject]@{{
+        tag_name = 'emulebb-nightly-20260524-ae562c1'
+        draft = $false
+        prerelease = $true
+        assets = @(
+            [pscustomobject]@{{
+                name = 'emulebb-0.7.3-nightly.20260524.ae562c1-x64.zip'
+                browser_download_url = 'https://example.invalid/emulebb-0.7.3-nightly.20260524.ae562c1-x64.zip'
+            }},
+            [pscustomobject]@{{
+                name = 'emulebb-0.7.3-nightly.20260524.ae562c1-x64.manifest.json'
+                browser_download_url = 'https://example.invalid/emulebb-0.7.3-nightly.20260524.ae562c1-x64.manifest.json'
+            }}
+        )
+    }}
+}}
+& '{bootstrapper_path}' -Version '{version_arg}' -Platform x64 -DryRun -NoStart
+"""
+
+    completed = _run_powershell(["-Command", command], cwd=repo_root)
+
+    assert "Resolved release emulebb-nightly-20260524-ae562c1 for x64" in completed.stdout
+    assert "emulebb-0.7.3-nightly.20260524.ae562c1-x64.zip" in completed.stdout
+    assert (
+        "-ReleaseBaseUrl https://github.com/emulebb/emulebb/releases/download/"
+        "emulebb-nightly-20260524-ae562c1"
+    ) in completed.stdout
