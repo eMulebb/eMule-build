@@ -668,6 +668,11 @@ def run_windows_vm_profile_smoke(
         }
     host_contracts = load_windows_vm_host_contracts(layout)
     local_swarm_payload = host_contracts.local_swarm_payload_paths(layout.tests_repo_root)
+    local_swarm_goed2k_server_exe = (
+        build_goed2k_server_exe(layout)
+        if profile in set(host_contracts.LOCAL_SWARM_VM_PROFILES)
+        else None
+    )
     script = _ps_with_payload(
         {
             "target": target.key,
@@ -682,6 +687,11 @@ def run_windows_vm_profile_smoke(
             "profileHelperPath": str(host_contracts.profile_helper_path(layout.tests_repo_root)),
             "localSwarmHarnessPackagePath": str(local_swarm_payload["harnessPackage"]),
             "localSwarmScriptPaths": [str(path) for path in local_swarm_payload["scripts"]],
+            "localSwarmGoed2kServerExe": (
+                str(local_swarm_goed2k_server_exe)
+                if local_swarm_goed2k_server_exe is not None
+                else ""
+            ),
             "runId": run_id,
             "hostReportDir": str(target_report_dir),
             "keepRunning": keep_running,

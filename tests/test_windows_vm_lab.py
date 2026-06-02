@@ -181,6 +181,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+LOCAL_SWARM_VM_PROFILES = ("search-ui-local-swarm-vm",)
+
 
 def load_guest_script(tests_repo_root, profile_name):
     return f"# script for {profile_name}"
@@ -491,6 +493,9 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
     _write_config(config_path)
     config = windows_vm_lab.load_vm_lab_config(layout, config_file=str(config_path))
     captured: list[str] = []
+    goed2k_server_exe = tmp_path / "tools" / "goed2k-server.exe"
+    goed2k_server_exe.parent.mkdir()
+    goed2k_server_exe.write_text("", encoding="utf-8")
 
     class CaptureRunner:
         dry_run = False
@@ -499,24 +504,34 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
             captured.append(script)
             return json.dumps({"status": "passed", "guest": {}, "checks": [], "errors": []})
 
-    result = windows_vm_lab.run_windows_vm_profile_smoke(
-        layout,
-        config,
-        config.targets["win10"],
-        profile="search-ui-local-swarm-vm",
-        package_zip=tmp_path / "package.zip",
-        run_id="run",
-        run_report_dir=tmp_path / "report",
-        keep_running=False,
-        fixture_size_bytes=4096,
-        swarm_tier=3,
-        runner=CaptureRunner(),
-    )
+    def fake_build_goed2k_server_exe(_layout: WorkspaceLayout) -> Path:
+        return goed2k_server_exe
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(windows_vm_lab, "build_goed2k_server_exe", fake_build_goed2k_server_exe)
+    try:
+        result = windows_vm_lab.run_windows_vm_profile_smoke(
+            layout,
+            config,
+            config.targets["win10"],
+            profile="search-ui-local-swarm-vm",
+            package_zip=tmp_path / "package.zip",
+            run_id="run",
+            run_report_dir=tmp_path / "report",
+            keep_running=False,
+            fixture_size_bytes=4096,
+            swarm_tier=3,
+            runner=CaptureRunner(),
+        )
+    finally:
+        monkeypatch.undo()
 
     assert result["status"] == "passed"
     assert result["swarmTier"] == 3
     assert "localSwarmHarnessPackagePath" in captured[0]
     assert "localSwarmScriptPaths" in captured[0]
+    assert "localSwarmGoed2kServerExe" in captured[0]
+    assert "goed2k-server.exe" in captured[0]
     assert "godzilla-local-swarm.py" in captured[0]
 
 
