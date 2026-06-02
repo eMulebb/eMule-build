@@ -42,7 +42,7 @@ def test_campaign_scenario_local_mode_reuses_local_live_suites_and_tiered_swarm(
         (
             "multi-client-p2p",
             ("local-ed2k-search-soak", "local-kad-swarm", "godzilla-local-swarm"),
-            "lan",
+            "default",
             12,
             66,
             "launch-scale",

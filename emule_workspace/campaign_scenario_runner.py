@@ -60,7 +60,7 @@ def local_live_e2e_options(
     return LiveE2eOptions(
         profile=str(spec.local_profile or "default"),
         suites=suites,
-        test_network="lan",
+        test_network=str(getattr(spec, "local_test_network", "default")),
         pre_run_cleanup=False,
         fail_fast=bool(godzilla["fail_fast"]) if GODZILLA_LOCAL_SWARM_SUITE in suites else False,
         admin_volume_fixtures=GODZILLA_LOCAL_SWARM_SUITE in suites,
