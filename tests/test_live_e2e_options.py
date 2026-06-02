@@ -588,6 +588,19 @@ def test_live_e2e_materialized_vpn_uses_lan_bind(tmp_path: Path, monkeypatch) ->
     assert events == ["resolve:lan", "materialize", "register", "resolve:vpn"]
 
 
+def test_process_x_local_ip_overrides_resolved_lan_bind_for_host_runs(monkeypatch) -> None:
+    monkeypatch.setenv("X_LOCAL_IP", "192.168.1.42")
+
+    lan_bind_addr = test_runs._lan_bind_address_from_env(
+        {
+            "EMULEBB_TEST_LAN_INTERFACE": "hide.me",
+            "EMULEBB_TEST_LAN_IP_RESOLVED": "10.8.0.9",
+        }
+    )
+
+    assert lan_bind_addr == "192.168.1.42"
+
+
 def test_live_e2e_installer_controller_surface_profile_materializes_by_default(tmp_path: Path, monkeypatch) -> None:
     captured: dict[str, object] = {}
     materialize_calls: list[object] = []

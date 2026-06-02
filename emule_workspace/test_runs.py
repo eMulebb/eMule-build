@@ -1248,7 +1248,7 @@ def _test_network_env(
 def _lan_bind_address_from_env(env: dict[str, str]) -> str | None:
     """Returns the resolved LAN controller bind address propagated to child launchers."""
 
-    return (env.get("X_LOCAL_IP") or env.get(LAN_IP_RESOLVED_ENV) or os.environ.get("X_LOCAL_IP", "")).strip() or None
+    return (env.get("X_LOCAL_IP") or os.environ.get("X_LOCAL_IP", "") or env.get(LAN_IP_RESOLVED_ENV) or "").strip() or None
 
 
 def _assert_test_execution_platform_supported(options: WorkspaceOptions) -> None:
