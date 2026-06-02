@@ -220,6 +220,62 @@ def test_campaign_execute_dry_run_writes_planned_report(tmp_path: Path) -> None:
     assert all(row["status"] == "planned" for row in payload["commands"])
 
 
+def test_campaign_report_records_local_vm_swarm_scenario_context(tmp_path: Path) -> None:
+    layout = make_layout(tmp_path)
+    campaign = campaign_payload()
+    local_command = (
+        "python -m emule_workspace test campaign-scenario "
+        "--scenario emulebb.flow.ui.search.local-swarm.v1 --mode local --swarm-tier 1"
+    )
+    campaign["phases"][1]["scenarios"] = [
+        {
+            "id": "emulebb.flow.ui.search.local-swarm.v1",
+            "title": "Search UI local swarm",
+            "phase": "controller-surface",
+            "flowCategory": "local-vm-swarm",
+            "command": local_command,
+            "localCommand": local_command,
+            "vmCommand": (
+                "python -m emule_workspace test campaign-scenario "
+                "--scenario emulebb.flow.ui.search.local-swarm.v1 --mode vm "
+                "--release-version 0.7.4-rc.2 --skip-build --swarm-tier 1 --dry-run"
+            ),
+            "executionMode": "local",
+            "executionModes": ["local", "vm"],
+            "localProfile": "multi-client-p2p",
+            "vmProfile": "search-ui-local-swarm-vm",
+            "controlBindScope": "lan",
+            "amutorrentBindScope": "lan",
+            "p2pMode": "local-swarm",
+            "p2pBindScope": "lan",
+            "blocking": True,
+        }
+    ]
+    write_campaign(layout, campaign)
+
+    release_campaign_runner.invoke_release_campaign(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path),
+        ReleaseCampaignOptions(campaign="test-campaign", phase="controller-surface", execute=True, dry_run=True),
+    )
+
+    reports = sorted((layout.workspace_root / "state" / "release-campaign-runs").glob(f"*/{release_campaign_result_file_name()}"))
+    payload = json.loads(reports[-1].read_text(encoding="utf-8"))
+    assert payload["plannedCommands"][0]["selectedCampaignScenarioMode"] == "local"
+    assert payload["commands"][0]["selectedCampaignScenarioMode"] == "local"
+    planned_context = payload["plannedCommands"][0]["scenarioContexts"][0]
+    command_context = payload["commands"][0]["scenarioContexts"][0]
+    assert planned_context == command_context
+    assert planned_context["flowCategory"] == "local-vm-swarm"
+    assert planned_context["executionModes"] == ["local", "vm"]
+    assert planned_context["localProfile"] == "multi-client-p2p"
+    assert planned_context["vmProfile"] == "search-ui-local-swarm-vm"
+    assert planned_context["controlBindScope"] == "lan"
+    assert planned_context["amutorrentBindScope"] == "lan"
+    assert planned_context["p2pMode"] == "local-swarm"
+    assert planned_context["p2pBindScope"] == "lan"
+
+
 def test_campaign_execute_dispatches_supported_commands(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     layout = make_layout(tmp_path)
     write_campaign(layout, campaign_payload())

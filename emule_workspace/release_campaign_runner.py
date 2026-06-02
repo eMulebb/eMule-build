@@ -117,6 +117,15 @@ class CampaignScenarioContext:
 
     scenario_id: str
     blocking: bool
+    flow_category: str
+    execution_mode: str
+    execution_modes: tuple[str, ...]
+    local_profile: str
+    vm_profile: str
+    control_bind_scope: str
+    amutorrent_bind_scope: str
+    p2p_mode: str
+    p2p_bind_scope: str
     live_e2e_profile: str
     live_e2e_suite: str
 
@@ -244,6 +253,15 @@ def build_release_campaign_execution_plan(
                 CampaignScenarioContext(
                     scenario_id=scenario_id,
                     blocking=bool(scenario.get("blocking", True)),
+                    flow_category=str(scenario.get("flowCategory") or ""),
+                    execution_mode=str(scenario.get("executionMode") or ""),
+                    execution_modes=tuple(str(mode) for mode in scenario.get("executionModes", ())),
+                    local_profile=str(scenario.get("localProfile") or ""),
+                    vm_profile=str(scenario.get("vmProfile") or ""),
+                    control_bind_scope=str(scenario.get("controlBindScope") or ""),
+                    amutorrent_bind_scope=str(scenario.get("amutorrentBindScope") or ""),
+                    p2p_mode=str(scenario.get("p2pMode") or ""),
+                    p2p_bind_scope=str(scenario.get("p2pBindScope") or ""),
                     live_e2e_profile=str(scenario.get("liveE2eProfile") or ""),
                     live_e2e_suite=str(scenario.get("liveE2eSuite") or ""),
                 )
@@ -899,6 +917,38 @@ def _new_report_dir(layout: WorkspaceLayout, campaign_id: str) -> Path:
     return layout.workspace_root / "state" / "release-campaign-runs" / f"{stamp}-{campaign_id}"
 
 
+def _scenario_context_payload(contexts: tuple[CampaignScenarioContext, ...]) -> list[dict[str, Any]]:
+    """Returns report-friendly scenario metadata for one deduplicated command."""
+
+    return [
+        {
+            "scenarioId": context.scenario_id,
+            "blocking": context.blocking,
+            "flowCategory": context.flow_category,
+            "executionMode": context.execution_mode,
+            "executionModes": list(context.execution_modes),
+            "localProfile": context.local_profile,
+            "vmProfile": context.vm_profile,
+            "controlBindScope": context.control_bind_scope,
+            "amutorrentBindScope": context.amutorrent_bind_scope,
+            "p2pMode": context.p2p_mode,
+            "p2pBindScope": context.p2p_bind_scope,
+            "liveE2eProfile": context.live_e2e_profile,
+            "liveE2eSuite": context.live_e2e_suite,
+        }
+        for context in contexts
+    ]
+
+
+def _selected_campaign_scenario_mode(command: str) -> str:
+    """Returns the selected reusable campaign command mode, when present."""
+
+    tokens = _parse_command(command)
+    if tokens[3:5] != ["test", "campaign-scenario"]:
+        return ""
+    return _option_value(tokens, "--mode") or ""
+
+
 def _write_report(
     report_dir: Path,
     campaign: dict[str, Any],
@@ -910,6 +960,7 @@ def _write_report(
     *,
     status: str,
 ) -> None:
+    plan_by_command = {item.command: item for item in plan}
     payload = {
         "schemaVersion": "emule-build.release-campaign-run.v1",
         "campaignId": campaign_options.campaign,
@@ -931,16 +982,25 @@ def _write_report(
         "plannedCommands": [
             {
                 "command": item.command,
+                "selectedCampaignScenarioMode": _selected_campaign_scenario_mode(item.command),
                 "phaseIds": list(item.phase_ids),
                 "scenarioIds": list(item.scenario_ids),
+                "scenarioContexts": _scenario_context_payload(item.scenario_contexts),
             }
             for item in plan
         ],
         "commands": [
             {
                 "command": item.command,
+                "selectedCampaignScenarioMode": _selected_campaign_scenario_mode(item.command),
                 "phaseIds": list(item.phase_ids),
                 "scenarioIds": list(item.scenario_ids),
+                "scenarioContexts": _scenario_context_payload(
+                    plan_by_command.get(
+                        item.command,
+                        CampaignCommandPlan(item.command, item.phase_ids, item.scenario_ids),
+                    ).scenario_contexts
+                ),
                 "status": item.status,
                 "durationSeconds": item.duration_seconds,
                 "error": item.error,
