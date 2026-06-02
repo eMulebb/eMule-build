@@ -198,7 +198,7 @@ needed.
 | Variable | Used by | Default when unset | Intended use |
 |---|---|---|---|
 | `EMULEBB_MSYS2_ROOT` | `build clients --client amule` | First usable system MSYS2 root, normally a standard MSYS2 install under the system drive | Point the aMule Windows client build at a nonstandard MSYS2 install. |
-| `EMULEBB_VS_PLATFORM_TOOLSET` | app, Crypto++, and release MSBuild entrypoints | `v143` | Temporarily force a Visual Studio `PlatformToolset` for local compatibility diagnosis. |
+| `EMULEBB_VS_PLATFORM_TOOLSET` | app, dependency, and release MSBuild entrypoints | `v143` | Temporarily force a Visual Studio `PlatformToolset` for local compatibility diagnosis. |
 
 Use these only at the shell or CI-job boundary:
 

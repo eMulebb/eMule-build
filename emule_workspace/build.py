@@ -45,6 +45,7 @@ def build_libs(layout: WorkspaceLayout, options: WorkspaceOptions, *, clean: boo
     try:
         third_party = layout.resolve_workspace_path("repos/third_party")
         target = "Rebuild" if clean else "Build"
+        toolset_property = default_platform_toolset_property(layout)
         if options.platform == "ARM64":
             ensure_arm64_override_targets(layout)
 
@@ -59,13 +60,14 @@ def build_libs(layout: WorkspaceLayout, options: WorkspaceOptions, *, clean: boo
         invoke_msbuild_project(
             session,
             project_path=third_party / "emulebb-id3lib" / "libprj" / "id3lib.vcxproj",
-            extra_properties=id3lib_properties(options.configuration, options.platform),
+            extra_properties=(toolset_property, *id3lib_properties(options.configuration, options.platform)),
             target=target,
             step_name="DEP id3lib",
         )
         invoke_msbuild_project(
             session,
             project_path=third_party / "emulebb-miniupnp" / "miniupnpc" / "msvc" / "miniupnpc.vcxproj",
+            extra_properties=(toolset_property,),
             target=target,
             step_name="DEP miniupnp",
         )
@@ -82,6 +84,7 @@ def build_libs(layout: WorkspaceLayout, options: WorkspaceOptions, *, clean: boo
         invoke_msbuild_project(
             session,
             project_path=third_party / "emulebb-resizablelib" / "ResizableLib" / "ResizableLib.vcxproj",
+            extra_properties=(toolset_property,),
             target=target,
             step_name="DEP ResizableLib",
         )
@@ -91,14 +94,18 @@ def build_libs(layout: WorkspaceLayout, options: WorkspaceOptions, *, clean: boo
         invoke_msbuild_project(
             session,
             project_path=third_party / "emulebb-zlib" / "contrib" / "vstudio" / "vc" / "zlib.vcxproj",
-            extra_properties=(f"/p:WorkspaceCMakeExe={get_cmake_path()}",),
+            extra_properties=(toolset_property, f"/p:WorkspaceCMakeExe={get_cmake_path()}"),
             target=target,
             step_name="DEP zlib",
         )
         invoke_msbuild_project(
             session,
             project_path=mbedtls_project_path(layout),
-            extra_properties=(f"/p:WorkspaceCMakeExe={get_cmake_path()}", f"/p:WorkspacePerlExe={get_perl_path()}"),
+            extra_properties=(
+                toolset_property,
+                f"/p:WorkspaceCMakeExe={get_cmake_path()}",
+                f"/p:WorkspacePerlExe={get_perl_path()}",
+            ),
             target=target,
             step_name="DEP mbedtls",
         )
@@ -446,7 +453,7 @@ def app_property_overrides(layout: WorkspaceLayout, platform: str) -> tuple[str,
 def crypto_pp_properties(layout: WorkspaceLayout, platform: str) -> tuple[str, ...]:
     """Returns Crypto++ MSBuild policy overrides."""
 
-    properties = [f"/p:PlatformToolset={env_override(layout.toolset_override_variable) or 'v143'}"]
+    properties = [default_platform_toolset_property(layout)]
     if platform == "ARM64":
         properties.extend(
             [
@@ -461,8 +468,14 @@ def id3lib_properties(configuration: str, platform: str) -> tuple[str, ...]:
     """Returns id3lib MSBuild policy overrides."""
 
     if configuration == "Release" and platform == "ARM64":
-        return ("/p:PlatformToolset=v143", "/p:ConfigurationType=StaticLibrary")
+        return ("/p:ConfigurationType=StaticLibrary",)
     return ()
+
+
+def default_platform_toolset_property(layout: WorkspaceLayout) -> str:
+    """Returns the active MSBuild PlatformToolset policy property."""
+
+    return f"/p:PlatformToolset={env_override(layout.toolset_override_variable) or 'v143'}"
 
 
 def crypto_pp_environment(platform: str) -> dict[str, str]:
