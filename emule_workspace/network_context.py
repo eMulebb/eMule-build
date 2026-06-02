@@ -15,6 +15,7 @@ TestNetwork = Literal["default", "offline", "lan", "vpn", "all"]
 VpnTestNetwork = Literal["vpn", "all"]
 
 DEFAULT_VPN_INTERFACE = "hide.me"
+X_LOCAL_IP_ENV = "X_LOCAL_IP"
 LAN_INTERFACE_ENV = "EMULEBB_TEST_LAN_INTERFACE"
 VPN_INTERFACE_ENV = "EMULEBB_TEST_VPN_INTERFACE"
 LAN_IP_ENV = "EMULEBB_TEST_LAN_IP"
@@ -144,7 +145,7 @@ def write_network_context(context: WorkspaceNetworkContext) -> None:
 
 
 def resolve_lan_interface(*, required: bool) -> InterfaceResolution | None:
-    explicit_ip = os.environ.get(LAN_IP_ENV, "").strip()
+    explicit_ip = os.environ.get(LAN_IP_ENV, "").strip() or os.environ.get(X_LOCAL_IP_ENV, "").strip()
     explicit_interface = os.environ.get(LAN_INTERFACE_ENV, "").strip()
     if explicit_ip:
         validate_lan_ip(explicit_ip)
@@ -177,7 +178,7 @@ def resolve_lan_interface(*, required: bool) -> InterfaceResolution | None:
         if required:
             raise RuntimeError(
                 "LAN test network requires a non-loopback private IPv4. "
-                f"Set {LAN_INTERFACE_ENV} or {LAN_IP_ENV}."
+                f"Set {LAN_INTERFACE_ENV}, {LAN_IP_ENV}, or {X_LOCAL_IP_ENV}."
             )
         return None
     return InterfaceResolution(
@@ -262,6 +263,11 @@ def choose_ip_for_interface(
     *,
     require_lan: bool,
 ) -> dict[str, str]:
+    if require_lan and looks_like_vpn_interface(interface_name):
+        raise RuntimeError(
+            f"LAN interface {interface_name!r} looks like a VPN adapter; "
+            f"set a LAN interface, {LAN_IP_ENV}, or {X_LOCAL_IP_ENV}."
+        )
     matching = [
         candidate
         for candidate in candidates
@@ -289,7 +295,12 @@ def choose_ip_for_interface(
 
 
 def choose_best_lan_candidate(candidates: list[dict[str, Any]]) -> dict[str, str] | None:
-    matching = [candidate for candidate in candidates if is_valid_lan_ip(str(candidate.get("ip_address", "")))]
+    matching = [
+        candidate
+        for candidate in candidates
+        if is_valid_lan_ip(str(candidate.get("ip_address", "")))
+        and not looks_like_vpn_interface(str(candidate.get("interface_alias", "")))
+    ]
     if not matching:
         return None
     selected = sorted(matching, key=lan_candidate_rank)[0]

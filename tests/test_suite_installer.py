@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -12,10 +11,6 @@ import suite_install_fixtures
 
 INSTALLER = Path("emule_workspace/release_assets/emulebb/scripts/Install-eMuleBBSuite.ps1")
 BOOTSTRAPPER = Path("emule_workspace/release_assets/emulebb/scripts/Bootstrap-eMuleBBSuite.ps1")
-
-
-def _default_control_bind() -> str:
-    return os.environ.get("X_LOCAL_IP") or "127.0.0.1"
 
 
 def _write_manifest(path: Path, zip_path: Path) -> None:
@@ -50,6 +45,7 @@ def _assert_powershell_parse(path: Path, *, cwd: Path) -> None:
 def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_path: Path) -> None:
     release_root = tmp_path / "release"
     install_root = tmp_path / "suite"
+    control_bind = "127.0.0.1"
     suite_install_fixtures.write_core_release(release_root)
 
     repo_root = Path.cwd()
@@ -66,6 +62,8 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
             str(install_root),
             "-ReleaseBaseUrl",
             release_root.as_uri(),
+            "-ControlBindAddress",
+            control_bind,
             "-P2PBindInterface",
             "hide.me",
             "-EmulebbPort",
@@ -82,7 +80,7 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "NetworkGuardMode=Off" in preferences
     assert "NetworkGuardAllowedCIDRs=" in preferences
     assert "[WebServer]" in preferences
-    assert f"BindAddr={_default_control_bind()}" in preferences
+    assert f"BindAddr={control_bind}" in preferences
     assert "Port=14711" in preferences
 
     suite_config = json.loads((install_root / "manifests" / "suite-config.json").read_text(encoding="utf-8-sig"))
@@ -90,9 +88,9 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert suite_config["installKind"] == "Production"
     assert suite_config["emulebbPackageFlavor"] == "standard"
     assert suite_config["emulebbExecutableName"] == "emulebb.exe"
-    assert suite_config["services"]["emulebb"]["bindAddress"] == _default_control_bind()
+    assert suite_config["services"]["emulebb"]["bindAddress"] == control_bind
     assert suite_config["services"]["emulebb"]["port"] == 14711
-    assert suite_config["services"]["amutorrent"]["bindAddress"] == _default_control_bind()
+    assert suite_config["services"]["amutorrent"]["bindAddress"] == control_bind
     assert suite_config["p2p"] == {
         "bindInterface": "hide.me",
         "blockNetworkWhenBindUnavailableAtStartup": False,
@@ -623,6 +621,9 @@ def test_suite_installer_keeps_full_suite_service_binds_config_driven() -> None:
     assert "NetworkGuardMode=Off" in installer
     assert "NetworkGuardAllowedCIDRs=" in installer
     assert "Get-DefaultControlBindAddress" in installer
+    assert "Get-AutoLanBindAddress" in installer
+    assert "Test-AutoLanIPv4Address" in installer
+    assert "'hide.me'" in installer
     assert "X_LOCAL_IP" in installer
 
 

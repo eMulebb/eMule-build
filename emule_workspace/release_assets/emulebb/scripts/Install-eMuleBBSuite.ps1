@@ -124,9 +124,69 @@ function Resolve-Secret {
     return $Value
 }
 
+function Test-VpnLikeInterfaceName {
+    param([string]$Name)
+    $lowered = ([string]$Name).ToLowerInvariant()
+    foreach ($token in @('vpn', 'hide.me', 'tap', 'tun', 'wireguard', 'tailscale')) {
+        if ($lowered.Contains($token)) {
+            return $true
+        }
+    }
+    return $false
+}
+
+function Test-AutoLanIPv4Address {
+    param([string]$Address)
+    if ([string]::IsNullOrWhiteSpace($Address) -or -not $Address.StartsWith('192.168.')) {
+        return $false
+    }
+    try {
+        $parsed = [Net.IPAddress]::Parse($Address)
+    } catch {
+        return $false
+    }
+    return $parsed.AddressFamily -eq [Net.Sockets.AddressFamily]::InterNetwork
+}
+
+function Get-AutoLanBindAddress {
+    $candidates = @()
+    try {
+        $candidates += @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
+            Where-Object { $_.AddressState -eq 'Preferred' } |
+            ForEach-Object {
+                [pscustomobject]@{
+                    InterfaceAlias = [string]$_.InterfaceAlias
+                    IPAddress = [string]$_.IPAddress
+                }
+            })
+    } catch {
+        try {
+            $candidates += @([System.Net.Dns]::GetHostAddresses([System.Net.Dns]::GetHostName()) |
+                Where-Object { $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork } |
+                ForEach-Object {
+                    [pscustomobject]@{
+                        InterfaceAlias = ''
+                        IPAddress = [string]$_.IPAddressToString
+                    }
+                })
+        } catch {
+        }
+    }
+    foreach ($candidate in $candidates) {
+        if ((Test-AutoLanIPv4Address -Address $candidate.IPAddress) -and -not (Test-VpnLikeInterfaceName -Name $candidate.InterfaceAlias)) {
+            return $candidate.IPAddress
+        }
+    }
+    return ''
+}
+
 function Get-DefaultControlBindAddress {
     if (-not [string]::IsNullOrWhiteSpace($env:X_LOCAL_IP)) {
         return $env:X_LOCAL_IP.Trim()
+    }
+    $lanAddress = Get-AutoLanBindAddress
+    if (-not [string]::IsNullOrWhiteSpace($lanAddress)) {
+        return $lanAddress
     }
     return '127.0.0.1'
 }
