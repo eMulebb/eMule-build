@@ -301,11 +301,18 @@ def _apply_local_vm_swarm_execution_mode(command: str, campaign_options: Release
         return command
     if _option_value(tokens, "--mode") != "vm":
         return command
+    if campaign_options.local_vm_swarm_execution_mode == "plan":
+        return " ".join(
+            _ensure_flag(
+                _remove_value_option(tokens, "--local-swarm-mode"),
+                "--dry-run",
+            )
+        )
     return " ".join(
         _replace_or_append_option(
-            tokens,
+            _remove_flag(tokens, "--dry-run"),
             "--local-swarm-mode",
-            campaign_options.local_vm_swarm_execution_mode,
+            "execute",
         )
     )
 
@@ -319,6 +326,36 @@ def _replace_or_append_option(tokens: list[str], option: str, value: str) -> lis
             updated[index + 1] = value
             return updated
     updated.extend([option, value])
+    return updated
+
+
+def _remove_value_option(tokens: list[str], option: str) -> list[str]:
+    """Returns command tokens with all instances of one value option removed."""
+
+    updated: list[str] = []
+    skip_next = False
+    for token in tokens:
+        if skip_next:
+            skip_next = False
+            continue
+        if token == option:
+            skip_next = True
+            continue
+        updated.append(token)
+    return updated
+
+
+def _remove_flag(tokens: list[str], flag: str) -> list[str]:
+    """Returns command tokens with all instances of one flag removed."""
+
+    return [token for token in tokens if token != flag]
+
+
+def _ensure_flag(tokens: list[str], flag: str) -> list[str]:
+    """Returns command tokens containing one flag exactly once."""
+
+    updated = _remove_flag(tokens, flag)
+    updated.append(flag)
     return updated
 
 
