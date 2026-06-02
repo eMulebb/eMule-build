@@ -700,6 +700,65 @@ def test_campaign_execute_can_override_shared_campaign_scenario_to_vm_mode(
     assert calls == [("emulebb.flow.ui.search.local-swarm.v1", "vm", "0.7.4-rc.2", True, 2)]
 
 
+def test_campaign_plan_rejects_missing_local_vm_swarm_local_override_command() -> None:
+    campaign = campaign_payload()
+    vm_command = (
+        "python -m emule_workspace test campaign-scenario "
+        "--scenario emulebb.flow.ui.search.local-swarm.v1 --mode vm "
+        "--release-version 0.7.4-rc.2 --skip-build --swarm-tier 2"
+    )
+    campaign["phases"][1]["scenarios"] = [
+        {
+            "id": "shared-vm",
+            "flowCategory": "local-vm-swarm",
+            "command": vm_command,
+            "vmCommand": vm_command,
+            "executionMode": "vm",
+            "blocking": True,
+        }
+    ]
+
+    with pytest.raises(ValueError, match="shared-vm.*missing localCommand"):
+        release_campaign_runner.build_release_campaign_execution_plan(
+            campaign,
+            ReleaseCampaignOptions(
+                campaign="test-campaign",
+                phase="controller-surface",
+                execute=True,
+                local_vm_swarm_mode="local",
+            ),
+        )
+
+
+def test_campaign_plan_rejects_missing_local_vm_swarm_vm_override_command() -> None:
+    campaign = campaign_payload()
+    local_command = (
+        "python -m emule_workspace test campaign-scenario "
+        "--scenario emulebb.flow.ui.search.local-swarm.v1 --mode local --swarm-tier 1"
+    )
+    campaign["phases"][1]["scenarios"] = [
+        {
+            "id": "shared-local",
+            "flowCategory": "local-vm-swarm",
+            "command": local_command,
+            "localCommand": local_command,
+            "executionMode": "local",
+            "blocking": True,
+        }
+    ]
+
+    with pytest.raises(ValueError, match="shared-local.*missing vmCommand"):
+        release_campaign_runner.build_release_campaign_execution_plan(
+            campaign,
+            ReleaseCampaignOptions(
+                campaign="test-campaign",
+                phase="controller-surface",
+                execute=True,
+                local_vm_swarm_mode="vm",
+            ),
+        )
+
+
 def test_campaign_execute_records_pre_run_cleanup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     layout = make_layout(tmp_path)
     write_campaign(layout, campaign_payload())

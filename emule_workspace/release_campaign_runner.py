@@ -276,7 +276,13 @@ def _selected_scenario_command(scenario: dict[str, Any], campaign_options: Relea
         and scenario.get("flowCategory") == "local-vm-swarm"
     ):
         command_key = "localCommand" if campaign_options.local_vm_swarm_mode == "local" else "vmCommand"
-        return str(scenario.get(command_key, "")).strip()
+        command = str(scenario.get(command_key, "")).strip()
+        if not command:
+            scenario_id = str(scenario.get("id") or "<unknown>")
+            raise ValueError(
+                f"Release campaign local-vm-swarm scenario {scenario_id} is missing {command_key}."
+            )
+        return command
     return str(scenario.get("command", "")).strip()
 
 
