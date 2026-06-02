@@ -220,6 +220,20 @@ class LiveE2eOptions(BaseModel):
     rest_cold_start_dump_stress_skip_dumps: bool = False
 
 
+class CampaignScenarioOptions(BaseModel):
+    """Options for one shared local/VM campaign scenario."""
+
+    model_config = ConfigDict(frozen=True)
+
+    scenario: str
+    mode: Literal["local", "vm"] = "local"
+    release_version: str = "0.7.3-rc.1"
+    skip_build: bool = True
+    dry_run: bool = False
+    fixture_size_bytes: int = 25 * 1024 * 1024
+    swarm_tier: Literal[1, 2, 3] = 1
+
+
 class AmutorrentSessionOptions(BaseModel):
     """Options forwarded to the aMuTorrent interactive session runner."""
 

@@ -24,6 +24,7 @@ from .config import (
     BROAD_LIVE_E2E_PRE_RUN_CLEANUP_PROFILES,
     BuildClientsOptions,
     BuildTestsOptions,
+    CampaignScenarioOptions,
     CertificationOptions,
     CleanupOptions,
     CommunityCoverageOptions,
@@ -39,6 +40,7 @@ from .config import (
     WorkspaceOptions,
     resolve_workspace_options,
 )
+from .campaign_scenario_runner import invoke_campaign_scenario
 from .evidence import build_heavy_evidence_index, print_heavy_evidence_index, write_heavy_evidence_index
 from .amule_release import create_amule_package
 from .layout import load_layout
@@ -893,6 +895,44 @@ def test_windows_vm(
     _locked(
         "test windows-vm",
         lambda **kwargs: invoke_windows_vm_tests(kwargs["layout"], kwargs["workspace_options"], vm_options),
+    )(workspace_options=workspace_options, layout=layout)
+
+
+@test.command("campaign-scenario")
+@_common_options
+@click.option("--scenario", required=True, help="Reusable campaign scenario key, id, or VM profile.")
+@click.option("--mode", type=click.Choice(["local", "vm"]), default="local", show_default=True)
+@click.option("--release-version", default="0.7.3-rc.1", show_default=True)
+@click.option("--skip-build/--build", default=True, show_default=True, help="Reuse or rebuild the release package in VM mode.")
+@click.option("--dry-run", is_flag=True, help="Plan VM commands without changing VMs.")
+@click.option("--fixture-size-bytes", default=25 * 1024 * 1024, show_default=True, type=int)
+@click.option("--swarm-tier", type=click.Choice(["1", "2", "3"]), default="1", show_default=True)
+def test_campaign_scenario(
+    *,
+    scenario: str,
+    mode: str,
+    release_version: str,
+    skip_build: bool,
+    dry_run: bool,
+    fixture_size_bytes: int,
+    swarm_tier: str,
+    workspace_options: WorkspaceOptions,
+    layout,
+) -> None:
+    """Run one reusable campaign scenario locally or in Hyper-V."""
+
+    scenario_options = CampaignScenarioOptions(
+        scenario=scenario,
+        mode=mode,  # type: ignore[arg-type]
+        release_version=release_version,
+        skip_build=skip_build,
+        dry_run=dry_run,
+        fixture_size_bytes=fixture_size_bytes,
+        swarm_tier=int(swarm_tier),  # type: ignore[arg-type]
+    )
+    _locked(
+        "test campaign-scenario",
+        lambda **kwargs: invoke_campaign_scenario(kwargs["layout"], kwargs["workspace_options"], scenario_options),
     )(workspace_options=workspace_options, layout=layout)
 
 

@@ -48,6 +48,36 @@ def write_campaign(layout: WorkspaceLayout, campaign: dict[str, object]) -> None
     manifest_path.write_text(json.dumps(campaign), encoding="utf-8")
 
 
+def write_campaign_scenario_catalog(layout: WorkspaceLayout) -> None:
+    module_dir = layout.tests_repo_root / "emule_test_harness"
+    module_dir.mkdir(parents=True, exist_ok=True)
+    (module_dir / "campaign_scenarios.py").write_text(
+        """
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class Spec:
+    key: str
+    scenario_id: str
+    local_profile: str
+    local_suites: tuple[str, ...]
+    vm_profile: str
+
+SPEC = Spec(
+    key="search-ui-local-swarm",
+    scenario_id="emulebb.flow.ui.search.local-swarm.v1",
+    local_profile="multi-client-p2p",
+    local_suites=("local-ed2k-search-soak", "local-kad-swarm"),
+    vm_profile="search-ui-local-swarm-vm",
+)
+REUSABLE_CAMPAIGN_SCENARIO_BY_KEY = {SPEC.key: SPEC}
+REUSABLE_CAMPAIGN_SCENARIO_BY_SCENARIO_ID = {SPEC.scenario_id: SPEC}
+REUSABLE_CAMPAIGN_SCENARIO_BY_VM_PROFILE = {SPEC.vm_profile: SPEC}
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+
 def campaign_payload() -> dict[str, object]:
     return {
         "kind": "instance",
@@ -414,6 +444,97 @@ def test_campaign_execute_dispatches_windows_vm_command(tmp_path: Path, monkeypa
     )
 
     assert calls == [(("win10", "win11"), "hideme-live-wire", "0.7.3-rc.1", True, True, 4096)]
+
+
+def test_campaign_execute_dispatches_shared_campaign_scenario_local_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    layout = make_layout(tmp_path)
+    write_campaign_scenario_catalog(layout)
+    campaign = campaign_payload()
+    campaign["phases"][1]["scenarios"] = [
+        {
+            "id": "shared-local",
+            "command": (
+                "python -m emule_workspace test campaign-scenario "
+                "--scenario emulebb.flow.ui.search.local-swarm.v1 --mode local --swarm-tier 1"
+            ),
+            "blocking": True,
+        }
+    ]
+    write_campaign(layout, campaign)
+    calls: list[tuple[str, tuple[str, ...], str]] = []
+
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "run_pre_test_cleanup",
+        lambda _layout: release_campaign_runner.CleanupRunSummary("routine", True, "passed", 0, 0, 0, {}),
+    )
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "invoke_campaign_scenario",
+        lambda _layout, _workspace_options, options: calls.append((options.scenario, (), options.mode)),
+    )
+
+    release_campaign_runner.invoke_release_campaign(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path),
+        ReleaseCampaignOptions(campaign="test-campaign", phase="controller-surface", execute=True),
+    )
+
+    assert calls == [("emulebb.flow.ui.search.local-swarm.v1", (), "local")]
+
+
+def test_campaign_execute_dispatches_shared_campaign_scenario_vm_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    layout = make_layout(tmp_path)
+    write_campaign_scenario_catalog(layout)
+    campaign = campaign_payload()
+    campaign["phases"][1]["scenarios"] = [
+        {
+            "id": "shared-vm",
+            "command": (
+                "python -m emule_workspace test campaign-scenario "
+                "--scenario emulebb.flow.ui.search.local-swarm.v1 --mode vm "
+                "--release-version 0.7.4-rc.2 --skip-build --dry-run --fixture-size-bytes 4096 --swarm-tier 2"
+            ),
+            "blocking": True,
+        }
+    ]
+    write_campaign(layout, campaign)
+    calls: list[tuple[str, str, str, bool, bool, int, int]] = []
+
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "run_pre_test_cleanup",
+        lambda _layout: release_campaign_runner.CleanupRunSummary("routine", True, "passed", 0, 0, 0, {}),
+    )
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "invoke_campaign_scenario",
+        lambda _layout, _workspace_options, options: calls.append(
+            (
+                options.scenario,
+                options.mode,
+                options.release_version,
+                options.skip_build,
+                options.dry_run,
+                options.fixture_size_bytes,
+                options.swarm_tier,
+            )
+        ),
+    )
+
+    release_campaign_runner.invoke_release_campaign(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path),
+        ReleaseCampaignOptions(campaign="test-campaign", phase="controller-surface", execute=True),
+    )
+
+    assert calls == [("emulebb.flow.ui.search.local-swarm.v1", "vm", "0.7.4-rc.2", True, True, 4096, 2)]
 
 
 def test_campaign_execute_records_pre_run_cleanup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

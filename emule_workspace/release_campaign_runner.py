@@ -21,6 +21,7 @@ from .config import (
     AmutorrentEmulebbUiOptions,
     AmutorrentPackageOptions,
     AmutorrentResilienceOptions,
+    CampaignScenarioOptions,
     CertificationOptions,
     CommunityCoverageOptions,
     LiveE2eOptions,
@@ -30,6 +31,7 @@ from .config import (
     VariantComparisonOptions,
     WorkspaceOptions,
 )
+from .campaign_scenario_runner import invoke_campaign_scenario
 from .layout import WorkspaceLayout
 from .process import get_python_invocation, run_native
 from .python_tests import invoke_python_tests
@@ -96,6 +98,14 @@ _WINDOWS_VM_VALUE_OPTIONS = {
     "--fixture-size-bytes",
 }
 _WINDOWS_VM_FLAG_OPTIONS = {"--skip-build", "--keep-running", "--dry-run"}
+_CAMPAIGN_SCENARIO_VALUE_OPTIONS = {
+    "--scenario",
+    "--mode",
+    "--release-version",
+    "--fixture-size-bytes",
+    "--swarm-tier",
+}
+_CAMPAIGN_SCENARIO_FLAG_OPTIONS = {"--skip-build", "--dry-run"}
 
 
 @dataclass(frozen=True)
@@ -349,6 +359,13 @@ def _dispatch_workspace_command(
             _windows_vm_options_from_tokens(tokens),
         )
         return
+    if tokens[:2] == ["test", "campaign-scenario"]:
+        invoke_campaign_scenario(
+            layout,
+            _workspace_options_from_tokens(workspace_options, tokens),
+            _campaign_scenario_options_from_tokens(tokens),
+        )
+        return
     if tokens[:2] == ["test", "amutorrent-clean-startup"]:
         invoke_amutorrent_clean_startup(
             layout,
@@ -504,6 +521,21 @@ def _windows_vm_options_from_tokens(tokens: list[str]) -> WindowsVmTestOptions:
     )
 
 
+def _campaign_scenario_options_from_tokens(tokens: list[str]) -> CampaignScenarioOptions:
+    scenario = _option_value(tokens, "--scenario")
+    if not scenario:
+        raise ValueError("Release campaign scenario command requires --scenario.")
+    return CampaignScenarioOptions(
+        scenario=scenario,
+        mode=_option_value(tokens, "--mode") or "local",  # type: ignore[arg-type]
+        release_version=_option_value(tokens, "--release-version") or "0.7.3-rc.1",
+        skip_build="--skip-build" in tokens,
+        dry_run="--dry-run" in tokens,
+        fixture_size_bytes=_option_int(tokens, "--fixture-size-bytes") or 25 * 1024 * 1024,
+        swarm_tier=_option_int(tokens, "--swarm-tier") or 1,  # type: ignore[arg-type]
+    )
+
+
 def _option_value(tokens: list[str], option: str) -> str | None:
     for index, token in enumerate(tokens[:-1]):
         if token == option:
@@ -577,6 +609,15 @@ def _validate_workspace_command_tokens(tokens: list[str]) -> None:
         )
         _workspace_options_from_tokens(workspace_options, tokens)
         _windows_vm_options_from_tokens(tokens)
+        return
+    if tokens[:2] == ["test", "campaign-scenario"]:
+        _validate_options(
+            tokens[2:],
+            value_options=_WORKSPACE_VALUE_OPTIONS | _CAMPAIGN_SCENARIO_VALUE_OPTIONS,
+            flag_options=_CAMPAIGN_SCENARIO_FLAG_OPTIONS,
+        )
+        _workspace_options_from_tokens(workspace_options, tokens)
+        _campaign_scenario_options_from_tokens(tokens)
         return
     if tokens[:2] == ["test", "amutorrent-clean-startup"]:
         _validate_options(

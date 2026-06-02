@@ -121,6 +121,20 @@ def test_test_windows_vm_help_exposes_vm_lab_options() -> None:
     assert "--dry-run" in result.output
 
 
+def test_test_campaign_scenario_help_exposes_mode_options() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(cli.main, ["test", "campaign-scenario", "--help"])
+
+    assert result.exit_code == 0
+    assert "--scenario" in result.output
+    assert "--mode" in result.output
+    assert "--release-version" in result.output
+    assert "--skip-build" in result.output
+    assert "--build" in result.output
+    assert "--swarm-tier" in result.output
+
+
 def test_vm_lab_prepare_help_is_available() -> None:
     runner = CliRunner()
 
