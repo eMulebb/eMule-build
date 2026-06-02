@@ -204,26 +204,18 @@ def parse_matrix(raw_matrix: str | Sequence[str] | None) -> tuple[str, ...]:
 def load_windows_vm_profile_catalog(layout: WorkspaceLayout) -> ModuleType:
     """Loads the test-owned Windows VM profile catalog from emulebb-build-tests."""
 
-    module_path = layout.tests_repo_root / "emule_test_harness" / "windows_vm_profiles.py"
-    if not module_path.is_file():
-        raise RuntimeError(f"Windows VM profile catalog is missing: {module_path}")
-    spec = importlib.util.spec_from_file_location("emulebb_windows_vm_profiles", module_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Unable to load Windows VM profile catalog: {module_path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    required = (
-        "SUPPORTED_TEST_PROFILES",
-        "WINDOWS_VM_PROFILE_BY_NAME",
-        "LOCAL_ED2K_REQUIRED_TARGETS",
-        "HIDEME_LIVE_REQUIRED_TARGETS",
-        "build_windows_vm_profile_matrix",
+    return _load_harness_module(
+        layout,
+        "windows_vm_profiles",
+        description="Windows VM profile catalog",
+        required=(
+            "SUPPORTED_TEST_PROFILES",
+            "WINDOWS_VM_PROFILE_BY_NAME",
+            "LOCAL_ED2K_REQUIRED_TARGETS",
+            "HIDEME_LIVE_REQUIRED_TARGETS",
+            "build_windows_vm_profile_matrix",
+        ),
     )
-    missing = [name for name in required if not hasattr(module, name)]
-    if missing:
-        raise RuntimeError(f"Windows VM profile catalog is missing field(s): {', '.join(missing)}")
-    return module
 
 
 def build_windows_vm_profile_matrix(layout: WorkspaceLayout) -> dict[str, object]:
@@ -235,25 +227,39 @@ def build_windows_vm_profile_matrix(layout: WorkspaceLayout) -> dict[str, object
 def load_windows_vm_host_contracts(layout: WorkspaceLayout) -> ModuleType:
     """Loads host-side Windows VM contracts from emulebb-build-tests."""
 
-    module_path = layout.tests_repo_root / "emule_test_harness" / "windows_vm_host.py"
+    return _load_harness_module(
+        layout,
+        "windows_vm_host",
+        description="Windows VM host harness module",
+        required=(
+            "load_guest_script",
+            "guest_runner_path",
+            "profile_helper_path",
+            "build_local_ed2k_target_payloads",
+            "build_hideme_live_target_payloads",
+        ),
+    )
+
+
+def _load_harness_module(
+    layout: WorkspaceLayout,
+    module_name: str,
+    *,
+    description: str,
+    required: tuple[str, ...],
+) -> ModuleType:
+    module_path = layout.tests_repo_root / "emule_test_harness" / f"{module_name}.py"
     if not module_path.is_file():
-        raise RuntimeError(f"Windows VM host harness module is missing: {module_path}")
-    spec = importlib.util.spec_from_file_location("emulebb_windows_vm_host", module_path)
+        raise RuntimeError(f"{description} is missing: {module_path}")
+    spec = importlib.util.spec_from_file_location(f"emulebb_{module_name}", module_path)
     if spec is None or spec.loader is None:
-        raise RuntimeError(f"Unable to load Windows VM host harness module: {module_path}")
+        raise RuntimeError(f"Unable to load {description}: {module_path}")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
-    required = (
-        "load_guest_script",
-        "guest_runner_path",
-        "profile_helper_path",
-        "build_local_ed2k_target_payloads",
-        "build_hideme_live_target_payloads",
-    )
     missing = [name for name in required if not hasattr(module, name)]
     if missing:
-        raise RuntimeError(f"Windows VM host harness module is missing field(s): {', '.join(missing)}")
+        raise RuntimeError(f"{description} is missing field(s): {', '.join(missing)}")
     return module
 
 
