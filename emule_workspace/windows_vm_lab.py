@@ -423,9 +423,10 @@ def invoke_windows_vm_tests(
         expected = ",".join(profile_spec.required_targets)
         raise RuntimeError(f"{options.profile} requires --matrix {expected}.")
     uses_local_swarm = bool(getattr(profile_spec, "uses_local_swarm", False))
-    runner = PowerShellRunner(cwd=layout.emule_workspace_root, dry_run=options.dry_run)
-    preflight_hyperv(config, runner=runner, require_password=not options.dry_run)
-    if not options.skip_build and not options.dry_run:
+    effective_dry_run = options.dry_run or (uses_local_swarm and options.local_swarm_mode == "plan")
+    runner = PowerShellRunner(cwd=layout.emule_workspace_root, dry_run=effective_dry_run)
+    preflight_hyperv(config, runner=runner, require_password=not effective_dry_run)
+    if not options.skip_build and not effective_dry_run:
         create_release_package(
             layout,
             workspace_options,
@@ -438,7 +439,7 @@ def invoke_windows_vm_tests(
                 AmutorrentPackageOptions(release_version=options.release_version, clean=False),
             )
     package_zip = _release_package_zip(layout, options.release_version, workspace_options.platform)
-    if not options.dry_run and not package_zip.is_file():
+    if not effective_dry_run and not package_zip.is_file():
         raise RuntimeError(f"Windows VM package-smoke is missing release package: {package_zip}")
     local_swarm_release_asset_paths = (
         _local_swarm_release_asset_paths(layout, options.release_version, workspace_options.platform)
@@ -447,12 +448,12 @@ def invoke_windows_vm_tests(
     )
     local_swarm_node_archive_path = (
         _ensure_local_swarm_node_archive(layout, workspace_options.platform)
-        if uses_local_swarm and not options.dry_run
+        if uses_local_swarm and not effective_dry_run
         else _local_swarm_node_archive_path(layout, workspace_options.platform)
         if uses_local_swarm
         else None
     )
-    if not options.dry_run and uses_local_swarm:
+    if not effective_dry_run and uses_local_swarm:
         missing_release_assets = [path for path in local_swarm_release_asset_paths if not path.is_file()]
         if missing_release_assets:
             formatted = ", ".join(str(path) for path in missing_release_assets)
@@ -522,7 +523,7 @@ def invoke_windows_vm_tests(
                 )
             )
     status = "passed" if all(row.get("status") == "passed" for row in rows) else "failed"
-    if options.dry_run:
+    if effective_dry_run:
         status = "planned"
     campaign_scenario = _windows_vm_campaign_scenario_metadata(profile_spec)
     result = {
@@ -538,7 +539,8 @@ def invoke_windows_vm_tests(
         "packageZip": str(package_zip),
         "packageSha256": _sha256(package_zip) if package_zip.is_file() else None,
         "matrix": list(matrix),
-        "dryRun": options.dry_run,
+        "dryRun": effective_dry_run,
+        "requestedDryRun": options.dry_run,
         "targets": rows,
         "commandCount": len(runner.commands),
     }

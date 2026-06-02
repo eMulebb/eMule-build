@@ -592,6 +592,54 @@ def test_windows_vm_reusable_campaign_summary_records_scenario_metadata(tmp_path
     assert summary["campaignScenario"] == expected
 
 
+def test_windows_vm_local_swarm_plan_mode_does_not_execute_guest(tmp_path: Path, monkeypatch) -> None:
+    layout = _layout(tmp_path)
+    _write_harness_vm_profiles(layout)
+    config_path = layout.build_repo_root / "vm-lab.local.json"
+    _write_config(config_path)
+    calls: list[str] = []
+
+    def fake_profile_smoke(*args, **kwargs):
+        runner = kwargs["runner"]
+        target = kwargs["target"] if "target" in kwargs else args[2]
+        calls.append(str(runner.dry_run))
+        return {
+            "target": target.key,
+            "vmName": target.vm_name,
+            "status": "planned",
+            "profile": kwargs["profile"],
+            "swarmTier": kwargs["swarm_tier"],
+            "localSwarmMode": kwargs["local_swarm_mode"],
+            "checkpointName": "emulebb-clean",
+            "reportDir": str(tmp_path / "report"),
+        }
+
+    monkeypatch.setattr(
+        windows_vm_lab,
+        "run_windows_vm_profile_smoke",
+        fake_profile_smoke,
+    )
+
+    result = windows_vm_lab.invoke_windows_vm_tests(
+        layout,
+        _workspace_options(tmp_path),
+        windows_vm_lab.WindowsVmTestOptions(
+            config_file=str(config_path),
+            profile="search-ui-local-swarm-vm",
+            matrix=("win10", "win11"),
+            skip_build=True,
+            local_swarm_mode="plan",
+        ),
+    )
+
+    assert result["status"] == "planned"
+    assert result["dryRun"] is True
+    assert result["requestedDryRun"] is False
+    assert result["localSwarmMode"] == "plan"
+    assert calls == ["True", "True"]
+    assert [target["status"] for target in result["targets"]] == ["planned", "planned"]
+
+
 def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: Path) -> None:
     layout = _layout(tmp_path)
     _write_harness_vm_host(layout)
