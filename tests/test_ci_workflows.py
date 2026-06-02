@@ -70,7 +70,8 @@ def test_controlled_smoke_uses_reusable_core_offline_and_lan_suite() -> None:
     assert "uses: emulebb/emulebb-build/.github/workflows/reusable-workspace-command.yml@main" in text
     assert "runs_on: ${{ matrix.runner.label }}" in text
     assert "label: windows-2022" in text
-    assert "label: windows-2025-vs2026" in text
+    assert "label: windows-2025-vs2026" not in text
+    assert "Hosted runner: windows-2022 with v143 ATL/MFC policy" in text
     assert 'node_version: "24"' in text
     assert "app_ref: ${{ github.sha }}" in text
     assert "timeout_minutes: 360" in text
