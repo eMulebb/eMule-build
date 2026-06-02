@@ -493,6 +493,7 @@ def invoke_windows_vm_tests(
     status = "passed" if all(row.get("status") == "passed" for row in rows) else "failed"
     if options.dry_run:
         status = "planned"
+    campaign_scenario = _windows_vm_campaign_scenario_metadata(profile_spec)
     result = {
         "schema": "emulebb.windows-vm-result.v1",
         "status": status,
@@ -510,6 +511,8 @@ def invoke_windows_vm_tests(
         "targets": rows,
         "commandCount": len(runner.commands),
     }
+    if campaign_scenario:
+        result["campaignScenario"] = campaign_scenario
     summary = {
         "schema": "emulebb.windows-vm-summary.v1",
         "status": status,
@@ -522,6 +525,8 @@ def invoke_windows_vm_tests(
         "failed": [row["target"] for row in rows if row.get("status") not in {"passed", "planned"}],
         "planned": [row["target"] for row in rows if row.get("status") == "planned"],
     }
+    if campaign_scenario:
+        summary["campaignScenario"] = campaign_scenario
     _write_json(run_report_dir / WINDOWS_VM_RESULT_FILE_NAME, result)
     _write_json(run_report_dir / WINDOWS_VM_SUMMARY_FILE_NAME, summary)
     _refresh_latest(run_report_dir, report_root / "latest")
@@ -529,6 +534,24 @@ def invoke_windows_vm_tests(
     if status == "failed":
         raise RuntimeError(f"Windows VM profile {options.profile} failed. See {run_report_dir}.")
     return result
+
+
+def _windows_vm_campaign_scenario_metadata(profile_spec: object) -> dict[str, object]:
+    """Returns reusable campaign scenario metadata for migrated VM profiles."""
+
+    execution_modes = tuple(str(mode) for mode in getattr(profile_spec, "execution_modes", ("vm",)))
+    local_suites = tuple(str(suite) for suite in getattr(profile_spec, "local_suites", ()))
+    uses_local_swarm = bool(getattr(profile_spec, "uses_local_swarm", False))
+    if "local" not in execution_modes and not local_suites and not uses_local_swarm:
+        return {}
+    return {
+        "scenarioId": str(getattr(profile_spec, "scenario_id", "")),
+        "vmProfile": str(getattr(profile_spec, "name", "")),
+        "localProfile": str(getattr(profile_spec, "local_profile", "")),
+        "localSuites": list(local_suites),
+        "executionModes": list(execution_modes),
+        "usesLocalSwarm": uses_local_swarm,
+    }
 
 
 def preflight_hyperv(config: VmLabConfig, *, runner: PowerShellRunner, require_password: bool) -> None:

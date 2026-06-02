@@ -83,6 +83,40 @@ def test_live_e2e_forwards_plan_only_option(tmp_path: Path, monkeypatch) -> None
     assert "--plan-only" in command
 
 
+def test_live_e2e_forwards_campaign_scenario_metadata(tmp_path: Path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
+        captured["command"] = list(command)
+
+    layout = make_layout(tmp_path)
+    monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+
+    test_runs.invoke_live_e2e_suite(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+        LiveE2eOptions(
+            suites=("local-ed2k-search-soak", "godzilla-local-swarm"),
+            campaign_scenario_key="search-ui-local-swarm",
+            campaign_scenario_id="emulebb.flow.ui.search.local-swarm.v1",
+            campaign_scenario_vm_profile="search-ui-local-swarm-vm",
+            campaign_scenario_local_suites=("local-ed2k-search-soak", "godzilla-local-swarm"),
+            campaign_scenario_uses_local_swarm=True,
+        ),
+    )
+
+    command = captured["command"]
+    assert isinstance(command, list)
+    assert option_values(command, "--campaign-scenario-key") == ["search-ui-local-swarm"]
+    assert option_values(command, "--campaign-scenario-id") == ["emulebb.flow.ui.search.local-swarm.v1"]
+    assert option_values(command, "--campaign-scenario-vm-profile") == ["search-ui-local-swarm-vm"]
+    assert option_values(command, "--campaign-scenario-local-suite") == [
+        "local-ed2k-search-soak",
+        "godzilla-local-swarm",
+    ]
+    assert "--campaign-scenario-uses-local-swarm" in command
+
+
 def test_live_e2e_forwards_cold_stress_cpu_profile_options(tmp_path: Path, monkeypatch) -> None:
     captured: dict[str, object] = {}
 

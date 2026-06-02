@@ -152,6 +152,19 @@ WINDOWS_VM_PROFILE_SPECS = (
         required_targets=SUPPORTED_TARGETS,
         result_file_name=WINDOWS_VM_RESULT_FILE_NAME,
     ),
+    SimpleNamespace(
+        name="search-ui-local-swarm-vm",
+        title="Windows VM search UI local swarm",
+        network_scope="lan",
+        release_phase="ui-resource-depth",
+        required_targets=SUPPORTED_TARGETS,
+        result_file_name=WINDOWS_VM_RESULT_FILE_NAME,
+        scenario_id="emulebb.flow.ui.search.local-swarm.v1",
+        local_profile="multi-client-p2p",
+        local_suites=("local-ed2k-search-soak", "local-kad-swarm"),
+        execution_modes=("local", "vm"),
+        uses_local_swarm=True,
+    ),
 )
 WINDOWS_VM_PROFILE_BY_NAME = {spec.name: spec for spec in WINDOWS_VM_PROFILE_SPECS}
 SUPPORTED_TEST_PROFILES = tuple(spec.name for spec in WINDOWS_VM_PROFILE_SPECS)
@@ -170,6 +183,11 @@ def build_windows_vm_profile_matrix():
                 "releasePhase": spec.release_phase,
                 "requiredTargets": list(spec.required_targets),
                 "resultFileName": spec.result_file_name,
+                "scenarioId": getattr(spec, "scenario_id", ""),
+                "executionModes": list(getattr(spec, "execution_modes", ("vm",))),
+                "localProfile": getattr(spec, "local_profile", ""),
+                "localSuites": list(getattr(spec, "local_suites", ())),
+                "usesLocalSwarm": bool(getattr(spec, "uses_local_swarm", False)),
             }
             for spec in WINDOWS_VM_PROFILE_SPECS
         ],
@@ -277,6 +295,7 @@ def test_windows_vm_profile_matrix_loads_harness_authority(tmp_path: Path) -> No
         "cpu-heavy-quick",
         "resource-ui-smoke",
         "release-expanded-ui",
+        "search-ui-local-swarm-vm",
     )
     assert profiles["package-smoke"]["networkScope"] == "offline"
     assert profiles["package-smoke"]["releasePhase"] == "packaging-provenance"
@@ -290,6 +309,8 @@ def test_windows_vm_profile_matrix_loads_harness_authority(tmp_path: Path) -> No
     assert profiles["cpu-heavy-quick"]["releasePhase"] == "stabilization-stress"
     assert profiles["resource-ui-smoke"]["releasePhase"] == "ui-resource-depth"
     assert profiles["release-expanded-ui"]["releasePhase"] == "live-wire-release"
+    assert profiles["search-ui-local-swarm-vm"]["executionModes"] == ["local", "vm"]
+    assert profiles["search-ui-local-swarm-vm"]["localSuites"] == ["local-ed2k-search-soak", "local-kad-swarm"]
     json.dumps(matrix)
 
 
@@ -535,6 +556,40 @@ def test_windows_vm_generic_profile_dry_run_plans_both_targets(tmp_path: Path) -
     assert result["swarmTier"] == 2
     assert [target["target"] for target in result["targets"]] == ["win10", "win11"]
     assert {target["swarmTier"] for target in result["targets"]} == {2}
+
+
+def test_windows_vm_reusable_campaign_summary_records_scenario_metadata(tmp_path: Path) -> None:
+    layout = _layout(tmp_path)
+    _write_harness_vm_profiles(layout)
+    config_path = layout.build_repo_root / "vm-lab.local.json"
+    _write_config(config_path)
+
+    result = windows_vm_lab.invoke_windows_vm_tests(
+        layout,
+        _workspace_options(tmp_path),
+        windows_vm_lab.WindowsVmTestOptions(
+            config_file=str(config_path),
+            profile="search-ui-local-swarm-vm",
+            matrix=("win10", "win11"),
+            skip_build=True,
+            dry_run=True,
+            swarm_tier=2,
+            local_swarm_mode="execute",
+        ),
+    )
+
+    report_root = layout.workspace_root / "state" / "test-reports" / "windows-vm"
+    summary = json.loads((report_root / "latest" / windows_vm_lab.WINDOWS_VM_SUMMARY_FILE_NAME).read_text(encoding="utf-8"))
+    expected = {
+        "scenarioId": "emulebb.flow.ui.search.local-swarm.v1",
+        "vmProfile": "search-ui-local-swarm-vm",
+        "localProfile": "multi-client-p2p",
+        "localSuites": ["local-ed2k-search-soak", "local-kad-swarm"],
+        "executionModes": ["local", "vm"],
+        "usesLocalSwarm": True,
+    }
+    assert result["campaignScenario"] == expected
+    assert summary["campaignScenario"] == expected
 
 
 def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: Path) -> None:

@@ -100,7 +100,7 @@ def test_campaign_scenario_local_mode_reuses_local_live_suites_and_tiered_swarm(
 ) -> None:
     layout = make_layout(tmp_path)
     write_campaign_scenario_catalog(layout)
-    calls: list[tuple[str, tuple[str, ...], str, bool, int, int, str, bool, bool]] = []
+    calls: list[tuple[str, str, str, tuple[str, ...], str, bool, int, int, str, bool, bool]] = []
 
     monkeypatch.setattr(
         campaign_scenario_runner,
@@ -108,6 +108,9 @@ def test_campaign_scenario_local_mode_reuses_local_live_suites_and_tiered_swarm(
         lambda _layout, _workspace_options, options: calls.append(
             (
                 options.profile,
+                options.campaign_scenario_key,
+                options.campaign_scenario_id,
+                options.campaign_scenario_local_suites,
                 options.suites,
                 options.test_network,
                 options.plan_only,
@@ -129,6 +132,9 @@ def test_campaign_scenario_local_mode_reuses_local_live_suites_and_tiered_swarm(
     assert calls == [
         (
             "multi-client-p2p",
+            "search-ui-local-swarm",
+            "emulebb.flow.ui.search.local-swarm.v1",
+            ("local-ed2k-search-soak", "local-kad-swarm", "godzilla-local-swarm"),
             ("local-ed2k-search-soak", "local-kad-swarm", "godzilla-local-swarm"),
             "default",
             False,

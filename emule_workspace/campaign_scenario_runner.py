@@ -63,6 +63,11 @@ def local_live_e2e_options(
         test_network=str(getattr(spec, "local_test_network", "default")),
         pre_run_cleanup=False,
         plan_only=scenario_options.dry_run,
+        campaign_scenario_key=str(spec.key),
+        campaign_scenario_id=str(spec.scenario_id),
+        campaign_scenario_vm_profile=str(spec.vm_profile),
+        campaign_scenario_local_suites=suites,
+        campaign_scenario_uses_local_swarm=bool(getattr(spec, "uses_local_swarm", False)),
         fail_fast=bool(godzilla["fail_fast"]) if GODZILLA_LOCAL_SWARM_SUITE in suites else False,
         admin_volume_fixtures=GODZILLA_LOCAL_SWARM_SUITE in suites,
         godzilla_stage=str(godzilla["stage"]) if GODZILLA_LOCAL_SWARM_SUITE in suites else None,  # type: ignore[arg-type]

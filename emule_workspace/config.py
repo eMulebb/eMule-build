@@ -116,6 +116,11 @@ class LiveE2eOptions(BaseModel):
     pre_run_cleanup: bool = False
     plan_only: bool = False
     fail_fast: bool = False
+    campaign_scenario_key: str = ""
+    campaign_scenario_id: str = ""
+    campaign_scenario_vm_profile: str = ""
+    campaign_scenario_local_suites: tuple[str, ...] = ()
+    campaign_scenario_uses_local_swarm: bool = False
     skip_live_seed_refresh: bool = False
     materialize_test_install: bool = False
     materialize_test_install_release_version: str = "0.7.3-rc.1"

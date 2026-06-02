@@ -554,6 +554,19 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
         args.extend(["--profile", live_options.profile])
     for suite_name in live_options.suites:
         args.extend(["--suite", suite_name])
+    if live_options.campaign_scenario_key:
+        args.extend(["--campaign-scenario-key", live_options.campaign_scenario_key])
+    if live_options.campaign_scenario_id:
+        args.extend(["--campaign-scenario-id", live_options.campaign_scenario_id])
+    if live_options.campaign_scenario_vm_profile:
+        args.extend(["--campaign-scenario-vm-profile", live_options.campaign_scenario_vm_profile])
+    for suite_name in live_options.campaign_scenario_local_suites:
+        args.extend(["--campaign-scenario-local-suite", suite_name])
+    _append_optional_flag(
+        args,
+        live_options.campaign_scenario_uses_local_swarm,
+        "--campaign-scenario-uses-local-swarm",
+    )
     _append_optional_flag(args, live_options.plan_only, "--plan-only")
     _append_optional_flag(args, live_options.fail_fast, "--fail-fast")
     _append_optional_flag(args, live_options.skip_live_seed_refresh, "--skip-live-seed-refresh")
