@@ -1,3 +1,17 @@
+"""Switches the local Hyper-V lab host between VM and LAN networking modes."""
+
+from __future__ import annotations
+
+import argparse
+import subprocess
+import tempfile
+from pathlib import Path
+
+
+SCRIPT_NAME = "Switch-EmuleBBHyperVNetworking.ps1"
+DEFAULT_CONFIG_NAME = "Switch-EmuleBBHyperVNetworking.local.json"
+
+POWERSHELL_PAYLOAD = r"""
 #Requires -Version 5.1
 #Requires -RunAsAdministrator
 
@@ -6,7 +20,8 @@ param(
     [ValidateSet('Status', 'HyperV', 'LAN')]
     [string] $Mode,
 
-    [string] $ConfigPath = (Join-Path $PSScriptRoot 'Switch-EmuleBBHyperVNetworking.local.json')
+    [Parameter(Mandatory = $true)]
+    [string] $ConfigPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -17,7 +32,7 @@ function Write-Step([string] $Message) {
 
 function Read-HostNetworkConfig([string] $Path) {
     if (-not (Test-Path -LiteralPath $Path)) {
-        $example = Join-Path $PSScriptRoot 'Switch-EmuleBBHyperVNetworking.local.example.json'
+        $example = Join-Path (Split-Path -Parent $Path) 'Switch-EmuleBBHyperVNetworking.local.example.json'
         throw "Missing config '$Path'. Copy '$example' to '$Path' and adjust the host-specific values."
     }
 
@@ -260,3 +275,44 @@ switch ($Mode) {
         Show-Status
     }
 }
+""".lstrip()
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("mode", choices=("Status", "HyperV", "LAN"))
+    parser.add_argument(
+        "--config-path",
+        default=str(Path(__file__).with_name(DEFAULT_CONFIG_NAME)),
+        help="Host-specific network switcher JSON config.",
+    )
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    config_path = Path(args.config_path).resolve()
+
+    with tempfile.TemporaryDirectory(prefix="emulebb-hyperv-network-") as temp_root:
+        script_path = Path(temp_root) / SCRIPT_NAME
+        script_path.write_text(POWERSHELL_PAYLOAD, encoding="utf-8-sig")
+        completed = subprocess.run(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(script_path),
+                "-Mode",
+                args.mode,
+                "-ConfigPath",
+                str(config_path),
+            ],
+            check=False,
+        )
+    return completed.returncode
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
