@@ -68,6 +68,70 @@ def _write_config(path: Path) -> None:
     )
 
 
+def _write_harness_vm_profiles(layout: SimpleNamespace) -> None:
+    module_dir = layout.tests_repo_root / "emule_test_harness"
+    module_dir.mkdir(parents=True, exist_ok=True)
+    (module_dir / "windows_vm_profiles.py").write_text(
+        """
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+SUPPORTED_TARGETS = ("win10", "win11")
+WINDOWS_VM_RESULT_FILE_NAME = "windows-vm-result.json"
+WINDOWS_VM_SUMMARY_FILE_NAME = "windows-vm-summary.json"
+WINDOWS_VM_PROFILE_SPECS = (
+    SimpleNamespace(
+        name="package-smoke",
+        title="Windows VM package smoke",
+        network_scope="offline",
+        release_phase="packaging-provenance",
+        required_targets=SUPPORTED_TARGETS,
+        result_file_name=WINDOWS_VM_RESULT_FILE_NAME,
+    ),
+    SimpleNamespace(
+        name="local-ed2k-transfer",
+        title="Windows VM local eD2K transfer",
+        network_scope="lan",
+        release_phase="protocol-parity",
+        required_targets=SUPPORTED_TARGETS,
+        result_file_name="local-ed2k-transfer-result.json",
+    ),
+    SimpleNamespace(
+        name="hideme-live-wire",
+        title="Windows VM hide.me live-wire",
+        network_scope="vpn",
+        release_phase="live-wire-release",
+        required_targets=SUPPORTED_TARGETS,
+        result_file_name="hideme-live-wire-result.json",
+    ),
+)
+WINDOWS_VM_PROFILE_BY_NAME = {spec.name: spec for spec in WINDOWS_VM_PROFILE_SPECS}
+SUPPORTED_TEST_PROFILES = tuple(spec.name for spec in WINDOWS_VM_PROFILE_SPECS)
+LOCAL_ED2K_REQUIRED_TARGETS = WINDOWS_VM_PROFILE_BY_NAME["local-ed2k-transfer"].required_targets
+HIDEME_LIVE_REQUIRED_TARGETS = WINDOWS_VM_PROFILE_BY_NAME["hideme-live-wire"].required_targets
+
+
+def build_windows_vm_profile_matrix():
+    return {
+        "schema": "emulebb.windows-vm-profile-matrix.fixture.v1",
+        "profiles": [
+            {
+                "name": spec.name,
+                "title": spec.title,
+                "networkScope": spec.network_scope,
+                "releasePhase": spec.release_phase,
+                "requiredTargets": list(spec.required_targets),
+                "resultFileName": spec.result_file_name,
+            }
+            for spec in WINDOWS_VM_PROFILE_SPECS
+        ],
+    }
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+
 def test_parse_matrix_rejects_unknown_target() -> None:
     with pytest.raises(RuntimeError, match="Unsupported Windows VM matrix"):
         windows_vm_lab.parse_matrix("win10,win12")
@@ -90,11 +154,14 @@ def test_load_vm_lab_config_resolves_targets(tmp_path: Path) -> None:
     assert config.targets["win11"].edition == "Windows 11 Pro"
 
 
-def test_windows_vm_profile_matrix_is_the_profile_authority() -> None:
-    matrix = windows_vm_lab.build_windows_vm_profile_matrix()
+def test_windows_vm_profile_matrix_loads_harness_authority(tmp_path: Path) -> None:
+    layout = _layout(tmp_path)
+    _write_harness_vm_profiles(layout)
+
+    matrix = windows_vm_lab.build_windows_vm_profile_matrix(layout)
     profiles = {profile["name"]: profile for profile in matrix["profiles"]}
 
-    assert tuple(profiles) == windows_vm_lab.SUPPORTED_TEST_PROFILES
+    assert tuple(profiles) == ("package-smoke", "local-ed2k-transfer", "hideme-live-wire")
     assert profiles["package-smoke"]["networkScope"] == "offline"
     assert profiles["package-smoke"]["releasePhase"] == "packaging-provenance"
     assert profiles["package-smoke"]["requiredTargets"] == ["win10", "win11"]
@@ -253,6 +320,7 @@ def test_prepare_vm_target_script_installs_dotnet_desktop_runtime() -> None:
 
 def test_windows_vm_test_dry_run_writes_report(tmp_path: Path) -> None:
     layout = _layout(tmp_path)
+    _write_harness_vm_profiles(layout)
     config_path = layout.build_repo_root / "vm-lab.local.json"
     _write_config(config_path)
 
@@ -277,6 +345,7 @@ def test_windows_vm_test_dry_run_writes_report(tmp_path: Path) -> None:
 
 def test_windows_vm_local_ed2k_transfer_dry_run_plans_both_targets(tmp_path: Path) -> None:
     layout = _layout(tmp_path)
+    _write_harness_vm_profiles(layout)
     config_path = layout.build_repo_root / "vm-lab.local.json"
     _write_config(config_path)
 
@@ -299,6 +368,7 @@ def test_windows_vm_local_ed2k_transfer_dry_run_plans_both_targets(tmp_path: Pat
 
 def test_windows_vm_local_ed2k_transfer_requires_both_targets(tmp_path: Path) -> None:
     layout = _layout(tmp_path)
+    _write_harness_vm_profiles(layout)
     config_path = layout.build_repo_root / "vm-lab.local.json"
     _write_config(config_path)
 
@@ -318,6 +388,7 @@ def test_windows_vm_local_ed2k_transfer_requires_both_targets(tmp_path: Path) ->
 
 def test_windows_vm_hideme_live_wire_dry_run_plans_both_targets(tmp_path: Path) -> None:
     layout = _layout(tmp_path)
+    _write_harness_vm_profiles(layout)
     config_path = layout.build_repo_root / "vm-lab.local.json"
     _write_config(config_path)
 
@@ -340,6 +411,7 @@ def test_windows_vm_hideme_live_wire_dry_run_plans_both_targets(tmp_path: Path) 
 
 def test_windows_vm_hideme_live_wire_requires_both_targets(tmp_path: Path) -> None:
     layout = _layout(tmp_path)
+    _write_harness_vm_profiles(layout)
     config_path = layout.build_repo_root / "vm-lab.local.json"
     _write_config(config_path)
 

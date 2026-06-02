@@ -73,7 +73,6 @@ from .test_runs import (
 )
 from .validation import validate_workspace
 from .windows_vm_lab import (
-    SUPPORTED_TEST_PROFILES,
     VmPrepareOptions,
     WindowsVmTestOptions,
     invoke_windows_vm_tests,
@@ -857,9 +856,9 @@ def test_live_e2e(
 @click.option("--matrix", default="win10,win11", show_default=True, help="Comma-separated Windows VM targets.")
 @click.option(
     "--profile",
-    type=click.Choice(SUPPORTED_TEST_PROFILES),
     default="package-smoke",
     show_default=True,
+    help="Windows VM test profile from emulebb-build-tests.",
 )
 @click.option("--release-version", default="0.7.3-rc.1", show_default=True)
 @click.option("--skip-build", is_flag=True, help="Reuse an existing release package artifact.")

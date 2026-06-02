@@ -8,11 +8,13 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from types import ModuleType
 from typing import Any, Sequence
 
 from .artifact_names import utc_run_id
@@ -55,50 +57,6 @@ DOTNET_DESKTOP_RUNTIME_X86_URL = "https://builds.dotnet.microsoft.com/dotnet/Win
 DOTNET_DESKTOP_RUNTIME_X86_FILE_NAME = "windowsdesktop-runtime-6.0.36-win-x86.exe"
 DOTNET_DESKTOP_RUNTIME_X86_DIR = r"C:\Program Files (x86)\dotnet\shared\Microsoft.WindowsDesktop.App\6.0.36"
 DOTNET_SIGNER_TOKENS = ("Microsoft Corporation",)
-
-
-@dataclass(frozen=True)
-class WindowsVmProfileSpec:
-    """One supported Windows VM test profile exposed by `test windows-vm`."""
-
-    name: str
-    title: str
-    network_scope: str
-    release_phase: str
-    required_targets: tuple[str, ...]
-    result_file_name: str
-
-
-WINDOWS_VM_PROFILE_SPECS = (
-    WindowsVmProfileSpec(
-        name="package-smoke",
-        title="Windows VM package smoke",
-        network_scope="offline",
-        release_phase="packaging-provenance",
-        required_targets=SUPPORTED_TARGETS,
-        result_file_name=WINDOWS_VM_RESULT_FILE_NAME,
-    ),
-    WindowsVmProfileSpec(
-        name="local-ed2k-transfer",
-        title="Windows VM local eD2K transfer",
-        network_scope="lan",
-        release_phase="protocol-parity",
-        required_targets=("win10", "win11"),
-        result_file_name="local-ed2k-transfer-result.json",
-    ),
-    WindowsVmProfileSpec(
-        name="hideme-live-wire",
-        title="Windows VM hide.me live-wire",
-        network_scope="vpn",
-        release_phase="live-wire-release",
-        required_targets=("win10", "win11"),
-        result_file_name="hideme-live-wire-result.json",
-    ),
-)
-WINDOWS_VM_PROFILE_BY_NAME = {spec.name: spec for spec in WINDOWS_VM_PROFILE_SPECS}
-SUPPORTED_TEST_PROFILES = tuple(spec.name for spec in WINDOWS_VM_PROFILE_SPECS)
-LOCAL_ED2K_REQUIRED_TARGETS = WINDOWS_VM_PROFILE_BY_NAME["local-ed2k-transfer"].required_targets
-HIDEME_LIVE_REQUIRED_TARGETS = WINDOWS_VM_PROFILE_BY_NAME["hideme-live-wire"].required_targets
 
 
 @dataclass(frozen=True)
@@ -243,25 +201,35 @@ def parse_matrix(raw_matrix: str | Sequence[str] | None) -> tuple[str, ...]:
     return matrix
 
 
-def build_windows_vm_profile_matrix() -> dict[str, object]:
-    """Returns the supported Windows VM profile registry for audits and docs."""
+def load_windows_vm_profile_catalog(layout: WorkspaceLayout) -> ModuleType:
+    """Loads the test-owned Windows VM profile catalog from emulebb-build-tests."""
 
-    return {
-        "schema": "emulebb.windows-vm-profile-matrix.v1",
-        "suite": WINDOWS_VM_SUITE_NAME,
-        "profileCount": len(WINDOWS_VM_PROFILE_SPECS),
-        "profiles": [
-            {
-                "name": spec.name,
-                "title": spec.title,
-                "networkScope": spec.network_scope,
-                "releasePhase": spec.release_phase,
-                "requiredTargets": list(spec.required_targets),
-                "resultFileName": spec.result_file_name,
-            }
-            for spec in WINDOWS_VM_PROFILE_SPECS
-        ],
-    }
+    module_path = layout.tests_repo_root / "emule_test_harness" / "windows_vm_profiles.py"
+    if not module_path.is_file():
+        raise RuntimeError(f"Windows VM profile catalog is missing: {module_path}")
+    spec = importlib.util.spec_from_file_location("emulebb_windows_vm_profiles", module_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load Windows VM profile catalog: {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    required = (
+        "SUPPORTED_TEST_PROFILES",
+        "WINDOWS_VM_PROFILE_BY_NAME",
+        "LOCAL_ED2K_REQUIRED_TARGETS",
+        "HIDEME_LIVE_REQUIRED_TARGETS",
+        "build_windows_vm_profile_matrix",
+    )
+    missing = [name for name in required if not hasattr(module, name)]
+    if missing:
+        raise RuntimeError(f"Windows VM profile catalog is missing field(s): {', '.join(missing)}")
+    return module
+
+
+def build_windows_vm_profile_matrix(layout: WorkspaceLayout) -> dict[str, object]:
+    """Returns the harness-owned Windows VM profile registry."""
+
+    return load_windows_vm_profile_catalog(layout).build_windows_vm_profile_matrix()
 
 
 def load_vm_lab_config(layout: WorkspaceLayout, config_file: str | None = None) -> VmLabConfig:
@@ -345,11 +313,13 @@ def invoke_windows_vm_tests(
         raise RuntimeError("test windows-vm supports x64 packages only in v1.")
     if workspace_options.configuration != "Release":
         raise RuntimeError("test windows-vm requires --config Release.")
-    if options.profile not in SUPPORTED_TEST_PROFILES:
+    profile_catalog = load_windows_vm_profile_catalog(layout)
+    supported_profiles = tuple(profile_catalog.SUPPORTED_TEST_PROFILES)
+    if options.profile not in supported_profiles:
         raise RuntimeError(f"Unsupported Windows VM test profile: {options.profile!r}.")
     config = load_vm_lab_config(layout, options.config_file)
     matrix = parse_matrix(options.matrix)
-    profile_spec = WINDOWS_VM_PROFILE_BY_NAME[options.profile]
+    profile_spec = profile_catalog.WINDOWS_VM_PROFILE_BY_NAME[options.profile]
     if tuple(matrix) != profile_spec.required_targets:
         expected = ",".join(profile_spec.required_targets)
         raise RuntimeError(f"{options.profile} requires --matrix {expected}.")
@@ -626,9 +596,10 @@ def run_windows_vm_local_ed2k_transfer(
 ) -> list[dict[str, object]]:
     """Runs one local ED2K transfer scenario across win10 and win11."""
 
+    required_targets = tuple(load_windows_vm_profile_catalog(layout).LOCAL_ED2K_REQUIRED_TARGETS)
     target_report_dirs = {
         key: run_report_dir / key
-        for key in LOCAL_ED2K_REQUIRED_TARGETS
+        for key in required_targets
     }
     for directory in target_report_dirs.values():
         directory.mkdir(parents=True, exist_ok=True)
@@ -641,7 +612,7 @@ def run_windows_vm_local_ed2k_transfer(
                 "checkpointName": config.hyperv.checkpoint_name,
                 "reportDir": str(target_report_dirs[key]),
             }
-            for key in LOCAL_ED2K_REQUIRED_TARGETS
+            for key in required_targets
         ]
     server_exe = build_goed2k_server_exe(layout)
     script = _ps_with_payload(
@@ -681,7 +652,7 @@ def run_windows_vm_local_ed2k_transfer(
     _write_json(run_report_dir / "local-ed2k-transfer-result.json", payload)
     rows: list[dict[str, object]] = []
     target_results = payload.get("targets", {})
-    for key in LOCAL_ED2K_REQUIRED_TARGETS:
+    for key in required_targets:
         target_payload = target_results.get(key, {}) if isinstance(target_results, dict) else {}
         _write_json(target_report_dirs[key] / f"{key}-result.json", target_payload)
         rows.append(
@@ -713,9 +684,10 @@ def run_windows_vm_hideme_live_wire(
 ) -> list[dict[str, object]]:
     """Runs one real hide.me live-wire scenario on win10 and win11."""
 
+    required_targets = tuple(load_windows_vm_profile_catalog(layout).HIDEME_LIVE_REQUIRED_TARGETS)
     target_report_dirs = {
         key: run_report_dir / key
-        for key in HIDEME_LIVE_REQUIRED_TARGETS
+        for key in required_targets
     }
     for directory in target_report_dirs.values():
         directory.mkdir(parents=True, exist_ok=True)
@@ -728,7 +700,7 @@ def run_windows_vm_hideme_live_wire(
                 "checkpointName": config.hyperv.checkpoint_name,
                 "reportDir": str(target_report_dirs[key]),
             }
-            for key in HIDEME_LIVE_REQUIRED_TARGETS
+            for key in required_targets
         ]
     script = _ps_with_payload(
         {
@@ -765,7 +737,7 @@ def run_windows_vm_hideme_live_wire(
     _write_json(run_report_dir / "hideme-live-wire-result.json", payload)
     rows: list[dict[str, object]] = []
     target_results = payload.get("targets", {})
-    for key in HIDEME_LIVE_REQUIRED_TARGETS:
+    for key in required_targets:
         target_payload = target_results.get(key, {}) if isinstance(target_results, dict) else {}
         _write_json(target_report_dirs[key] / f"{key}-result.json", target_payload)
         rows.append(
