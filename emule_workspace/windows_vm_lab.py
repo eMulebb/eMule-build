@@ -784,6 +784,7 @@ def run_windows_vm_profile_smoke(
         if is_local_swarm_profile
         else (None, None)
     )
+    local_swarm_amutorrent_root = local_swarm_amutorrent_repo_root(layout) if is_local_swarm_profile else None
     local_swarm_rest_openapi_path = (
         layout.tooling_repo_root / LOCAL_SWARM_REST_OPENAPI_RELATIVE_PATH
         if is_local_swarm_profile
@@ -811,6 +812,11 @@ def run_windows_vm_profile_smoke(
             "localSwarmHarnessPackagePath": str(local_swarm_payload["harnessPackage"]),
             "localSwarmManifestsPath": str(local_swarm_payload["manifests"]),
             "localSwarmScriptPaths": [str(path) for path in local_swarm_payload["scripts"]],
+            "localSwarmAmutorrentRoot": (
+                str(local_swarm_amutorrent_root)
+                if local_swarm_amutorrent_root is not None
+                else ""
+            ),
             "localSwarmRestOpenApiPath": (
                 str(local_swarm_rest_openapi_path)
                 if local_swarm_rest_openapi_path is not None
@@ -973,6 +979,13 @@ def local_swarm_amule_exes(layout: WorkspaceLayout) -> tuple[Path | None, Path |
         daemon if daemon.is_file() else None,
         control if control.is_file() else None,
     )
+
+
+def local_swarm_amutorrent_repo_root(layout: WorkspaceLayout) -> Path | None:
+    """Returns the aMuTorrent repo staged into reusable VM swarm payloads."""
+
+    root = layout.emule_workspace_root / "repos" / "amutorrent"
+    return root if root.is_dir() else None
 
 
 def run_windows_vm_hideme_live_wire(

@@ -613,7 +613,8 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
     )
     amule_daemon_exe = layout.workspace_root / "state" / "tools" / "amule" / "bin" / "amuled.exe"
     amule_control_exe = layout.workspace_root / "state" / "tools" / "amule" / "bin" / "amulecmd.exe"
-    for path in (tracing_harness_exe, amule_daemon_exe, amule_control_exe):
+    amutorrent_root = layout.emule_workspace_root / "repos" / "amutorrent"
+    for path in (tracing_harness_exe, amule_daemon_exe, amule_control_exe, amutorrent_root / "server" / "server.js"):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("", encoding="utf-8")
 
@@ -653,6 +654,7 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
     assert "localSwarmHarnessPackagePath" in captured[0]
     assert "localSwarmManifestsPath" in captured[0]
     assert "localSwarmScriptPaths" in captured[0]
+    assert "localSwarmAmutorrentRoot" in captured[0]
     assert "localSwarmRestOpenApiPath" in captured[0]
     assert "localSwarmAppSourcePaths" in captured[0]
     assert "localSwarmGoed2kServerExe" in captured[0]
@@ -666,6 +668,7 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
     assert "emule.exe" in captured[0]
     assert "amuled.exe" in captured[0]
     assert "amulecmd.exe" in captured[0]
+    assert "repos\\\\amutorrent" in captured[0]
     assert "godzilla-local-swarm.py" in captured[0]
     assert "manifests" in captured[0]
     assert "REST-API-OPENAPI.yaml" in captured[0]
