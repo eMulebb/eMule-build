@@ -1302,24 +1302,34 @@ function Ensure-ProvisioningNatSwitch {
     [string] $Gateway,
     [int] $PrefixLength
   )
-  if (-not (Get-VMSwitch -Name $SwitchName -ErrorAction SilentlyContinue)) {
+  $adapterName = 'vEthernet (' + $SwitchName + ')'
+  $switch = Get-VMSwitch -Name $SwitchName -ErrorAction SilentlyContinue
+  if ($switch) {
+    $existingAdapter = Get-NetAdapter -Name $adapterName -IncludeHidden -ErrorAction SilentlyContinue
+    if ($existingAdapter -and $existingAdapter.Status -eq 'Not Present') {
+      Remove-VMSwitch -Name $SwitchName -Force
+      $switch = $null
+    }
+  }
+  if (-not $switch) {
     New-VMSwitch -Name $SwitchName -SwitchType Internal | Out-Null
   }
-  $adapterName = 'vEthernet (' + $SwitchName + ')'
   $adapter = $null
   for ($attempt = 1; $attempt -le 30; $attempt++) {
-    $adapter = Get-NetAdapter -Name $adapterName -ErrorAction SilentlyContinue
+    $adapter = Get-NetAdapter -Name $adapterName -IncludeHidden -ErrorAction SilentlyContinue |
+      Where-Object { $_.Status -ne 'Not Present' } |
+      Select-Object -First 1
     if ($adapter) { break }
     Start-Sleep -Seconds 1
   }
   if (-not $adapter) {
     throw ('Hyper-V provisioning switch adapter is missing: ' + $adapterName)
   }
-  $address = Get-NetIPAddress -InterfaceAlias $adapterName -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+  $address = Get-NetIPAddress -InterfaceIndex $adapter.InterfaceIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue |
     Where-Object { $_.IPAddress -eq $Gateway } |
     Select-Object -First 1
   if (-not $address) {
-    New-NetIPAddress -InterfaceAlias $adapterName -IPAddress $Gateway -PrefixLength $PrefixLength | Out-Null
+    New-NetIPAddress -InterfaceIndex $adapter.InterfaceIndex -IPAddress $Gateway -PrefixLength $PrefixLength | Out-Null
   }
   if (-not (Get-NetNat -Name $NatName -ErrorAction SilentlyContinue)) {
     New-NetNat -Name $NatName -InternalIPInterfaceAddressPrefix $NatPrefix | Out-Null

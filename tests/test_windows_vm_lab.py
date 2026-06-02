@@ -396,8 +396,10 @@ def test_prepare_vm_target_script_uses_provisioning_switch_for_internet() -> Non
     assert windows_vm_lab.DEFAULT_PROVISIONING_GUEST_IPS["win10"] == "192.168.250.10"
     assert "provisioningSwitchName" in script
     assert "Ensure-ProvisioningNatSwitch" in script
+    assert "Remove-VMSwitch" in script
     assert "New-NetNat" in script
     assert "New-NetIPAddress" in script
+    assert "-InterfaceIndex $adapter.InterfaceIndex" in script
     assert "Set-DnsClientServerAddress" in script
     assert "Resolve-DnsName -Name 'pypi.org'" in script
     assert "New-VM -Name $payload.vmName" in script
