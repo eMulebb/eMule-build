@@ -217,6 +217,7 @@ def profile_helper_path(tests_repo_root):
 def local_swarm_payload_paths(tests_repo_root):
     return {
         "harnessPackage": Path(tests_repo_root) / "emule_test_harness",
+        "manifests": Path(tests_repo_root) / "manifests",
         "scripts": [Path(tests_repo_root) / "scripts" / "godzilla-local-swarm.py"],
     }
 
@@ -595,6 +596,7 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
     assert result["swarmTier"] == 3
     assert result["localSwarmMode"] == "execute"
     assert "localSwarmHarnessPackagePath" in captured[0]
+    assert "localSwarmManifestsPath" in captured[0]
     assert "localSwarmScriptPaths" in captured[0]
     assert "localSwarmRestOpenApiPath" in captured[0]
     assert "localSwarmAppSourcePaths" in captured[0]
@@ -608,6 +610,7 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
     assert "amuled.exe" in captured[0]
     assert "amulecmd.exe" in captured[0]
     assert "godzilla-local-swarm.py" in captured[0]
+    assert "manifests" in captured[0]
     assert "REST-API-OPENAPI.yaml" in captured[0]
     assert "WebServerJsonSeams.h" in captured[0]
     assert "WebServerQBitCompatSeams.h" in captured[0]

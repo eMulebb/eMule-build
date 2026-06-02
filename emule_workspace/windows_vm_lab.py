@@ -784,6 +784,7 @@ def run_windows_vm_profile_smoke(
             "runnerPath": str(host_contracts.guest_runner_path(layout.tests_repo_root, profile)),
             "profileHelperPath": str(host_contracts.profile_helper_path(layout.tests_repo_root)),
             "localSwarmHarnessPackagePath": str(local_swarm_payload["harnessPackage"]),
+            "localSwarmManifestsPath": str(local_swarm_payload["manifests"]),
             "localSwarmScriptPaths": [str(path) for path in local_swarm_payload["scripts"]],
             "localSwarmRestOpenApiPath": (
                 str(local_swarm_rest_openapi_path)
