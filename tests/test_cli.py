@@ -137,6 +137,15 @@ def test_test_campaign_scenario_help_exposes_mode_options() -> None:
     assert "--local-swarm-mode" in result.output
 
 
+def test_test_release_campaign_help_exposes_local_vm_swarm_mode() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(cli.main, ["test", "release-campaign", "--help"])
+
+    assert result.exit_code == 0
+    assert "--local-vm-swarm-mode" in result.output
+
+
 def test_vm_lab_prepare_help_is_available() -> None:
     runner = CliRunner()
 

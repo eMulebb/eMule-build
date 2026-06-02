@@ -223,7 +223,7 @@ def build_release_campaign_execution_plan(
         for scenario in phase.get("scenarios", []):
             if not _scenario_selected(scenario, campaign_options):
                 continue
-            command = str(scenario.get("command", "")).strip()
+            command = _selected_scenario_command(scenario, campaign_options)
             if not command:
                 continue
             _assert_supported_command(command)
@@ -266,6 +266,18 @@ def _scenario_selected(scenario: dict[str, Any], campaign_options: ReleaseCampai
     if bool(scenario.get("blocking", True)):
         return True
     return campaign_options.include_nonblocking
+
+
+def _selected_scenario_command(scenario: dict[str, Any], campaign_options: ReleaseCampaignOptions) -> str:
+    """Returns the command selected for one campaign scenario."""
+
+    if (
+        campaign_options.local_vm_swarm_mode != "manifest"
+        and scenario.get("flowCategory") == "local-vm-swarm"
+    ):
+        command_key = "localCommand" if campaign_options.local_vm_swarm_mode == "local" else "vmCommand"
+        return str(scenario.get(command_key, "")).strip()
+    return str(scenario.get("command", "")).strip()
 
 
 def _run_campaign_command(
@@ -824,6 +836,7 @@ def _write_report(
         "updatedAt": datetime.now(timezone.utc).isoformat(),
         "options": {
             "testNetwork": campaign_options.test_network,
+            "localVmSwarmMode": campaign_options.local_vm_swarm_mode,
             "includeNonblocking": campaign_options.include_nonblocking,
             "continueOnFailure": campaign_options.continue_on_failure,
             "dryRun": campaign_options.dry_run,
