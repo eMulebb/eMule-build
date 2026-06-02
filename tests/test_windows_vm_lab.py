@@ -38,7 +38,12 @@ def _write_config(path: Path) -> None:
                 "schema": windows_vm_lab.VM_LAB_SCHEMA,
                 "hyperv": {
                     "switch_name": "emulebb-test-switch",
-                    "provisioning_switch_name": "Default Switch",
+                    "provisioning_switch_name": "emulebb-test-nat",
+                    "provisioning_nat_prefix": "192.168.251.0/24",
+                    "provisioning_gateway": "192.168.251.1",
+                    "provisioning_prefix_length": 24,
+                    "provisioning_dns": ["1.1.1.1", "8.8.8.8"],
+                    "provisioning_guest_ips": {"win10": "192.168.251.10", "win11": "192.168.251.11"},
                     "vpn_switch_name": "emulebb-test-vpn-switch",
                     "checkpoint_name": "emulebb-clean",
                     "memory_mb": 2048,
@@ -240,7 +245,12 @@ def test_load_vm_lab_config_resolves_targets(tmp_path: Path) -> None:
 
     assert config.config_path == config_path.resolve()
     assert config.hyperv.switch_name == "emulebb-test-switch"
-    assert config.hyperv.provisioning_switch_name == "Default Switch"
+    assert config.hyperv.provisioning_switch_name == "emulebb-test-nat"
+    assert config.hyperv.provisioning_nat_prefix == "192.168.251.0/24"
+    assert config.hyperv.provisioning_gateway == "192.168.251.1"
+    assert config.hyperv.provisioning_prefix_length == 24
+    assert config.hyperv.provisioning_dns == ("1.1.1.1", "8.8.8.8")
+    assert config.hyperv.provisioning_guest_ips == {"win10": "192.168.251.10", "win11": "192.168.251.11"}
     assert config.hyperv.vpn_switch_name == "emulebb-test-vpn-switch"
     assert config.hyperv.memory_mb == 2048
     assert config.guest.password_env == "EMULEBB_TEST_VM_PASSWORD"
@@ -380,9 +390,16 @@ def test_prepare_vm_target_script_skips_oobe_and_installs_efi_fallback() -> None
 def test_prepare_vm_target_script_uses_provisioning_switch_for_internet() -> None:
     script = windows_vm_lab._prepare_vm_target_script()
 
-    assert windows_vm_lab.DEFAULT_PROVISIONING_SWITCH_NAME == "Default Switch"
+    assert windows_vm_lab.DEFAULT_PROVISIONING_SWITCH_NAME == "emulebb-vm-nat"
+    assert windows_vm_lab.DEFAULT_PROVISIONING_NAT_PREFIX == "192.168.250.0/24"
+    assert windows_vm_lab.DEFAULT_PROVISIONING_GATEWAY == "192.168.250.1"
+    assert windows_vm_lab.DEFAULT_PROVISIONING_GUEST_IPS["win10"] == "192.168.250.10"
     assert "provisioningSwitchName" in script
-    assert "Hyper-V provisioning switch is missing" in script
+    assert "Ensure-ProvisioningNatSwitch" in script
+    assert "New-NetNat" in script
+    assert "New-NetIPAddress" in script
+    assert "Set-DnsClientServerAddress" in script
+    assert "Resolve-DnsName -Name 'pypi.org'" in script
     assert "New-VM -Name $payload.vmName" in script
     assert "-SwitchName $provisioningSwitchName" in script
 

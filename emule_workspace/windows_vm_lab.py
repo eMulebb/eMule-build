@@ -26,7 +26,12 @@ VM_LAB_SCHEMA = "emulebb.windows-vm-lab.v1"
 DEFAULT_CONFIG_FILE_NAME = "vm-lab.local.json"
 EXAMPLE_CONFIG_FILE_NAME = "vm-lab.example.json"
 DEFAULT_SWITCH_NAME = "emulebb-vm-private"
-DEFAULT_PROVISIONING_SWITCH_NAME = "Default Switch"
+DEFAULT_PROVISIONING_SWITCH_NAME = "emulebb-vm-nat"
+DEFAULT_PROVISIONING_NAT_PREFIX = "192.168.250.0/24"
+DEFAULT_PROVISIONING_GATEWAY = "192.168.250.1"
+DEFAULT_PROVISIONING_PREFIX_LENGTH = 24
+DEFAULT_PROVISIONING_DNS = ("1.1.1.1", "8.8.8.8")
+DEFAULT_PROVISIONING_GUEST_IPS = {"win10": "192.168.250.10", "win11": "192.168.250.11"}
 DEFAULT_VPN_SWITCH_NAME = "emulebb-vm-external"
 DEFAULT_CHECKPOINT_NAME = "emulebb-clean"
 DEFAULT_GUEST_USERNAME = "emulebbtest"
@@ -67,6 +72,11 @@ class HyperVLabSettings:
 
     switch_name: str = DEFAULT_SWITCH_NAME
     provisioning_switch_name: str = DEFAULT_PROVISIONING_SWITCH_NAME
+    provisioning_nat_prefix: str = DEFAULT_PROVISIONING_NAT_PREFIX
+    provisioning_gateway: str = DEFAULT_PROVISIONING_GATEWAY
+    provisioning_prefix_length: int = DEFAULT_PROVISIONING_PREFIX_LENGTH
+    provisioning_dns: tuple[str, ...] = DEFAULT_PROVISIONING_DNS
+    provisioning_guest_ips: dict[str, str] | None = None
     vpn_switch_name: str = DEFAULT_VPN_SWITCH_NAME
     checkpoint_name: str = DEFAULT_CHECKPOINT_NAME
     memory_mb: int = DEFAULT_MEMORY_MB
@@ -297,6 +307,31 @@ def load_vm_lab_config(layout: WorkspaceLayout, config_file: str | None = None) 
             raw_hyperv,
             "provisioning_switch_name",
             DEFAULT_PROVISIONING_SWITCH_NAME,
+        ),
+        provisioning_nat_prefix=_optional_string(
+            raw_hyperv,
+            "provisioning_nat_prefix",
+            DEFAULT_PROVISIONING_NAT_PREFIX,
+        ),
+        provisioning_gateway=_optional_string(
+            raw_hyperv,
+            "provisioning_gateway",
+            DEFAULT_PROVISIONING_GATEWAY,
+        ),
+        provisioning_prefix_length=_optional_positive_int(
+            raw_hyperv,
+            "provisioning_prefix_length",
+            DEFAULT_PROVISIONING_PREFIX_LENGTH,
+        ),
+        provisioning_dns=_optional_string_tuple(
+            raw_hyperv,
+            "provisioning_dns",
+            DEFAULT_PROVISIONING_DNS,
+        ),
+        provisioning_guest_ips=_optional_string_map(
+            raw_hyperv,
+            "provisioning_guest_ips",
+            DEFAULT_PROVISIONING_GUEST_IPS,
         ),
         vpn_switch_name=_optional_string(raw_hyperv, "vpn_switch_name", DEFAULT_VPN_SWITCH_NAME),
         checkpoint_name=_optional_string(raw_hyperv, "checkpoint_name", DEFAULT_CHECKPOINT_NAME),
@@ -552,6 +587,10 @@ def prepare_vm_target(
     """Prepares one Hyper-V VM and its clean checkpoint."""
 
     vhd_path = _vm_image_root(layout) / f"{file_token(target.key)}.vhdx"
+    provisioning_guest_ips = config.hyperv.provisioning_guest_ips or DEFAULT_PROVISIONING_GUEST_IPS
+    provisioning_guest_ip = provisioning_guest_ips.get(target.key)
+    if not provisioning_guest_ip:
+        raise RuntimeError(f"Windows VM lab config is missing provisioning guest IP for target: {target.key}")
     if runner.dry_run:
         python_installer = python_installer_cache_path(layout)
         hide_me_installer = hide_me_installer_cache_path(layout)
@@ -575,6 +614,12 @@ def prepare_vm_target(
             "vhdPath": str(vhd_path),
             "switchName": config.hyperv.switch_name,
             "provisioningSwitchName": config.hyperv.provisioning_switch_name,
+            "provisioningNatName": f"{config.hyperv.provisioning_switch_name}-nat",
+            "provisioningNatPrefix": config.hyperv.provisioning_nat_prefix,
+            "provisioningGateway": config.hyperv.provisioning_gateway,
+            "provisioningPrefixLength": config.hyperv.provisioning_prefix_length,
+            "provisioningDns": list(config.hyperv.provisioning_dns),
+            "provisioningGuestIp": provisioning_guest_ip,
             "checkpointName": config.hyperv.checkpoint_name,
             "memoryBytes": config.hyperv.memory_mb * 1024 * 1024,
             "diskBytes": config.hyperv.disk_gb * 1024 * 1024 * 1024,
@@ -1249,13 +1294,42 @@ if (-not (Test-Path -LiteralPath $payload.isoPath)) {
 if (-not (Get-VMSwitch -Name $payload.switchName -ErrorAction SilentlyContinue)) {
   New-VMSwitch -Name $payload.switchName -SwitchType Private | Out-Null
 }
+function Ensure-ProvisioningNatSwitch {
+  param(
+    [string] $SwitchName,
+    [string] $NatName,
+    [string] $NatPrefix,
+    [string] $Gateway,
+    [int] $PrefixLength
+  )
+  if (-not (Get-VMSwitch -Name $SwitchName -ErrorAction SilentlyContinue)) {
+    New-VMSwitch -Name $SwitchName -SwitchType Internal | Out-Null
+  }
+  $adapterName = 'vEthernet (' + $SwitchName + ')'
+  $adapter = $null
+  for ($attempt = 1; $attempt -le 30; $attempt++) {
+    $adapter = Get-NetAdapter -Name $adapterName -ErrorAction SilentlyContinue
+    if ($adapter) { break }
+    Start-Sleep -Seconds 1
+  }
+  if (-not $adapter) {
+    throw ('Hyper-V provisioning switch adapter is missing: ' + $adapterName)
+  }
+  $address = Get-NetIPAddress -InterfaceAlias $adapterName -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+    Where-Object { $_.IPAddress -eq $Gateway } |
+    Select-Object -First 1
+  if (-not $address) {
+    New-NetIPAddress -InterfaceAlias $adapterName -IPAddress $Gateway -PrefixLength $PrefixLength | Out-Null
+  }
+  if (-not (Get-NetNat -Name $NatName -ErrorAction SilentlyContinue)) {
+    New-NetNat -Name $NatName -InternalIPInterfaceAddressPrefix $NatPrefix | Out-Null
+  }
+}
 $provisioningSwitchName = $payload.provisioningSwitchName
 if (-not $provisioningSwitchName) {
   $provisioningSwitchName = $payload.switchName
 }
-if (-not (Get-VMSwitch -Name $provisioningSwitchName -ErrorAction SilentlyContinue)) {
-  throw ('Hyper-V provisioning switch is missing: ' + $provisioningSwitchName)
-}
+Ensure-ProvisioningNatSwitch -SwitchName $provisioningSwitchName -NatName $payload.provisioningNatName -NatPrefix $payload.provisioningNatPrefix -Gateway $payload.provisioningGateway -PrefixLength ([int] $payload.provisioningPrefixLength)
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $payload.vhdPath) | Out-Null
 New-VHD -Path $payload.vhdPath -SizeBytes ([int64] $payload.diskBytes) -Dynamic | Out-Null
 $mountedVhd = Mount-VHD -Path $payload.vhdPath -Passthru
@@ -1395,6 +1469,32 @@ try {
   Invoke-Command -Session $session -ScriptBlock {
     New-Item -ItemType Directory -Force -Path C:\eMuleBBVmTest | Out-Null
   } | Out-Null
+  Invoke-Command -Session $session -ScriptBlock {
+    param([string] $GuestIp, [int] $PrefixLength, [string] $Gateway, [string[]] $DnsServers)
+    $adapter = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Sort-Object InterfaceIndex | Select-Object -First 1
+    if (-not $adapter) {
+      $adapter = Get-NetAdapter | Sort-Object InterfaceIndex | Select-Object -First 1
+    }
+    if (-not $adapter) {
+      throw 'Guest provisioning network adapter was not found.'
+    }
+    Get-NetIPAddress -InterfaceIndex $adapter.InterfaceIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+      Where-Object { $_.IPAddress -ne $GuestIp } |
+      Remove-NetIPAddress -Confirm:$false -ErrorAction SilentlyContinue
+    if (-not (Get-NetIPAddress -InterfaceIndex $adapter.InterfaceIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -eq $GuestIp })) {
+      New-NetIPAddress -InterfaceIndex $adapter.InterfaceIndex -IPAddress $GuestIp -PrefixLength $PrefixLength -DefaultGateway $Gateway | Out-Null
+    }
+    Set-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -ServerAddresses $DnsServers
+    for ($attempt = 1; $attempt -le 30; $attempt++) {
+      try {
+        Resolve-DnsName -Name 'pypi.org' -ErrorAction Stop | Out-Null
+        return
+      } catch {
+        Start-Sleep -Seconds 2
+      }
+    }
+    throw 'Guest provisioning DNS did not become ready.'
+  } -ArgumentList $payload.provisioningGuestIp, ([int] $payload.provisioningPrefixLength), $payload.provisioningGateway, $payload.provisioningDns | Out-Null
   Copy-Item -ToSession $session -Path $payload.pythonInstallerPath -Destination 'C:\eMuleBBVmTest\python-installer.exe'
   Copy-Item -ToSession $session -Path $payload.hideMeInstallerPath -Destination 'C:\eMuleBBVmTest\hide-me-installer.exe'
   Copy-Item -ToSession $session -Path $payload.pwshInstallerPath -Destination 'C:\eMuleBBVmTest\pwsh-installer.msi'
@@ -1775,6 +1875,32 @@ def _optional_string(payload: dict[str, Any], key: str, default: str) -> str:
     if not isinstance(value, str) or (default and not value.strip()):
         raise RuntimeError(f"Windows VM lab config field {key!r} must be a non-empty string.")
     return value.strip()
+
+
+def _optional_string_tuple(payload: dict[str, Any], key: str, default: tuple[str, ...]) -> tuple[str, ...]:
+    value = payload.get(key, list(default))
+    if not isinstance(value, list) or not value:
+        raise RuntimeError(f"Windows VM lab config field {key!r} must be a non-empty string list.")
+    result: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            raise RuntimeError(f"Windows VM lab config field {key!r} must contain only non-empty strings.")
+        result.append(item.strip())
+    return tuple(result)
+
+
+def _optional_string_map(payload: dict[str, Any], key: str, default: dict[str, str]) -> dict[str, str]:
+    value = payload.get(key, default)
+    if not isinstance(value, dict) or not value:
+        raise RuntimeError(f"Windows VM lab config field {key!r} must be a non-empty string map.")
+    result: dict[str, str] = {}
+    for map_key, map_value in value.items():
+        if not isinstance(map_key, str) or not map_key.strip():
+            raise RuntimeError(f"Windows VM lab config field {key!r} must contain only non-empty string keys.")
+        if not isinstance(map_value, str) or not map_value.strip():
+            raise RuntimeError(f"Windows VM lab config field {key!r} must contain only non-empty string values.")
+        result[map_key.strip()] = map_value.strip()
+    return result
 
 
 def _optional_positive_int(payload: dict[str, Any], key: str, default: int) -> int:
