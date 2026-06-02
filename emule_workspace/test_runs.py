@@ -1135,11 +1135,17 @@ def _ensure_hide_me_split_tunnel_for_live(
 
 
 def _live_e2e_materialize_test_install(live_options: LiveE2eOptions) -> bool:
+    if live_options.plan_only:
+        return False
     return live_options.materialize_test_install or live_options.profile in INSTALLER_BACKED_LIVE_E2E_PROFILES
 
 
 def _live_e2e_effective_test_network(live_options: LiveE2eOptions) -> TestNetwork:
-    if live_options.profile in INSTALLER_BACKED_LIVE_E2E_PROFILES and live_options.test_network == "default":
+    if (
+        live_options.profile in INSTALLER_BACKED_LIVE_E2E_PROFILES
+        and live_options.test_network == "default"
+        and not live_options.suites
+    ):
         return "vpn"
     return live_options.test_network
 

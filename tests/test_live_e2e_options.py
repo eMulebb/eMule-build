@@ -613,6 +613,39 @@ def test_live_e2e_installer_controller_surface_profile_materializes_by_default(t
     assert captured["env"]["PROWLARR_URL"] == "http://192.0.2.11:9696"
 
 
+def test_live_e2e_plan_only_skips_installer_profile_materialization(tmp_path: Path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
+        captured["command"] = list(command)
+
+    def fail_materialize(*_args, **_kwargs):
+        raise AssertionError("plan-only live E2E runs should only resolve child commands")
+
+    layout = make_layout(tmp_path)
+    monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+    monkeypatch.setattr(test_runs, "materialize_test_local_install", fail_materialize)
+    monkeypatch.setattr(test_runs, "ensure_split_tunnel_apps", lambda paths, **_kwargs: {"enabled": False})
+
+    test_runs.invoke_live_e2e_suite(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+        LiveE2eOptions(
+            profile="installer-controller-surface",
+            suites=("command-line-smoke", "package-helper-integration"),
+            plan_only=True,
+        ),
+    )
+
+    command = captured["command"]
+    assert isinstance(command, list)
+    assert "--plan-only" in command
+    assert option_values(command, "--profile") == ["installer-controller-surface"]
+    assert option_values(command, "--test-network") == ["default"]
+    assert option_values(command, "--suite") == ["command-line-smoke", "package-helper-integration"]
+    assert "--profile-seed-dir" not in command
+
+
 def test_live_e2e_starts_materialized_arr_services_for_arr_suites(tmp_path: Path, monkeypatch) -> None:
     captured: dict[str, object] = {}
     started_commands: list[tuple[list[str], str]] = []
