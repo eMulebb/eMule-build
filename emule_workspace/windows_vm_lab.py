@@ -51,6 +51,9 @@ LOCAL_SWARM_APP_SOURCE_FILES = (
     "WebServerArrCompatSeams.h",
     "WebServerArrCompat.cpp",
 )
+LOCAL_SWARM_NODE_VERSION = "v24.15.0"
+LOCAL_SWARM_NODE_ARCHIVE_X64 = "node-v24.15.0-win-x64.zip"
+LOCAL_SWARM_NODE_ARCHIVE_X64_SHA256 = "cc5149eabd53779ce1e7bdc5401643622d0c7e6800ade18928a767e940bb0e62"
 PYTHON_INSTALLER_URL = "https://www.python.org/ftp/python/3.13.13/python-3.13.13-amd64.exe"
 PYTHON_INSTALLER_SHA256 = "3c9c81d80f91c002ced86d645422d81432c68c7d9b6b0e974768ca2e449a4d00"
 PYTHON_INSTALLER_FILE_NAME = "python-3.13.13-amd64.exe"
@@ -442,6 +445,13 @@ def invoke_windows_vm_tests(
         if uses_local_swarm
         else ()
     )
+    local_swarm_node_archive_path = (
+        _ensure_local_swarm_node_archive(layout, workspace_options.platform)
+        if uses_local_swarm and not options.dry_run
+        else _local_swarm_node_archive_path(layout, workspace_options.platform)
+        if uses_local_swarm
+        else None
+    )
     if not options.dry_run and uses_local_swarm:
         missing_release_assets = [path for path in local_swarm_release_asset_paths if not path.is_file()]
         if missing_release_assets:
@@ -499,6 +509,7 @@ def invoke_windows_vm_tests(
                     profile=options.profile,
                     package_zip=package_zip,
                     local_swarm_release_asset_paths=local_swarm_release_asset_paths,
+                    local_swarm_node_archive_path=local_swarm_node_archive_path,
                     release_version=options.release_version,
                     platform=workspace_options.platform,
                     run_id=run_id,
@@ -768,6 +779,7 @@ def run_windows_vm_profile_smoke(
     profile: str,
     package_zip: Path,
     local_swarm_release_asset_paths: Sequence[Path],
+    local_swarm_node_archive_path: Path | None,
     release_version: str,
     platform: str,
     run_id: str,
@@ -835,6 +847,12 @@ def run_windows_vm_profile_smoke(
             "localSwarmManifestsPath": str(local_swarm_payload["manifests"]),
             "localSwarmScriptPaths": [str(path) for path in local_swarm_payload["scripts"]],
             "localSwarmReleaseAssetPaths": [str(path) for path in local_swarm_release_asset_paths],
+            "localSwarmNodeArchivePath": (
+                str(local_swarm_node_archive_path)
+                if local_swarm_node_archive_path is not None
+                else ""
+            ),
+            "localSwarmNodeSha256": LOCAL_SWARM_NODE_ARCHIVE_X64_SHA256,
             "releaseVersion": release_version,
             "platform": platform,
             "localSwarmRestOpenApiPath": (
@@ -1869,6 +1887,32 @@ def _local_swarm_release_asset_paths(layout: WorkspaceLayout, release_version: s
         release_root / f"emulebb-{release_version}-amutorrent-{arch}.zip",
         release_root / f"emulebb-{release_version}-amutorrent-{arch}.manifest.json",
     )
+
+
+def _local_swarm_node_archive_path(layout: WorkspaceLayout, platform: str) -> Path:
+    if platform != "x64":
+        raise RuntimeError("VM local-swarm aMuTorrent runtime staging supports x64 Node only in v1.")
+    return layout.workspace_root / "state" / "tools" / "node" / LOCAL_SWARM_NODE_ARCHIVE_X64
+
+
+def _ensure_local_swarm_node_archive(layout: WorkspaceLayout, platform: str) -> Path:
+    archive_path = _local_swarm_node_archive_path(layout, platform)
+    if archive_path.is_file() and _sha256(archive_path) == LOCAL_SWARM_NODE_ARCHIVE_X64_SHA256:
+        return archive_path
+    archive_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = archive_path.with_suffix(archive_path.suffix + ".tmp")
+    tmp_path.unlink(missing_ok=True)
+    url = f"https://nodejs.org/dist/{LOCAL_SWARM_NODE_VERSION}/{LOCAL_SWARM_NODE_ARCHIVE_X64}"
+    with urllib.request.urlopen(url, timeout=300) as response, tmp_path.open("wb") as handle:
+        shutil.copyfileobj(response, handle)
+    actual_hash = _sha256(tmp_path)
+    if actual_hash != LOCAL_SWARM_NODE_ARCHIVE_X64_SHA256:
+        tmp_path.unlink(missing_ok=True)
+        raise RuntimeError(
+            f"Downloaded Node archive SHA256 mismatch. Expected {LOCAL_SWARM_NODE_ARCHIVE_X64_SHA256}, got {actual_hash}."
+        )
+    tmp_path.replace(archive_path)
+    return archive_path
 
 
 def _vm_image_root(layout: WorkspaceLayout) -> Path:

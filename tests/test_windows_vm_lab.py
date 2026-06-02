@@ -638,6 +638,7 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
             profile="search-ui-local-swarm-vm",
             package_zip=tmp_path / "package.zip",
             local_swarm_release_asset_paths=release_asset_paths,
+            local_swarm_node_archive_path=windows_vm_lab._local_swarm_node_archive_path(layout, "x64"),
             release_version="0.7.3-rc.1",
             platform="x64",
             run_id="run",
@@ -658,6 +659,8 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
     assert "localSwarmManifestsPath" in captured[0]
     assert "localSwarmScriptPaths" in captured[0]
     assert "localSwarmReleaseAssetPaths" in captured[0]
+    assert "localSwarmNodeArchivePath" in captured[0]
+    assert "localSwarmNodeSha256" in captured[0]
     assert "releaseVersion" in captured[0]
     assert "localSwarmRestOpenApiPath" in captured[0]
     assert "localSwarmAppSourcePaths" in captured[0]
