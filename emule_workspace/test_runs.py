@@ -363,7 +363,10 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
         layout,
         test_network=effective_test_network,
         vpn_interface_name=live_options.p2p_bind_interface_name,
-        require_lan=materialize_test_install and effective_test_network in {"lan", "vpn", "all"},
+        require_lan=(
+            live_options.campaign_scenario_uses_local_swarm
+            or (materialize_test_install and effective_test_network in {"lan", "vpn", "all"})
+        ),
     )
     script_path = layout.tests_repo_root / "scripts" / "run-live-e2e-suite.py"
     if not script_path.is_file():

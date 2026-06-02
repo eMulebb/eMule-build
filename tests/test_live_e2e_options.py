@@ -88,6 +88,7 @@ def test_live_e2e_forwards_campaign_scenario_metadata(tmp_path: Path, monkeypatc
 
     def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
         captured["command"] = list(command)
+        captured["env"] = dict(env or {})
 
     layout = make_layout(tmp_path)
     monkeypatch.setattr(test_runs, "run_native", fake_run_native)
@@ -115,6 +116,7 @@ def test_live_e2e_forwards_campaign_scenario_metadata(tmp_path: Path, monkeypatc
         "godzilla-local-swarm",
     ]
     assert "--campaign-scenario-uses-local-swarm" in command
+    assert captured["env"]["X_LOCAL_IP"] == "192.0.2.11"
 
 
 def test_live_e2e_forwards_cold_stress_cpu_profile_options(tmp_path: Path, monkeypatch) -> None:
