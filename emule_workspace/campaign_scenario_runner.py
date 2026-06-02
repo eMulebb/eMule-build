@@ -14,6 +14,56 @@ from .test_runs import invoke_live_e2e_suite
 from .windows_vm_lab import WindowsVmTestOptions, invoke_windows_vm_tests
 
 
+GODZILLA_SWARM_TIERS: dict[int, dict[str, object]] = {
+    1: {
+        "stage": "launch-scale",
+        "total_client_count": 4,
+        "peer_transfer_count": 24,
+        "harness_transfer_count": 24,
+        "emulebb_files": 80,
+        "extra_emulebb_files": 8,
+        "harness_files": 60,
+        "amule_files": 20,
+        "adverse_kill_cycles": 0,
+        "adverse_kill_warmup_seconds": 0.0,
+        "adverse_recovery_timeout_seconds": 180.0,
+        "cpu_profile": False,
+        "fail_fast": True,
+    },
+    2: {
+        "stage": "launch-scale",
+        "total_client_count": 10,
+        "peer_transfer_count": 120,
+        "harness_transfer_count": 120,
+        "emulebb_files": 240,
+        "extra_emulebb_files": 24,
+        "harness_files": 180,
+        "amule_files": 60,
+        "adverse_kill_cycles": 0,
+        "adverse_kill_warmup_seconds": 0.0,
+        "adverse_recovery_timeout_seconds": 180.0,
+        "cpu_profile": True,
+        "fail_fast": False,
+    },
+    3: {
+        "stage": "full",
+        "total_client_count": 18,
+        "peer_transfer_count": 360,
+        "harness_transfer_count": 360,
+        "emulebb_files": 720,
+        "extra_emulebb_files": 72,
+        "harness_files": 480,
+        "amule_files": 120,
+        "adverse_kill_cycles": 2,
+        "adverse_kill_warmup_seconds": 20.0,
+        "adverse_recovery_timeout_seconds": 180.0,
+        "cpu_profile": True,
+        "fail_fast": False,
+    },
+}
+GODZILLA_LOCAL_SWARM_SUITE = "godzilla-local-swarm"
+
+
 def invoke_campaign_scenario(
     layout: WorkspaceLayout,
     workspace_options: WorkspaceOptions,
@@ -42,12 +92,39 @@ def invoke_campaign_scenario(
 def local_live_e2e_options(spec: Any, scenario_options: CampaignScenarioOptions) -> LiveE2eOptions:
     """Returns the local live E2E options for one shared campaign scenario."""
 
+    suites = tuple(str(suite) for suite in spec.local_suites)
+    if bool(getattr(spec, "uses_local_swarm", False)) and GODZILLA_LOCAL_SWARM_SUITE not in suites:
+        suites = (*suites, GODZILLA_LOCAL_SWARM_SUITE)
+    godzilla = godzilla_tier_options(scenario_options.swarm_tier)
     return LiveE2eOptions(
         profile=str(spec.local_profile or "default"),
-        suites=tuple(str(suite) for suite in spec.local_suites),
+        suites=suites,
         test_network="lan",
         pre_run_cleanup=False,
+        fail_fast=bool(godzilla["fail_fast"]) if GODZILLA_LOCAL_SWARM_SUITE in suites else False,
+        admin_volume_fixtures=GODZILLA_LOCAL_SWARM_SUITE in suites,
+        godzilla_stage=str(godzilla["stage"]) if GODZILLA_LOCAL_SWARM_SUITE in suites else None,  # type: ignore[arg-type]
+        godzilla_total_client_count=int(godzilla["total_client_count"]),
+        godzilla_peer_transfer_count=int(godzilla["peer_transfer_count"]),
+        godzilla_harness_transfer_count=int(godzilla["harness_transfer_count"]),
+        godzilla_emulebb_files=int(godzilla["emulebb_files"]),
+        godzilla_extra_emulebb_files=int(godzilla["extra_emulebb_files"]),
+        godzilla_harness_files=int(godzilla["harness_files"]),
+        godzilla_amule_files=int(godzilla["amule_files"]),
+        godzilla_adverse_kill_cycles=int(godzilla["adverse_kill_cycles"]),
+        godzilla_adverse_kill_warmup_seconds=float(godzilla["adverse_kill_warmup_seconds"]),
+        godzilla_adverse_recovery_timeout_seconds=float(godzilla["adverse_recovery_timeout_seconds"]),
+        godzilla_cpu_profile=bool(godzilla["cpu_profile"]) if GODZILLA_LOCAL_SWARM_SUITE in suites else False,
     )
+
+
+def godzilla_tier_options(swarm_tier: int) -> dict[str, object]:
+    """Returns the existing local-swarm scale profile for a campaign tier."""
+
+    try:
+        return GODZILLA_SWARM_TIERS[swarm_tier]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported campaign swarm tier: {swarm_tier}") from exc
 
 
 def vm_test_options(spec: Any, scenario_options: CampaignScenarioOptions) -> WindowsVmTestOptions:
@@ -60,6 +137,7 @@ def vm_test_options(spec: Any, scenario_options: CampaignScenarioOptions) -> Win
         skip_build=scenario_options.skip_build,
         dry_run=scenario_options.dry_run,
         fixture_size_bytes=scenario_options.fixture_size_bytes,
+        swarm_tier=scenario_options.swarm_tier,
     )
 
 

@@ -466,12 +466,15 @@ def test_windows_vm_generic_profile_dry_run_plans_both_targets(tmp_path: Path) -
             matrix=("win10", "win11"),
             skip_build=True,
             dry_run=True,
+            swarm_tier=2,
         ),
     )
 
     assert result["status"] == "planned"
     assert result["profile"] == "rest-smoke-stress"
+    assert result["swarmTier"] == 2
     assert [target["target"] for target in result["targets"]] == ["win10", "win11"]
+    assert {target["swarmTier"] for target in result["targets"]} == {2}
 
 
 def test_windows_vm_local_ed2k_transfer_dry_run_plans_both_targets(tmp_path: Path) -> None:

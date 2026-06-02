@@ -122,6 +122,7 @@ class WindowsVmTestOptions:
     keep_running: bool = False
     dry_run: bool = False
     fixture_size_bytes: int = 25 * 1024 * 1024
+    swarm_tier: int = 1
 
 
 @dataclass(frozen=True)
@@ -420,6 +421,7 @@ def invoke_windows_vm_tests(
                     run_report_dir=run_report_dir,
                     keep_running=options.keep_running,
                     fixture_size_bytes=options.fixture_size_bytes,
+                    swarm_tier=options.swarm_tier,
                     runner=runner,
                 )
             )
@@ -431,6 +433,7 @@ def invoke_windows_vm_tests(
         "status": status,
         "generatedAtUtc": _now_utc(),
         "profile": options.profile,
+        "swarmTier": options.swarm_tier,
         "releaseVersion": options.release_version,
         "platform": workspace_options.platform,
         "configFile": str(config.config_path),
@@ -446,6 +449,7 @@ def invoke_windows_vm_tests(
         "status": status,
         "generatedAtUtc": result["generatedAtUtc"],
         "profile": options.profile,
+        "swarmTier": options.swarm_tier,
         "matrix": list(matrix),
         "passed": [row["target"] for row in rows if row.get("status") == "passed"],
         "failed": [row["target"] for row in rows if row.get("status") not in {"passed", "planned"}],
@@ -645,6 +649,7 @@ def run_windows_vm_profile_smoke(
     run_report_dir: Path,
     keep_running: bool,
     fixture_size_bytes: int,
+    swarm_tier: int,
     runner: PowerShellRunner,
 ) -> dict[str, object]:
     """Runs one generic Python-backed profile smoke inside a restored Windows guest."""
@@ -657,6 +662,7 @@ def run_windows_vm_profile_smoke(
             "vmName": target.vm_name,
             "status": "planned",
             "profile": profile,
+            "swarmTier": swarm_tier,
             "checkpointName": config.hyperv.checkpoint_name,
             "reportDir": str(target_report_dir),
         }
@@ -677,6 +683,7 @@ def run_windows_vm_profile_smoke(
             "hostReportDir": str(target_report_dir),
             "keepRunning": keep_running,
             "fixtureSizeBytes": fixture_size_bytes,
+            "swarmTier": swarm_tier,
         },
         host_contracts.load_guest_script(layout.tests_repo_root, profile),
     )
@@ -688,6 +695,7 @@ def run_windows_vm_profile_smoke(
         "vmName": target.vm_name,
         "status": payload.get("status", "failed"),
         "profile": profile,
+        "swarmTier": swarm_tier,
         "checkpointName": config.hyperv.checkpoint_name,
         "reportDir": str(target_report_dir),
         "guest": payload.get("guest", {}),

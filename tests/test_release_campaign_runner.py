@@ -62,6 +62,7 @@ class Spec:
     local_profile: str
     local_suites: tuple[str, ...]
     vm_profile: str
+    uses_local_swarm: bool = True
 
 SPEC = Spec(
     key="search-ui-local-swarm",
