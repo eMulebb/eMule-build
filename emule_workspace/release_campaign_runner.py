@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import json
 import shlex
+import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from types import ModuleType
 from typing import Any
+import importlib.util
 
 from .artifact_names import release_campaign_result_file_name, utc_run_id
 from .certification import invoke_certification
@@ -41,6 +44,68 @@ from .test_runs import (
     invoke_test_runs,
 )
 from .validation import validate_workspace
+from .windows_vm_lab import WindowsVmTestOptions, invoke_windows_vm_tests, parse_matrix
+
+
+_WORKSPACE_VALUE_OPTIONS = {"--config", "--platform"}
+_CERTIFICATION_VALUE_OPTIONS = {
+    "--profile",
+    "--test-network",
+    "--live-wire-inputs-file",
+    "--radarr-movie-root",
+    "--sonarr-series-root",
+    "--acquisition-timeout-minutes",
+    "--p2p-bind-interface-name",
+}
+_CERTIFICATION_FLAG_OPTIONS = {"--skip-live-seed-refresh"}
+_LIVE_E2E_VALUE_OPTIONS = {
+    "--profile",
+    "--suite",
+    "--test-network",
+    "--materialize-test-install-release-version",
+    "--live-wire-inputs-file",
+    "--radarr-movie-root",
+    "--sonarr-series-root",
+    "--acquisition-timeout-minutes",
+    "--p2p-bind-interface-name",
+    "--godzilla-stage",
+}
+_LIVE_E2E_FLAG_OPTIONS = {
+    "--fail-fast",
+    "--materialize-test-install",
+    "--materialize-test-install-clean",
+    "--materialize-test-install-skip-build",
+    "--multi-client-require-optional-clients",
+    "--skip-live-seed-refresh",
+}
+_AMUTORRENT_VALUE_OPTIONS = {
+    "--live-wire-inputs-file",
+    "--test-network",
+    "--rest-webserver-scheme",
+    "--ready-timeout-seconds",
+    "--network-ready-timeout-seconds",
+    "--search-observation-timeout-seconds",
+    "--p2p-bind-interface-name",
+}
+_AMUTORRENT_FLAG_OPTIONS = {"--keep-artifacts"}
+_WINDOWS_VM_VALUE_OPTIONS = {
+    "--config-file",
+    "--matrix",
+    "--profile",
+    "--release-version",
+    "--fixture-size-bytes",
+}
+_WINDOWS_VM_FLAG_OPTIONS = {"--skip-build", "--keep-running", "--dry-run"}
+
+
+@dataclass(frozen=True)
+class CampaignScenarioContext:
+    """Scenario metadata needed for command-level validation."""
+
+    scenario_id: str
+    blocking: bool
+    live_e2e_profile: str
+    live_e2e_suite: str
 
 
 @dataclass(frozen=True)
@@ -50,6 +115,7 @@ class CampaignCommandPlan:
     command: str
     phase_ids: tuple[str, ...]
     scenario_ids: tuple[str, ...]
+    scenario_contexts: tuple[CampaignScenarioContext, ...] = ()
 
 
 @dataclass
@@ -136,7 +202,7 @@ def build_release_campaign_execution_plan(
 ) -> tuple[CampaignCommandPlan, ...]:
     """Builds a deduplicated command plan from a release campaign manifest."""
 
-    command_rows: dict[str, dict[str, set[str]]] = {}
+    command_rows: dict[str, dict[str, object]] = {}
     order: list[str] = []
     for phase in campaign.get("phases", []):
         phase_id = str(phase.get("id", ""))
@@ -150,10 +216,25 @@ def build_release_campaign_execution_plan(
                 continue
             _assert_supported_command(command)
             if command not in command_rows:
-                command_rows[command] = {"phase_ids": set(), "scenario_ids": set()}
+                command_rows[command] = {"phase_ids": set(), "scenario_ids": set(), "scenario_contexts": []}
                 order.append(command)
-            command_rows[command]["phase_ids"].add(phase_id)
-            command_rows[command]["scenario_ids"].add(str(scenario.get("id", "")))
+            phase_ids = command_rows[command]["phase_ids"]
+            scenario_ids = command_rows[command]["scenario_ids"]
+            scenario_contexts = command_rows[command]["scenario_contexts"]
+            assert isinstance(phase_ids, set)
+            assert isinstance(scenario_ids, set)
+            assert isinstance(scenario_contexts, list)
+            phase_ids.add(phase_id)
+            scenario_id = str(scenario.get("id", ""))
+            scenario_ids.add(scenario_id)
+            scenario_contexts.append(
+                CampaignScenarioContext(
+                    scenario_id=scenario_id,
+                    blocking=bool(scenario.get("blocking", True)),
+                    live_e2e_profile=str(scenario.get("liveE2eProfile") or ""),
+                    live_e2e_suite=str(scenario.get("liveE2eSuite") or ""),
+                )
+            )
 
     if campaign_options.phase and not any(str(phase.get("id", "")) == campaign_options.phase for phase in campaign.get("phases", [])):
         raise ValueError(f"Unknown release campaign phase: {campaign_options.phase}")
@@ -161,8 +242,9 @@ def build_release_campaign_execution_plan(
     return tuple(
         CampaignCommandPlan(
             command=command,
-            phase_ids=tuple(sorted(command_rows[command]["phase_ids"])),
-            scenario_ids=tuple(sorted(command_rows[command]["scenario_ids"])),
+            phase_ids=tuple(sorted(command_rows[command]["phase_ids"])),  # type: ignore[arg-type]
+            scenario_ids=tuple(sorted(command_rows[command]["scenario_ids"])),  # type: ignore[arg-type]
+            scenario_contexts=tuple(command_rows[command]["scenario_contexts"]),  # type: ignore[arg-type]
         )
         for command in order
     )
@@ -184,6 +266,7 @@ def _run_campaign_command(
     status = "planned" if campaign_options.dry_run else "passed"
     error = ""
     try:
+        _validate_command_plan_context(layout, campaign_options, command_plan)
         if not campaign_options.dry_run:
             _dispatch_supported_command(layout, workspace_options, campaign_options, command_plan.command)
     except Exception as exc:
@@ -257,6 +340,13 @@ def _dispatch_workspace_command(
             layout,
             _workspace_options_from_tokens(workspace_options, tokens),
             _live_options_from_tokens(campaign_options, tokens),
+        )
+        return
+    if tokens[:2] == ["test", "windows-vm"]:
+        invoke_windows_vm_tests(
+            layout,
+            _workspace_options_from_tokens(workspace_options, tokens),
+            _windows_vm_options_from_tokens(tokens),
         )
         return
     if tokens[:2] == ["test", "amutorrent-clean-startup"]:
@@ -401,6 +491,19 @@ def _workspace_options_from_tokens(workspace_options: WorkspaceOptions, tokens: 
     )
 
 
+def _windows_vm_options_from_tokens(tokens: list[str]) -> WindowsVmTestOptions:
+    return WindowsVmTestOptions(
+        config_file=_option_value(tokens, "--config-file"),
+        matrix=parse_matrix(_option_value(tokens, "--matrix") or None),
+        profile=_option_value(tokens, "--profile") or "package-smoke",
+        release_version=_option_value(tokens, "--release-version") or "0.7.3-rc.1",
+        skip_build="--skip-build" in tokens,
+        keep_running="--keep-running" in tokens,
+        dry_run="--dry-run" in tokens,
+        fixture_size_bytes=_option_int(tokens, "--fixture-size-bytes") or 25 * 1024 * 1024,
+    )
+
+
 def _option_value(tokens: list[str], option: str) -> str | None:
     for index, token in enumerate(tokens[:-1]):
         if token == option:
@@ -419,13 +522,212 @@ def _option_float(tokens: list[str], option: str) -> float | None:
     return float(value)
 
 
+def _option_int(tokens: list[str], option: str) -> int | None:
+    value = _option_value(tokens, option)
+    if value is None:
+        return None
+    return int(value)
+
+
 def _assert_supported_command(command: str) -> None:
     _dispatch_shape = _parse_command(command)
     if _dispatch_shape[:3] == ["python", "-m", "emule_workspace"]:
+        _validate_workspace_command_tokens(_dispatch_shape[3:])
         return
     if len(_dispatch_shape) == 2 and _dispatch_shape[0] == "python" and _dispatch_shape[1].replace("/", "\\") == r"repos\emulebb-tooling\ci\check-clean-worktree.py":
         return
     raise ValueError(f"Unsupported release campaign command: {command}")
+
+
+def _validate_workspace_command_tokens(tokens: list[str]) -> None:
+    campaign_options = ReleaseCampaignOptions()
+    workspace_options = WorkspaceOptions(workspace_root=Path("."))
+    if tokens == ["validate"]:
+        return
+    if tokens[:2] == ["test", "certification"]:
+        _validate_options(tokens[2:], value_options=_CERTIFICATION_VALUE_OPTIONS, flag_options=_CERTIFICATION_FLAG_OPTIONS)
+        _certification_options(campaign_options, tokens)
+        return
+    if tokens[:2] == ["test", "python"]:
+        _validate_options(tokens[2:], value_options=set(), flag_options={"--quiet"})
+        return
+    if tokens[:2] == ["test", "protocol-parity"]:
+        _validate_options(tokens[2:], value_options=set(), flag_options=set())
+        return
+    if tokens[:2] == ["test", "community-core-coverage"]:
+        _validate_options(tokens[2:], value_options={"--rest-coverage-budget", "--rest-stress-budget"}, flag_options=set())
+        return
+    if tokens[:2] == ["test", "all"]:
+        _validate_options(tokens[2:], value_options=set(), flag_options=set())
+        return
+    if tokens[:2] == ["test", "live-e2e"]:
+        _validate_options(
+            tokens[2:],
+            value_options=_WORKSPACE_VALUE_OPTIONS | _LIVE_E2E_VALUE_OPTIONS,
+            flag_options=_LIVE_E2E_FLAG_OPTIONS,
+        )
+        _workspace_options_from_tokens(workspace_options, tokens)
+        _live_options_from_tokens(campaign_options, tokens)
+        return
+    if tokens[:2] == ["test", "windows-vm"]:
+        _validate_options(
+            tokens[2:],
+            value_options=_WORKSPACE_VALUE_OPTIONS | _WINDOWS_VM_VALUE_OPTIONS,
+            flag_options=_WINDOWS_VM_FLAG_OPTIONS,
+        )
+        _workspace_options_from_tokens(workspace_options, tokens)
+        _windows_vm_options_from_tokens(tokens)
+        return
+    if tokens[:2] == ["test", "amutorrent-clean-startup"]:
+        _validate_options(
+            tokens[2:],
+            value_options=_WORKSPACE_VALUE_OPTIONS | _AMUTORRENT_VALUE_OPTIONS,
+            flag_options=_AMUTORRENT_FLAG_OPTIONS,
+        )
+        _workspace_options_from_tokens(workspace_options, tokens)
+        _amutorrent_clean_options_from_tokens(campaign_options, tokens)
+        return
+    if tokens[:2] == ["test", "amutorrent-emulebb-ui"]:
+        _validate_options(
+            tokens[2:],
+            value_options=_WORKSPACE_VALUE_OPTIONS | _AMUTORRENT_VALUE_OPTIONS,
+            flag_options=_AMUTORRENT_FLAG_OPTIONS,
+        )
+        _workspace_options_from_tokens(workspace_options, tokens)
+        _amutorrent_ui_options_from_tokens(campaign_options, tokens)
+        return
+    if tokens[:2] == ["test", "amutorrent-resilience"]:
+        _validate_options(
+            tokens[2:],
+            value_options=_WORKSPACE_VALUE_OPTIONS | _AMUTORRENT_VALUE_OPTIONS | {"--reconnect-timeout-seconds"},
+            flag_options=_AMUTORRENT_FLAG_OPTIONS,
+        )
+        _workspace_options_from_tokens(workspace_options, tokens)
+        _amutorrent_resilience_options_from_tokens(campaign_options, tokens)
+        return
+    if tokens and tokens[0] == "package-release":
+        _validate_options(tokens[1:], value_options=_WORKSPACE_VALUE_OPTIONS, flag_options=set())
+        _workspace_options_from_tokens(workspace_options, tokens)
+        return
+    if tokens and tokens[0] == "package-amutorrent":
+        _validate_options(tokens[1:], value_options=_WORKSPACE_VALUE_OPTIONS, flag_options=set())
+        _workspace_options_from_tokens(workspace_options, tokens)
+        return
+    raise ValueError(f"Unsupported emule_workspace release campaign command: {' '.join(tokens)}")
+
+
+def _validate_options(tokens: list[str], *, value_options: set[str], flag_options: set[str]) -> None:
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if not token.startswith("--"):
+            index += 1
+            continue
+        if token in flag_options:
+            index += 1
+            continue
+        if token in value_options:
+            if index + 1 >= len(tokens) or tokens[index + 1].startswith("--"):
+                raise ValueError(f"Release campaign option requires a value: {token}")
+            index += 2
+            continue
+        raise ValueError(f"Unsupported release campaign option: {token}")
+
+
+def _validate_command_plan_context(
+    layout: WorkspaceLayout,
+    campaign_options: ReleaseCampaignOptions,
+    command_plan: CampaignCommandPlan,
+) -> None:
+    tokens = _parse_command(command_plan.command)
+    if tokens[:5] != ["python", "-m", "emule_workspace", "test", "live-e2e"]:
+        return
+    requirements = tuple(
+        context
+        for context in command_plan.scenario_contexts
+        if context.blocking and (context.live_e2e_profile or context.live_e2e_suite)
+    )
+    if not requirements:
+        return
+
+    live_e2e_suite = _load_live_e2e_suite_module(layout)
+    live_options = _live_options_from_tokens(campaign_options, tokens[3:])
+    requested_specs = _resolve_campaign_live_e2e_specs(live_e2e_suite, live_options)
+    selected_specs, skipped_suites = live_e2e_suite.filter_suite_specs_for_network(
+        requested_specs,
+        live_options.test_network,
+    )
+    requested_names = {spec.name for spec in requested_specs}
+    selected_names = {spec.name for spec in selected_specs}
+    skipped_by_name = {str(row["name"]): row for row in skipped_suites}
+    required_suite_names = sorted(
+        {context.live_e2e_suite for context in requirements if context.live_e2e_suite}
+    )
+    skipped_required = [name for name in required_suite_names if name in skipped_by_name]
+    if skipped_required:
+        raise ValueError(
+            "Release campaign required live E2E suite(s) skipped by "
+            f"test_network={live_options.test_network}: {', '.join(skipped_required)}."
+        )
+    not_requested = [name for name in required_suite_names if name not in requested_names]
+    if not_requested:
+        raise ValueError(
+            "Release campaign scenario declares live E2E suite(s) not selected by command: "
+            + ", ".join(not_requested)
+            + "."
+        )
+    if required_suite_names:
+        not_selected = [name for name in required_suite_names if name not in selected_names]
+        if not_selected:
+            raise ValueError(
+                "Release campaign required live E2E suite(s) were not selected: "
+                + ", ".join(not_selected)
+                + "."
+            )
+    if not selected_specs:
+        raise ValueError(
+            "Release campaign live E2E command selected no suites after "
+            f"test_network={live_options.test_network} filtering."
+        )
+
+
+def _resolve_campaign_live_e2e_specs(live_e2e_suite: ModuleType, live_options: LiveE2eOptions) -> tuple[Any, ...]:
+    if live_options.suites:
+        return tuple(live_e2e_suite.resolve_suite_specs(list(live_options.suites)))
+    if live_options.profile == "default":
+        return tuple(live_e2e_suite.resolve_suite_specs(None))
+    profile_suites = live_e2e_suite.PROFILE_SUITE_NAMES.get(live_options.profile)
+    if profile_suites is None:
+        raise ValueError(f"Release campaign references unknown live E2E profile: {live_options.profile}")
+    return tuple(live_e2e_suite.resolve_suite_specs(list(profile_suites)))
+
+
+def _load_live_e2e_suite_module(layout: WorkspaceLayout) -> ModuleType:
+    module_path = layout.tests_repo_root / "emule_test_harness" / "live_e2e_suite.py"
+    if not module_path.is_file():
+        raise ValueError(f"Live E2E suite module is missing: {module_path}")
+    spec = importlib.util.spec_from_file_location("emulebb_release_campaign_live_e2e_suite", module_path)
+    if spec is None or spec.loader is None:
+        raise ValueError(f"Unable to load live E2E suite module: {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    added_repo_root = False
+    repo_root = str(layout.tests_repo_root)
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+        added_repo_root = True
+    try:
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+    finally:
+        if added_repo_root:
+            try:
+                sys.path.remove(repo_root)
+            except ValueError:
+                pass
+    for name in ("PROFILE_SUITE_NAMES", "resolve_suite_specs", "filter_suite_specs_for_network"):
+        if not hasattr(module, name):
+            raise ValueError(f"Live E2E suite module is missing {name}.")
+    return module
 
 
 def _parse_command(command: str) -> list[str]:

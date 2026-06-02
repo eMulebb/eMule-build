@@ -105,6 +105,46 @@ WINDOWS_VM_PROFILE_SPECS = (
         required_targets=SUPPORTED_TARGETS,
         result_file_name="hideme-live-wire-result.json",
     ),
+    SimpleNamespace(
+        name="rest-smoke-stress",
+        title="Windows VM REST smoke/stress",
+        network_scope="offline",
+        release_phase="controller-surface",
+        required_targets=SUPPORTED_TARGETS,
+        result_file_name=WINDOWS_VM_RESULT_FILE_NAME,
+    ),
+    SimpleNamespace(
+        name="crash-dump-smoke",
+        title="Windows VM crash/dump smoke",
+        network_scope="offline",
+        release_phase="stabilization-stress",
+        required_targets=SUPPORTED_TARGETS,
+        result_file_name=WINDOWS_VM_RESULT_FILE_NAME,
+    ),
+    SimpleNamespace(
+        name="cpu-heavy-quick",
+        title="Windows VM CPU-heavy quick smoke",
+        network_scope="offline",
+        release_phase="stabilization-stress",
+        required_targets=SUPPORTED_TARGETS,
+        result_file_name=WINDOWS_VM_RESULT_FILE_NAME,
+    ),
+    SimpleNamespace(
+        name="resource-ui-smoke",
+        title="Windows VM resource UI smoke",
+        network_scope="offline",
+        release_phase="ui-resource-depth",
+        required_targets=SUPPORTED_TARGETS,
+        result_file_name=WINDOWS_VM_RESULT_FILE_NAME,
+    ),
+    SimpleNamespace(
+        name="release-expanded-ui",
+        title="Windows VM release-expanded UI smoke",
+        network_scope="offline",
+        release_phase="live-wire-release",
+        required_targets=SUPPORTED_TARGETS,
+        result_file_name=WINDOWS_VM_RESULT_FILE_NAME,
+    ),
 )
 WINDOWS_VM_PROFILE_BY_NAME = {spec.name: spec for spec in WINDOWS_VM_PROFILE_SPECS}
 SUPPORTED_TEST_PROFILES = tuple(spec.name for spec in WINDOWS_VM_PROFILE_SPECS)
@@ -194,7 +234,16 @@ def test_windows_vm_profile_matrix_loads_harness_authority(tmp_path: Path) -> No
     matrix = windows_vm_lab.build_windows_vm_profile_matrix(layout)
     profiles = {profile["name"]: profile for profile in matrix["profiles"]}
 
-    assert tuple(profiles) == ("package-smoke", "local-ed2k-transfer", "hideme-live-wire")
+    assert tuple(profiles) == (
+        "package-smoke",
+        "local-ed2k-transfer",
+        "hideme-live-wire",
+        "rest-smoke-stress",
+        "crash-dump-smoke",
+        "cpu-heavy-quick",
+        "resource-ui-smoke",
+        "release-expanded-ui",
+    )
     assert profiles["package-smoke"]["networkScope"] == "offline"
     assert profiles["package-smoke"]["releasePhase"] == "packaging-provenance"
     assert profiles["package-smoke"]["requiredTargets"] == ["win10", "win11"]
@@ -202,6 +251,11 @@ def test_windows_vm_profile_matrix_loads_harness_authority(tmp_path: Path) -> No
     assert profiles["local-ed2k-transfer"]["releasePhase"] == "protocol-parity"
     assert profiles["hideme-live-wire"]["networkScope"] == "vpn"
     assert profiles["hideme-live-wire"]["releasePhase"] == "live-wire-release"
+    assert profiles["rest-smoke-stress"]["releasePhase"] == "controller-surface"
+    assert profiles["crash-dump-smoke"]["releasePhase"] == "stabilization-stress"
+    assert profiles["cpu-heavy-quick"]["releasePhase"] == "stabilization-stress"
+    assert profiles["resource-ui-smoke"]["releasePhase"] == "ui-resource-depth"
+    assert profiles["release-expanded-ui"]["releasePhase"] == "live-wire-release"
     json.dumps(matrix)
 
 
@@ -326,6 +380,14 @@ def test_prepare_vm_target_script_installs_hide_me_and_lean_baseline() -> None:
     assert "DisableRealtimeMonitoring" in script
     assert "SysMain" in script
     assert "DoSvc" in script
+    assert "Set-LabWindowsUpdateContainment" in script
+    assert "NoAutoUpdate" in script
+    assert "DoNotConnectToWindowsUpdateInternetLocations" in script
+    assert "wuauserv" in script
+    assert "UsoSvc" in script
+    assert "BITS" in script
+    assert "UpdateOrchestrator" in script
+    assert "Schedule Scan" in script
 
 
 def test_prepare_vm_target_script_enables_autologin_no_lock_and_debloat() -> None:
@@ -387,6 +449,29 @@ def test_windows_vm_test_dry_run_writes_report(tmp_path: Path) -> None:
     assert (report_root / "latest" / windows_vm_lab.WINDOWS_VM_RESULT_FILE_NAME).is_file()
     summary = json.loads((report_root / "latest" / windows_vm_lab.WINDOWS_VM_SUMMARY_FILE_NAME).read_text(encoding="utf-8"))
     assert summary["planned"] == ["win10", "win11"]
+
+
+def test_windows_vm_generic_profile_dry_run_plans_both_targets(tmp_path: Path) -> None:
+    layout = _layout(tmp_path)
+    _write_harness_vm_profiles(layout)
+    config_path = layout.build_repo_root / "vm-lab.local.json"
+    _write_config(config_path)
+
+    result = windows_vm_lab.invoke_windows_vm_tests(
+        layout,
+        _workspace_options(tmp_path),
+        windows_vm_lab.WindowsVmTestOptions(
+            config_file=str(config_path),
+            profile="rest-smoke-stress",
+            matrix=("win10", "win11"),
+            skip_build=True,
+            dry_run=True,
+        ),
+    )
+
+    assert result["status"] == "planned"
+    assert result["profile"] == "rest-smoke-stress"
+    assert [target["target"] for target in result["targets"]] == ["win10", "win11"]
 
 
 def test_windows_vm_local_ed2k_transfer_dry_run_plans_both_targets(tmp_path: Path) -> None:

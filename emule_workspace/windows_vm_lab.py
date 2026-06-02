@@ -391,7 +391,7 @@ def invoke_windows_vm_tests(
             keep_running=options.keep_running,
             runner=runner,
         )
-    else:
+    elif options.profile == "package-smoke":
         rows = []
         for key in matrix:
             rows.append(
@@ -403,6 +403,23 @@ def invoke_windows_vm_tests(
                     run_id=run_id,
                     run_report_dir=run_report_dir,
                     keep_running=options.keep_running,
+                    runner=runner,
+                )
+            )
+    else:
+        rows = []
+        for key in matrix:
+            rows.append(
+                run_windows_vm_profile_smoke(
+                    layout,
+                    config,
+                    config.targets[key],
+                    profile=options.profile,
+                    package_zip=package_zip,
+                    run_id=run_id,
+                    run_report_dir=run_report_dir,
+                    keep_running=options.keep_running,
+                    fixture_size_bytes=options.fixture_size_bytes,
                     runner=runner,
                 )
             )
@@ -439,7 +456,7 @@ def invoke_windows_vm_tests(
     _refresh_latest(run_report_dir, report_root / "latest")
     print(json.dumps(summary, indent=2))
     if status == "failed":
-        raise RuntimeError(f"Windows VM package-smoke failed. See {run_report_dir}.")
+        raise RuntimeError(f"Windows VM profile {options.profile} failed. See {run_report_dir}.")
     return result
 
 
@@ -460,6 +477,7 @@ def preflight_hyperv(config: VmLabConfig, *, runner: PowerShellRunner, require_p
                 "Restore-VMSnapshot",
                 "New-VMSwitch",
                 "Get-VMSwitch",
+                "Connect-VMNetworkAdapter",
                 "New-VHD",
                 "Mount-VHD",
                 "Dismount-VHD",
@@ -590,6 +608,7 @@ def run_windows_vm_package_smoke(
         {
             "target": target.key,
             "vmName": target.vm_name,
+            "switchName": config.hyperv.switch_name,
             "checkpointName": config.hyperv.checkpoint_name,
             "username": config.guest.username,
             "password": resolve_guest_password(config),
@@ -607,6 +626,68 @@ def run_windows_vm_package_smoke(
         "target": target.key,
         "vmName": target.vm_name,
         "status": payload.get("status", "failed"),
+        "checkpointName": config.hyperv.checkpoint_name,
+        "reportDir": str(target_report_dir),
+        "guest": payload.get("guest", {}),
+        "checks": payload.get("checks", []),
+        "errors": payload.get("errors", []),
+    }
+
+
+def run_windows_vm_profile_smoke(
+    layout: WorkspaceLayout,
+    config: VmLabConfig,
+    target: VmTargetSettings,
+    *,
+    profile: str,
+    package_zip: Path,
+    run_id: str,
+    run_report_dir: Path,
+    keep_running: bool,
+    fixture_size_bytes: int,
+    runner: PowerShellRunner,
+) -> dict[str, object]:
+    """Runs one generic Python-backed profile smoke inside a restored Windows guest."""
+
+    target_report_dir = run_report_dir / target.key
+    target_report_dir.mkdir(parents=True, exist_ok=True)
+    if runner.dry_run:
+        return {
+            "target": target.key,
+            "vmName": target.vm_name,
+            "status": "planned",
+            "profile": profile,
+            "checkpointName": config.hyperv.checkpoint_name,
+            "reportDir": str(target_report_dir),
+        }
+    host_contracts = load_windows_vm_host_contracts(layout)
+    script = _ps_with_payload(
+        {
+            "target": target.key,
+            "vmName": target.vm_name,
+            "profileName": profile,
+            "switchName": config.hyperv.switch_name,
+            "checkpointName": config.hyperv.checkpoint_name,
+            "username": config.guest.username,
+            "password": resolve_guest_password(config),
+            "packageZip": str(package_zip),
+            "runnerPath": str(host_contracts.guest_runner_path(layout.tests_repo_root, profile)),
+            "profileHelperPath": str(host_contracts.profile_helper_path(layout.tests_repo_root)),
+            "runId": run_id,
+            "hostReportDir": str(target_report_dir),
+            "keepRunning": keep_running,
+            "fixtureSizeBytes": fixture_size_bytes,
+        },
+        host_contracts.load_guest_script(layout.tests_repo_root, profile),
+    )
+    stdout = runner.run(script, label=f"Windows VM {profile} {target.key}", capture_json=True)
+    payload = _parse_json_output(stdout, f"Windows VM {profile} {target.key}")
+    _write_json(target_report_dir / f"{target.key}-result.json", payload)
+    return {
+        "target": target.key,
+        "vmName": target.vm_name,
+        "status": payload.get("status", "failed"),
+        "profile": profile,
         "checkpointName": config.hyperv.checkpoint_name,
         "reportDir": str(target_report_dir),
         "guest": payload.get("guest", {}),
@@ -1231,11 +1312,47 @@ try {
     try { Disable-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -ErrorAction Stop | Out-Null } catch {}
   }
 
+  function Set-LabWindowsUpdateContainment {
+    foreach ($serviceName in @(
+      'wuauserv', 'UsoSvc', 'BITS', 'InstallService', 'WaaSMedicSvc',
+      'uhssvc', 'wisvc', 'edgeupdate', 'edgeupdatem'
+    )) {
+      foreach ($service in Get-Service -Name $serviceName -ErrorAction SilentlyContinue) {
+        try { Stop-Service -Name $service.Name -Force -ErrorAction SilentlyContinue } catch {}
+        try { Set-Service -Name $service.Name -StartupType Disabled -ErrorAction Stop } catch {}
+        try { sc.exe config $service.Name start= disabled | Out-Null } catch {}
+      }
+    }
+    try {
+      New-Item -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate' -Force | Out-Null
+      New-Item -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU' -Force | Out-Null
+      New-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU' -Name NoAutoUpdate -PropertyType DWord -Value 1 -Force | Out-Null
+      New-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU' -Name AUOptions -PropertyType DWord -Value 1 -Force | Out-Null
+      New-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate' -Name DoNotConnectToWindowsUpdateInternetLocations -PropertyType DWord -Value 1 -Force | Out-Null
+    } catch {}
+    foreach ($task in @(
+      @{ Path = '\Microsoft\Windows\WindowsUpdate\'; Name = 'Scheduled Start' },
+      @{ Path = '\Microsoft\Windows\WindowsUpdate\'; Name = 'sih' },
+      @{ Path = '\Microsoft\Windows\WindowsUpdate\'; Name = 'sihboot' },
+      @{ Path = '\Microsoft\Windows\UpdateOrchestrator\'; Name = 'Schedule Scan' },
+      @{ Path = '\Microsoft\Windows\UpdateOrchestrator\'; Name = 'Schedule Scan Static Task' },
+      @{ Path = '\Microsoft\Windows\UpdateOrchestrator\'; Name = 'USO_UxBroker' },
+      @{ Path = '\Microsoft\Windows\UpdateOrchestrator\'; Name = 'UpdateModelTask' },
+      @{ Path = '\Microsoft\Windows\UpdateOrchestrator\'; Name = 'Maintenance Install' },
+      @{ Path = '\Microsoft\Windows\UpdateOrchestrator\'; Name = 'Reboot' },
+      @{ Path = '\Microsoft\Windows\UpdateOrchestrator\'; Name = 'Reboot_AC' },
+      @{ Path = '\Microsoft\Windows\UpdateOrchestrator\'; Name = 'Reboot_Battery' }
+    )) {
+      Disable-LabScheduledTask -TaskPath $task.Path -TaskName $task.Name
+    }
+  }
+
   function Set-LabLeanBaseline {
     param([string] $PythonPath, [string] $HideMePath, [string] $Username, [string] $Password)
     Set-LabAutoLogin -Username $Username -Password $Password
     Set-LabNoLock
     Remove-LabAppxBloat
+    Set-LabWindowsUpdateContainment
     Add-LabDefenderExclusion -Path 'C:\eMuleBBVmTest'
     Add-LabDefenderExclusion -Path $PythonPath
     Add-LabDefenderExclusion -Path $HideMePath

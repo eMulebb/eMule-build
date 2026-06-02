@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -369,6 +370,52 @@ def test_campaign_execute_dispatches_amutorrent_live_commands(tmp_path: Path, mo
     ]
 
 
+def test_campaign_execute_dispatches_windows_vm_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    layout = make_layout(tmp_path)
+    campaign = campaign_payload()
+    campaign["phases"][1]["scenarios"] = [
+        {
+            "id": "windows-vm",
+            "command": (
+                "python -m emule_workspace test windows-vm --matrix win10,win11 "
+                "--profile hideme-live-wire --release-version 0.7.3-rc.1 --skip-build --keep-running "
+                "--fixture-size-bytes 4096"
+            ),
+            "blocking": True,
+        }
+    ]
+    write_campaign(layout, campaign)
+    calls: list[tuple[tuple[str, ...], str, str, bool, bool, int]] = []
+
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "run_pre_test_cleanup",
+        lambda _layout: release_campaign_runner.CleanupRunSummary("routine", True, "passed", 0, 0, 0, {}),
+    )
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "invoke_windows_vm_tests",
+        lambda _layout, _workspace_options, options: calls.append(
+            (
+                options.matrix,
+                options.profile,
+                options.release_version,
+                options.skip_build,
+                options.keep_running,
+                options.fixture_size_bytes,
+            )
+        ),
+    )
+
+    release_campaign_runner.invoke_release_campaign(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path),
+        ReleaseCampaignOptions(campaign="test-campaign", phase="controller-surface", execute=True),
+    )
+
+    assert calls == [(("win10", "win11"), "hideme-live-wire", "0.7.3-rc.1", True, True, 4096)]
+
+
 def test_campaign_execute_records_pre_run_cleanup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     layout = make_layout(tmp_path)
     write_campaign(layout, campaign_payload())
@@ -410,3 +457,124 @@ def test_campaign_execution_rejects_shell_commands() -> None:
             campaign,
             ReleaseCampaignOptions(campaign="test-campaign", execute=True),
         )
+
+
+def test_campaign_execution_rejects_unsupported_emule_workspace_command() -> None:
+    campaign = campaign_payload()
+    campaign["phases"][0]["scenarios"][0]["command"] = "python -m emule_workspace test nope"  # type: ignore[index]
+
+    with pytest.raises(ValueError, match="Unsupported emule_workspace release campaign command"):
+        release_campaign_runner.build_release_campaign_execution_plan(
+            campaign,
+            ReleaseCampaignOptions(campaign="test-campaign", execute=True),
+        )
+
+
+def test_campaign_execution_rejects_unsupported_emule_workspace_option() -> None:
+    campaign = campaign_payload()
+    campaign["phases"][1]["scenarios"][0]["command"] = (
+        "python -m emule_workspace test live-e2e --profile controller-surface --unknown"
+    )
+
+    with pytest.raises(ValueError, match="Unsupported release campaign option"):
+        release_campaign_runner.build_release_campaign_execution_plan(
+            campaign,
+            ReleaseCampaignOptions(campaign="test-campaign", execute=True),
+        )
+
+
+def fake_live_e2e_suite_module():
+    specs = {
+        "rest-api": SimpleNamespace(name="rest-api", category="rest", network_scope="vpn"),
+    }
+
+    def resolve_suite_specs(names):
+        return tuple(specs[name] for name in names)
+
+    def filter_suite_specs_for_network(resolved_specs, test_network):
+        if test_network in {"vpn", "all"}:
+            return tuple(resolved_specs), []
+        return (), [
+            {
+                "name": spec.name,
+                "category": spec.category,
+                "network_scope": spec.network_scope,
+                "reason": f"excluded by test_network={test_network}",
+            }
+            for spec in resolved_specs
+        ]
+
+    return SimpleNamespace(
+        PROFILE_SUITE_NAMES={"controller-surface": ("rest-api",)},
+        resolve_suite_specs=resolve_suite_specs,
+        filter_suite_specs_for_network=filter_suite_specs_for_network,
+    )
+
+
+def live_e2e_requirement_campaign() -> dict[str, object]:
+    campaign = campaign_payload()
+    campaign["phases"][1]["scenarios"] = [
+        {
+            "id": "rest",
+            "command": "python -m emule_workspace test live-e2e --profile controller-surface",
+            "blocking": True,
+            "liveE2eProfile": "controller-surface",
+            "liveE2eSuite": "rest-api",
+        }
+    ]
+    return campaign
+
+
+def test_campaign_dry_run_fails_required_live_suite_skipped_by_network(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    layout = make_layout(tmp_path)
+    write_campaign(layout, live_e2e_requirement_campaign())
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "_load_live_e2e_suite_module",
+        lambda _layout: fake_live_e2e_suite_module(),
+    )
+
+    with pytest.raises(release_campaign_runner.ReleaseCampaignExecutionError, match="required live E2E suite"):
+        release_campaign_runner.invoke_release_campaign(
+            layout,
+            WorkspaceOptions(workspace_root=tmp_path),
+            ReleaseCampaignOptions(campaign="test-campaign", phase="controller-surface", execute=True, dry_run=True),
+        )
+
+    reports = sorted((layout.workspace_root / "state" / "release-campaign-runs").glob(f"*/{release_campaign_result_file_name()}"))
+    payload = json.loads(reports[-1].read_text(encoding="utf-8"))
+    assert payload["status"] == "failed"
+    assert "required live E2E suite(s) skipped" in payload["commands"][0]["error"]
+
+
+def test_campaign_dry_run_accepts_required_live_suite_with_vpn_network(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    layout = make_layout(tmp_path)
+    write_campaign(layout, live_e2e_requirement_campaign())
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "_load_live_e2e_suite_module",
+        lambda _layout: fake_live_e2e_suite_module(),
+    )
+
+    release_campaign_runner.invoke_release_campaign(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path),
+        ReleaseCampaignOptions(
+            campaign="test-campaign",
+            phase="controller-surface",
+            execute=True,
+            dry_run=True,
+            test_network="vpn",
+        ),
+    )
+
+    reports = sorted((layout.workspace_root / "state" / "release-campaign-runs").glob(f"*/{release_campaign_result_file_name()}"))
+    payload = json.loads(reports[-1].read_text(encoding="utf-8"))
+    assert payload["status"] == "planned"
+    assert payload["commands"][0]["status"] == "planned"
