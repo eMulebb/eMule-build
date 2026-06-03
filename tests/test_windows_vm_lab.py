@@ -748,8 +748,12 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
     assert "localSwarmAmuleControlExe" in captured[0]
     assert "localSwarmMode" in captured[0]
     assert "lanBindAddr" in captured[0]
+    assert "emulebb-test-nat" in captured[0]
+    assert '"provisioning"' in captured[0]
     assert "localSwarmLanBindAddr" in captured[0]
     assert "192.168.251.10" in captured[0]
+    assert "192.168.251.1" in captured[0]
+    assert "1.1.1.1" in captured[0]
     assert "goed2k-server.exe" in captured[0]
     assert "emule.exe" in captured[0]
     assert "amuled.exe" in captured[0]
@@ -804,7 +808,8 @@ def test_windows_vm_profile_smoke_payload_stages_harness_for_plain_profiles(tmp_
     assert result["status"] == "passed"
     assert "localSwarmHarnessArchivePath" in captured[0]
     assert "local-swarm-harness-payload.zip" in captured[0]
-    assert "@($guestHarnessRoot, $guestRoot)" in captured[0]
+    assert "emulebb-test-nat" in captured[0]
+    assert '"provisioning"' in captured[0]
 
 
 def test_windows_vm_package_smoke_payload_uses_lan_bind_addr(tmp_path: Path) -> None:
@@ -835,6 +840,8 @@ def test_windows_vm_package_smoke_payload_uses_lan_bind_addr(tmp_path: Path) -> 
 
     assert result["status"] == "passed"
     assert "lanBindAddr" in captured[0]
+    assert "emulebb-test-nat" in captured[0]
+    assert '"provisioning"' in captured[0]
     assert "192.168.251.10" in captured[0]
 
 

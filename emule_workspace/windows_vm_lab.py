@@ -764,7 +764,8 @@ def run_windows_vm_package_smoke(
         {
             "target": target.key,
             "vmName": target.vm_name,
-            "switchName": config.hyperv.switch_name,
+            "switchName": config.hyperv.provisioning_switch_name,
+            "provisioning": _target_provisioning_payload(config, target.key),
             "checkpointName": config.hyperv.checkpoint_name,
             "username": config.guest.username,
             "password": resolve_guest_password(config),
@@ -860,7 +861,8 @@ def run_windows_vm_profile_smoke(
             "target": target.key,
             "vmName": target.vm_name,
             "profileName": profile,
-            "switchName": config.hyperv.switch_name,
+            "switchName": config.hyperv.provisioning_switch_name,
+            "provisioning": _target_provisioning_payload(config, target.key),
             "checkpointName": config.hyperv.checkpoint_name,
             "username": config.guest.username,
             "password": resolve_guest_password(config),
@@ -971,10 +973,12 @@ def run_windows_vm_local_ed2k_transfer(
     target_payloads = host_contracts.build_local_ed2k_target_payloads(
         {key: config.targets[key].vm_name for key in required_targets}
     )
+    target_payloads = _with_target_provisioning_payloads(config, target_payloads)
     server_exe = build_goed2k_server_exe(layout)
     script = _ps_with_payload(
         {
             **target_payloads,
+            "switchName": config.hyperv.provisioning_switch_name,
             "checkpointName": config.hyperv.checkpoint_name,
             "username": config.guest.username,
             "password": resolve_guest_password(config),
@@ -1044,6 +1048,34 @@ def local_swarm_amule_exes(layout: WorkspaceLayout) -> tuple[Path | None, Path |
         daemon if daemon.is_file() else None,
         control if control.is_file() else None,
     )
+
+
+def _target_provisioning_payload(config: VmLabConfig, target_key: str) -> dict[str, object]:
+    provisioning_guest_ips = config.hyperv.provisioning_guest_ips or DEFAULT_PROVISIONING_GUEST_IPS
+    guest_ip = provisioning_guest_ips.get(target_key, "")
+    if not guest_ip:
+        raise RuntimeError(f"Windows VM lab config is missing provisioning guest IP for target: {target_key}")
+    return {
+        "guestIp": guest_ip,
+        "prefixLength": config.hyperv.provisioning_prefix_length,
+        "gateway": config.hyperv.provisioning_gateway,
+        "dns": list(config.hyperv.provisioning_dns),
+    }
+
+
+def _with_target_provisioning_payloads(
+    config: VmLabConfig,
+    payloads: dict[str, object],
+) -> dict[str, object]:
+    updated = dict(payloads)
+    for target_key in ("win10", "win11"):
+        payload = updated.get(target_key)
+        if isinstance(payload, dict):
+            updated[target_key] = {
+                **payload,
+                "provisioning": _target_provisioning_payload(config, target_key),
+            }
+    return updated
 
 
 def _stage_local_swarm_harness_payload_archive(
