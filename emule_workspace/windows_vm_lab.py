@@ -748,6 +748,8 @@ def run_windows_vm_package_smoke(
             "reportDir": str(target_report_dir),
         }
     host_contracts = load_windows_vm_host_contracts(layout)
+    provisioning_guest_ips = config.hyperv.provisioning_guest_ips or DEFAULT_PROVISIONING_GUEST_IPS
+    lan_bind_addr = provisioning_guest_ips.get(target.key, "")
     script = _ps_with_payload(
         {
             "target": target.key,
@@ -760,6 +762,7 @@ def run_windows_vm_package_smoke(
             "runId": run_id,
             "hostReportDir": str(target_report_dir),
             "keepRunning": keep_running,
+            "lanBindAddr": lan_bind_addr,
         },
         host_contracts.load_guest_script(layout.tests_repo_root, "package-smoke"),
     )
@@ -900,6 +903,7 @@ def run_windows_vm_profile_smoke(
             "fixtureSizeBytes": fixture_size_bytes,
             "swarmTier": swarm_tier,
             "localSwarmMode": local_swarm_mode,
+            "lanBindAddr": local_swarm_lan_bind_addr,
             "localSwarmLanBindAddr": local_swarm_lan_bind_addr,
         },
         host_contracts.load_guest_script(layout.tests_repo_root, profile),

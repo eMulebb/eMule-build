@@ -731,6 +731,7 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
     assert "localSwarmAmuleDaemonExe" in captured[0]
     assert "localSwarmAmuleControlExe" in captured[0]
     assert "localSwarmMode" in captured[0]
+    assert "lanBindAddr" in captured[0]
     assert "localSwarmLanBindAddr" in captured[0]
     assert "192.168.251.10" in captured[0]
     assert "goed2k-server.exe" in captured[0]
@@ -744,6 +745,37 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
     assert "WebServerQBitCompatSeams.h" in captured[0]
     assert "WebServerArrCompatSeams.h" in captured[0]
     assert "WebServerArrCompat.cpp" in captured[0]
+
+
+def test_windows_vm_package_smoke_payload_uses_lan_bind_addr(tmp_path: Path) -> None:
+    layout = _layout(tmp_path)
+    _write_harness_vm_host(layout)
+    config_path = layout.build_repo_root / "vm-lab.local.json"
+    _write_config(config_path)
+    config = windows_vm_lab.load_vm_lab_config(layout, config_file=str(config_path))
+    captured: list[str] = []
+
+    class CaptureRunner:
+        dry_run = False
+
+        def run(self, script: str, *, label: str, capture_json: bool = False) -> str:
+            captured.append(script)
+            return json.dumps({"status": "passed", "guest": {}, "checks": [], "errors": []})
+
+    result = windows_vm_lab.run_windows_vm_package_smoke(
+        layout,
+        config,
+        config.targets["win10"],
+        package_zip=tmp_path / "package.zip",
+        run_id="run",
+        run_report_dir=tmp_path / "report",
+        keep_running=False,
+        runner=CaptureRunner(),
+    )
+
+    assert result["status"] == "passed"
+    assert "lanBindAddr" in captured[0]
+    assert "192.168.251.10" in captured[0]
 
 
 def test_local_swarm_harness_payload_archive_is_curated(tmp_path: Path) -> None:
