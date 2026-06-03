@@ -183,7 +183,7 @@ function Get-ClientArray {
     if ($null -eq $Config.PSObject.Properties['clients'] -or $null -eq $Config.clients) {
         Set-ObjectProperty -Target $Config -Name 'clients' -Value @()
     }
-    return @($Config.clients)
+    return ,@($Config.clients)
 }
 
 function Find-EmulebbClientIndex {

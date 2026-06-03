@@ -967,6 +967,91 @@ try {
     assert completed.returncode == 0, completed.stderr + completed.stdout
 
 
+def test_register_amutorrent_unregister_refuses_single_enabled_client(
+    workspace_root: Path,
+    tmp_path: Path,
+) -> None:
+    script_path = (
+        workspace_root
+        / "repos"
+        / "emulebb-build"
+        / "emule_workspace"
+        / "release_assets"
+        / "emulebb"
+        / "scripts"
+        / "Register-aMuTorrent.ps1"
+    )
+    script_text = script_path.read_text(encoding="utf-8")
+    test_script = tmp_path / "amutorrent-single-client-unregister-test.ps1"
+    test_script.write_text(
+        """
+function Invoke-AmutorrentApi {
+    param([string]$BaseUrl, [string]$ApiKey, [string]$Path, [string]$Method = 'GET', $Body = $null)
+    if ($Path -eq '/api/config/current') {
+        return [pscustomobject]@{
+            clients = @(
+                [pscustomobject]@{
+                    id = 'emulebb-helper-1'
+                    type = 'emulebb'
+                    name = 'eMuleBB Helper Test'
+                    enabled = $true
+                    host = '127.0.0.1'
+                    port = 4711
+                    useSsl = $false
+                    path = ''
+                }
+            )
+        }
+    }
+    if ($Path -eq '/api/config/save') {
+        throw 'single-client unregister must not save a no-client configuration'
+    }
+    throw ('unexpected call: {0} {1}' -f $Method, $Path)
+}
+"""
+        + _extract_powershell_function(script_text, "Remove-PropertyIfPresent")
+        + "\n"
+        + _extract_powershell_function(script_text, "Set-ObjectProperty")
+        + "\n"
+        + _extract_powershell_function(script_text, "Copy-JsonObject")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-ClientArray")
+        + "\n"
+        + _extract_powershell_function(script_text, "Find-EmulebbClientIndex")
+        + "\n"
+        + _extract_powershell_function(script_text, "Assert-CanRepairClient")
+        + "\n"
+        + _extract_powershell_function(script_text, "Save-AmutorrentConfig")
+        + "\n"
+        + _extract_powershell_function(script_text, "Unregister-EmulebbClient")
+        + """
+try {
+    Unregister-EmulebbClient -BaseUrl 'http://amutorrent' -ApiKey '' -Name 'eMuleBB Helper Test' -Id 'emulebb-helper-1'
+    throw 'expected last-client refusal'
+} catch {
+    if ($_.Exception.Message -notlike '*Refusing to unregister the last enabled aMuTorrent download client*') { throw }
+}
+""",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(test_script),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+
+
 def _extract_powershell_function(script_text: str, function_name: str) -> str:
     start_token = f"function {function_name} "
     start = script_text.index(start_token)
