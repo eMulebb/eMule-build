@@ -917,7 +917,7 @@ def test_windows_vm(
 @click.option("--fixture-size-bytes", default=25 * 1024 * 1024, show_default=True, type=int)
 @click.option("--matrix", default="win10,win11", show_default=True, help="Comma-separated VM targets for VM mode.")
 @click.option("--swarm-tier", type=click.Choice(["1", "2", "3"]), default="1", show_default=True)
-@click.option("--local-swarm-mode", type=click.Choice(["plan", "execute"]), default="plan", show_default=True)
+@click.option("--local-swarm-mode", type=click.Choice(["plan", "execute"]), default="execute", show_default=True)
 def test_campaign_scenario(
     *,
     scenario: str,

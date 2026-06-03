@@ -323,13 +323,15 @@ def _apply_local_vm_swarm_execution_mode(command: str, campaign_options: Release
     if campaign_options.local_vm_swarm_execution_mode == "plan":
         return " ".join(
             _ensure_flag(
-                _remove_value_option(tokens, "--local-swarm-mode"),
+                _replace_or_append_option(
+                    tokens,
+                    "--local-swarm-mode",
+                    "plan",
+                ),
                 "--dry-run",
             )
         )
     tokens = _remove_flag(tokens, "--dry-run")
-    if mode == "local":
-        return " ".join(_remove_value_option(tokens, "--local-swarm-mode"))
     return " ".join(
         _replace_or_append_option(
             tokens,
@@ -650,7 +652,7 @@ def _campaign_scenario_options_from_tokens(tokens: list[str]) -> CampaignScenari
         fixture_size_bytes=_option_int(tokens, "--fixture-size-bytes") or 25 * 1024 * 1024,
         vm_matrix=parse_matrix(_option_value(tokens, "--matrix") or None),
         swarm_tier=_option_int(tokens, "--swarm-tier") or 1,  # type: ignore[arg-type]
-        local_swarm_mode=_option_value(tokens, "--local-swarm-mode") or "plan",  # type: ignore[arg-type]
+        local_swarm_mode=_option_value(tokens, "--local-swarm-mode") or "execute",  # type: ignore[arg-type]
     )
 
 

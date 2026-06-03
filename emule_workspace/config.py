@@ -239,7 +239,7 @@ class CampaignScenarioOptions(BaseModel):
     fixture_size_bytes: int = 25 * 1024 * 1024
     vm_matrix: tuple[str, ...] = ("win10", "win11")
     swarm_tier: Literal[1, 2, 3] = 1
-    local_swarm_mode: Literal["plan", "execute"] = "plan"
+    local_swarm_mode: Literal["plan", "execute"] = "execute"
 
 
 class AmutorrentSessionOptions(BaseModel):

@@ -62,7 +62,7 @@ def local_live_e2e_options(
         suites=suites,
         test_network=str(getattr(spec, "local_test_network", "default")),
         pre_run_cleanup=False,
-        plan_only=scenario_options.dry_run,
+        plan_only=scenario_options.dry_run or scenario_options.local_swarm_mode == "plan",
         campaign_scenario_key=str(spec.key),
         campaign_scenario_id=str(spec.scenario_id),
         campaign_scenario_vm_profile=str(spec.vm_profile),
