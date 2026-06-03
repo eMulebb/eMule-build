@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -673,6 +674,10 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
     for path in (tracing_harness_exe, amule_daemon_exe, amule_control_exe):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("", encoding="utf-8")
+    (layout.tests_repo_root / "scripts").mkdir(parents=True, exist_ok=True)
+    (layout.tests_repo_root / "scripts" / "godzilla-local-swarm.py").write_text("# local swarm\n", encoding="utf-8")
+    (layout.tests_repo_root / "manifests").mkdir(parents=True, exist_ok=True)
+    (layout.tests_repo_root / "manifests" / "release-campaigns.v1.json").write_text("{}\n", encoding="utf-8")
 
     class CaptureRunner:
         dry_run = False
@@ -711,9 +716,10 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
     assert result["status"] == "passed"
     assert result["swarmTier"] == 3
     assert result["localSwarmMode"] == "execute"
-    assert "localSwarmHarnessPackagePath" in captured[0]
-    assert "localSwarmManifestsPath" in captured[0]
-    assert "localSwarmScriptPaths" in captured[0]
+    assert "localSwarmHarnessArchivePath" in captured[0]
+    assert "localSwarmHarnessPackagePath" not in captured[0]
+    assert "localSwarmManifestsPath" not in captured[0]
+    assert "localSwarmScriptPaths" not in captured[0]
     assert "localSwarmReleaseAssetPaths" in captured[0]
     assert "localSwarmNodeArchivePath" in captured[0]
     assert "localSwarmNodeSha256" in captured[0]
@@ -733,13 +739,39 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
     assert "amulecmd.exe" in captured[0]
     assert "emulebb-0.7.3-rc.1-amutorrent-x64.zip" in captured[0]
     assert "repos\\\\amutorrent" not in captured[0]
-    assert "godzilla-local-swarm.py" in captured[0]
-    assert "manifests" in captured[0]
     assert "REST-API-OPENAPI.yaml" in captured[0]
     assert "WebServerJsonSeams.h" in captured[0]
     assert "WebServerQBitCompatSeams.h" in captured[0]
     assert "WebServerArrCompatSeams.h" in captured[0]
     assert "WebServerArrCompat.cpp" in captured[0]
+
+
+def test_local_swarm_harness_payload_archive_is_curated(tmp_path: Path) -> None:
+    layout = _layout(tmp_path)
+    _write_harness_vm_host(layout)
+    harness_package = layout.tests_repo_root / "emule_test_harness"
+    (harness_package / "__pycache__").mkdir()
+    (harness_package / "__pycache__" / "ignored.pyc").write_bytes(b"pyc")
+    (harness_package / "live_e2e_suite.py").write_text("# suite\n", encoding="utf-8")
+    (layout.tests_repo_root / "scripts").mkdir(parents=True, exist_ok=True)
+    (layout.tests_repo_root / "scripts" / "godzilla-local-swarm.py").write_text("# script\n", encoding="utf-8")
+    (layout.tests_repo_root / "manifests").mkdir(parents=True, exist_ok=True)
+    (layout.tests_repo_root / "manifests" / "release-campaigns.v1.json").write_text("{}\n", encoding="utf-8")
+    host_contracts = windows_vm_lab.load_windows_vm_host_contracts(layout)
+
+    archive_path = windows_vm_lab._stage_local_swarm_harness_payload_archive(
+        layout,
+        tmp_path / "report",
+        host_contracts,
+    )
+
+    with zipfile.ZipFile(archive_path) as archive:
+        names = set(archive.namelist())
+    assert "emule_test_harness/live_e2e_suite.py" in names
+    assert "scripts/godzilla-local-swarm.py" in names
+    assert "manifests/release-campaigns.v1.json" in names
+    assert not any("node_modules" in name or "/.git/" in name or "workspaces/" in name for name in names)
+    assert not any(name.endswith(".pyc") or "__pycache__" in name for name in names)
 
 
 def test_local_swarm_companion_exes_are_optional(tmp_path: Path) -> None:

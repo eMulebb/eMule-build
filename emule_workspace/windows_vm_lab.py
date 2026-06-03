@@ -11,6 +11,7 @@ import subprocess
 import sys
 import urllib.parse
 import urllib.request
+import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -812,8 +813,12 @@ def run_windows_vm_profile_smoke(
             "reportDir": str(target_report_dir),
         }
     host_contracts = load_windows_vm_host_contracts(layout)
-    local_swarm_payload = host_contracts.local_swarm_payload_paths(layout.tests_repo_root)
     is_local_swarm_profile = profile in set(host_contracts.LOCAL_SWARM_VM_PROFILES)
+    local_swarm_harness_archive_path = (
+        _stage_local_swarm_harness_payload_archive(layout, run_report_dir, host_contracts)
+        if is_local_swarm_profile
+        else None
+    )
     local_swarm_goed2k_server_exe = (
         build_goed2k_server_exe(layout)
         if is_local_swarm_profile
@@ -849,9 +854,11 @@ def run_windows_vm_profile_smoke(
             "packageZip": str(package_zip),
             "runnerPath": str(host_contracts.guest_runner_path(layout.tests_repo_root, profile)),
             "profileHelperPath": str(host_contracts.profile_helper_path(layout.tests_repo_root)),
-            "localSwarmHarnessPackagePath": str(local_swarm_payload["harnessPackage"]),
-            "localSwarmManifestsPath": str(local_swarm_payload["manifests"]),
-            "localSwarmScriptPaths": [str(path) for path in local_swarm_payload["scripts"]],
+            "localSwarmHarnessArchivePath": (
+                str(local_swarm_harness_archive_path)
+                if local_swarm_harness_archive_path is not None
+                else ""
+            ),
             "localSwarmReleaseAssetPaths": [str(path) for path in local_swarm_release_asset_paths],
             "localSwarmNodeArchivePath": (
                 str(local_swarm_node_archive_path)
@@ -1023,6 +1030,66 @@ def local_swarm_amule_exes(layout: WorkspaceLayout) -> tuple[Path | None, Path |
         daemon if daemon.is_file() else None,
         control if control.is_file() else None,
     )
+
+
+def _stage_local_swarm_harness_payload_archive(
+    layout: WorkspaceLayout,
+    run_report_dir: Path,
+    host_contracts: ModuleType,
+) -> Path:
+    """Packages the curated local-swarm harness files copied into clean VM guests."""
+
+    payload = host_contracts.local_swarm_payload_paths(layout.tests_repo_root)
+    archive_path = run_report_dir / "local-swarm-harness-payload.zip"
+    archive_path.unlink(missing_ok=True)
+    archive_path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        _write_payload_tree(
+            archive,
+            Path(payload["harnessPackage"]),
+            Path("emule_test_harness"),
+        )
+        manifests_path = Path(payload["manifests"])
+        if manifests_path.is_dir():
+            _write_payload_tree(archive, manifests_path, Path("manifests"))
+        for script_path in payload["scripts"]:
+            script = Path(script_path)
+            if not script.is_file():
+                raise RuntimeError(f"Windows VM local-swarm payload script is missing: {script}")
+            _write_payload_file(archive, script, Path("scripts") / script.name)
+    return archive_path
+
+
+def _write_payload_tree(archive: zipfile.ZipFile, source_root: Path, archive_root: Path) -> None:
+    if not source_root.is_dir():
+        raise RuntimeError(f"Windows VM local-swarm payload root is missing: {source_root}")
+    for path in sorted(source_root.rglob("*")):
+        if not path.is_file():
+            continue
+        relative_path = path.relative_to(source_root)
+        if _skip_payload_file(relative_path):
+            continue
+        _write_payload_file(archive, path, archive_root / relative_path)
+
+
+def _write_payload_file(archive: zipfile.ZipFile, source_path: Path, archive_path: Path) -> None:
+    _assert_local_swarm_payload_archive_path(archive_path)
+    archive.write(source_path, archive_path.as_posix())
+
+
+def _skip_payload_file(relative_path: Path) -> bool:
+    parts = {part.casefold() for part in relative_path.parts}
+    return "__pycache__" in parts or relative_path.suffix.casefold() in {".pyc", ".pyo"}
+
+
+def _assert_local_swarm_payload_archive_path(archive_path: Path) -> None:
+    raw = archive_path.as_posix()
+    parts = {part.casefold() for part in archive_path.parts}
+    if archive_path.is_absolute() or ".." in archive_path.parts or raw.startswith("/"):
+        raise RuntimeError(f"Windows VM local-swarm payload path escapes archive root: {raw}")
+    forbidden = {".git", ".hg", ".svn", "node_modules", "workspaces", "workspace"}
+    if forbidden.intersection(parts):
+        raise RuntimeError(f"Windows VM local-swarm payload path is not package-like: {raw}")
 
 
 def run_windows_vm_hideme_live_wire(
