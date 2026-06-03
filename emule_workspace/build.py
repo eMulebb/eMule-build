@@ -134,6 +134,10 @@ def build_apps(
             if upload_slot_instrumentation:
                 enabled = upload_slot_instrumentation.strip().lower() not in {"0", "false", "no", "off"}
                 extra_properties.append(f"/p:EnableUploadSlotInstrumentation={'true' if enabled else 'false'}")
+            download_slot_instrumentation = env_override("EMULEBB_ENABLE_DOWNLOAD_SLOT_INSTRUMENTATION")
+            if download_slot_instrumentation:
+                enabled = download_slot_instrumentation.strip().lower() not in {"0", "false", "no", "off"}
+                extra_properties.append(f"/p:EnableDownloadSlotInstrumentation={'true' if enabled else 'false'}")
             override = env_override(layout.toolset_override_variable)
             if override:
                 extra_properties.append(f"/p:PlatformToolset={override}")
