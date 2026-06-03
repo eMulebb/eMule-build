@@ -59,7 +59,8 @@ PYTHON_INSTALLER_URL = "https://www.python.org/ftp/python/3.13.13/python-3.13.13
 PYTHON_INSTALLER_SHA256 = "3c9c81d80f91c002ced86d645422d81432c68c7d9b6b0e974768ca2e449a4d00"
 PYTHON_INSTALLER_FILE_NAME = "python-3.13.13-amd64.exe"
 PYTHON_INSTALL_DIR = r"C:\Python313"
-VM_GUEST_LIVE_PYTHON_PACKAGES = ("pywin32", "pywinauto", "jsonschema", "PyYAML")
+VM_GUEST_LIVE_PYTHON_PACKAGES = ("pywin32", "pywinauto", "jsonschema", "PyYAML", "playwright")
+VM_GUEST_PLAYWRIGHT_BROWSER = "chromium"
 HIDE_ME_INSTALLER_URL = "https://hide.me/en/software/windowsv4/download"
 HIDE_ME_INSTALLER_FILE_NAME = "hide-me-vpn-windows.exe"
 HIDE_ME_INSTALL_DIR = r"C:\Program Files (x86)\hide.me VPN"
@@ -76,6 +77,10 @@ DOTNET_DESKTOP_RUNTIME_X86_URL = "https://builds.dotnet.microsoft.com/dotnet/Win
 DOTNET_DESKTOP_RUNTIME_X86_FILE_NAME = "windowsdesktop-runtime-6.0.36-win-x86.exe"
 DOTNET_DESKTOP_RUNTIME_X86_DIR = r"C:\Program Files (x86)\dotnet\shared\Microsoft.WindowsDesktop.App\6.0.36"
 DOTNET_SIGNER_TOKENS = ("Microsoft Corporation",)
+VC_REDIST_X64_URL = "https://aka.ms/vs/17/release/vc_redist.x64.exe"
+VC_REDIST_X64_FILE_NAME = "vc_redist.x64.exe"
+VC_REDIST_X64_RUNTIME_DLL = r"C:\Windows\System32\MSVCP140.dll"
+VC_REDIST_SIGNER_TOKENS = ("Microsoft Corporation",)
 
 
 @dataclass(frozen=True)
@@ -667,6 +672,7 @@ def prepare_vm_target(
         pwsh_installer = pwsh_installer_cache_path(layout)
         dotnet_desktop_runtime = dotnet_desktop_runtime_cache_path(layout)
         dotnet_desktop_runtime_x86 = dotnet_desktop_runtime_x86_cache_path(layout)
+        vc_redist_x64 = vc_redist_x64_cache_path(layout)
     else:
         python_installer = ensure_python_installer(layout)
         hide_me_installer = ensure_hide_me_installer(layout)
@@ -674,6 +680,7 @@ def prepare_vm_target(
         pwsh_installer = ensure_pwsh_installer(layout)
         dotnet_desktop_runtime = ensure_dotnet_desktop_runtime_installer(layout)
         dotnet_desktop_runtime_x86 = ensure_dotnet_desktop_runtime_x86_installer(layout)
+        vc_redist_x64 = ensure_vc_redist_x64_installer(layout)
     script = _ps_with_payload(
         {
             "target": target.key,
@@ -700,6 +707,7 @@ def prepare_vm_target(
             "pythonInstallerSha256": PYTHON_INSTALLER_SHA256,
             "pythonInstallDir": PYTHON_INSTALL_DIR,
             "pythonLivePackages": list(VM_GUEST_LIVE_PYTHON_PACKAGES),
+            "playwrightBrowser": VM_GUEST_PLAYWRIGHT_BROWSER,
             "hideMeInstallerPath": str(hide_me_installer),
             "hideMeSettingsPath": str(hide_me_settings),
             "hideMeInstallDir": HIDE_ME_INSTALL_DIR,
@@ -709,6 +717,8 @@ def prepare_vm_target(
             "dotnetDesktopRuntimeDir": DOTNET_DESKTOP_RUNTIME_DIR,
             "dotnetDesktopRuntimeX86Path": str(dotnet_desktop_runtime_x86),
             "dotnetDesktopRuntimeX86Dir": DOTNET_DESKTOP_RUNTIME_X86_DIR,
+            "vcRedistX64Path": str(vc_redist_x64),
+            "vcRedistX64RuntimeDll": VC_REDIST_X64_RUNTIME_DLL,
         },
         _prepare_vm_target_script(),
     )
@@ -817,10 +827,10 @@ def run_windows_vm_profile_smoke(
         }
     host_contracts = load_windows_vm_host_contracts(layout)
     is_local_swarm_profile = profile in set(host_contracts.LOCAL_SWARM_VM_PROFILES)
-    local_swarm_harness_archive_path = (
-        _stage_local_swarm_harness_payload_archive(layout, run_report_dir, host_contracts)
-        if is_local_swarm_profile
-        else None
+    local_swarm_harness_archive_path = _stage_local_swarm_harness_payload_archive(
+        layout,
+        run_report_dir,
+        host_contracts,
     )
     local_swarm_goed2k_server_exe = (
         build_goed2k_server_exe(layout)
@@ -1290,6 +1300,24 @@ def ensure_dotnet_desktop_runtime_x86_installer(layout: WorkspaceLayout) -> Path
     return output_path
 
 
+def ensure_vc_redist_x64_installer(layout: WorkspaceLayout) -> Path:
+    """Downloads and verifies the Microsoft VC++ x64 redistributable for guest browser automation."""
+
+    output_path = vc_redist_x64_cache_path(layout)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if output_path.is_file() and _is_trusted_vc_redist_installer(output_path):
+        return output_path
+    if output_path.exists():
+        output_path.unlink()
+    with urllib.request.urlopen(VC_REDIST_X64_URL, timeout=180) as response:
+        with output_path.open("wb") as handle:
+            shutil.copyfileobj(response, handle)
+    if not _is_trusted_vc_redist_installer(output_path):
+        output_path.unlink(missing_ok=True)
+        raise RuntimeError(f"VC++ x64 redistributable did not have a trusted Authenticode signature: {VC_REDIST_X64_URL}")
+    return output_path
+
+
 def python_installer_cache_path(layout: WorkspaceLayout) -> Path:
     """Returns the host cache path for the Python guest installer."""
 
@@ -1318,6 +1346,12 @@ def dotnet_desktop_runtime_x86_cache_path(layout: WorkspaceLayout) -> Path:
     """Returns the host cache path for the x86 .NET Desktop Runtime guest installer."""
 
     return layout.workspace_root / "state" / "tools" / "dotnet" / DOTNET_DESKTOP_RUNTIME_X86_FILE_NAME
+
+
+def vc_redist_x64_cache_path(layout: WorkspaceLayout) -> Path:
+    """Returns the host cache path for the Microsoft VC++ x64 redistributable."""
+
+    return layout.workspace_root / "state" / "tools" / "vc-redist" / VC_REDIST_X64_FILE_NAME
 
 
 def default_hide_me_settings_path() -> Path:
@@ -1366,6 +1400,14 @@ def _is_trusted_dotnet_installer(path: Path) -> bool:
         return False
     subject = str(signature.get("Subject", ""))
     return any(token.casefold() in subject.casefold() for token in DOTNET_SIGNER_TOKENS)
+
+
+def _is_trusted_vc_redist_installer(path: Path) -> bool:
+    signature = _authenticode_signature(path)
+    if signature.get("Status") != "Valid":
+        return False
+    subject = str(signature.get("Subject", ""))
+    return any(token.casefold() in subject.casefold() for token in VC_REDIST_SIGNER_TOKENS)
 
 
 def _latest_pwsh_win_x64_msi_asset() -> dict[str, str]:
@@ -1689,9 +1731,10 @@ try {
   Copy-Item -ToSession $session -Path $payload.pwshInstallerPath -Destination 'C:\eMuleBBVmTest\pwsh-installer.msi'
   Copy-Item -ToSession $session -Path $payload.dotnetDesktopRuntimePath -Destination 'C:\eMuleBBVmTest\dotnet-desktop-runtime.exe'
   Copy-Item -ToSession $session -Path $payload.dotnetDesktopRuntimeX86Path -Destination 'C:\eMuleBBVmTest\dotnet-desktop-runtime-x86.exe'
+  Copy-Item -ToSession $session -Path $payload.vcRedistX64Path -Destination 'C:\eMuleBBVmTest\vc-redist-x64.exe'
   Copy-Item -ToSession $session -Path $payload.hideMeSettingsPath -Destination 'C:\eMuleBBVmTest\hide-me-vpn.settings'
   Invoke-Command -Session $session -ScriptBlock {
-  param($pythonInstallerSha256, $pythonInstallDir, [string[]] $pythonLivePackages, $hideMeInstallDir, $pwshInstallDir, $dotnetDesktopRuntimeDir, $dotnetDesktopRuntimeX86Dir, $guestUsername, $guestPassword)
+  param($pythonInstallerSha256, $pythonInstallDir, [string[]] $pythonLivePackages, $playwrightBrowser, $hideMeInstallDir, $pwshInstallDir, $dotnetDesktopRuntimeDir, $dotnetDesktopRuntimeX86Dir, $vcRedistX64RuntimeDll, $guestUsername, $guestPassword)
   function Add-LabDefenderExclusion {
     param([string] $Path)
     if (Test-Path -LiteralPath $Path) {
@@ -1898,6 +1941,19 @@ try {
     }
   }
 
+  function Install-VcRedistX64 {
+    param([string] $RuntimeDll, [string] $InstallerPath)
+    if (-not (Test-Path -LiteralPath $RuntimeDll -PathType Leaf)) {
+      $process = Start-Process -FilePath $InstallerPath -ArgumentList @('/install', '/quiet', '/norestart') -Wait -PassThru
+      if ($process.ExitCode -notin @(0, 3010, 1638)) {
+        throw ('VC++ x64 redistributable installer failed with exit code ' + $process.ExitCode)
+      }
+    }
+    if (-not (Test-Path -LiteralPath $RuntimeDll -PathType Leaf)) {
+      throw ('VC++ x64 runtime DLL was not found after installation: ' + $RuntimeDll)
+    }
+  }
+
   function Install-PythonLiveHarnessDependencies {
     param([string] $PythonExe, [string[]] $Packages)
     if ($Packages.Count -eq 0) {
@@ -1908,6 +1964,16 @@ try {
     if ($LASTEXITCODE -ne 0) {
       $details = ($output | ForEach-Object { $_.ToString() }) -join "`n"
       throw ('Python live harness dependency install failed with exit code ' + $LASTEXITCODE + ":`n" + $details)
+    }
+    $output | ForEach-Object { Write-Output $_ }
+  }
+
+  function Install-PlaywrightBrowserRuntime {
+    param([string] $PythonExe, [string] $BrowserName)
+    $output = & $PythonExe -m playwright install $BrowserName 2>&1
+    if ($LASTEXITCODE -ne 0) {
+      $details = ($output | ForEach-Object { $_.ToString() }) -join "`n"
+      throw ('Playwright browser runtime install failed with exit code ' + $LASTEXITCODE + ":`n" + $details)
     }
     $output | ForEach-Object { Write-Output $_ }
   }
@@ -1935,12 +2001,14 @@ try {
   }
   & $pythonExe -m pip --version | Out-Null
   Install-PythonLiveHarnessDependencies -PythonExe $pythonExe -Packages $pythonLivePackages
+  Install-VcRedistX64 -RuntimeDll $vcRedistX64RuntimeDll -InstallerPath 'C:\eMuleBBVmTest\vc-redist-x64.exe'
+  Install-PlaywrightBrowserRuntime -PythonExe $pythonExe -BrowserName $playwrightBrowser
   Install-Pwsh -InstallDir $pwshInstallDir
   Install-DotNetDesktopRuntime -RuntimeDir $dotnetDesktopRuntimeDir -InstallerPath 'C:\eMuleBBVmTest\dotnet-desktop-runtime.exe'
   Install-DotNetDesktopRuntime -RuntimeDir $dotnetDesktopRuntimeX86Dir -InstallerPath 'C:\eMuleBBVmTest\dotnet-desktop-runtime-x86.exe'
   Install-HideMe -InstallDir $hideMeInstallDir -Username $guestUsername
   Set-LabLeanBaseline -PythonPath $pythonInstallDir -HideMePath $hideMeInstallDir -Username $guestUsername -Password $guestPassword
-  } -ArgumentList $payload.pythonInstallerSha256, $payload.pythonInstallDir, $payload.pythonLivePackages, $payload.hideMeInstallDir, $payload.pwshInstallDir, $payload.dotnetDesktopRuntimeDir, $payload.dotnetDesktopRuntimeX86Dir, $payload.username, $payload.password | Out-Null
+  } -ArgumentList $payload.pythonInstallerSha256, $payload.pythonInstallDir, $payload.pythonLivePackages, $payload.playwrightBrowser, $payload.hideMeInstallDir, $payload.pwshInstallDir, $payload.dotnetDesktopRuntimeDir, $payload.dotnetDesktopRuntimeX86Dir, $payload.vcRedistX64RuntimeDll, $payload.username, $payload.password | Out-Null
 }
 finally {
   if ($session) { Remove-PSSession $session }

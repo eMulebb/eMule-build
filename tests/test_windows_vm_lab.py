@@ -439,8 +439,12 @@ def test_prepare_vm_target_script_installs_python_and_pip_in_guest() -> None:
 
     assert "python-installer.exe" in script
     assert "Include_pip=1" in script
-    assert windows_vm_lab.VM_GUEST_LIVE_PYTHON_PACKAGES == ("pywin32", "pywinauto", "jsonschema", "PyYAML")
+    assert windows_vm_lab.VM_GUEST_LIVE_PYTHON_PACKAGES == ("pywin32", "pywinauto", "jsonschema", "PyYAML", "playwright")
+    assert windows_vm_lab.VM_GUEST_PLAYWRIGHT_BROWSER == "chromium"
     assert "Install-PythonLiveHarnessDependencies" in script
+    assert "Install-PlaywrightBrowserRuntime" in script
+    assert "-m playwright install $BrowserName" in script
+    assert "Playwright browser runtime install failed" in script
     assert "--disable-pip-version-check" in script
     assert "2>&1" in script
     assert "Python live harness dependency install failed" in script
@@ -510,6 +514,18 @@ def test_prepare_vm_target_script_installs_dotnet_desktop_runtime() -> None:
     assert "Microsoft.WindowsDesktop.App\\6.0.36" in windows_vm_lab.DOTNET_DESKTOP_RUNTIME_DIR
     assert "Microsoft.WindowsDesktop.App\\6.0.36" in windows_vm_lab.DOTNET_DESKTOP_RUNTIME_X86_DIR
     assert "Program Files (x86)" in windows_vm_lab.DOTNET_DESKTOP_RUNTIME_X86_DIR
+
+
+def test_prepare_vm_target_script_installs_vc_redist_x64() -> None:
+    script = windows_vm_lab._prepare_vm_target_script()
+
+    assert "vc-redist-x64.exe" in script
+    assert "Install-VcRedistX64" in script
+    assert "/install" in script
+    assert "/quiet" in script
+    assert "1638" in script
+    assert windows_vm_lab.VC_REDIST_X64_URL == "https://aka.ms/vs/17/release/vc_redist.x64.exe"
+    assert windows_vm_lab.VC_REDIST_X64_RUNTIME_DLL == r"C:\Windows\System32\MSVCP140.dll"
 
 
 def test_windows_vm_test_dry_run_writes_report(tmp_path: Path) -> None:
@@ -745,6 +761,50 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
     assert "WebServerQBitCompatSeams.h" in captured[0]
     assert "WebServerArrCompatSeams.h" in captured[0]
     assert "WebServerArrCompat.cpp" in captured[0]
+
+
+def test_windows_vm_profile_smoke_payload_stages_harness_for_plain_profiles(tmp_path: Path) -> None:
+    layout = _layout(tmp_path)
+    _write_harness_vm_host(layout)
+    config_path = layout.build_repo_root / "vm-lab.local.json"
+    _write_config(config_path)
+    config = windows_vm_lab.load_vm_lab_config(layout, config_file=str(config_path))
+    captured: list[str] = []
+    (layout.tests_repo_root / "scripts").mkdir(parents=True, exist_ok=True)
+    (layout.tests_repo_root / "scripts" / "godzilla-local-swarm.py").write_text("# local swarm\n", encoding="utf-8")
+    (layout.tests_repo_root / "manifests").mkdir(parents=True, exist_ok=True)
+    (layout.tests_repo_root / "manifests" / "release-campaigns.v1.json").write_text("{}\n", encoding="utf-8")
+
+    class CaptureRunner:
+        dry_run = False
+
+        def run(self, script: str, *, label: str, capture_json: bool = False) -> str:
+            captured.append(script)
+            return json.dumps({"status": "passed", "guest": {}, "checks": [], "errors": []})
+
+    result = windows_vm_lab.run_windows_vm_profile_smoke(
+        layout,
+        config,
+        config.targets["win10"],
+        profile="rest-smoke-stress",
+        package_zip=tmp_path / "package.zip",
+        local_swarm_release_asset_paths=[],
+        local_swarm_node_archive_path=None,
+        release_version="0.7.3-rc.1",
+        platform="x64",
+        run_id="run",
+        run_report_dir=tmp_path / "report",
+        keep_running=False,
+        fixture_size_bytes=4096,
+        swarm_tier=1,
+        local_swarm_mode="plan",
+        runner=CaptureRunner(),
+    )
+
+    assert result["status"] == "passed"
+    assert "localSwarmHarnessArchivePath" in captured[0]
+    assert "local-swarm-harness-payload.zip" in captured[0]
+    assert "@($guestHarnessRoot, $guestRoot)" in captured[0]
 
 
 def test_windows_vm_package_smoke_payload_uses_lan_bind_addr(tmp_path: Path) -> None:
