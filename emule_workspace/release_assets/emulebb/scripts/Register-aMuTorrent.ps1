@@ -144,6 +144,14 @@ function Remove-PropertyIfPresent {
     }
 }
 
+function Get-ObjectPropertyValue {
+    param($Target, [string]$Name, $Default = $null)
+    if ($null -eq $Target -or $null -eq $Target.PSObject.Properties[$Name]) {
+        return $Default
+    }
+    return $Target.PSObject.Properties[$Name].Value
+}
+
 function Set-ObjectProperty {
     param($Target, [string]$Name, $Value)
     if ($null -ne $Target.PSObject.Properties[$Name]) {
@@ -198,8 +206,11 @@ function Find-EmulebbClientIndex {
     for ($i = 0; $i -lt $Clients.Count; ++$i) {
         $client = $Clients[$i]
         if ($client.type -ne 'emulebb') { continue }
-        $clientPath = if ($client.path) { ([string]$client.path).TrimEnd('/') } else { '' }
-        if ($client.host -eq $Connection.Host -and [int]$client.port -eq $Connection.Port -and [bool]$client.useSsl -eq [bool]$Connection.UseSsl -and $clientPath -eq $Connection.Path) {
+        $clientPath = [string](Get-ObjectPropertyValue -Target $client -Name 'path' -Default '')
+        $clientHost = [string](Get-ObjectPropertyValue -Target $client -Name 'host' -Default '')
+        $clientPort = [int](Get-ObjectPropertyValue -Target $client -Name 'port' -Default 0)
+        $clientUseSsl = [bool](Get-ObjectPropertyValue -Target $client -Name 'useSsl' -Default $false)
+        if ($clientHost -eq $Connection.Host -and $clientPort -eq $Connection.Port -and $clientUseSsl -eq [bool]$Connection.UseSsl -and $clientPath.TrimEnd('/') -eq $Connection.Path) {
             return $i
         }
     }

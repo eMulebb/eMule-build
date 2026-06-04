@@ -1011,6 +1011,8 @@ function Invoke-AmutorrentApi {
 """
         + _extract_powershell_function(script_text, "Remove-PropertyIfPresent")
         + "\n"
+        + _extract_powershell_function(script_text, "Get-ObjectPropertyValue")
+        + "\n"
         + _extract_powershell_function(script_text, "Set-ObjectProperty")
         + "\n"
         + _extract_powershell_function(script_text, "Copy-JsonObject")
@@ -1031,6 +1033,69 @@ try {
 } catch {
     if ($_.Exception.Message -notlike '*Refusing to unregister the last enabled aMuTorrent download client*') { throw }
 }
+""",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(test_script),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+
+
+def test_register_amutorrent_matching_client_allows_missing_path_under_strict_mode(
+    workspace_root: Path,
+    tmp_path: Path,
+) -> None:
+    script_path = (
+        workspace_root
+        / "repos"
+        / "emulebb-build"
+        / "emule_workspace"
+        / "release_assets"
+        / "emulebb"
+        / "scripts"
+        / "Register-aMuTorrent.ps1"
+    )
+    script_text = script_path.read_text(encoding="utf-8")
+    test_script = tmp_path / "amutorrent-missing-path-client-test.ps1"
+    test_script.write_text(
+        """
+Set-StrictMode -Version 2.0
+"""
+        + _extract_powershell_function(script_text, "Get-ObjectPropertyValue")
+        + "\n"
+        + _extract_powershell_function(script_text, "Find-EmulebbClientIndex")
+        + """
+$clients = @(
+    [pscustomobject]@{
+        id = 'emulebb-helper-1'
+        type = 'emulebb'
+        name = 'eMuleBB Helper Test'
+        host = '192.0.2.10'
+        port = 4711
+        useSsl = $false
+    }
+)
+$connection = [pscustomobject]@{
+    Host = '192.0.2.10'
+    Port = 4711
+    UseSsl = $false
+    Path = ''
+}
+$index = Find-EmulebbClientIndex -Clients $clients -TargetId '' -Name 'eMuleBB Helper Test' -Connection $connection
+if ($index -ne 0) { throw ('unexpected index: {0}' -f $index) }
 """,
         encoding="utf-8",
     )
