@@ -15,6 +15,7 @@ param(
     [string]$EmulebbPackageManifest,
     [string]$AmutorrentPackageZip,
     [string]$AmutorrentPackageManifest,
+    [string]$DependencyManifest,
 
     [string]$P2PBindInterface,
     [string]$ControlBindAddress,
@@ -476,6 +477,7 @@ if ($NoStart) { $installerParams['NoStart'] = $true }
 if ($Force) { $installerParams['Force'] = $true }
 if ($KeepDownloads) { $installerParams['KeepDownloads'] = $true }
 if (-not [string]::IsNullOrWhiteSpace($P2PBindInterface)) { $installerParams['P2PBindInterface'] = $P2PBindInterface }
+if (-not [string]::IsNullOrWhiteSpace($DependencyManifest)) { $installerParams['DependencyManifest'] = [IO.Path]::GetFullPath($DependencyManifest) }
 if (-not [string]::IsNullOrWhiteSpace($ControlBindAddress)) { $installerParams['ControlBindAddress'] = $ControlBindAddress }
 if (-not [string]::IsNullOrWhiteSpace($EmulebbBindAddress)) { $installerParams['EmulebbBindAddress'] = $EmulebbBindAddress }
 if (-not [string]::IsNullOrWhiteSpace($AmutorrentBindAddress)) { $installerParams['AmutorrentBindAddress'] = $AmutorrentBindAddress }

@@ -843,6 +843,7 @@ def test_suite_bootstrapper_requires_emulebb_package_root() -> None:
     assert "AmutorrentReleaseBaseUrl" in bootstrapper
     assert "EmulebbPackageZip" in bootstrapper
     assert "AmutorrentPackageZip" in bootstrapper
+    assert "DependencyManifest" in bootstrapper
     assert "emulebb/amutorrent" in bootstrapper
     assert "emulebb-nightly-" in bootstrapper
     assert "Test-SupportedReleaseTag" in bootstrapper
@@ -1063,6 +1064,7 @@ param(
     [string]$AmutorrentVersion,
     [string]$AmutorrentPackageZip,
     [string]$AmutorrentPackageManifest,
+    [string]$DependencyManifest,
     [switch]$NoStart
 )
 @{{
@@ -1074,12 +1076,14 @@ param(
     amutorrentVersion = $AmutorrentVersion
     amutorrentPackageZip = $AmutorrentPackageZip
     amutorrentPackageManifest = $AmutorrentPackageManifest
+    dependencyManifest = $DependencyManifest
 }} | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 -LiteralPath '{captured.as_posix()}'
 """.encode("utf-8")
     package_zip = release_root / "emulebb-0.7.3-local.20260604-x64.zip"
     package_manifest = release_root / "emulebb-0.7.3-local.20260604-x64.manifest.json"
     amutorrent_zip = release_root / "emulebb-0.7.3-local.20260604-amutorrent-x64.zip"
     amutorrent_manifest = release_root / "emulebb-0.7.3-local.20260604-amutorrent-x64.manifest.json"
+    dependency_manifest = release_root / "dependency-manifest.json"
     suite_install_fixtures.write_zip(
         package_zip,
         {
@@ -1090,6 +1094,7 @@ param(
     suite_install_fixtures.write_manifest(package_manifest, package_zip)
     suite_install_fixtures.write_zip(amutorrent_zip, {"aMuTorrent/server/server.js": b"server\n"})
     suite_install_fixtures.write_manifest(amutorrent_manifest, amutorrent_zip)
+    dependency_manifest.write_text("{}\n", encoding="utf-8")
     bootstrapper_path = (repo_root / BOOTSTRAPPER).resolve()
     command = rf"""
 function Invoke-RestMethod {{
@@ -1098,7 +1103,7 @@ function Invoke-RestMethod {{
 function Invoke-WebRequest {{
     throw 'Downloads should not be used for local package overrides.'
 }}
-& '{bootstrapper_path}' -Bundle Full -NoStart -EmulebbPackageZip '{package_zip.as_posix()}' -EmulebbPackageManifest '{package_manifest.as_posix()}' -AmutorrentPackageZip '{amutorrent_zip.as_posix()}' -AmutorrentPackageManifest '{amutorrent_manifest.as_posix()}'
+& '{bootstrapper_path}' -Bundle Full -NoStart -EmulebbPackageZip '{package_zip.as_posix()}' -EmulebbPackageManifest '{package_manifest.as_posix()}' -AmutorrentPackageZip '{amutorrent_zip.as_posix()}' -AmutorrentPackageManifest '{amutorrent_manifest.as_posix()}' -DependencyManifest '{dependency_manifest.as_posix()}'
 """
 
     completed = _run_powershell(["-Command", command], cwd=repo_root)
@@ -1114,6 +1119,7 @@ function Invoke-WebRequest {{
     assert captured_payload["amutorrentVersion"] == "0.7.3-local.20260604"
     assert Path(captured_payload["amutorrentPackageZip"]) == amutorrent_zip
     assert Path(captured_payload["amutorrentPackageManifest"]) == amutorrent_manifest
+    assert Path(captured_payload["dependencyManifest"]) == dependency_manifest
 
 
 def test_suite_bootstrapper_noninteractive_full_requires_amutorrent_assets() -> None:
