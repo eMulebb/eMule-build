@@ -70,8 +70,10 @@ def test_controlled_smoke_uses_reusable_core_offline_and_lan_suite() -> None:
     assert "uses: emulebb/emulebb-build/.github/workflows/reusable-workspace-command.yml@main" in text
     assert "runs_on: ${{ matrix.runner.label }}" in text
     assert "label: windows-2022" in text
+    assert "runs_on: windows-11-arm" in text
     assert "label: windows-2025-vs2026" not in text
     assert "Hosted runner: windows-2022 with v143 ATL/MFC policy" in text
+    assert "Hosted runner: windows-11-arm" in text
     assert 'node_version: "24"' in text
     assert "app_ref: ${{ github.sha }}" in text
     assert "timeout_minutes: 360" in text
@@ -89,6 +91,9 @@ def test_controlled_smoke_uses_reusable_core_offline_and_lan_suite() -> None:
     assert "--test-network offline" in text
     assert "--suite deterministic-two-client-transfer" in text
     assert "--test-network lan" in text
+    assert "--platform ARM64" in text
+    assert "Release ARM64 eMuleBB package" in text
+    assert "ARM64 offline command-line smoke" in text
     assert "workspaces/workspace/state/test-reports/live-e2e-suite/**" in text
     assert "workspaces/workspace/state/test-artifacts/live-e2e-suite/**" in text
     assert "workspaces/workspace/state/build-logs/**" in text
