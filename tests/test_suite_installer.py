@@ -162,6 +162,7 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "function Ensure-ArrRootFolder" in start_suite
     assert "$rootFolderUrl = \"$Url/$ApiPath/rootfolder\"" in start_suite
     assert "New-Item -ItemType Directory -Force -Path $Path" in start_suite
+    assert "$rootFolder.PSObject.Properties['path']" in start_suite
     assert "Ensure-ArrRootFolder -Name 'Radarr'" in start_suite
     assert "Join-Path $Root 'media\\movies'" in start_suite
     assert "Ensure-ArrRootFolder -Name 'Sonarr'" in start_suite

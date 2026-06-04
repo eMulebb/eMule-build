@@ -1790,6 +1790,9 @@ function Ensure-ArrRootFolder {
     `$headers = @{ 'X-Api-Key' = `$ApiKey }
     `$normalizedPath = [IO.Path]::GetFullPath(`$Path).TrimEnd('\')
     foreach (`$rootFolder in @(Invoke-RestMethod -Uri `$rootFolderUrl -Headers `$headers -TimeoutSec 20)) {
+        if (`$null -eq `$rootFolder -or `$null -eq `$rootFolder.PSObject.Properties['path']) {
+            continue
+        }
         if ([string]::Equals(([IO.Path]::GetFullPath([string]`$rootFolder.path).TrimEnd('\')), `$normalizedPath, [StringComparison]::OrdinalIgnoreCase)) {
             Write-Host "`$Name root folder already configured: `$normalizedPath"
             return
