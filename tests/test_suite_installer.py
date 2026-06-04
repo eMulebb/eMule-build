@@ -297,6 +297,35 @@ def test_suite_installer_rejects_release_manifest_without_sha256(tmp_path: Path)
     assert "eMuleBB release manifest must include a SHA256 hash." in completed.stdout
 
 
+def test_suite_installer_full_release_asset_gap_fails_before_app_replace(tmp_path: Path) -> None:
+    release_root = tmp_path / "release"
+    install_root = tmp_path / "suite"
+    suite_install_fixtures.write_core_release(release_root)
+
+    repo_root = Path.cwd()
+    completed = suite_install_fixtures.run_installer(
+        (repo_root / INSTALLER).resolve(),
+        [
+            "-NonInteractive",
+            "-NoStart",
+            "-Force",
+            "-Bundle",
+            "Full",
+            "-InstallRoot",
+            str(install_root),
+            "-ReleaseBaseUrl",
+            release_root.as_uri(),
+        ],
+        cwd=repo_root,
+        check=False,
+    )
+
+    assert completed.returncode != 0
+    assert "Failed to download" in completed.stdout
+    assert "emulebb-0.7.3-rc.1-amutorrent-x64.manifest.json" in completed.stdout
+    assert not (install_root / "apps" / "eMuleBB").exists()
+
+
 def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_preserves_keys(tmp_path: Path) -> None:
     release_root = tmp_path / "release"
     dependency_root = tmp_path / "dependencies"
@@ -679,11 +708,14 @@ def test_suite_bootstrapper_requires_emulebb_package_root() -> None:
     assert "Release ZIP does not contain eMuleBB/scripts/Install-eMuleBBSuite.ps1." in bootstrapper
     assert "Assert-FileHash" in bootstrapper
     assert "IncludePrerelease" in bootstrapper
-    assert "-EmulebbBindAddress" in bootstrapper
-    assert "-AmutorrentPort" in bootstrapper
-    assert "-AllowRemoteServiceBind" in bootstrapper
-    assert "-ReleaseBaseUrl" in bootstrapper
+    assert "EmulebbBindAddress" in bootstrapper
+    assert "AmutorrentPort" in bootstrapper
+    assert "AllowRemoteServiceBind" in bootstrapper
+    assert "ReleaseBaseUrl" in bootstrapper
     assert "emulebb-nightly-" in bootstrapper
+    assert "Test-SupportedReleaseTag" in bootstrapper
+    assert "& $installer @installerParams" in bootstrapper
+    assert "& $installer @args" not in bootstrapper
 
 
 @pytest.mark.parametrize(
@@ -718,7 +750,7 @@ function Invoke-RestMethod {{
         )
     }}
 }}
-& '{bootstrapper_path}' -Version '{version_arg}' -Platform x64 -DryRun -NoStart
+& '{bootstrapper_path}' -Version '{version_arg}' -Platform x64 -Bundle Core -DryRun -NoStart
 """
 
     completed = _run_powershell(["-Command", command], cwd=repo_root)
@@ -729,3 +761,193 @@ function Invoke-RestMethod {{
         "-ReleaseBaseUrl https://github.com/emulebb/emulebb/releases/download/"
         "emulebb-nightly-20260524-ae562c1"
     ) in completed.stdout
+
+
+def test_suite_bootstrapper_falls_back_to_nightly_when_only_legacy_stable_exists() -> None:
+    repo_root = Path.cwd()
+    bootstrapper_path = (repo_root / BOOTSTRAPPER).resolve()
+    command = rf"""
+function Invoke-RestMethod {{
+    param([string]$Uri, [hashtable]$Headers)
+    if ($Uri -ne 'https://api.github.com/repos/emulebb/emulebb/releases') {{
+        throw "Unexpected release URI: $Uri"
+    }}
+    return @(
+        [pscustomobject]@{{
+            tag_name = 'emulebb-nightly-20260604-5169162'
+            draft = $false
+            prerelease = $true
+            assets = @(
+                [pscustomobject]@{{
+                    name = 'emulebb-0.7.3-nightly.20260604.5169162-x64.zip'
+                    browser_download_url = 'https://example.invalid/emulebb-0.7.3-nightly.20260604.5169162-x64.zip'
+                }},
+                [pscustomobject]@{{
+                    name = 'emulebb-0.7.3-nightly.20260604.5169162-x64.manifest.json'
+                    browser_download_url = 'https://example.invalid/emulebb-0.7.3-nightly.20260604.5169162-x64.manifest.json'
+                }}
+            )
+        }},
+        [pscustomobject]@{{
+            tag_name = 'eMule_v0.60d-broadband'
+            draft = $false
+            prerelease = $false
+            assets = @()
+        }}
+    )
+}}
+& '{bootstrapper_path}' -Platform x64 -Bundle Core -DryRun -NoStart
+"""
+
+    completed = _run_powershell(["-Command", command], cwd=repo_root)
+
+    assert "Resolved release emulebb-nightly-20260604-5169162 for x64" in completed.stdout
+    assert "eMule_v0.60d-broadband" not in completed.stdout
+    assert "emulebb-0.7.3-nightly.20260604.5169162-x64.zip" in completed.stdout
+
+
+def test_suite_bootstrapper_hands_named_bundle_to_installer(tmp_path: Path) -> None:
+    repo_root = Path.cwd()
+    release_root = tmp_path / "release"
+    captured_bundle = tmp_path / "captured-bundle.txt"
+    installer_payload = f"""#Requires -Version 5.1
+param(
+    [ValidateSet('Core', 'Controller', 'Full')]
+    [string]$Bundle = 'Full',
+    [string]$InstallRoot,
+    [string]$Version,
+    [string]$Platform,
+    [string]$ReleaseBaseUrl,
+    [switch]$NoStart
+)
+Set-Content -Encoding UTF8 -LiteralPath '{captured_bundle.as_posix()}' -Value $Bundle
+""".encode("utf-8")
+    package_zip = release_root / "emulebb-0.7.3-nightly.20260604.5169162-x64.zip"
+    manifest = release_root / "emulebb-0.7.3-nightly.20260604.5169162-x64.manifest.json"
+    suite_install_fixtures.write_zip(
+        package_zip,
+        {
+            "eMuleBB/emulebb.exe": b"exe\n",
+            "eMuleBB/scripts/Install-eMuleBBSuite.ps1": installer_payload,
+        },
+    )
+    _write_manifest(manifest, package_zip)
+    bootstrapper_path = (repo_root / BOOTSTRAPPER).resolve()
+    command = rf"""
+function Invoke-RestMethod {{
+    param([string]$Uri, [hashtable]$Headers)
+    if ($Uri -ne 'https://api.github.com/repos/emulebb/emulebb/releases') {{
+        throw "Unexpected release URI: $Uri"
+    }}
+    return @(
+        [pscustomobject]@{{
+            tag_name = 'emulebb-nightly-20260604-5169162'
+            draft = $false
+            prerelease = $true
+            assets = @(
+                [pscustomobject]@{{
+                    name = 'emulebb-0.7.3-nightly.20260604.5169162-x64.zip'
+                    browser_download_url = 'https://example.invalid/emulebb-0.7.3-nightly.20260604.5169162-x64.zip'
+                }},
+                [pscustomobject]@{{
+                    name = 'emulebb-0.7.3-nightly.20260604.5169162-x64.manifest.json'
+                    browser_download_url = 'https://example.invalid/emulebb-0.7.3-nightly.20260604.5169162-x64.manifest.json'
+                }},
+                [pscustomobject]@{{
+                    name = 'emulebb-0.7.3-nightly.20260604.5169162-amutorrent-x64.zip'
+                    browser_download_url = 'https://example.invalid/emulebb-0.7.3-nightly.20260604.5169162-amutorrent-x64.zip'
+                }},
+                [pscustomobject]@{{
+                    name = 'emulebb-0.7.3-nightly.20260604.5169162-amutorrent-x64.manifest.json'
+                    browser_download_url = 'https://example.invalid/emulebb-0.7.3-nightly.20260604.5169162-amutorrent-x64.manifest.json'
+                }}
+            )
+        }}
+    )
+}}
+function Invoke-WebRequest {{
+    param([switch]$UseBasicParsing, [string]$Uri, [string]$OutFile, [hashtable]$Headers)
+    if ($Uri.EndsWith('.manifest.json')) {{
+        Copy-Item -Force -LiteralPath '{manifest.as_posix()}' -Destination $OutFile
+        return
+    }}
+    if ($Uri.EndsWith('.zip')) {{
+        Copy-Item -Force -LiteralPath '{package_zip.as_posix()}' -Destination $OutFile
+        return
+    }}
+    throw "Unexpected download URI: $Uri"
+}}
+& '{bootstrapper_path}' -Platform x64 -Bundle Full -NoStart
+"""
+
+    completed = _run_powershell(["-Command", command], cwd=repo_root)
+
+    assert "Resolved release emulebb-nightly-20260604-5169162 for x64" in completed.stdout
+    assert captured_bundle.read_text(encoding="utf-8-sig").strip() == "Full"
+
+
+def test_suite_bootstrapper_noninteractive_full_requires_amutorrent_assets() -> None:
+    repo_root = Path.cwd()
+    bootstrapper_path = (repo_root / BOOTSTRAPPER).resolve()
+    command = rf"""
+function Invoke-RestMethod {{
+    param([string]$Uri, [hashtable]$Headers)
+    if ($Uri -ne 'https://api.github.com/repos/emulebb/emulebb/releases') {{
+        throw "Unexpected release URI: $Uri"
+    }}
+    return @(
+        [pscustomobject]@{{
+            tag_name = 'emulebb-nightly-20260604-5169162'
+            draft = $false
+            prerelease = $true
+            assets = @(
+                [pscustomobject]@{{
+                    name = 'emulebb-0.7.3-nightly.20260604.5169162-x64.zip'
+                    browser_download_url = 'https://example.invalid/emulebb-0.7.3-nightly.20260604.5169162-x64.zip'
+                }},
+                [pscustomobject]@{{
+                    name = 'emulebb-0.7.3-nightly.20260604.5169162-x64.manifest.json'
+                    browser_download_url = 'https://example.invalid/emulebb-0.7.3-nightly.20260604.5169162-x64.manifest.json'
+                }}
+            )
+        }}
+    )
+}}
+& '{bootstrapper_path}' -Platform x64 -Bundle Full -IncludePrerelease -NonInteractive -NoStart -DryRun
+"""
+
+    completed = subprocess.run(
+        [shutil.which("powershell"), "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
+        cwd=repo_root,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+
+    assert completed.returncode != 0
+    assert "does not contain required Full asset(s)" in completed.stdout
+    assert "emulebb-0.7.3-nightly.20260604.5169162-amutorrent-x64.zip" in completed.stdout
+    assert "Re-run with -Bundle Core" in completed.stdout
+
+
+def test_suite_installer_rejects_positional_parameter_string_splat() -> None:
+    repo_root = Path.cwd()
+    installer_path = (repo_root / INSTALLER).resolve()
+    command = rf"""
+$installer = '{installer_path}'
+$argv = @('-Bundle')
+& $installer @argv
+"""
+
+    completed = subprocess.run(
+        [shutil.which("powershell"), "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
+        cwd=repo_root,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+
+    assert completed.returncode != 0
+    assert "Install-eMuleBBSuite.ps1 was invoked with positional parameter strings" in completed.stdout

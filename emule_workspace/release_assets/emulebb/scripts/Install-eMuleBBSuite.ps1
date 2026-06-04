@@ -1,7 +1,6 @@
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
-    [ValidateSet('Core', 'Controller', 'Full')]
     [string]$Bundle = 'Full',
 
     [string]$InstallRoot = 'C:\eMuleBBSuite',
@@ -57,6 +56,9 @@ param(
 
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
+if ($Bundle -like '-*') {
+    throw "Install-eMuleBBSuite.ps1 was invoked with positional parameter strings. Call it with named parameters, for example -Bundle Full, not an argv string array."
+}
 $script:InstallerBoundParameters = $PSBoundParameters
 
 $NodeVersion = 'v24.15.0'
@@ -674,21 +676,23 @@ function Invoke-Download {
     $tmp = "$Destination.tmp"
     Remove-Item -Force -LiteralPath $tmp -ErrorAction SilentlyContinue
     $uri = $null
-    if ([Uri]::TryCreate($Url, [UriKind]::Absolute, [ref]$uri) -and $uri.IsFile) {
-        Copy-Item -Force -LiteralPath $uri.LocalPath -Destination $tmp
-        Move-Item -Force -LiteralPath $tmp -Destination $Destination
-        return
-    }
-    if (Test-Path -LiteralPath $Url) {
-        Copy-Item -Force -LiteralPath $Url -Destination $tmp
-        Move-Item -Force -LiteralPath $tmp -Destination $Destination
-        return
-    }
     $previousProgressPreference = $ProgressPreference
     try {
+        if ([Uri]::TryCreate($Url, [UriKind]::Absolute, [ref]$uri) -and $uri.IsFile) {
+            Copy-Item -Force -LiteralPath $uri.LocalPath -Destination $tmp
+            Move-Item -Force -LiteralPath $tmp -Destination $Destination
+            return
+        }
+        if (Test-Path -LiteralPath $Url) {
+            Copy-Item -Force -LiteralPath $Url -Destination $tmp
+            Move-Item -Force -LiteralPath $tmp -Destination $Destination
+            return
+        }
         $ProgressPreference = 'SilentlyContinue'
         Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $tmp
         Move-Item -Force -LiteralPath $tmp -Destination $Destination
+    } catch {
+        throw "Failed to download $Url -> $Destination. $($_.Exception.Message)"
     } finally {
         $ProgressPreference = $previousProgressPreference
         Remove-Item -Force -LiteralPath $tmp -ErrorAction SilentlyContinue
@@ -840,12 +844,11 @@ function Load-NodeSpec {
     return $result
 }
 
-function Install-ReleaseZip {
-    param([string]$Name, [string]$ZipUrl, [string]$ManifestUrl, [string]$Destination)
+function Save-ReleaseZip {
+    param([string]$Name, [string]$ZipUrl, [string]$ManifestUrl)
     $downloadRoot = Join-Path $script:Root 'downloads-cache'
     $archivePath = Join-Path $downloadRoot ([IO.Path]::GetFileName($ZipUrl))
     $manifestPath = Join-Path $downloadRoot ([IO.Path]::GetFileName($ManifestUrl))
-    $extractRoot = Join-Path $downloadRoot ("extract-$Name")
     Invoke-Download -Url $ManifestUrl -Destination $manifestPath
     Invoke-Download -Url $ZipUrl -Destination $archivePath
     $expectedHash = ''
@@ -858,6 +861,16 @@ function Install-ReleaseZip {
         Assert-RequiredSha256 -Value $expectedHash -Description "$Name release manifest"
     }
     Assert-FileHash -Path $archivePath -ExpectedSha256 $expectedHash
+    return [ordered]@{
+        Name = $Name
+        ArchivePath = $archivePath
+    }
+}
+
+function Install-VerifiedReleaseZip {
+    param([string]$Name, [string]$ArchivePath, [string]$Destination)
+    $downloadRoot = Join-Path $script:Root 'downloads-cache'
+    $extractRoot = Join-Path $downloadRoot ("extract-$Name")
     Expand-ZipSafe -Archive $archivePath -Destination $extractRoot
     if (-not $DryRun) {
         $extractedPackageRoot = Join-Path $extractRoot $Name
@@ -873,6 +886,12 @@ function Install-ReleaseZip {
         Remove-Item -Recurse -Force -LiteralPath $extractRoot -ErrorAction SilentlyContinue
     }
     Write-Step "$Name installed"
+}
+
+function Install-ReleaseZip {
+    param([string]$Name, [string]$ZipUrl, [string]$ManifestUrl, [string]$Destination)
+    $package = Save-ReleaseZip -Name $Name -ZipUrl $ZipUrl -ManifestUrl $ManifestUrl
+    Install-VerifiedReleaseZip -Name $Name -ArchivePath $package.ArchivePath -Destination $Destination
 }
 
 function Install-ArrDependency {
@@ -1389,11 +1408,17 @@ $dependencyManifestPayload = Load-DependencyManifestPayload -ManifestPath $scrip
 $assetArch = if ($script:SuiteConfig.platform -eq 'ARM64') { 'arm64' } else { 'x64' }
 $emulebbAssetSuffix = if ($script:SuiteConfig.emulebbPackageFlavor -eq 'diagnostics') { '-diagnostics' } else { '' }
 $appRoot = Join-Path $script:Root 'apps'
-Install-ReleaseZip -Name 'eMuleBB' -ZipUrl "$releaseBase/emulebb-$($script:SuiteConfig.version)$emulebbAssetSuffix-$assetArch.zip" -ManifestUrl "$releaseBase/emulebb-$($script:SuiteConfig.version)$emulebbAssetSuffix-$assetArch.manifest.json" -Destination $appRoot
+$emulebbPackage = Save-ReleaseZip -Name 'eMuleBB' -ZipUrl "$releaseBase/emulebb-$($script:SuiteConfig.version)$emulebbAssetSuffix-$assetArch.zip" -ManifestUrl "$releaseBase/emulebb-$($script:SuiteConfig.version)$emulebbAssetSuffix-$assetArch.manifest.json"
+$amutorrentPackage = $null
+if ($script:SuiteConfig.bundle -ne 'Core') {
+    $amutorrentPackage = Save-ReleaseZip -Name 'aMuTorrent' -ZipUrl "$releaseBase/emulebb-$($script:SuiteConfig.version)-amutorrent-x64.zip" -ManifestUrl "$releaseBase/emulebb-$($script:SuiteConfig.version)-amutorrent-x64.manifest.json"
+}
+
+Install-VerifiedReleaseZip -Name 'eMuleBB' -ArchivePath $emulebbPackage.ArchivePath -Destination $appRoot
 Assert-EmulebbExecutableInstalled -Config $script:SuiteConfig
 
 if ($script:SuiteConfig.bundle -ne 'Core') {
-    Install-ReleaseZip -Name 'aMuTorrent' -ZipUrl "$releaseBase/emulebb-$($script:SuiteConfig.version)-amutorrent-x64.zip" -ManifestUrl "$releaseBase/emulebb-$($script:SuiteConfig.version)-amutorrent-x64.manifest.json" -Destination $appRoot
+    Install-VerifiedReleaseZip -Name 'aMuTorrent' -ArchivePath $amutorrentPackage.ArchivePath -Destination $appRoot
     $nodeSpec = Load-NodeSpec -Payload $dependencyManifestPayload -Platform $script:SuiteConfig.platform
     $nodeArchive = Join-Path (Join-Path $script:Root 'downloads-cache') $nodeSpec.FileName
     $nodeUrl = if ([string]::IsNullOrWhiteSpace($nodeSpec.Url)) { "$nodeBase/$($nodeSpec.FileName)" } else { [string]$nodeSpec.Url }

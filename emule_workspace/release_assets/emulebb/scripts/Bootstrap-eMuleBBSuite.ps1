@@ -74,20 +74,36 @@ function Get-ReleaseTag {
     return "emulebb-v$Version"
 }
 
+function Test-SupportedReleaseTag {
+    param([string]$Tag)
+    return $Tag -match '^emulebb-v.+' -or $Tag -match '^emulebb-nightly-\d{8}-[0-9a-fA-F]+(-run\d+)?$'
+}
+
 function Get-Release {
     if (-not [string]::IsNullOrWhiteSpace($Version)) {
         $tag = Get-ReleaseTag
         return Invoke-RestMethod -Uri "$ApiBase/repos/$Repository/releases/tags/$tag" -Headers @{ 'User-Agent' = $UserAgent }
     }
     $releases = Invoke-RestMethod -Uri "$ApiBase/repos/$Repository/releases" -Headers @{ 'User-Agent' = $UserAgent }
+    $nightlyFallback = $null
     foreach ($release in @($releases)) {
         if ($release.draft) {
             continue
         }
+        $tag = [string]$release.tag_name
+        if (-not (Test-SupportedReleaseTag -Tag $tag)) {
+            continue
+        }
         if ($release.prerelease -and -not $IncludePrerelease) {
+            if ($tag -match '^emulebb-nightly-' -and $null -eq $nightlyFallback) {
+                $nightlyFallback = $release
+            }
             continue
         }
         return $release
+    }
+    if ($null -ne $nightlyFallback) {
+        return $nightlyFallback
     }
     throw 'No matching eMuleBB release was found.'
 }
@@ -121,12 +137,61 @@ function Get-ReleaseBaseUrl {
 
 function Get-AssetUrl {
     param([object]$Release, [string]$Name)
+    $url = Find-AssetUrl -Release $Release -Name $Name
+    if (-not [string]::IsNullOrWhiteSpace($url)) {
+        return $url
+    }
+    throw "Release $($Release.tag_name) does not contain asset $Name."
+}
+
+function Find-AssetUrl {
+    param([object]$Release, [string]$Name)
     foreach ($asset in @($Release.assets)) {
         if ([string]$asset.name -eq $Name) {
             return [string]$asset.browser_download_url
         }
     }
-    throw "Release $($Release.tag_name) does not contain asset $Name."
+    return ''
+}
+
+function Test-InteractiveConsole {
+    try {
+        return -not [Console]::IsInputRedirected -and -not [Console]::IsOutputRedirected
+    } catch {
+        return $false
+    }
+}
+
+function Resolve-EffectiveBundle {
+    param([object]$Release, [string]$RequestedBundle, [string]$ResolvedPlatform, [string]$ResolvedVersion)
+    if ($RequestedBundle -eq 'Core') {
+        return 'Core'
+    }
+    if ($ResolvedPlatform -ne 'x64') {
+        throw 'Controller and Full bundles are x64-only in v1 because aMuTorrent native node_modules are packaged for x64.'
+    }
+    $missing = @()
+    foreach ($assetName in @(
+        "emulebb-$ResolvedVersion-amutorrent-x64.manifest.json",
+        "emulebb-$ResolvedVersion-amutorrent-x64.zip"
+    )) {
+        if ([string]::IsNullOrWhiteSpace((Find-AssetUrl -Release $Release -Name $assetName))) {
+            $missing += $assetName
+        }
+    }
+    if ($missing.Count -eq 0) {
+        return $RequestedBundle
+    }
+    $message = "Release $($Release.tag_name) does not contain required $RequestedBundle asset(s): $($missing -join ', ')."
+    if ($NonInteractive -or -not (Test-InteractiveConsole)) {
+        throw "$message Re-run with -Bundle Core or choose a release/nightly with Full suite assets."
+    }
+    Write-Warning "$message Core can still be installed."
+    $choice = Read-Host 'Install Core instead? [y/N]'
+    if ($choice -match '^[Yy]') {
+        return 'Core'
+    }
+    throw 'Bootstrap cancelled because required suite assets are missing.'
 }
 
 function Invoke-Download {
@@ -209,6 +274,7 @@ $zipName = "emulebb-$resolvedVersion-$assetArch.zip"
 $manifestName = "emulebb-$resolvedVersion-$assetArch.manifest.json"
 $zipUrl = Get-AssetUrl -Release $release -Name $zipName
 $manifestUrl = Get-AssetUrl -Release $release -Name $manifestName
+$effectiveBundle = Resolve-EffectiveBundle -Release $release -RequestedBundle $Bundle -ResolvedPlatform $resolvedPlatform -ResolvedVersion $resolvedVersion
 $workRoot = Join-Path $env:TEMP "emulebb-suite-bootstrap-$resolvedVersion-$assetArch"
 $zipPath = Join-Path $workRoot $zipName
 $manifestPath = Join-Path $workRoot $manifestName
@@ -222,34 +288,45 @@ if (-not $DryRun) {
     Assert-FileHash -Path $zipPath -ExpectedSha256 ([string]$manifest.sha256)
 }
 $installer = Expand-Installer -Archive $zipPath -Destination $extractRoot
-$args = @(
-    '-Bundle', $Bundle,
-    '-InstallRoot', $InstallRoot,
-    '-Version', $resolvedVersion,
-    '-Platform', $resolvedPlatform,
-    '-ReleaseBaseUrl', $releaseBaseUrl
-)
-if ($NonInteractive) { $args += '-NonInteractive' }
-if ($NoStart) { $args += '-NoStart' }
-if ($Force) { $args += '-Force' }
-if ($KeepDownloads) { $args += '-KeepDownloads' }
-if (-not [string]::IsNullOrWhiteSpace($P2PBindInterface)) { $args += @('-P2PBindInterface', $P2PBindInterface) }
-if (-not [string]::IsNullOrWhiteSpace($ControlBindAddress)) { $args += @('-ControlBindAddress', $ControlBindAddress) }
-if (-not [string]::IsNullOrWhiteSpace($EmulebbBindAddress)) { $args += @('-EmulebbBindAddress', $EmulebbBindAddress) }
-if (-not [string]::IsNullOrWhiteSpace($AmutorrentBindAddress)) { $args += @('-AmutorrentBindAddress', $AmutorrentBindAddress) }
-if (-not [string]::IsNullOrWhiteSpace($ProwlarrBindAddress)) { $args += @('-ProwlarrBindAddress', $ProwlarrBindAddress) }
-if (-not [string]::IsNullOrWhiteSpace($RadarrBindAddress)) { $args += @('-RadarrBindAddress', $RadarrBindAddress) }
-if (-not [string]::IsNullOrWhiteSpace($SonarrBindAddress)) { $args += @('-SonarrBindAddress', $SonarrBindAddress) }
-if ($PSBoundParameters.ContainsKey('EmulebbPort')) { $args += @('-EmulebbPort', $EmulebbPort) }
-if ($PSBoundParameters.ContainsKey('AmutorrentPort')) { $args += @('-AmutorrentPort', $AmutorrentPort) }
-if ($PSBoundParameters.ContainsKey('ProwlarrPort')) { $args += @('-ProwlarrPort', $ProwlarrPort) }
-if ($PSBoundParameters.ContainsKey('RadarrPort')) { $args += @('-RadarrPort', $RadarrPort) }
-if ($PSBoundParameters.ContainsKey('SonarrPort')) { $args += @('-SonarrPort', $SonarrPort) }
-if ($AllowRemoteServiceBind) { $args += '-AllowRemoteServiceBind' }
+$installerParams = [ordered]@{
+    Bundle = $effectiveBundle
+    InstallRoot = $InstallRoot
+    Version = $resolvedVersion
+    Platform = $resolvedPlatform
+    ReleaseBaseUrl = $releaseBaseUrl
+}
+if ($NonInteractive) { $installerParams['NonInteractive'] = $true }
+if ($NoStart) { $installerParams['NoStart'] = $true }
+if ($Force) { $installerParams['Force'] = $true }
+if ($KeepDownloads) { $installerParams['KeepDownloads'] = $true }
+if (-not [string]::IsNullOrWhiteSpace($P2PBindInterface)) { $installerParams['P2PBindInterface'] = $P2PBindInterface }
+if (-not [string]::IsNullOrWhiteSpace($ControlBindAddress)) { $installerParams['ControlBindAddress'] = $ControlBindAddress }
+if (-not [string]::IsNullOrWhiteSpace($EmulebbBindAddress)) { $installerParams['EmulebbBindAddress'] = $EmulebbBindAddress }
+if (-not [string]::IsNullOrWhiteSpace($AmutorrentBindAddress)) { $installerParams['AmutorrentBindAddress'] = $AmutorrentBindAddress }
+if (-not [string]::IsNullOrWhiteSpace($ProwlarrBindAddress)) { $installerParams['ProwlarrBindAddress'] = $ProwlarrBindAddress }
+if (-not [string]::IsNullOrWhiteSpace($RadarrBindAddress)) { $installerParams['RadarrBindAddress'] = $RadarrBindAddress }
+if (-not [string]::IsNullOrWhiteSpace($SonarrBindAddress)) { $installerParams['SonarrBindAddress'] = $SonarrBindAddress }
+if ($PSBoundParameters.ContainsKey('EmulebbPort')) { $installerParams['EmulebbPort'] = $EmulebbPort }
+if ($PSBoundParameters.ContainsKey('AmutorrentPort')) { $installerParams['AmutorrentPort'] = $AmutorrentPort }
+if ($PSBoundParameters.ContainsKey('ProwlarrPort')) { $installerParams['ProwlarrPort'] = $ProwlarrPort }
+if ($PSBoundParameters.ContainsKey('RadarrPort')) { $installerParams['RadarrPort'] = $RadarrPort }
+if ($PSBoundParameters.ContainsKey('SonarrPort')) { $installerParams['SonarrPort'] = $SonarrPort }
+if ($AllowRemoteServiceBind) { $installerParams['AllowRemoteServiceBind'] = $true }
+$displayArgs = @()
+foreach ($name in $installerParams.Keys) {
+    $value = $installerParams[$name]
+    if ($value -is [bool]) {
+        if ($value) {
+            $displayArgs += "-$name"
+        }
+    } else {
+        $displayArgs += @("-$name", [string]$value)
+    }
+}
 if ($DryRun) {
-    Write-Step "Would run $installer $($args -join ' ')"
+    Write-Step "Would run $installer $($displayArgs -join ' ')"
 } else {
-    & $installer @args
+    & $installer @installerParams
 }
 if (-not $KeepDownloads -and -not $DryRun) {
     Remove-Item -Recurse -Force -LiteralPath $workRoot -ErrorAction SilentlyContinue
