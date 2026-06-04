@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import socket
 import subprocess
 from pathlib import Path
 
@@ -125,6 +126,8 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "Start-eMuleBB.ps1" in start_suite
     assert "$env:BIND_ADDRESS = [string]$Config.services.amutorrent.bindAddress" in start_suite
     assert "Register-aMuTorrent.ps1" in start_suite
+    assert start_suite.index("foreach ($item in @(@('Prowlarr'") < start_suite.index("$env:PORT = [string]$Config.services.amutorrent.port")
+    assert start_suite.index("$env:PORT = [string]$Config.services.amutorrent.port") < start_suite.index("Start-ProcessIfMissing -FilePath $node")
 
     for generated_script in (
         "Start-eMuleBB.ps1",
@@ -404,12 +407,18 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
         str(install_root),
         "-ReleaseBaseUrl",
         release_root.as_uri(),
+        "-ControlBindAddress",
+        "127.0.0.1",
         "-DependencyManifest",
         str(dependency_manifest),
         "-P2PBindInterface",
         "hide.me",
     ]
-    _run_powershell(install_args, cwd=repo_root)
+    occupied_port = socket.create_server(("127.0.0.1", 54000))
+    try:
+        _run_powershell(install_args, cwd=repo_root)
+    finally:
+        occupied_port.close()
 
     suite_config_path = install_root / "manifests" / "suite-config.json"
     suite_config = json.loads(suite_config_path.read_text(encoding="utf-8-sig"))
@@ -417,6 +426,11 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
         name: suite_config["services"][name]["apiKey"]
         for name in ("emulebb", "prowlarr", "radarr", "sonarr")
     }
+    service_order = ("emulebb", "amutorrent", "prowlarr", "radarr", "sonarr")
+    service_ports = [suite_config["services"][name]["port"] for name in service_order]
+    assert service_ports == list(range(service_ports[0], service_ports[0] + len(service_ports)))
+    assert 54001 <= service_ports[0] <= 59995
+    assert not ({4711, 4000, 9696, 7878, 8989} & set(service_ports))
     assert (install_root / "apps" / "eMuleBB" / "emulebb.exe").is_file()
     assert (install_root / "apps" / "aMuTorrent" / "server" / "server.js").is_file()
     assert list((install_root / "runtime" / "node").rglob("node.exe"))
@@ -428,9 +442,11 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     assert "BindInterface=hide.me" in preferences
     assert "BindAddr=\n" in preferences
     assert f"BindAddr={suite_config['services']['emulebb']['bindAddress']}" in preferences
+    assert f"Port={suite_config['services']['emulebb']['port']}" in preferences
     for service_name in ("prowlarr", "radarr", "sonarr"):
         arr_config = (install_root / "data" / service_name / "config.xml").read_text(encoding="utf-8-sig")
         assert f"<BindAddress>{suite_config['services'][service_name]['bindAddress']}</BindAddress>" in arr_config
+        assert f"<Port>{suite_config['services'][service_name]['port']}</Port>" in arr_config
         assert f"<ApiKey>{first_keys[service_name]}</ApiKey>" in arr_config
 
     _run_powershell(
@@ -1016,10 +1032,11 @@ function Invoke-RestMethod {{
         check=False,
     )
 
+    output = " ".join(completed.stdout.split())
     assert completed.returncode != 0
-    assert "aMuTorrent release amutorrent-nightly-20260604-9eff539e does not contain required Full asset(s)" in completed.stdout
-    assert "emulebb-0.7.3-nightly.20260604.9eff539e-amutorrent-x64.manifest.json" in completed.stdout
-    assert "publish a complete aMuTorrent release" in completed.stdout
+    assert "aMuTorrent release amutorrent-nightly-20260604-9eff539e does not contain required Full asset(s)" in output
+    assert "emulebb-0.7.3-nightly.20260604.9eff539e-amutorrent-x64.manifest.json" in output
+    assert "publish a complete aMuTorrent release" in output
 
 
 def test_suite_installer_rejects_positional_parameter_string_splat() -> None:

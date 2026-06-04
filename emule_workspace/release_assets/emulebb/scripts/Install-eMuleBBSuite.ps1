@@ -35,16 +35,16 @@ param(
     [string]$RadarrBindAddress,
     [string]$SonarrBindAddress,
 
-    [ValidateRange(1, 65535)]
-    [int]$EmulebbPort = 4711,
-    [ValidateRange(1, 65535)]
-    [int]$AmutorrentPort = 4000,
-    [ValidateRange(1, 65535)]
-    [int]$ProwlarrPort = 9696,
-    [ValidateRange(1, 65535)]
-    [int]$RadarrPort = 7878,
-    [ValidateRange(1, 65535)]
-    [int]$SonarrPort = 8989,
+    [ValidateRange(0, 65535)]
+    [int]$EmulebbPort = 0,
+    [ValidateRange(0, 65535)]
+    [int]$AmutorrentPort = 0,
+    [ValidateRange(0, 65535)]
+    [int]$ProwlarrPort = 0,
+    [ValidateRange(0, 65535)]
+    [int]$RadarrPort = 0,
+    [ValidateRange(0, 65535)]
+    [int]$SonarrPort = 0,
 
     [string]$P2PBindInterface,
 
@@ -63,6 +63,8 @@ if ($Bundle -like '-*') {
 }
 $script:InstallerBoundParameters = $PSBoundParameters
 
+$AutoPortRangeStart = 54000
+$AutoPortRangeEnd = 59999
 $NodeVersion = 'v24.15.0'
 $MinimumNodeMajor = 24
 $NodeArchives = @{
@@ -310,6 +312,93 @@ function Merge-Hashtable {
             $Target[$key] = $Source[$key]
         }
     }
+}
+
+function Get-SuiteServiceNames {
+    return @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr')
+}
+
+function ConvertTo-BindIPAddress {
+    param([string]$BindAddress)
+    if ([string]::IsNullOrWhiteSpace($BindAddress) -or $BindAddress -eq '0.0.0.0') {
+        return [Net.IPAddress]::Any
+    }
+    if ($BindAddress -eq '::') {
+        return [Net.IPAddress]::IPv6Any
+    }
+    try {
+        return [Net.IPAddress]::Parse($BindAddress)
+    } catch {
+        throw "Bind address must be an IP address for automatic port probing: $BindAddress"
+    }
+}
+
+function Test-TcpPortAvailable {
+    param([string]$BindAddress, [int]$Port)
+    if ($Port -lt 1 -or $Port -gt 65535) {
+        return $false
+    }
+    $listener = $null
+    try {
+        $ipAddress = ConvertTo-BindIPAddress -BindAddress $BindAddress
+        $listener = [Net.Sockets.TcpListener]::new($ipAddress, $Port)
+        $listener.Start()
+        return $true
+    } catch {
+        return $false
+    } finally {
+        if ($null -ne $listener) {
+            $listener.Stop()
+        }
+    }
+}
+
+function Resolve-ServicePorts {
+    param([hashtable]$Config)
+    $serviceNames = @(Get-SuiteServiceNames)
+    $explicitPorts = @{}
+    foreach ($serviceName in $serviceNames) {
+        $service = $Config.services[$serviceName]
+        $port = [int]$service.port
+        if ($port -gt 0) {
+            if ($explicitPorts.ContainsKey($port)) {
+                throw "Duplicate configured service port $port for $($explicitPorts[$port]) and $serviceName."
+            }
+            if (-not (Test-TcpPortAvailable -BindAddress ([string]$service.bindAddress) -Port $port)) {
+                throw "Configured $serviceName port $port is not free on $($service.bindAddress)."
+            }
+            $explicitPorts[$port] = $serviceName
+        }
+    }
+
+    $autoServiceNames = @($serviceNames | Where-Object { [int]$Config.services[$_].port -le 0 })
+    if ($autoServiceNames.Count -eq 0) {
+        return
+    }
+
+    for ($basePort = $AutoPortRangeStart; $basePort -le ($AutoPortRangeEnd - $autoServiceNames.Count + 1); ++$basePort) {
+        $candidatePorts = @()
+        for ($offset = 0; $offset -lt $autoServiceNames.Count; ++$offset) {
+            $candidatePorts += ($basePort + $offset)
+        }
+        $available = $true
+        for ($index = 0; $index -lt $autoServiceNames.Count; ++$index) {
+            $serviceName = $autoServiceNames[$index]
+            $port = $candidatePorts[$index]
+            if ($explicitPorts.ContainsKey($port) -or -not (Test-TcpPortAvailable -BindAddress ([string]$Config.services[$serviceName].bindAddress) -Port $port)) {
+                $available = $false
+                break
+            }
+        }
+        if ($available) {
+            for ($index = 0; $index -lt $autoServiceNames.Count; ++$index) {
+                $Config.services[$autoServiceNames[$index]].port = $candidatePorts[$index]
+            }
+            Write-Step "Selected service ports $($candidatePorts -join ', ') from free high-port range $AutoPortRangeStart-$AutoPortRangeEnd"
+            return
+        }
+    }
+    throw "Could not find a free high-port range in $AutoPortRangeStart-$AutoPortRangeEnd for $($autoServiceNames.Count) service(s)."
 }
 
 function Resolve-SuiteConfig {
@@ -1260,16 +1349,6 @@ function Start-ProcessIfMissing {
 `$EmulePort = [int]`$Config.services.emulebb.port
 `$EmuleUrl = "http://`$(`$EmuleHost):`$EmulePort"
 `$EmuleKey = [string]`$Config.services.emulebb.apiKey
-`$env:EMULEBB_ENABLED = 'true'
-`$env:EMULEBB_HOST = `$EmuleHost
-`$env:EMULEBB_PORT = [string]`$EmulePort
-`$env:EMULEBB_API_KEY = `$EmuleKey
-`$env:EMULEBB_USE_SSL = 'false'
-`$env:AMUTORRENT_DATA_DIR = Join-Path `$Root 'data\amutorrent'
-`$env:PORT = [string]`$Config.services.amutorrent.port
-`$env:BIND_ADDRESS = [string]`$Config.services.amutorrent.bindAddress
-`$env:WEB_AUTH_ENABLED = 'false'
-`$env:SKIP_SETUP_WIZARD = 'true'
 & (Join-Path `$Root 'scripts\Start-eMuleBB.ps1')
 if (`$Bundle -eq 'Full') {
     foreach (`$item in @(@('Prowlarr','Prowlarr.exe','data\prowlarr'), @('Radarr','Radarr.exe','data\radarr'), @('Sonarr','Sonarr.exe','data\sonarr'))) {
@@ -1285,6 +1364,16 @@ if (`$Bundle -ne 'Core') {
     }
     if (-not (Test-Path -LiteralPath `$node)) { throw 'Node is not available. Re-run Install-eMuleBBSuite.ps1 to install the pinned runtime.' }
     `$amutorrentServer = Join-Path `$Root 'apps\aMuTorrent\server\server.js'
+    `$env:EMULEBB_ENABLED = 'true'
+    `$env:EMULEBB_HOST = `$EmuleHost
+    `$env:EMULEBB_PORT = [string]`$EmulePort
+    `$env:EMULEBB_API_KEY = `$EmuleKey
+    `$env:EMULEBB_USE_SSL = 'false'
+    `$env:AMUTORRENT_DATA_DIR = Join-Path `$Root 'data\amutorrent'
+    `$env:PORT = [string]`$Config.services.amutorrent.port
+    `$env:BIND_ADDRESS = [string]`$Config.services.amutorrent.bindAddress
+    `$env:WEB_AUTH_ENABLED = 'false'
+    `$env:SKIP_SETUP_WIZARD = 'true'
     Start-ProcessIfMissing -FilePath `$node -ArgumentList @(`$amutorrentServer) -WorkingDirectory (Join-Path `$Root 'apps\aMuTorrent') -CommandLineContains `$amutorrentServer -Hidden
 }
 Wait-Json -Uri "`$EmuleUrl/api/v1/app" -Headers @{ 'X-API-Key' = `$EmuleKey }
@@ -1393,6 +1482,7 @@ if (-not $NonInteractive -and (Test-InteractiveConsole)) {
 $script:Root = [IO.Path]::GetFullPath([string]$script:SuiteConfig.installRoot)
 $script:SuiteConfig.installRoot = $script:Root
 Assert-NoSpaces -Path $script:Root
+Resolve-ServicePorts -Config $script:SuiteConfig
 Assert-SuiteConfig -Config $script:SuiteConfig
 Write-ConfigSummary -Config $script:SuiteConfig
 
