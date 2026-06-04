@@ -46,6 +46,22 @@ def _assert_powershell_parse(path: Path, *, cwd: Path) -> None:
     _run_powershell(["-Command", command], cwd=cwd)
 
 
+def _read_ini_sections(path: Path, *, encoding: str = "utf-16") -> dict[str, dict[str, str]]:
+    sections: dict[str, dict[str, str]] = {}
+    current: dict[str, str] | None = None
+    for line in path.read_text(encoding=encoding).splitlines():
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            current = {}
+            sections[stripped[1:-1]] = current
+            continue
+        if current is None or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        current[key.strip()] = value
+    return sections
+
+
 def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_path: Path) -> None:
     release_root = tmp_path / "release"
     install_root = tmp_path / "suite"
@@ -551,14 +567,16 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     assert "BindAddr=\n" in preferences
     assert f"BindAddr={suite_config['services']['emulebb']['bindAddress']}" in preferences
     assert f"Port={suite_config['services']['emulebb']['port']}" in preferences
-    category_ini = (install_root / "profiles" / "emulebb" / "config" / "Category.ini").read_text(encoding="utf-16")
-    assert "Count=3" in category_ini
-    assert "Title=emulebb-prowlarr" in category_ini
-    assert f"Incoming={install_root}\\downloads\\prowlarr" in category_ini
-    assert "Title=emulebb-radarr" in category_ini
-    assert f"Incoming={install_root}\\downloads\\radarr" in category_ini
-    assert "Title=emulebb-sonarr" in category_ini
-    assert f"Incoming={install_root}\\downloads\\sonarr" in category_ini
+    category_sections = _read_ini_sections(install_root / "profiles" / "emulebb" / "config" / "Category.ini")
+    assert category_sections["General"]["Count"] == "3"
+    categories_by_title = {
+        section["Title"]: section
+        for section in category_sections.values()
+        if section.get("Title")
+    }
+    assert categories_by_title["emulebb-prowlarr"]["Incoming"] == f"{install_root}\\downloads\\prowlarr"
+    assert categories_by_title["emulebb-radarr"]["Incoming"] == f"{install_root}\\downloads\\radarr"
+    assert categories_by_title["emulebb-sonarr"]["Incoming"] == f"{install_root}\\downloads\\sonarr"
     assert (install_root / "downloads" / "prowlarr").is_dir()
     assert (install_root / "downloads" / "radarr").is_dir()
     assert (install_root / "downloads" / "sonarr").is_dir()
@@ -577,11 +595,11 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     assert f"aMuTorrent password: {suite_password}" in credentials
     for service_name in ("emulebb", "prowlarr", "radarr", "sonarr"):
         assert first_keys[service_name] in credentials
-    assert "Arr download client" in credentials
+    assert "Radarr/Sonarr download client" in credentials
     assert f"Password: {first_keys['emulebb']}" in credentials
     credentials_html = (install_root / "credentials.html").read_text(encoding="utf-8-sig")
     assert "eMuleBB Suite Credentials" in credentials_html
-    assert "Arr Download Client" in credentials_html
+    assert "Radarr/Sonarr Download Client" in credentials_html
     assert "data-copy=" in credentials_html
     assert "http://127.0.0.1:" in credentials_html
     assert suite_password in credentials_html

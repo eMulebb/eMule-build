@@ -1245,10 +1245,12 @@ function Append-PendingIniValues {
         [System.Collections.Generic.List[string]]$Output,
         [hashtable]$Pending,
         [string]$Section,
-        [string]$Newline
+        [string]$Newline,
+        [object[]]$Updates
     )
-    foreach ($pendingKey in @($Pending.Keys)) {
-        if ($pendingKey.StartsWith("$Section|")) {
+    foreach ($update in $Updates) {
+        $pendingKey = "$(([string]$update.Section).ToLowerInvariant())|$(([string]$update.Key).ToLowerInvariant())"
+        if ($pendingKey.StartsWith("$Section|") -and $Pending.ContainsKey($pendingKey)) {
             $entry = $Pending[$pendingKey]
             $Output.Add("$($entry.Key)=$($entry.Value)$Newline")
             $Pending.Remove($pendingKey)
@@ -1277,7 +1279,7 @@ function Update-IniText {
         }
         $trimmed = $line.Trim()
         if ($trimmed.StartsWith('[') -and $trimmed.EndsWith(']')) {
-            Append-PendingIniValues -Output $output -Pending $pending -Section $currentSection -Newline $newline
+            Append-PendingIniValues -Output $output -Pending $pending -Section $currentSection -Newline $newline -Updates $Updates
             $currentSection = $trimmed.Substring(1, $trimmed.Length - 2).Trim().ToLowerInvariant()
             $seenSections[$currentSection] = $true
             $output.Add("$line$newline")
@@ -1296,14 +1298,20 @@ function Update-IniText {
         }
         $output.Add("$line$newline")
     }
-    Append-PendingIniValues -Output $output -Pending $pending -Section $currentSection -Newline $newline
-    foreach ($entry in @($pending.Values)) {
+    Append-PendingIniValues -Output $output -Pending $pending -Section $currentSection -Newline $newline -Updates $Updates
+    foreach ($update in $Updates) {
+        $pendingKey = "$(([string]$update.Section).ToLowerInvariant())|$(([string]$update.Key).ToLowerInvariant())"
+        if (-not $pending.ContainsKey($pendingKey)) {
+            continue
+        }
+        $entry = $pending[$pendingKey]
         $sectionName = [string]$entry.Section
         if (-not $seenSections.ContainsKey($sectionName.ToLowerInvariant())) {
             $output.Add("[$sectionName]$newline")
             $seenSections[$sectionName.ToLowerInvariant()] = $true
         }
         $output.Add("$($entry.Key)=$($entry.Value)$newline")
+        $pending.Remove($pendingKey)
     }
     return ($output -join '')
 }
@@ -1606,7 +1614,7 @@ function Write-CredentialsFile {
             $lines.Add("$serviceName web authentication: disabled by suite config; use the API key above for integrations.")
         }
         $lines.Add('')
-        $lines.Add('Arr download client')
+        $lines.Add('Radarr/Sonarr download client')
         $lines.Add('Name: eMuleBB Suite')
         $lines.Add('Username: emule')
         $lines.Add("Password: $($Config.services.emulebb.apiKey)")
@@ -1652,7 +1660,7 @@ function Write-CredentialsFile {
             (New-CopyFieldHtml -Label 'Username' -Value 'emule'),
             (New-CopyFieldHtml -Label 'Password' -Value ([string]$Config.services.emulebb.apiKey))
         )
-        $cards.Add((New-ServiceCardHtml -Name 'Arr Download Client' -Url (Get-ServiceUrl -Service $Config.services.emulebb) -Fields $downloadClientFields))
+        $cards.Add((New-ServiceCardHtml -Name 'Radarr/Sonarr Download Client' -Url (Get-ServiceUrl -Service $Config.services.emulebb) -Fields $downloadClientFields))
     }
 
     $generatedUtc = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
