@@ -166,9 +166,27 @@ def write_dependency_manifest(path: Path, dependency_root: Path) -> None:
     radarr_zip = dependency_root / "radarr.zip"
     sonarr_zip = dependency_root / "sonarr.zip"
     write_zip(node_zip, {"node-v24.15.0-win-x64/node.exe": b"node\n"})
-    write_zip(prowlarr_zip, {"Prowlarr/Prowlarr.exe": b"prowlarr\n"})
-    write_zip(radarr_zip, {"Radarr/Radarr.exe": b"radarr\n"})
-    write_zip(sonarr_zip, {"Sonarr/Sonarr.exe": b"sonarr\n"})
+    write_zip(
+        prowlarr_zip,
+        {
+            "Prowlarr/Prowlarr.exe": b"prowlarr\n",
+            "Prowlarr/Prowlarr.Console.exe": b"prowlarr console\n",
+        },
+    )
+    write_zip(
+        radarr_zip,
+        {
+            "Radarr/Radarr.exe": b"radarr\n",
+            "Radarr/Radarr.Console.exe": b"radarr console\n",
+        },
+    )
+    write_zip(
+        sonarr_zip,
+        {
+            "Sonarr/Sonarr.exe": b"sonarr\n",
+            "Sonarr/Sonarr.Console.exe": b"sonarr console\n",
+        },
+    )
     payload = {
         "node": dependency_spec(node_zip, file_name=node_zip.name),
         "prowlarr": arr_dependency_spec(prowlarr_zip, "Prowlarr.exe"),

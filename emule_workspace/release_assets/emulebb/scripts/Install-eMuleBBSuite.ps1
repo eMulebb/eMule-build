@@ -1466,6 +1466,24 @@ function Wait-Json {
     }
     throw "Timed out waiting for `$Uri"
 }
+function Ensure-EmuleBBAvailable {
+    & (Join-Path `$Root 'scripts\Start-eMuleBB.ps1')
+    Wait-Json -Uri "`$EmuleUrl/api/v1/app" -Headers @{ 'X-API-Key' = `$EmuleKey }
+}
+function Invoke-StepWithRetry {
+    param([string]`$Name, [scriptblock]`$Operation)
+    for (`$attempt = 1; `$attempt -le 3; `$attempt++) {
+        try {
+            & `$Operation
+            return
+        } catch {
+            if (`$attempt -ge 3) { throw }
+            Write-Warning "`$Name failed on attempt `$(`$attempt): `$(`$_.Exception.Message)"
+            Ensure-EmuleBBAvailable
+            Start-Sleep -Seconds 3
+        }
+    }
+}
 function Test-ProcessRunning {
     param([string]`$ExecutablePath, [string]`$CommandLineContains = '')
     try {
@@ -1495,6 +1513,16 @@ function Start-ProcessIfMissing {
     if (`$Hidden) { `$startArgs.WindowStyle = 'Hidden' }
     Start-Process @startArgs | Out-Null
 }
+function Start-ArrHost {
+    param([string]`$Name, [string]`$DataDir)
+    `$appRoot = Join-Path `$Root ('apps\' + `$Name)
+    `$consoleName = `$Name + '.Console.exe'
+    `$exe = Get-ChildItem -Path `$appRoot -Filter `$consoleName -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not `$exe) {
+        throw "Missing console host for `$Name under `$appRoot"
+    }
+    Start-ProcessIfMissing -FilePath `$exe.FullName -ArgumentList @('/data=' + (Join-Path `$Root `$DataDir), '/nobrowser') -CommandLineContains (Join-Path `$Root `$DataDir) -Hidden
+}
 `$Bundle = [string]`$Config.bundle
 `$EmuleHost = Get-ClientHost `$Config.services.emulebb.bindAddress
 `$EmulePort = [int]`$Config.services.emulebb.port
@@ -1502,9 +1530,8 @@ function Start-ProcessIfMissing {
 `$EmuleKey = [string]`$Config.services.emulebb.apiKey
 & (Join-Path `$Root 'scripts\Start-eMuleBB.ps1')
 if (`$Bundle -eq 'Full') {
-    foreach (`$item in @(@('Prowlarr','Prowlarr.exe','data\prowlarr'), @('Radarr','Radarr.exe','data\radarr'), @('Sonarr','Sonarr.exe','data\sonarr'))) {
-        `$exe = Get-ChildItem -Path (Join-Path `$Root ('apps\' + `$item[0])) -Filter `$item[1] -Recurse -File | Select-Object -First 1
-        if (`$exe) { Start-ProcessIfMissing -FilePath `$exe.FullName -ArgumentList @('/data=' + (Join-Path `$Root `$item[2]), '/nobrowser') }
+    foreach (`$item in @(@('Prowlarr','data\prowlarr'), @('Radarr','data\radarr'), @('Sonarr','data\sonarr'))) {
+        Start-ArrHost -Name `$item[0] -DataDir `$item[1]
     }
 }
 if (`$Bundle -ne 'Core') {
@@ -1529,12 +1556,14 @@ if (`$Bundle -ne 'Core') {
     `$env:SKIP_SETUP_WIZARD = 'true'
     Start-ProcessIfMissing -FilePath `$node -ArgumentList @(`$amutorrentServer) -WorkingDirectory (Join-Path `$Root 'apps\aMuTorrent') -CommandLineContains `$amutorrentServer -Hidden
 }
-Wait-Json -Uri "`$EmuleUrl/api/v1/app" -Headers @{ 'X-API-Key' = `$EmuleKey }
+Ensure-EmuleBBAvailable
 if (`$Bundle -ne 'Core') {
     `$AmutorrentHost = Get-ClientHost `$Config.services.amutorrent.bindAddress
     `$AmutorrentUrl = "http://`$(`$AmutorrentHost):`$([int]`$Config.services.amutorrent.port)"
     Wait-Json -Uri "`$AmutorrentUrl/api/auth/status"
-    & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-aMuTorrent.ps1') -AmutorrentUrl `$AmutorrentUrl -AmutorrentApiKey '' -AmutorrentUsername ([string]`$Config.credentials.username) -AmutorrentPassword ([string]`$Config.credentials.password) -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -InstanceName 'eMuleBB Suite' -InstanceId 'emulebb-suite' -NoRetry
+    Invoke-StepWithRetry -Name 'aMuTorrent registration' -Operation {
+        & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-aMuTorrent.ps1') -AmutorrentUrl `$AmutorrentUrl -AmutorrentApiKey '' -AmutorrentUsername ([string]`$Config.credentials.username) -AmutorrentPassword ([string]`$Config.credentials.password) -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -InstanceName 'eMuleBB Suite' -InstanceId 'emulebb-suite' -NoRetry
+    }
 }
 if (`$Bundle -eq 'Full') {
     `$ProwlarrUrl = "http://`$(Get-ClientHost `$Config.services.prowlarr.bindAddress):`$([int]`$Config.services.prowlarr.port)"
@@ -1546,9 +1575,15 @@ if (`$Bundle -eq 'Full') {
     Wait-Json -Uri "`$ProwlarrUrl/api/v1/system/status" -Headers @{ 'X-Api-Key' = `$ProwlarrKey }
     Wait-Json -Uri "`$RadarrUrl/api/v3/system/status" -Headers @{ 'X-Api-Key' = `$RadarrKey }
     Wait-Json -Uri "`$SonarrUrl/api/v3/system/status" -Headers @{ 'X-Api-Key' = `$SonarrKey }
-    & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-Prowlarr.ps1') -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -IndexerName 'eMuleBB Suite' -NoRetry
-    & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -Target Radarr -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -RadarrUrl `$RadarrUrl -RadarrApiKey `$RadarrKey -DownloadClientName 'eMuleBB Suite' -NoRetry
-    & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -Target Sonarr -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -SonarrUrl `$SonarrUrl -SonarrApiKey `$SonarrKey -DownloadClientName 'eMuleBB Suite' -NoRetry
+    Invoke-StepWithRetry -Name 'Prowlarr registration' -Operation {
+        & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-Prowlarr.ps1') -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -IndexerName 'eMuleBB Suite' -NoRetry
+    }
+    Invoke-StepWithRetry -Name 'Radarr registration' -Operation {
+        & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -Target Radarr -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -RadarrUrl `$RadarrUrl -RadarrApiKey `$RadarrKey -DownloadClientName 'eMuleBB Suite' -NoRetry
+    }
+    Invoke-StepWithRetry -Name 'Sonarr registration' -Operation {
+        & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -Target Sonarr -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -SonarrUrl `$SonarrUrl -SonarrApiKey `$SonarrKey -DownloadClientName 'eMuleBB Suite' -NoRetry
+    }
 }
 "@
     $startSuite | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $scriptsDir 'Start-Suite.ps1')
@@ -1556,7 +1591,13 @@ if (`$Bundle -eq 'Full') {
 #Requires -Version 5.1
 `$ErrorActionPreference = 'Stop'
 `$Root = '$rootLiteral'
-Get-Process | Where-Object { `$_.Path -and `$_.Path.StartsWith(`$Root, [StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force
+`$amutorrentServer = Join-Path `$Root 'apps\aMuTorrent\server\server.js'
+Get-CimInstance Win32_Process | Where-Object {
+    (-not [string]::IsNullOrWhiteSpace(`$_.ExecutablePath) -and `$_.ExecutablePath.StartsWith(`$Root, [StringComparison]::OrdinalIgnoreCase)) -or
+    (`$_.Name -eq 'node.exe' -and ([string]`$_.CommandLine).IndexOf(`$amutorrentServer, [StringComparison]::OrdinalIgnoreCase) -ge 0)
+} | ForEach-Object {
+    Stop-Process -Id `$_.ProcessId -Force
+}
 "@ | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $scriptsDir 'Stop-Suite.ps1')
     @"
 #Requires -Version 5.1
@@ -1569,7 +1610,11 @@ foreach (`$name in @('emulebb','amutorrent','prowlarr','radarr','sonarr')) {
     `$service = `$Config.services.`$name
     Write-Host ("{0}: {1}:{2}" -f `$name, `$service.bindAddress, `$service.port)
 }
-Get-Process | Where-Object { `$_.Path -and `$_.Path.StartsWith(`$Root, [StringComparison]::OrdinalIgnoreCase) } | Select-Object Id, ProcessName, Path
+`$amutorrentServer = Join-Path `$Root 'apps\aMuTorrent\server\server.js'
+Get-CimInstance Win32_Process | Where-Object {
+    (-not [string]::IsNullOrWhiteSpace(`$_.ExecutablePath) -and `$_.ExecutablePath.StartsWith(`$Root, [StringComparison]::OrdinalIgnoreCase)) -or
+    (`$_.Name -eq 'node.exe' -and ([string]`$_.CommandLine).IndexOf(`$amutorrentServer, [StringComparison]::OrdinalIgnoreCase) -ge 0)
+} | Select-Object ProcessId, Name, ExecutablePath, CommandLine
 "@ | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $scriptsDir 'Get-SuiteStatus.ps1')
     @"
 #Requires -Version 5.1

@@ -143,8 +143,20 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "Register-aMuTorrent.ps1" in start_suite
     assert "-AmutorrentUsername ([string]$Config.credentials.username)" in start_suite
     assert "-AmutorrentPassword ([string]$Config.credentials.password)" in start_suite
+    assert "function Start-ArrHost" in start_suite
+    assert "$consoleName = $Name + '.Console.exe'" in start_suite
+    assert "Start-ProcessIfMissing -FilePath $exe.FullName" in start_suite
+    assert "-Hidden" in start_suite
+    assert "function Ensure-EmuleBBAvailable" in start_suite
+    assert "function Invoke-StepWithRetry" in start_suite
+    assert "Invoke-StepWithRetry -Name 'Sonarr registration'" in start_suite
     assert start_suite.index("foreach ($item in @(@('Prowlarr'") < start_suite.index("$env:PORT = [string]$Config.services.amutorrent.port")
     assert start_suite.index("$env:PORT = [string]$Config.services.amutorrent.port") < start_suite.index("Start-ProcessIfMissing -FilePath $node")
+
+    stop_suite = (install_root / "scripts" / "Stop-Suite.ps1").read_text(encoding="utf-8-sig")
+    assert "Get-CimInstance Win32_Process" in stop_suite
+    assert "apps\\aMuTorrent\\server\\server.js" in stop_suite
+    assert "$_.Name -eq 'node.exe'" in stop_suite
 
     for generated_script in (
         "Start-eMuleBB.ps1",
@@ -470,11 +482,15 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
         "-P2PBindInterface",
         "hide.me",
     ]
-    occupied_port = socket.create_server(("127.0.0.1", 54000))
+    try:
+        occupied_port = socket.create_server(("127.0.0.1", 54000))
+    except OSError:
+        occupied_port = None
     try:
         _run_powershell(install_args, cwd=repo_root)
     finally:
-        occupied_port.close()
+        if occupied_port is not None:
+            occupied_port.close()
 
     suite_config_path = install_root / "manifests" / "suite-config.json"
     suite_config = json.loads(suite_config_path.read_text(encoding="utf-8-sig"))
@@ -496,6 +512,9 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     assert list((install_root / "apps" / "prowlarr").rglob("Prowlarr.exe"))
     assert list((install_root / "apps" / "radarr").rglob("Radarr.exe"))
     assert list((install_root / "apps" / "sonarr").rglob("Sonarr.exe"))
+    assert list((install_root / "apps" / "prowlarr").rglob("Prowlarr.Console.exe"))
+    assert list((install_root / "apps" / "radarr").rglob("Radarr.Console.exe"))
+    assert list((install_root / "apps" / "sonarr").rglob("Sonarr.Console.exe"))
     preferences = (install_root / "profiles" / "emulebb" / "config" / "preferences.ini").read_text(encoding="utf-16")
     assert "ApiKey=" + first_keys["emulebb"] in preferences
     assert "BindInterface=hide.me" in preferences
