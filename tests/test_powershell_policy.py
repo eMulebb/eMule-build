@@ -1117,6 +1117,103 @@ if ($index -ne 0) { throw ('unexpected index: {0}' -f $index) }
     assert completed.returncode == 0, completed.stderr + completed.stdout
 
 
+def test_register_amutorrent_accepts_matching_env_owned_client(
+    workspace_root: Path,
+    tmp_path: Path,
+) -> None:
+    script_path = (
+        workspace_root
+        / "repos"
+        / "emulebb-build"
+        / "emule_workspace"
+        / "release_assets"
+        / "emulebb"
+        / "scripts"
+        / "Register-aMuTorrent.ps1"
+    )
+    script_text = script_path.read_text(encoding="utf-8")
+    test_script = tmp_path / "amutorrent-env-owned-client-test.ps1"
+    test_script.write_text(
+        """
+Set-StrictMode -Version 2.0
+function Invoke-AmutorrentApi {
+    param([string]$BaseUrl, [string]$ApiKey, [string]$Path, [string]$Method = 'GET', $Body = $null)
+    if ($Path -eq '/api/config/current') {
+        return [pscustomobject]@{
+            clients = @(
+                [pscustomobject]@{
+                    id = 'emulebb-192.0.2.10-4711'
+                    type = 'emulebb'
+                    name = 'eMuleBB'
+                    enabled = $true
+                    host = '192.0.2.10'
+                    port = 4711
+                    useSsl = $false
+                    source = 'env'
+                }
+            )
+        }
+    }
+    if ($Path -eq '/api/config/save') {
+        throw 'matching env-owned client must not be saved'
+    }
+    throw ('unexpected call: {0} {1}' -f $Method, $Path)
+}
+function Get-EmulebbConnection {
+    param([string]$BaseUrl)
+    return [pscustomobject]@{
+        Host = '192.0.2.10'
+        Port = 4711
+        UseSsl = $false
+        Path = ''
+    }
+}
+function Test-EmulebbClientThroughAmutorrent {
+    param([string]$BaseUrl, [string]$ApiKey, $Connection, [string]$EmuleApiKey)
+}
+"""
+        + _extract_powershell_function(script_text, "Remove-PropertyIfPresent")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-ObjectPropertyValue")
+        + "\n"
+        + _extract_powershell_function(script_text, "Set-ObjectProperty")
+        + "\n"
+        + _extract_powershell_function(script_text, "Copy-JsonObject")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-ClientArray")
+        + "\n"
+        + _extract_powershell_function(script_text, "Find-EmulebbClientIndex")
+        + "\n"
+        + _extract_powershell_function(script_text, "Test-EnvOwnedClient")
+        + "\n"
+        + _extract_powershell_function(script_text, "Test-ClientConnectionMatch")
+        + "\n"
+        + _extract_powershell_function(script_text, "Assert-CanRepairClient")
+        + "\n"
+        + _extract_powershell_function(script_text, "Register-EmulebbClient")
+        + """
+Register-EmulebbClient -BaseUrl 'http://amutorrent' -ApiKey '' -EmuleBaseUrl 'http://192.0.2.10:4711' -EmuleKey 'secret' -Name 'eMuleBB' -Id ''
+""",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(test_script),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+
+
 def _extract_powershell_function(script_text: str, function_name: str) -> str:
     start_token = f"function {function_name} "
     start = script_text.index(start_token)

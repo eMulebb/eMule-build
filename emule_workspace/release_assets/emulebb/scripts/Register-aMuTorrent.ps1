@@ -223,6 +223,24 @@ function Find-EmulebbClientIndex {
     return -1
 }
 
+function Test-EnvOwnedClient {
+    param($Client)
+    if ([string](Get-ObjectPropertyValue -Target $Client -Name 'source' -Default '') -eq 'env') {
+        return $true
+    }
+    $fromEnv = Get-ObjectPropertyValue -Target $Client -Name '_fromEnv' -Default $null
+    return $null -ne $fromEnv
+}
+
+function Test-ClientConnectionMatch {
+    param($Client, $Connection)
+    $clientPath = [string](Get-ObjectPropertyValue -Target $Client -Name 'path' -Default '')
+    $clientHost = [string](Get-ObjectPropertyValue -Target $Client -Name 'host' -Default '')
+    $clientPort = [int](Get-ObjectPropertyValue -Target $Client -Name 'port' -Default 0)
+    $clientUseSsl = [bool](Get-ObjectPropertyValue -Target $Client -Name 'useSsl' -Default $false)
+    return $clientHost -eq $Connection.Host -and $clientPort -eq $Connection.Port -and $clientUseSsl -eq [bool]$Connection.UseSsl -and $clientPath.TrimEnd('/') -eq $Connection.Path
+}
+
 function Assert-CanRepairClient {
     param($Client)
     if ($null -eq $Client) {
@@ -231,13 +249,13 @@ function Assert-CanRepairClient {
     # aMuTorrent treats source:'env' and _fromEnv fields as operator-owned
     # settings. Writing over them via /api/config/save would appear to work for
     # this run, then be reverted by the next process start from EMULEBB_*.
-    if ($Client.source -eq 'env') {
+    if ([string](Get-ObjectPropertyValue -Target $Client -Name 'source' -Default '') -eq 'env') {
         throw 'The matching aMuTorrent eMuleBB client is owned by EMULEBB_* environment variables. Repair those variables or remove the env-owned client before using this script.'
     }
-    $fromEnv = $Client._fromEnv
+    $fromEnv = Get-ObjectPropertyValue -Target $Client -Name '_fromEnv' -Default $null
     if ($null -ne $fromEnv) {
         foreach ($field in @('host', 'port', 'apiKey', 'useSsl', 'path')) {
-            if ($fromEnv.$field -eq $true) {
+            if ((Get-ObjectPropertyValue -Target $fromEnv -Name $field -Default $false) -eq $true) {
                 throw "The matching aMuTorrent eMuleBB client has env-owned field '$field'. Repair the matching EMULEBB_* environment variable instead."
             }
         }
@@ -328,6 +346,10 @@ function Register-EmulebbClient {
     $clients = Get-ClientArray -Config $config
     $index = Find-EmulebbClientIndex -Clients $clients -TargetId $Id -Name $Name -Connection $connection
     if ($index -ge 0) {
+        if ((Test-EnvOwnedClient -Client $clients[$index]) -and (Test-ClientConnectionMatch -Client $clients[$index] -Connection $connection)) {
+            Write-Host ('aMuTorrent eMuleBB client "{0}" is already configured from EMULEBB_* environment variables.' -f $clients[$index].name) -ForegroundColor Green
+            return
+        }
         Assert-CanRepairClient -Client $clients[$index]
         $clients[$index] = Update-EmulebbClient -Client $clients[$index] -Connection $connection -ApiKey $EmuleKey -Name $Name -Id $Id
         Write-Host ('Repaired aMuTorrent eMuleBB client "{0}".' -f $clients[$index].name) -ForegroundColor Green
