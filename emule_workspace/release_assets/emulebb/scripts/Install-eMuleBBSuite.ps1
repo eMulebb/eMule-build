@@ -1330,6 +1330,111 @@ function Update-EmulePreferencesFile {
     Update-IniText -Text $text -Updates $updates | Set-Content -Encoding Unicode -LiteralPath $PreferencesPath
 }
 
+function New-DefaultCategoryIniText {
+    return @"
+[General]
+Count=0
+
+[Cat#0]
+Title=
+Incoming=
+Comment=
+RegularExpression=
+Color=-1
+a4afPriority=1
+AutoCat=
+Filter=0
+FilterNegator=0
+AutoCatAsRegularExpression=0
+downloadInAlphabeticalOrder=0
+Care4All=0
+
+"@
+}
+
+function Get-IniSections {
+    param([string]$Text)
+    $sections = @{}
+    $currentSection = ''
+    foreach ($line in [regex]::Split($Text, "(`r`n|`n|`r)")) {
+        $trimmed = $line.Trim()
+        if ($trimmed.StartsWith('[') -and $trimmed.EndsWith(']')) {
+            $currentSection = $trimmed.Substring(1, $trimmed.Length - 2).Trim()
+            if (-not $sections.ContainsKey($currentSection)) {
+                $sections[$currentSection] = @{}
+            }
+            continue
+        }
+        $equalsIndex = $line.IndexOf('=')
+        if ($equalsIndex -lt 0 -or [string]::IsNullOrWhiteSpace($currentSection)) {
+            continue
+        }
+        $key = $line.Substring(0, $equalsIndex).Trim()
+        $value = $line.Substring($equalsIndex + 1)
+        $sections[$currentSection][$key] = $value
+    }
+    return $sections
+}
+
+function Ensure-EmuleCategoryIni {
+    param([string]$ConfigDir)
+    $categoryPath = Join-Path $ConfigDir 'Category.ini'
+    $prowlarrIncoming = Join-Path $script:Root 'downloads\prowlarr'
+    $radarrIncoming = Join-Path $script:Root 'downloads\radarr'
+    $sonarrIncoming = Join-Path $script:Root 'downloads\sonarr'
+    New-Item -ItemType Directory -Force -Path $prowlarrIncoming | Out-Null
+    New-Item -ItemType Directory -Force -Path $radarrIncoming | Out-Null
+    New-Item -ItemType Directory -Force -Path $sonarrIncoming | Out-Null
+
+    $text = if (Test-Path -LiteralPath $categoryPath) { Get-Content -Raw -LiteralPath $categoryPath } else { New-DefaultCategoryIniText }
+    $sections = Get-IniSections -Text $text
+    $categoryCount = 0
+    if ($sections.ContainsKey('General') -and $sections['General'].ContainsKey('Count')) {
+        [void][int]::TryParse([string]$sections['General']['Count'], [ref]$categoryCount)
+    }
+    foreach ($sectionName in @($sections.Keys)) {
+        if ($sectionName -match '^Cat#(\d+)$') {
+            $categoryCount = [Math]::Max($categoryCount, [int]$Matches[1])
+        }
+    }
+
+    $updates = New-Object 'System.Collections.Generic.List[object]'
+    foreach ($entry in @(
+        [pscustomobject]@{ Title = 'emulebb-prowlarr'; Incoming = $prowlarrIncoming },
+        [pscustomobject]@{ Title = 'emulebb-radarr'; Incoming = $radarrIncoming },
+        [pscustomobject]@{ Title = 'emulebb-sonarr'; Incoming = $sonarrIncoming }
+    )) {
+        $section = $null
+        foreach ($sectionName in @($sections.Keys)) {
+            if ($sectionName -notmatch '^Cat#\d+$') {
+                continue
+            }
+            if ($sections[$sectionName].ContainsKey('Title') -and [string]::Equals([string]$sections[$sectionName]['Title'], [string]$entry.Title, [StringComparison]::OrdinalIgnoreCase)) {
+                $section = $sectionName
+                break
+            }
+        }
+        if ([string]::IsNullOrWhiteSpace($section)) {
+            $categoryCount += 1
+            $section = "Cat#$categoryCount"
+            $updates.Add([pscustomobject]@{ Section = $section; Key = 'Title'; Value = [string]$entry.Title })
+            $updates.Add([pscustomobject]@{ Section = $section; Key = 'Comment'; Value = 'eMuleBB suite Arr integration' })
+            $updates.Add([pscustomobject]@{ Section = $section; Key = 'RegularExpression'; Value = '' })
+            $updates.Add([pscustomobject]@{ Section = $section; Key = 'Color'; Value = '-1' })
+            $updates.Add([pscustomobject]@{ Section = $section; Key = 'a4afPriority'; Value = '1' })
+            $updates.Add([pscustomobject]@{ Section = $section; Key = 'AutoCat'; Value = '' })
+            $updates.Add([pscustomobject]@{ Section = $section; Key = 'Filter'; Value = '0' })
+            $updates.Add([pscustomobject]@{ Section = $section; Key = 'FilterNegator'; Value = '0' })
+            $updates.Add([pscustomobject]@{ Section = $section; Key = 'AutoCatAsRegularExpression'; Value = '0' })
+            $updates.Add([pscustomobject]@{ Section = $section; Key = 'downloadInAlphabeticalOrder'; Value = '0' })
+            $updates.Add([pscustomobject]@{ Section = $section; Key = 'Care4All'; Value = '0' })
+        }
+        $updates.Add([pscustomobject]@{ Section = $section; Key = 'Incoming'; Value = [IO.Path]::GetFullPath([string]$entry.Incoming) })
+    }
+    $updates.Add([pscustomobject]@{ Section = 'General'; Key = 'Count'; Value = [string]$categoryCount })
+    Update-IniText -Text $text -Updates $updates | Set-Content -Encoding Unicode -LiteralPath $categoryPath
+}
+
 function Write-EmuleProfile {
     param([hashtable]$Config)
     $configDir = Join-Path (Join-Path $script:Root 'profiles\emulebb') 'config'
@@ -1364,6 +1469,9 @@ function Write-EmuleProfile {
         }
     }
     Update-EmulePreferencesFile -PreferencesPath $preferencesPath -Config $Config
+    if ([string]$Config.bundle -eq 'Full') {
+        Ensure-EmuleCategoryIni -ConfigDir $configDir
+    }
     return $importResult
 }
 
@@ -1675,6 +1783,21 @@ function Set-ArrHostCredentials {
     Invoke-RestMethod -Method Put -Uri `$hostConfigUrl -Headers `$headers -ContentType 'application/json' -Body (`$hostConfig | ConvertTo-Json -Depth 20) -TimeoutSec 20 | Out-Null
     Write-Host "`$Name web login configured."
 }
+function Ensure-ArrRootFolder {
+    param([string]`$Name, [string]`$Url, [string]`$ApiPath, [string]`$ApiKey, [string]`$Path)
+    New-Item -ItemType Directory -Force -Path `$Path | Out-Null
+    `$rootFolderUrl = "`$Url/`$ApiPath/rootfolder"
+    `$headers = @{ 'X-Api-Key' = `$ApiKey }
+    `$normalizedPath = [IO.Path]::GetFullPath(`$Path).TrimEnd('\')
+    foreach (`$rootFolder in @(Invoke-RestMethod -Uri `$rootFolderUrl -Headers `$headers -TimeoutSec 20)) {
+        if ([string]::Equals(([IO.Path]::GetFullPath([string]`$rootFolder.path).TrimEnd('\')), `$normalizedPath, [StringComparison]::OrdinalIgnoreCase)) {
+            Write-Host "`$Name root folder already configured: `$normalizedPath"
+            return
+        }
+    }
+    Invoke-RestMethod -Method Post -Uri `$rootFolderUrl -Headers `$headers -ContentType 'application/json' -Body (@{ path = `$normalizedPath } | ConvertTo-Json -Depth 5) -TimeoutSec 20 | Out-Null
+    Write-Host "`$Name root folder configured: `$normalizedPath"
+}
 function Ensure-EmuleBBAvailable {
     & (Join-Path `$Root 'scripts\Start-eMuleBB.ps1')
     Wait-Json -Uri "`$EmuleUrl/api/v1/app" -Headers @{ 'X-API-Key' = `$EmuleKey }
@@ -1787,6 +1910,8 @@ if (`$Bundle -eq 'Full') {
     Set-ArrHostCredentials -Name 'Prowlarr' -Url `$ProwlarrUrl -ApiPath 'api/v1' -ApiKey `$ProwlarrKey
     Set-ArrHostCredentials -Name 'Radarr' -Url `$RadarrUrl -ApiPath 'api/v3' -ApiKey `$RadarrKey
     Set-ArrHostCredentials -Name 'Sonarr' -Url `$SonarrUrl -ApiPath 'api/v3' -ApiKey `$SonarrKey
+    Ensure-ArrRootFolder -Name 'Radarr' -Url `$RadarrUrl -ApiPath 'api/v3' -ApiKey `$RadarrKey -Path (Join-Path `$Root 'media\movies')
+    Ensure-ArrRootFolder -Name 'Sonarr' -Url `$SonarrUrl -ApiPath 'api/v3' -ApiKey `$SonarrKey -Path (Join-Path `$Root 'media\series')
     Invoke-StepWithRetry -Name 'Prowlarr registration' -Operation {
         & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-Prowlarr.ps1') -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -IndexerName 'eMuleBB Suite' -NoRetry
     }

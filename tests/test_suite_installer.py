@@ -159,6 +159,13 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "Set-ArrHostCredentials -Name 'Prowlarr'" in start_suite
     assert "Set-ArrHostCredentials -Name 'Radarr'" in start_suite
     assert "Set-ArrHostCredentials -Name 'Sonarr'" in start_suite
+    assert "function Ensure-ArrRootFolder" in start_suite
+    assert "$rootFolderUrl = \"$Url/$ApiPath/rootfolder\"" in start_suite
+    assert "New-Item -ItemType Directory -Force -Path $Path" in start_suite
+    assert "Ensure-ArrRootFolder -Name 'Radarr'" in start_suite
+    assert "Join-Path $Root 'media\\movies'" in start_suite
+    assert "Ensure-ArrRootFolder -Name 'Sonarr'" in start_suite
+    assert "Join-Path $Root 'media\\series'" in start_suite
     assert "function Start-ArrHost" in start_suite
     assert "$trayName = $Name + '.exe'" in start_suite
     assert "Missing Windows tray host" in start_suite
@@ -543,6 +550,17 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     assert "BindAddr=\n" in preferences
     assert f"BindAddr={suite_config['services']['emulebb']['bindAddress']}" in preferences
     assert f"Port={suite_config['services']['emulebb']['port']}" in preferences
+    category_ini = (install_root / "profiles" / "emulebb" / "config" / "Category.ini").read_text(encoding="utf-16")
+    assert "Count=3" in category_ini
+    assert "Title=emulebb-prowlarr" in category_ini
+    assert f"Incoming={install_root}\\downloads\\prowlarr" in category_ini
+    assert "Title=emulebb-radarr" in category_ini
+    assert f"Incoming={install_root}\\downloads\\radarr" in category_ini
+    assert "Title=emulebb-sonarr" in category_ini
+    assert f"Incoming={install_root}\\downloads\\sonarr" in category_ini
+    assert (install_root / "downloads" / "prowlarr").is_dir()
+    assert (install_root / "downloads" / "radarr").is_dir()
+    assert (install_root / "downloads" / "sonarr").is_dir()
     for service_name in ("prowlarr", "radarr", "sonarr"):
         arr_config = (install_root / "data" / service_name / "config.xml").read_text(encoding="utf-8-sig")
         assert f"<BindAddress>{suite_config['services'][service_name]['bindAddress']}</BindAddress>" in arr_config
