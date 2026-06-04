@@ -167,6 +167,7 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "Register-aMuTorrent.ps1" in start_suite
     assert "-AmutorrentUsername ([string]$Config.credentials.username)" in start_suite
     assert "-AmutorrentPassword ([string]$Config.credentials.password)" in start_suite
+    assert "-AppProfileName 'eMuleBB Suite'" in start_suite
     assert "function Set-ArrHostCredentials" in start_suite
     assert "$hostConfig.authenticationMethod = 'forms'" in start_suite
     assert "$hostConfig.authenticationRequired = 'enabled'" in start_suite

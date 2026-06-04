@@ -404,6 +404,7 @@ function Invoke-JsonApi {
     if ($Path -eq '/api/v1/indexer?forceSave=true' -and $Method -eq 'POST') {
         $baseUrl = ($Body.fields | Where-Object { $_.name -eq 'baseUrl' }).value
         if ($baseUrl -ne 'http://emule/indexer/emulebb') { throw ('unexpected baseUrl: {0}' -f $baseUrl) }
+        if ($Body.appProfileId -ne 77) { throw ('unexpected appProfileId: {0}' -f $Body.appProfileId) }
         return [pscustomobject]@{ id = 99; name = $Body.name }
     }
     throw ('unexpected call: {0} {1}' -f $Method, $Path)
@@ -427,9 +428,139 @@ function Invoke-JsonApi {
         + "\n"
         + _extract_powershell_function(script_text, "Save-Indexer")
         + """
-$saved = Save-Indexer -BaseUrl 'http://prowlarr' -ApiKey 'secret' -Name 'eMuleBB' -TorznabBaseUrl "'http://emule/indexer/emulebb/'" -TorznabApiKey 'emule-key'
+$saved = Save-Indexer -BaseUrl 'http://prowlarr' -ApiKey 'secret' -Name 'eMuleBB' -TorznabBaseUrl "'http://emule/indexer/emulebb/'" -TorznabApiKey 'emule-key' -AppProfileId 77
 if ($saved -is [array]) { throw ('Save-Indexer emitted an array with {0} items' -f $saved.Count) }
 if ($saved.id -ne 99) { throw ('unexpected saved id: {0}' -f $saved.id) }
+""",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(test_script),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+
+
+def test_register_prowlarr_creates_rss_capable_app_profile(
+    workspace_root: Path,
+    tmp_path: Path,
+) -> None:
+    script_path = (
+        workspace_root
+        / "repos"
+        / "emulebb-build"
+        / "emule_workspace"
+        / "release_assets"
+        / "emulebb"
+        / "scripts"
+        / "Register-Prowlarr.ps1"
+    )
+    script_text = script_path.read_text(encoding="utf-8")
+    test_script = tmp_path / "prowlarr-app-profile-create-test.ps1"
+    test_script.write_text(
+        """
+function Invoke-JsonApi {
+    param([string]$BaseUrl, [string]$ApiKey, [string]$Path, [string]$Method = 'GET', $Body = $null)
+    if ($Path -eq '/api/v1/appprofile' -and $Method -eq 'GET') { return @() }
+    if ($Path -eq '/api/v1/appprofile' -and $Method -eq 'POST') {
+        if ($Body.name -ne 'eMuleBB Suite') { throw ('unexpected name: {0}' -f $Body.name) }
+        if ($Body.enableRss -ne $true) { throw 'RSS was not enabled' }
+        if ($Body.enableAutomaticSearch -ne $true) { throw 'automatic search was not enabled' }
+        if ($Body.enableInteractiveSearch -ne $true) { throw 'interactive search was not enabled' }
+        if ($Body.minimumSeeders -ne 1) { throw ('unexpected minimumSeeders: {0}' -f $Body.minimumSeeders) }
+        return [pscustomobject]@{ id = 77; name = $Body.name }
+    }
+    throw ('unexpected call: {0} {1}' -f $Method, $Path)
+}
+"""
+        + _extract_powershell_function(script_text, "Set-ObjectProperty")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-ExistingAppProfile")
+        + "\n"
+        + _extract_powershell_function(script_text, "Save-AppProfile")
+        + """
+$saved = Save-AppProfile -BaseUrl 'http://prowlarr' -ApiKey 'secret' -Name 'eMuleBB Suite'
+if ($saved.id -ne 77) { throw ('unexpected saved id: {0}' -f $saved.id) }
+""",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(test_script),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+
+
+def test_register_prowlarr_updates_disabled_app_profile(
+    workspace_root: Path,
+    tmp_path: Path,
+) -> None:
+    script_path = (
+        workspace_root
+        / "repos"
+        / "emulebb-build"
+        / "emule_workspace"
+        / "release_assets"
+        / "emulebb"
+        / "scripts"
+        / "Register-Prowlarr.ps1"
+    )
+    script_text = script_path.read_text(encoding="utf-8")
+    test_script = tmp_path / "prowlarr-app-profile-update-test.ps1"
+    test_script.write_text(
+        """
+function Invoke-JsonApi {
+    param([string]$BaseUrl, [string]$ApiKey, [string]$Path, [string]$Method = 'GET', $Body = $null)
+    if ($Path -eq '/api/v1/appprofile' -and $Method -eq 'GET') {
+        return @([pscustomobject]@{
+            id = 42
+            name = 'eMuleBB Suite'
+            enableRss = $false
+            enableAutomaticSearch = $false
+            enableInteractiveSearch = $false
+            minimumSeeders = 0
+        })
+    }
+    if ($Path -eq '/api/v1/appprofile/42' -and $Method -eq 'PUT') {
+        if ($Body.enableRss -ne $true) { throw 'RSS was not enabled' }
+        if ($Body.enableAutomaticSearch -ne $true) { throw 'automatic search was not enabled' }
+        if ($Body.enableInteractiveSearch -ne $true) { throw 'interactive search was not enabled' }
+        if ($Body.minimumSeeders -ne 1) { throw ('unexpected minimumSeeders: {0}' -f $Body.minimumSeeders) }
+        return $Body
+    }
+    throw ('unexpected call: {0} {1}' -f $Method, $Path)
+}
+"""
+        + _extract_powershell_function(script_text, "Set-ObjectProperty")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-ExistingAppProfile")
+        + "\n"
+        + _extract_powershell_function(script_text, "Save-AppProfile")
+        + """
+$saved = Save-AppProfile -BaseUrl 'http://prowlarr' -ApiKey 'secret' -Name 'eMuleBB Suite'
+if ($saved.id -ne 42) { throw ('unexpected saved id: {0}' -f $saved.id) }
 """,
         encoding="utf-8",
     )
@@ -620,8 +751,10 @@ function Invoke-JsonApi {
     if ($Path -eq '/api/v3/downloadclient?forceSave=true' -and $Method -eq 'POST') {
         $hostName = ($Body.fields | Where-Object { $_.name -eq 'host' }).value
         $urlBase = ($Body.fields | Where-Object { $_.name -eq 'urlBase' }).value
+        $category = ($Body.fields | Where-Object { $_.name -eq 'movieCategory' }).value
         if ($hostName -ne 'emule') { throw ('unexpected host: {0}' -f $hostName) }
         if ($urlBase -ne '/proxy') { throw ('unexpected urlBase: {0}' -f $urlBase) }
+        if ($category -ne 'emulebb-radarr') { throw ('unexpected category: {0}' -f $category) }
         return [pscustomobject]@{ id = 88; name = $Body.name }
     }
     throw ('unexpected call: {0} {1}' -f $Method, $Path)
@@ -643,11 +776,77 @@ function Invoke-JsonApi {
         + "\n"
         + _extract_powershell_function(script_text, "Get-ExistingDownloadClient")
         + "\n"
+        + _extract_powershell_function(script_text, "Get-ArrCategoryName")
+        + "\n"
         + _extract_powershell_function(script_text, "Save-QbitClient")
         + """
 $saved = Save-QbitClient -Kind 'radarr' -BaseUrl 'http://radarr' -ApiKey 'secret' -EmuleBaseUrl "'http://emule:4711/proxy/'" -EmuleApiKey 'emule-key' -Name 'eMuleBB'
 if ($saved -is [array]) { throw ('Save-QbitClient emitted an array with {0} items' -f $saved.Count) }
 if ($saved.id -ne 88) { throw ('unexpected saved id: {0}' -f $saved.id) }
+""",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(test_script),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+
+
+def test_register_arr_stack_ensures_matching_emulebb_category(
+    workspace_root: Path,
+    tmp_path: Path,
+) -> None:
+    script_path = (
+        workspace_root
+        / "repos"
+        / "emulebb-build"
+        / "emule_workspace"
+        / "release_assets"
+        / "emulebb"
+        / "scripts"
+        / "Register-ArrStack.ps1"
+    )
+    script_text = script_path.read_text(encoding="utf-8")
+    test_script = tmp_path / "ensure-emule-category-test.ps1"
+    test_script.write_text(
+        """
+$script:Calls = @()
+function Invoke-JsonApi {
+    param([string]$BaseUrl, [string]$ApiKey, [string]$Path, [string]$Method = 'GET', $Body = $null)
+    $script:Calls += [pscustomobject]@{ BaseUrl = $BaseUrl; ApiKey = $ApiKey; Path = $Path; Method = $Method; Body = $Body }
+    if ($Path -eq '/api/v1/categories' -and $Method -eq 'GET') {
+        return [pscustomobject]@{ data = [pscustomobject]@{ items = @([pscustomobject]@{ name = 'Default' }) } }
+    }
+    if ($Path -eq '/api/v1/categories' -and $Method -eq 'POST') {
+        if ($Body.name -ne 'emulebb-sonarr') { throw ('unexpected category name: {0}' -f $Body.name) }
+        return [pscustomobject]@{ id = 2; name = $Body.name }
+    }
+    throw ('unexpected call: {0} {1}' -f $Method, $Path)
+}
+"""
+        + _extract_powershell_function(script_text, "Get-HttpStatusCode")
+        + "\n"
+        + _extract_powershell_function(script_text, "Invoke-JsonApiWithRetry")
+        + "\n"
+        + _extract_powershell_function(script_text, "Test-EmuleCategoryExists")
+        + "\n"
+        + _extract_powershell_function(script_text, "Ensure-EmuleCategory")
+        + """
+Ensure-EmuleCategory -BaseUrl 'http://emule' -ApiKey 'emule-key' -Name 'emulebb-sonarr'
+if ($script:Calls.Count -ne 2) { throw ('expected 2 calls, got {0}' -f $script:Calls.Count) }
+if ($script:Calls[1].Method -ne 'POST') { throw ('expected POST, got {0}' -f $script:Calls[1].Method) }
 """,
         encoding="utf-8",
     )
@@ -768,6 +967,7 @@ function Invoke-JsonApi {
     }
     if ($Path -eq '/api/v1/applications?forceSave=true' -and $Method -eq 'POST') {
         if (-not $Body.name) { throw 'missing root name' }
+        if ($Body.syncLevel -ne 'fullSync') { throw ('unexpected syncLevel: {0}' -f $Body.syncLevel) }
         return [pscustomobject]@{ id = 66; name = $Body.name }
     }
     throw ('unexpected call: {0} {1}' -f $Method, $Path)

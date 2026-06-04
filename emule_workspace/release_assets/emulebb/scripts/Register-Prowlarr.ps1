@@ -7,6 +7,7 @@ param(
     [string]$ProwlarrUrl,
     [string]$ProwlarrApiKey,
     [string]$IndexerName = 'eMuleBB',
+    [string]$AppProfileName = 'eMuleBB Suite',
     [switch]$NoRetry
 )
 
@@ -188,15 +189,49 @@ function Get-ExistingIndexer {
     return $null
 }
 
+function Get-ExistingAppProfile {
+    param([string]$BaseUrl, [string]$ApiKey, [string]$Name)
+    $profiles = Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v1/appprofile'
+    foreach ($profile in @($profiles)) {
+        if ($profile.name -eq $Name) {
+            return $profile
+        }
+    }
+    return $null
+}
+
+function Save-AppProfile {
+    param([string]$BaseUrl, [string]$ApiKey, [string]$Name)
+    $existing = Get-ExistingAppProfile -BaseUrl $BaseUrl -ApiKey $ApiKey -Name $Name
+    if ($null -ne $existing) {
+        $payload = $existing
+    } else {
+        $payload = [pscustomobject]@{}
+    }
+    Set-ObjectProperty -Target $payload -Name 'name' -Value $Name
+    Set-ObjectProperty -Target $payload -Name 'enableRss' -Value $true
+    Set-ObjectProperty -Target $payload -Name 'enableAutomaticSearch' -Value $true
+    Set-ObjectProperty -Target $payload -Name 'enableInteractiveSearch' -Value $true
+    Set-ObjectProperty -Target $payload -Name 'minimumSeeders' -Value 1
+    if ($null -ne $existing -and $existing.id) {
+        return Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path (('/api/v1/appprofile/{0}' -f [int]$existing.id)) -Method 'PUT' -Body $payload
+    }
+    return Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v1/appprofile' -Method 'POST' -Body $payload
+}
+
 function Save-Indexer {
     param(
         [string]$BaseUrl,
         [string]$ApiKey,
         [string]$Name,
         [string]$TorznabBaseUrl,
-        [string]$TorznabApiKey
+        [string]$TorznabApiKey,
+        [int]$AppProfileId
     )
 
+    if ($AppProfileId -le 0) {
+        throw 'AppProfileId must be a positive Prowlarr app profile id.'
+    }
     $existing = Get-ExistingIndexer -BaseUrl $BaseUrl -ApiKey $ApiKey -Name $Name
     if ($null -ne $existing) {
         $payload = $existing
@@ -206,8 +241,7 @@ function Save-Indexer {
 
     $payload.name = $Name
     $payload.enable = $true
-    $payload.appProfileId = [int]($payload.appProfileId -as [int])
-    if ($payload.appProfileId -le 0) { $payload.appProfileId = 1 }
+    Set-ObjectProperty -Target $payload -Name 'appProfileId' -Value $AppProfileId
     $payload.priority = [int]($payload.priority -as [int])
     if ($payload.priority -le 0) { $payload.priority = 25 }
     $payload.implementation = 'Torznab'
@@ -281,7 +315,11 @@ do {
         }
         $EmulebbBaseUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'eMuleBB base URL (example http://127.0.0.1:4711)' -Value $EmulebbBaseUrl) -Name 'EmulebbBaseUrl'
         $EmulebbApiKey = Read-SecretValue -Prompt 'eMuleBB API key' -Value $EmulebbApiKey
-        $saved = Save-Indexer -BaseUrl $ProwlarrUrl -ApiKey $ProwlarrApiKey -Name $IndexerName -TorznabBaseUrl ($EmulebbBaseUrl.TrimEnd('/') + '/indexer/emulebb') -TorznabApiKey $EmulebbApiKey
+        $appProfile = Save-AppProfile -BaseUrl $ProwlarrUrl -ApiKey $ProwlarrApiKey -Name $AppProfileName
+        if ($null -eq $appProfile -or -not $appProfile.id) {
+            throw 'Prowlarr did not return an id for the eMuleBB app profile.'
+        }
+        $saved = Save-Indexer -BaseUrl $ProwlarrUrl -ApiKey $ProwlarrApiKey -Name $IndexerName -TorznabBaseUrl ($EmulebbBaseUrl.TrimEnd('/') + '/indexer/emulebb') -TorznabApiKey $EmulebbApiKey -AppProfileId ([int]$appProfile.id)
         Write-Host ('Registered Prowlarr indexer "{0}" with id {1}.' -f $saved.name, $saved.id) -ForegroundColor Green
         exit 0
     } catch {

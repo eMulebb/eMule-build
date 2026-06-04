@@ -273,7 +273,7 @@ function Save-QbitClient {
     Set-ObjectProperty -Target $payload -Name 'removeCompletedDownloads' -Value $false
     Set-ObjectProperty -Target $payload -Name 'removeFailedDownloads' -Value $false
     $categoryField = if ($Kind -eq 'radarr') { 'movieCategory' } else { 'tvCategory' }
-    $category = if ($Kind -eq 'radarr') { 'emulebb-radarr' } else { 'emulebb-sonarr' }
+    $category = Get-ArrCategoryName -Kind $Kind
     $urlBase = if ($uri.AbsolutePath -and $uri.AbsolutePath -ne '/') { $uri.AbsolutePath.TrimEnd('/') } else { '' }
     [void](Set-ProviderField -Provider $payload -Name 'host' -Value $uri.Host)
     [void](Set-ProviderField -Provider $payload -Name 'port' -Value $uri.Port)
@@ -291,6 +291,47 @@ function Save-QbitClient {
         return Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path (('/api/v3/downloadclient/{0}?forceSave=true' -f [int]$existing.id)) -Method 'PUT' -Body $payload
     }
     return Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v3/downloadclient?forceSave=true' -Method 'POST' -Body $payload
+}
+
+function Get-ArrCategoryName {
+    param([string]$Kind)
+    if ($Kind -eq 'radarr') {
+        return 'emulebb-radarr'
+    }
+    return 'emulebb-sonarr'
+}
+
+function Test-EmuleCategoryExists {
+    param($CategoriesResponse, [string]$Name)
+    $items = @()
+    if ($null -eq $CategoriesResponse) {
+        return $false
+    }
+    if ($CategoriesResponse.PSObject.Properties['data'] -and $CategoriesResponse.data.PSObject.Properties['items']) {
+        $items = @($CategoriesResponse.data.items)
+    } else {
+        $items = @($CategoriesResponse)
+    }
+    foreach ($item in $items) {
+        if ($null -ne $item.PSObject.Properties['name'] -and [string]::Equals([string]$item.name, $Name, [StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+    }
+    return $false
+}
+
+function Ensure-EmuleCategory {
+    param([string]$BaseUrl, [string]$ApiKey, [string]$Name)
+    $categories = Invoke-JsonApiWithRetry -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v1/categories'
+    if (Test-EmuleCategoryExists -CategoriesResponse $categories -Name $Name) {
+        Write-Host ('eMuleBB category "{0}" is already configured.' -f $Name) -ForegroundColor Green
+        return
+    }
+    [void](Invoke-JsonApiWithRetry -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v1/categories' -Method 'POST' -Body @{
+        name = $Name
+        comment = 'eMuleBB Arr integration'
+    })
+    Write-Host ('Created eMuleBB category "{0}".' -f $Name) -ForegroundColor Green
 }
 
 function Remove-QbitClient {
@@ -388,6 +429,7 @@ function Save-ProwlarrApplication {
     Set-ObjectProperty -Target $payload -Name 'enable' -Value $true
     Set-ObjectProperty -Target $payload -Name 'implementation' -Value $name
     Set-ObjectProperty -Target $payload -Name 'implementationName' -Value $name
+    Set-ObjectProperty -Target $payload -Name 'syncLevel' -Value 'fullSync'
     [void](Set-ProviderField -Provider $payload -Name 'baseUrl' -Value $normalizedArrUrl)
     [void](Set-ProviderField -Provider $payload -Name 'apiKey' -Value $ArrKey)
     [void](Set-ProviderField -Provider $payload -Name 'prowlarrUrl' -Value $normalizedProwlarrBaseUrl -Optional)
@@ -434,6 +476,13 @@ $targetUrl = if ($Target -eq 'Radarr') { $RadarrUrl } else { $SonarrUrl }
 $targetApiKey = if ($Target -eq 'Radarr') { $RadarrApiKey } else { $SonarrApiKey }
 $targetUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt ("$Target URL for eMuleBB download client") -Value $targetUrl) -Name ("${Target}Url")
 $targetApiKey = Read-SecretValue -Prompt "$Target API key" -Value $targetApiKey
+
+if ($Action -eq 'Register') {
+    $arrCategoryName = Get-ArrCategoryName -Kind $targetKind
+    Run-TargetWithRetry -Name 'eMuleBB category registration' -NoRetry:$NoRetry -Operation {
+        Ensure-EmuleCategory -BaseUrl $EmulebbBaseUrl -ApiKey $EmulebbApiKey -Name $arrCategoryName
+    }
+}
 
 if ($Action -eq 'Register' -and $ProwlarrUrl) {
     Run-TargetWithRetry -Name "Prowlarr $Target application registration" -NoRetry:$NoRetry -Operation {
