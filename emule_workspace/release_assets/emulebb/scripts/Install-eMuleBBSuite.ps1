@@ -124,21 +124,48 @@ function Assert-NoSpaces {
 }
 
 function New-Secret {
-    $bytes = New-Object byte[] 24
-    [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-    return [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+    $alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+    $result = New-Object System.Text.StringBuilder
+    $buffer = New-Object byte[] 32
+    $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        while ($result.Length -lt 16) {
+            $rng.GetBytes($buffer)
+            foreach ($byte in $buffer) {
+                if ($byte -ge 248) {
+                    continue
+                }
+                [void]$result.Append($alphabet[$byte % $alphabet.Length])
+                if ($result.Length -eq 16) {
+                    break
+                }
+            }
+        }
+    } finally {
+        $rng.Dispose()
+    }
+    return $result.ToString()
+}
+
+function Assert-FixedSecret {
+    param([string]$Name, [string]$Value)
+    if ($Value -notmatch '^[A-Za-z0-9]{16}$') {
+        throw "$Name must be exactly 16 alphanumeric characters."
+    }
 }
 
 function New-SuitePassword {
-    return "eMuleBB!$(New-Secret)7"
+    return New-Secret
 }
 
 function Resolve-Secret {
-    param([string]$Value)
+    param([string]$Value, [string]$Name = 'Secret')
     if ([string]::IsNullOrWhiteSpace($Value)) {
         return New-Secret
     }
-    return $Value
+    $trimmed = $Value.Trim()
+    Assert-FixedSecret -Name $Name -Value $trimmed
+    return $trimmed
 }
 
 function Test-VpnLikeInterfaceName {
@@ -1144,11 +1171,18 @@ function Install-ArrDependency {
     Write-Step "$Name installed"
 }
 
+function ConvertTo-XmlText {
+    param([string]$Value)
+    return [Security.SecurityElement]::Escape($Value)
+}
+
 function Write-ArrConfig {
-    param([string]$Name, [int]$Port, [string]$BindAddress, [string]$ApiKey)
+    param([string]$Name, [int]$Port, [string]$BindAddress, [string]$ApiKey, [string]$Username, [string]$Password)
     $dataDir = Join-Path (Join-Path $script:Root 'data') $Name
     if (-not $DryRun) {
         New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
+        $safeUsername = ConvertTo-XmlText -Value $Username
+        $safePassword = ConvertTo-XmlText -Value $Password
         @(
             '<Config>'
             '  <LogLevel>info</LogLevel>'
@@ -1157,8 +1191,10 @@ function Write-ArrConfig {
             "  <BindAddress>$BindAddress</BindAddress>"
             '  <EnableSsl>False</EnableSsl>'
             "  <ApiKey>$ApiKey</ApiKey>"
-            '  <AuthenticationMethod>None</AuthenticationMethod>'
-            '  <AuthenticationRequired>DisabledForLocalAddresses</AuthenticationRequired>'
+            '  <AuthenticationMethod>Forms</AuthenticationMethod>'
+            '  <AuthenticationRequired>Enabled</AuthenticationRequired>'
+            "  <Username>$safeUsername</Username>"
+            "  <Password>$safePassword</Password>"
             '  <LaunchBrowser>False</LaunchBrowser>'
             "  <InstanceName>eMuleBB $Name</InstanceName>"
             '</Config>'
@@ -1398,6 +1434,37 @@ function Get-ServiceUrl {
     return "http://$hostName`:$([int]$Service.port)"
 }
 
+function ConvertTo-HtmlText {
+    param([string]$Value)
+    return [Security.SecurityElement]::Escape($Value)
+}
+
+function New-CopyFieldHtml {
+    param([string]$Label, [string]$Value)
+    $safeLabel = ConvertTo-HtmlText -Value $Label
+    $safeValue = ConvertTo-HtmlText -Value $Value
+    return "<div class=`"field`"><span>$safeLabel</span><code>$safeValue</code><button type=`"button`" data-copy=`"$safeValue`">Copy</button></div>"
+}
+
+function New-ServiceCardHtml {
+    param([string]$Name, [string]$Url, [object[]]$Fields)
+    $safeName = ConvertTo-HtmlText -Value $Name
+    $safeUrl = ConvertTo-HtmlText -Value $Url
+    $fieldHtml = ($Fields -join "`r`n")
+    return @"
+<section class="card">
+  <div class="card-head">
+    <h2>$safeName</h2>
+    <a class="open" href="$safeUrl">Open</a>
+  </div>
+  <div class="url"><a href="$safeUrl">$safeUrl</a></div>
+  <div class="fields">
+$fieldHtml
+  </div>
+</section>
+"@
+}
+
 function Write-CredentialsFile {
     param([hashtable]$Config)
     if ($DryRun) {
@@ -1442,6 +1509,106 @@ function Write-CredentialsFile {
     $lines.Add('Incoming downloads: downloads\incoming')
     $lines.Add('Temporary downloads: downloads\temp')
     ($lines -join "`r`n") + "`r`n" | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $script:Root 'credentials.txt')
+
+    $cards = New-Object 'System.Collections.Generic.List[string]'
+    $suiteFields = @(
+        (New-CopyFieldHtml -Label 'Username' -Value ([string]$Config.credentials.username)),
+        (New-CopyFieldHtml -Label 'Password' -Value ([string]$Config.credentials.password))
+    )
+    $cards.Add((New-ServiceCardHtml -Name 'Suite Login' -Url (Get-ServiceUrl -Service $Config.services.emulebb) -Fields $suiteFields))
+
+    $emuleFields = @(
+        (New-CopyFieldHtml -Label 'API key' -Value ([string]$Config.services.emulebb.apiKey))
+    )
+    $cards.Add((New-ServiceCardHtml -Name 'eMuleBB' -Url (Get-ServiceUrl -Service $Config.services.emulebb) -Fields $emuleFields))
+
+    if ([string]$Config.bundle -ne 'Core') {
+        $amutorrentFields = @(
+            (New-CopyFieldHtml -Label 'Username' -Value ([string]$Config.credentials.username)),
+            (New-CopyFieldHtml -Label 'Password' -Value ([string]$Config.credentials.password))
+        )
+        $cards.Add((New-ServiceCardHtml -Name 'aMuTorrent' -Url (Get-ServiceUrl -Service $Config.services.amutorrent) -Fields $amutorrentFields))
+    }
+    if ([string]$Config.bundle -eq 'Full') {
+        foreach ($serviceName in @('prowlarr', 'radarr', 'sonarr')) {
+            $service = $Config.services[$serviceName]
+            $arrFields = @(
+                (New-CopyFieldHtml -Label 'Username' -Value ([string]$Config.credentials.username)),
+                (New-CopyFieldHtml -Label 'Password' -Value ([string]$Config.credentials.password)),
+                (New-CopyFieldHtml -Label 'API key' -Value ([string]$service.apiKey))
+            )
+            $cards.Add((New-ServiceCardHtml -Name $serviceName -Url (Get-ServiceUrl -Service $service) -Fields $arrFields))
+        }
+        $downloadClientFields = @(
+            (New-CopyFieldHtml -Label 'Name' -Value 'eMuleBB Suite'),
+            (New-CopyFieldHtml -Label 'Username' -Value 'emule'),
+            (New-CopyFieldHtml -Label 'Password' -Value ([string]$Config.services.emulebb.apiKey))
+        )
+        $cards.Add((New-ServiceCardHtml -Name 'Arr Download Client' -Url (Get-ServiceUrl -Service $Config.services.emulebb) -Fields $downloadClientFields))
+    }
+
+    $generatedUtc = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+    $safeRoot = ConvertTo-HtmlText -Value $script:Root
+    $safeBundle = ConvertTo-HtmlText -Value ([string]$Config.bundle)
+    $safeVersion = ConvertTo-HtmlText -Value ([string]$Config.version)
+    $safePlatform = ConvertTo-HtmlText -Value ([string]$Config.platform)
+    $cardsHtml = ($cards -join "`r`n")
+    $html = @"
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>eMuleBB Suite Credentials</title>
+  <style>
+    body { margin: 0; font: 14px/1.45 "Segoe UI", Arial, sans-serif; color: #1f2933; background: #f5f7fa; }
+    main { max-width: 1040px; margin: 0 auto; padding: 28px; }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    h2 { margin: 0; font-size: 18px; }
+    .summary { margin: 0 0 22px; color: #52606d; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 14px; }
+    .card { background: #fff; border: 1px solid #d9e2ec; border-radius: 8px; padding: 16px; box-shadow: 0 1px 2px rgba(16, 24, 40, .06); }
+    .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .open, button { border: 1px solid #2563eb; background: #2563eb; color: #fff; border-radius: 6px; padding: 6px 10px; text-decoration: none; cursor: pointer; }
+    .url { margin: 10px 0 12px; overflow-wrap: anywhere; }
+    .url a { color: #1d4ed8; }
+    .field { display: grid; grid-template-columns: 78px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 7px 0; border-top: 1px solid #edf2f7; }
+    .field span { color: #52606d; }
+    code { background: #f1f5f9; border: 1px solid #d9e2ec; border-radius: 4px; padding: 4px 6px; overflow-wrap: anywhere; }
+    footer { margin-top: 22px; color: #697586; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>eMuleBB Suite Credentials</h1>
+  <p class="summary">Generated $generatedUtc. Bundle $safeBundle, version $safeVersion, platform $safePlatform. Install root: $safeRoot.</p>
+  <div class="grid">
+$cardsHtml
+  </div>
+  <footer>Keep this file private. API keys and passwords are shown here for first-run setup and recovery.</footer>
+</main>
+<script>
+document.addEventListener('click', async function (event) {
+  var button = event.target.closest('button[data-copy]');
+  if (!button) return;
+  var value = button.getAttribute('data-copy');
+  try {
+    await navigator.clipboard.writeText(value);
+    button.textContent = 'Copied';
+    setTimeout(function () { button.textContent = 'Copy'; }, 1200);
+  } catch (err) {
+    var input = document.createElement('input');
+    input.value = value;
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand('copy');
+    document.body.removeChild(input);
+  }
+});
+</script>
+</body>
+</html>
+"@
+    $html | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $script:Root 'credentials.html')
 }
 
 function Write-SuiteScripts {
@@ -1720,11 +1887,11 @@ if (-not $DryRun) {
     New-Item -ItemType Directory -Force -Path $script:Root | Out-Null
 }
 
-$script:SuiteConfig.services.emulebb.apiKey = Resolve-Secret $script:SuiteConfig.services.emulebb.apiKey
-$script:SuiteConfig.services.prowlarr.apiKey = Resolve-Secret $script:SuiteConfig.services.prowlarr.apiKey
-$script:SuiteConfig.services.radarr.apiKey = Resolve-Secret $script:SuiteConfig.services.radarr.apiKey
-$script:SuiteConfig.services.sonarr.apiKey = Resolve-Secret $script:SuiteConfig.services.sonarr.apiKey
-$script:SuiteConfig.credentials.password = Resolve-OptionalValue -Value $script:SuiteConfig.credentials.password -Default (New-SuitePassword)
+$script:SuiteConfig.services.emulebb.apiKey = Resolve-Secret -Value $script:SuiteConfig.services.emulebb.apiKey -Name 'eMuleBB API key'
+$script:SuiteConfig.services.prowlarr.apiKey = Resolve-Secret -Value $script:SuiteConfig.services.prowlarr.apiKey -Name 'Prowlarr API key'
+$script:SuiteConfig.services.radarr.apiKey = Resolve-Secret -Value $script:SuiteConfig.services.radarr.apiKey -Name 'Radarr API key'
+$script:SuiteConfig.services.sonarr.apiKey = Resolve-Secret -Value $script:SuiteConfig.services.sonarr.apiKey -Name 'Sonarr API key'
+$script:SuiteConfig.credentials.password = Resolve-Secret -Value $script:SuiteConfig.credentials.password -Name 'Suite password'
 
 $releaseBase = Resolve-OptionalValue -Value $script:SuiteConfig.releaseBaseUrl -Default "https://github.com/emulebb/emulebb/releases/download/emulebb-v$($script:SuiteConfig.version)"
 $amutorrentVersion = Resolve-OptionalValue -Value $script:SuiteConfig.amutorrentVersion -Default $script:SuiteConfig.version
@@ -1763,9 +1930,9 @@ if ($script:SuiteConfig.bundle -eq 'Full') {
 $script:ProfileImport = Write-EmuleProfile -Config $script:SuiteConfig
 $script:Symbols = Copy-OptionalEmuleSymbols -Config $script:SuiteConfig
 if ($script:SuiteConfig.bundle -eq 'Full') {
-    Write-ArrConfig -Name 'prowlarr' -Port $script:SuiteConfig.services.prowlarr.port -BindAddress $script:SuiteConfig.services.prowlarr.bindAddress -ApiKey $script:SuiteConfig.services.prowlarr.apiKey
-    Write-ArrConfig -Name 'radarr' -Port $script:SuiteConfig.services.radarr.port -BindAddress $script:SuiteConfig.services.radarr.bindAddress -ApiKey $script:SuiteConfig.services.radarr.apiKey
-    Write-ArrConfig -Name 'sonarr' -Port $script:SuiteConfig.services.sonarr.port -BindAddress $script:SuiteConfig.services.sonarr.bindAddress -ApiKey $script:SuiteConfig.services.sonarr.apiKey
+    Write-ArrConfig -Name 'prowlarr' -Port $script:SuiteConfig.services.prowlarr.port -BindAddress $script:SuiteConfig.services.prowlarr.bindAddress -ApiKey $script:SuiteConfig.services.prowlarr.apiKey -Username $script:SuiteConfig.credentials.username -Password $script:SuiteConfig.credentials.password
+    Write-ArrConfig -Name 'radarr' -Port $script:SuiteConfig.services.radarr.port -BindAddress $script:SuiteConfig.services.radarr.bindAddress -ApiKey $script:SuiteConfig.services.radarr.apiKey -Username $script:SuiteConfig.credentials.username -Password $script:SuiteConfig.credentials.password
+    Write-ArrConfig -Name 'sonarr' -Port $script:SuiteConfig.services.sonarr.port -BindAddress $script:SuiteConfig.services.sonarr.bindAddress -ApiKey $script:SuiteConfig.services.sonarr.apiKey -Username $script:SuiteConfig.credentials.username -Password $script:SuiteConfig.credentials.password
 }
 Write-SuiteConfigFile -Config $script:SuiteConfig
 Write-CredentialsFile -Config $script:SuiteConfig
@@ -1779,3 +1946,6 @@ if (-not $NoStart -and -not $DryRun) {
     & (Join-Path $script:Root 'scripts\Start-Suite.ps1')
 }
 Write-Step "Installed $($script:SuiteConfig.bundle) bundle at $script:Root"
+if (-not $DryRun -and -not $NonInteractive) {
+    Start-Process -FilePath (Join-Path $script:Root 'credentials.html') | Out-Null
+}

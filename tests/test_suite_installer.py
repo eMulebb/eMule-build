@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 import socket
 import subprocess
@@ -95,7 +96,8 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert suite_config["services"]["emulebb"]["port"] == 14711
     assert suite_config["services"]["amutorrent"]["bindAddress"] == control_bind
     assert suite_config["credentials"]["username"] == "admin"
-    assert suite_config["credentials"]["password"]
+    assert re.fullmatch(r"[A-Za-z0-9]{16}", suite_config["credentials"]["password"])
+    assert re.fullmatch(r"[A-Za-z0-9]{16}", suite_config["services"]["emulebb"]["apiKey"])
     assert suite_config["p2p"] == {
         "bindInterface": "hide.me",
         "blockNetworkWhenBindUnavailableAtStartup": False,
@@ -125,6 +127,12 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert f"Password: {suite_config['credentials']['password']}" in credentials
     assert f"eMuleBB URL: http://{control_bind}:14711" in credentials
     assert f"eMuleBB API key: {suite_config['services']['emulebb']['apiKey']}" in credentials
+    credentials_html = (install_root / "credentials.html").read_text(encoding="utf-8-sig")
+    assert "eMuleBB Suite Credentials" in credentials_html
+    assert f"http://{control_bind}:14711" in credentials_html
+    assert 'data-copy="' in credentials_html
+    assert suite_config["credentials"]["password"] in credentials_html
+    assert suite_config["services"]["emulebb"]["apiKey"] in credentials_html
 
     start_emulebb = (install_root / "scripts" / "Start-eMuleBB.ps1").read_text(encoding="utf-8-sig")
     assert "apps\\eMuleBB" in start_emulebb
@@ -502,6 +510,9 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
         for name in ("emulebb", "prowlarr", "radarr", "sonarr")
     }
     suite_password = suite_config["credentials"]["password"]
+    assert re.fullmatch(r"[A-Za-z0-9]{16}", suite_password)
+    for key in first_keys.values():
+        assert re.fullmatch(r"[A-Za-z0-9]{16}", key)
     service_order = ("emulebb", "amutorrent", "prowlarr", "radarr", "sonarr")
     service_ports = [suite_config["services"][name]["port"] for name in service_order]
     assert service_ports == list(range(service_ports[0], service_ports[0] + len(service_ports)))
@@ -529,6 +540,10 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
         assert f"<BindAddress>{suite_config['services'][service_name]['bindAddress']}</BindAddress>" in arr_config
         assert f"<Port>{suite_config['services'][service_name]['port']}</Port>" in arr_config
         assert f"<ApiKey>{first_keys[service_name]}</ApiKey>" in arr_config
+        assert "<AuthenticationMethod>Forms</AuthenticationMethod>" in arr_config
+        assert "<AuthenticationRequired>Enabled</AuthenticationRequired>" in arr_config
+        assert "<Username>admin</Username>" in arr_config
+        assert f"<Password>{suite_password}</Password>" in arr_config
 
     credentials = (install_root / "credentials.txt").read_text(encoding="utf-8-sig")
     assert f"Password: {suite_password}" in credentials
@@ -537,6 +552,14 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
         assert first_keys[service_name] in credentials
     assert "Arr download client" in credentials
     assert f"Password: {first_keys['emulebb']}" in credentials
+    credentials_html = (install_root / "credentials.html").read_text(encoding="utf-8-sig")
+    assert "eMuleBB Suite Credentials" in credentials_html
+    assert "Arr Download Client" in credentials_html
+    assert "data-copy=" in credentials_html
+    assert "http://127.0.0.1:" in credentials_html
+    assert suite_password in credentials_html
+    for key in first_keys.values():
+        assert key in credentials_html
 
     _run_powershell(
         [
@@ -847,6 +870,9 @@ def test_suite_generated_update_and_start_scripts_are_refresh_safe() -> None:
     assert "function Start-ProcessIfMissing" in installer
     assert "eMuleBB is already running" in installer
     assert "Start-ProcessIfMissing -FilePath `$node" in installer
+    assert "credentials.html" in installer
+    assert "if (-not $DryRun -and -not $NonInteractive)" in installer
+    assert "Start-Process -FilePath (Join-Path $script:Root 'credentials.html')" in installer
 
 
 def test_suite_bootstrapper_requires_emulebb_package_root() -> None:
