@@ -4,6 +4,8 @@ param(
     [string]$Action,
     [string]$AmutorrentUrl,
     [string]$AmutorrentApiKey,
+    [string]$AmutorrentUsername,
+    [string]$AmutorrentPassword,
     [string]$EmulebbBaseUrl,
     [string]$EmulebbApiKey,
     [string]$InstanceName = 'eMuleBB',
@@ -12,6 +14,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$script:AmutorrentWebSession = $null
 
 function Normalize-ArgumentValue {
     param([string]$Value)
@@ -109,6 +112,25 @@ function Get-HttpStatusCode {
     }
 }
 
+function Ensure-AmutorrentLogin {
+    param([string]$BaseUrl, [string]$ApiKey)
+    if (-not [string]::IsNullOrWhiteSpace($ApiKey) -or $null -ne $script:AmutorrentWebSession) {
+        return
+    }
+    if ([string]::IsNullOrWhiteSpace($AmutorrentUsername) -or [string]::IsNullOrWhiteSpace($AmutorrentPassword)) {
+        return
+    }
+    $uri = (Normalize-HttpBaseUrl -Value $BaseUrl -Name 'AmutorrentUrl') + '/api/auth/login'
+    $body = @{
+        username = $AmutorrentUsername
+        password = $AmutorrentPassword
+        rememberMe = $true
+    } | ConvertTo-Json -Depth 5
+    $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+    Invoke-RestMethod -Uri $uri -Method 'POST' -Body $body -ContentType 'application/json; charset=utf-8' -WebSession $session -TimeoutSec 90 -ErrorAction Stop | Out-Null
+    $script:AmutorrentWebSession = $session
+}
+
 function Invoke-AmutorrentApi {
     param(
         [string]$BaseUrl,
@@ -123,15 +145,28 @@ function Invoke-AmutorrentApi {
     }
     $uri = (Normalize-HttpBaseUrl -Value $BaseUrl -Name 'AmutorrentUrl') + $Path
     try {
+        Ensure-AmutorrentLogin -BaseUrl $BaseUrl -ApiKey $ApiKey
+        $request = @{
+            Uri = $uri
+            Method = $Method
+            Headers = $headers
+            TimeoutSec = 90
+            ErrorAction = 'Stop'
+        }
+        if ($null -ne $script:AmutorrentWebSession) {
+            $request.WebSession = $script:AmutorrentWebSession
+        }
         if ($null -eq $Body) {
-            return Invoke-RestMethod -Uri $uri -Method $Method -Headers $headers -TimeoutSec 90 -ErrorAction Stop
+            return Invoke-RestMethod @request
         }
         $json = $Body | ConvertTo-Json -Depth 40
-        return Invoke-RestMethod -Uri $uri -Method $Method -Headers $headers -Body $json -ContentType 'application/json; charset=utf-8' -TimeoutSec 90 -ErrorAction Stop
+        $request.Body = $json
+        $request.ContentType = 'application/json; charset=utf-8'
+        return Invoke-RestMethod @request
     } catch {
         $statusCode = Get-HttpStatusCode -Exception $_.Exception
         if ($statusCode -eq 401 -or $statusCode -eq 403) {
-            throw "aMuTorrent rejected the request. Use an admin user's API key from Settings > User Management."
+            throw "aMuTorrent rejected the request. Use an admin user's API key from Settings > User Management or pass -AmutorrentUsername and -AmutorrentPassword."
         }
         throw
     }

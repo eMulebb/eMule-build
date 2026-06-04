@@ -94,6 +94,8 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert suite_config["services"]["emulebb"]["bindAddress"] == control_bind
     assert suite_config["services"]["emulebb"]["port"] == 14711
     assert suite_config["services"]["amutorrent"]["bindAddress"] == control_bind
+    assert suite_config["credentials"]["username"] == "admin"
+    assert suite_config["credentials"]["password"]
     assert suite_config["p2p"] == {
         "bindInterface": "hide.me",
         "blockNetworkWhenBindUnavailableAtStartup": False,
@@ -114,6 +116,15 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert install_manifest["services"]["emulebb"]["apiKeyPresent"] is True
     assert "apiKey" not in install_manifest["services"]["emulebb"]
     assert suite_config["services"]["emulebb"]["apiKey"] not in json.dumps(install_manifest)
+    assert suite_config["credentials"]["password"] not in json.dumps(install_manifest)
+
+    credentials = (install_root / "credentials.txt").read_text(encoding="utf-8-sig")
+    assert "eMuleBB Suite credentials" in credentials
+    assert "Suite web login" in credentials
+    assert "Username: admin" in credentials
+    assert f"Password: {suite_config['credentials']['password']}" in credentials
+    assert f"eMuleBB URL: http://{control_bind}:14711" in credentials
+    assert f"eMuleBB API key: {suite_config['services']['emulebb']['apiKey']}" in credentials
 
     start_emulebb = (install_root / "scripts" / "Start-eMuleBB.ps1").read_text(encoding="utf-8-sig")
     assert "apps\\eMuleBB" in start_emulebb
@@ -125,7 +136,13 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "suite-config.json" in start_suite
     assert "Start-eMuleBB.ps1" in start_suite
     assert "$env:BIND_ADDRESS = [string]$Config.services.amutorrent.bindAddress" in start_suite
+    assert "$env:WEB_AUTH_ENABLED = 'true'" in start_suite
+    assert "$env:WEB_AUTH_ADMIN_USERNAME = [string]$Config.credentials.username" in start_suite
+    assert "$env:WEB_AUTH_PASSWORD = [string]$Config.credentials.password" in start_suite
+    assert "/api/auth/status" in start_suite
     assert "Register-aMuTorrent.ps1" in start_suite
+    assert "-AmutorrentUsername ([string]$Config.credentials.username)" in start_suite
+    assert "-AmutorrentPassword ([string]$Config.credentials.password)" in start_suite
     assert start_suite.index("foreach ($item in @(@('Prowlarr'") < start_suite.index("$env:PORT = [string]$Config.services.amutorrent.port")
     assert start_suite.index("$env:PORT = [string]$Config.services.amutorrent.port") < start_suite.index("Start-ProcessIfMissing -FilePath $node")
 
@@ -426,6 +443,7 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
         name: suite_config["services"][name]["apiKey"]
         for name in ("emulebb", "prowlarr", "radarr", "sonarr")
     }
+    suite_password = suite_config["credentials"]["password"]
     service_order = ("emulebb", "amutorrent", "prowlarr", "radarr", "sonarr")
     service_ports = [suite_config["services"][name]["port"] for name in service_order]
     assert service_ports == list(range(service_ports[0], service_ports[0] + len(service_ports)))
@@ -449,6 +467,14 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
         assert f"<Port>{suite_config['services'][service_name]['port']}</Port>" in arr_config
         assert f"<ApiKey>{first_keys[service_name]}</ApiKey>" in arr_config
 
+    credentials = (install_root / "credentials.txt").read_text(encoding="utf-8-sig")
+    assert f"Password: {suite_password}" in credentials
+    assert f"aMuTorrent password: {suite_password}" in credentials
+    for service_name in ("emulebb", "prowlarr", "radarr", "sonarr"):
+        assert first_keys[service_name] in credentials
+    assert "Arr download client" in credentials
+    assert f"Password: {first_keys['emulebb']}" in credentials
+
     _run_powershell(
         [
             "-File",
@@ -470,6 +496,7 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
         for name in ("emulebb", "prowlarr", "radarr", "sonarr")
     }
     assert refreshed_keys == first_keys
+    assert refreshed_config["credentials"]["password"] == suite_password
 
 
 def test_suite_installer_imports_profile_config_only_once_and_preserves_refresh_profile(tmp_path: Path) -> None:

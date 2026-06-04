@@ -35,6 +35,9 @@ param(
     [string]$RadarrBindAddress,
     [string]$SonarrBindAddress,
 
+    [string]$SuiteUsername = 'admin',
+    [string]$SuitePassword,
+
     [ValidateRange(0, 65535)]
     [int]$EmulebbPort = 0,
     [ValidateRange(0, 65535)]
@@ -120,6 +123,10 @@ function New-Secret {
     $bytes = New-Object byte[] 24
     [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
     return [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+}
+
+function New-SuitePassword {
+    return "eMuleBB!$(New-Secret)7"
 }
 
 function Resolve-Secret {
@@ -245,6 +252,10 @@ function New-SuiteConfig {
         nodeBaseUrl = $NodeBaseUrl
         dependencyManifest = $DependencyManifest
         importProfileDir = $ImportProfileDir
+        credentials = [ordered]@{
+            username = (Resolve-OptionalValue -Value $SuiteUsername -Default 'admin')
+            password = $SuitePassword
+        }
         symbols = [ordered]@{
             emulebbPdbPath = $EmulebbPdbPath
         }
@@ -731,6 +742,12 @@ function Assert-SuiteConfig {
         throw "EmulebbPackageFlavor must be standard or diagnostics: $($Config.emulebbPackageFlavor)"
     }
     Assert-EmulebbExecutableName -PackageFlavor ([string]$Config.emulebbPackageFlavor) -ExecutableName ([string]$Config.emulebbExecutableName)
+    if ($null -eq $Config.credentials) {
+        $Config.credentials = [ordered]@{ username = 'admin'; password = '' }
+    }
+    if ([string]::IsNullOrWhiteSpace($Config.credentials.username) -or $Config.credentials.username -notmatch '^[a-zA-Z0-9_]{3,32}$') {
+        throw "SuiteUsername must be 3-32 characters and contain only letters, numbers, or underscores: $($Config.credentials.username)"
+    }
     foreach ($serviceName in @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr')) {
         $service = $Config.services[$serviceName]
         Assert-ServiceBindAddress -ServiceName $serviceName -Address $service.bindAddress -AllowRemote ([bool]$Config.allowRemoteServiceBind)
@@ -1264,6 +1281,61 @@ function Write-SuiteConfigFile {
     $Config | ConvertTo-Json -Depth 10 | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $manifestDir 'suite-config.json')
 }
 
+function Get-ServiceUrl {
+    param($Service)
+    $hostName = [string]$Service.bindAddress
+    if ($hostName -eq '0.0.0.0' -or $hostName -eq '::') {
+        $hostName = 'localhost'
+    }
+    return "http://$hostName`:$([int]$Service.port)"
+}
+
+function Write-CredentialsFile {
+    param([hashtable]$Config)
+    if ($DryRun) {
+        return
+    }
+    $lines = New-Object 'System.Collections.Generic.List[string]'
+    $lines.Add('eMuleBB Suite credentials')
+    $lines.Add("Generated UTC: $([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))")
+    $lines.Add("Install root: $script:Root")
+    $lines.Add("Bundle: $($Config.bundle)")
+    $lines.Add('')
+    $lines.Add('Suite web login')
+    $lines.Add("Username: $($Config.credentials.username)")
+    $lines.Add("Password: $($Config.credentials.password)")
+    $lines.Add('')
+    $lines.Add('Services')
+    $lines.Add("eMuleBB URL: $(Get-ServiceUrl -Service $Config.services.emulebb)")
+    $lines.Add("eMuleBB API key: $($Config.services.emulebb.apiKey)")
+    if ([string]$Config.bundle -ne 'Core') {
+        $lines.Add('')
+        $lines.Add("aMuTorrent URL: $(Get-ServiceUrl -Service $Config.services.amutorrent)")
+        $lines.Add("aMuTorrent username: $($Config.credentials.username)")
+        $lines.Add("aMuTorrent password: $($Config.credentials.password)")
+    }
+    if ([string]$Config.bundle -eq 'Full') {
+        foreach ($serviceName in @('prowlarr', 'radarr', 'sonarr')) {
+            $service = $Config.services[$serviceName]
+            $lines.Add('')
+            $lines.Add("$serviceName URL: $(Get-ServiceUrl -Service $service)")
+            $lines.Add("$serviceName API key: $($service.apiKey)")
+            $lines.Add("$serviceName web authentication: disabled by suite config; use the API key above for integrations.")
+        }
+        $lines.Add('')
+        $lines.Add('Arr download client')
+        $lines.Add('Name: eMuleBB Suite')
+        $lines.Add('Username: emule')
+        $lines.Add("Password: $($Config.services.emulebb.apiKey)")
+    }
+    $lines.Add('')
+    $lines.Add('Files')
+    $lines.Add('Suite config: manifests\suite-config.json')
+    $lines.Add('Incoming downloads: downloads\incoming')
+    $lines.Add('Temporary downloads: downloads\temp')
+    ($lines -join "`r`n") + "`r`n" | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $script:Root 'credentials.txt')
+}
+
 function Write-SuiteScripts {
     param([hashtable]$Config)
     $scriptsDir = Join-Path $script:Root 'scripts'
@@ -1372,7 +1444,9 @@ if (`$Bundle -ne 'Core') {
     `$env:AMUTORRENT_DATA_DIR = Join-Path `$Root 'data\amutorrent'
     `$env:PORT = [string]`$Config.services.amutorrent.port
     `$env:BIND_ADDRESS = [string]`$Config.services.amutorrent.bindAddress
-    `$env:WEB_AUTH_ENABLED = 'false'
+    `$env:WEB_AUTH_ENABLED = 'true'
+    `$env:WEB_AUTH_ADMIN_USERNAME = [string]`$Config.credentials.username
+    `$env:WEB_AUTH_PASSWORD = [string]`$Config.credentials.password
     `$env:SKIP_SETUP_WIZARD = 'true'
     Start-ProcessIfMissing -FilePath `$node -ArgumentList @(`$amutorrentServer) -WorkingDirectory (Join-Path `$Root 'apps\aMuTorrent') -CommandLineContains `$amutorrentServer -Hidden
 }
@@ -1380,8 +1454,8 @@ Wait-Json -Uri "`$EmuleUrl/api/v1/app" -Headers @{ 'X-API-Key' = `$EmuleKey }
 if (`$Bundle -ne 'Core') {
     `$AmutorrentHost = Get-ClientHost `$Config.services.amutorrent.bindAddress
     `$AmutorrentUrl = "http://`$(`$AmutorrentHost):`$([int]`$Config.services.amutorrent.port)"
-    Wait-Json -Uri "`$AmutorrentUrl/api/config/status"
-    & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-aMuTorrent.ps1') -AmutorrentUrl `$AmutorrentUrl -AmutorrentApiKey '' -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -InstanceName 'eMuleBB Suite' -InstanceId 'emulebb-suite' -NoRetry
+    Wait-Json -Uri "`$AmutorrentUrl/api/auth/status"
+    & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-aMuTorrent.ps1') -AmutorrentUrl `$AmutorrentUrl -AmutorrentApiKey '' -AmutorrentUsername ([string]`$Config.credentials.username) -AmutorrentPassword ([string]`$Config.credentials.password) -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -InstanceName 'eMuleBB Suite' -InstanceId 'emulebb-suite' -NoRetry
 }
 if (`$Bundle -eq 'Full') {
     `$ProwlarrUrl = "http://`$(Get-ClientHost `$Config.services.prowlarr.bindAddress):`$([int]`$Config.services.prowlarr.port)"
@@ -1497,6 +1571,7 @@ $script:SuiteConfig.services.emulebb.apiKey = Resolve-Secret $script:SuiteConfig
 $script:SuiteConfig.services.prowlarr.apiKey = Resolve-Secret $script:SuiteConfig.services.prowlarr.apiKey
 $script:SuiteConfig.services.radarr.apiKey = Resolve-Secret $script:SuiteConfig.services.radarr.apiKey
 $script:SuiteConfig.services.sonarr.apiKey = Resolve-Secret $script:SuiteConfig.services.sonarr.apiKey
+$script:SuiteConfig.credentials.password = Resolve-OptionalValue -Value $script:SuiteConfig.credentials.password -Default (New-SuitePassword)
 
 $releaseBase = Resolve-OptionalValue -Value $script:SuiteConfig.releaseBaseUrl -Default "https://github.com/emulebb/emulebb/releases/download/emulebb-v$($script:SuiteConfig.version)"
 $amutorrentVersion = Resolve-OptionalValue -Value $script:SuiteConfig.amutorrentVersion -Default $script:SuiteConfig.version
@@ -1540,6 +1615,7 @@ if ($script:SuiteConfig.bundle -eq 'Full') {
     Write-ArrConfig -Name 'sonarr' -Port $script:SuiteConfig.services.sonarr.port -BindAddress $script:SuiteConfig.services.sonarr.bindAddress -ApiKey $script:SuiteConfig.services.sonarr.apiKey
 }
 Write-SuiteConfigFile -Config $script:SuiteConfig
+Write-CredentialsFile -Config $script:SuiteConfig
 Write-SuiteScripts -Config $script:SuiteConfig
 Write-InstallManifest -Config $script:SuiteConfig -ProfileImport $script:ProfileImport -Symbols $script:Symbols
 
