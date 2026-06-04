@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 import os
+import platform
 from pathlib import Path
 import subprocess
 import time
@@ -316,7 +317,7 @@ def invoke_community_core_coverage(
 def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, live_options: LiveE2eOptions) -> None:
     """Runs the aggregate live E2E suite."""
 
-    _assert_test_execution_platform_supported(options)
+    _assert_live_e2e_execution_platform_supported(options)
     if live_options.pre_run_cleanup:
         run_pre_test_cleanup(layout)
     effective_test_network = _live_e2e_effective_test_network(live_options)
@@ -1257,3 +1258,21 @@ def _lan_bind_address_from_env(env: dict[str, str]) -> str | None:
 def _assert_test_execution_platform_supported(options: WorkspaceOptions) -> None:
     if options.platform != "x64":
         raise RuntimeError("Test execution supports x64 only.")
+
+
+def _assert_live_e2e_execution_platform_supported(options: WorkspaceOptions) -> None:
+    if options.platform == "x64":
+        return
+    if options.platform == "ARM64" and _host_supports_arm64_test_execution():
+        return
+    raise RuntimeError("Live E2E ARM64 execution requires an ARM64 host.")
+
+
+def _host_supports_arm64_test_execution() -> bool:
+    values = (
+        os.environ.get("RUNNER_ARCH", ""),
+        os.environ.get("PROCESSOR_ARCHITECTURE", ""),
+        os.environ.get("PROCESSOR_ARCHITEW6432", ""),
+        platform.machine(),
+    )
+    return any(value.strip().upper() == "ARM64" for value in values)

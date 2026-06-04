@@ -83,6 +83,44 @@ def test_live_e2e_forwards_plan_only_option(tmp_path: Path, monkeypatch) -> None
     assert "--plan-only" in command
 
 
+def test_live_e2e_allows_arm64_on_arm64_host(tmp_path: Path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
+        captured["command"] = list(command)
+
+    layout = make_layout(tmp_path)
+    monkeypatch.setenv("RUNNER_ARCH", "ARM64")
+    monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+
+    test_runs.invoke_live_e2e_suite(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, platform="ARM64"),
+        LiveE2eOptions(suites=("command-line-smoke",), test_network="offline"),
+    )
+
+    command = captured["command"]
+    assert isinstance(command, list)
+    assert option_values(command, "--app-root") == [str(layout.get_app_variant("main").path)]
+    assert option_values(command, "--configuration") == ["Release"]
+    assert option_values(command, "--suite") == ["command-line-smoke"]
+
+
+def test_live_e2e_rejects_arm64_on_non_arm64_host(tmp_path: Path, monkeypatch) -> None:
+    layout = make_layout(tmp_path)
+    monkeypatch.setenv("RUNNER_ARCH", "X64")
+    monkeypatch.setenv("PROCESSOR_ARCHITECTURE", "AMD64")
+    monkeypatch.delenv("PROCESSOR_ARCHITEW6432", raising=False)
+    monkeypatch.setattr(test_runs.platform, "machine", lambda: "AMD64")
+
+    with pytest.raises(RuntimeError, match="Live E2E ARM64 execution requires an ARM64 host"):
+        test_runs.invoke_live_e2e_suite(
+            layout,
+            WorkspaceOptions(workspace_root=tmp_path, platform="ARM64"),
+            LiveE2eOptions(suites=("command-line-smoke",), test_network="offline"),
+        )
+
+
 def test_live_e2e_forwards_campaign_scenario_metadata(tmp_path: Path, monkeypatch) -> None:
     captured: dict[str, object] = {}
 
