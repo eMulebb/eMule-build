@@ -43,6 +43,7 @@ Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 
 $Repository = 'emulebb/emulebb'
+$AmutorrentRepository = 'emulebb/amutorrent'
 $ApiBase = 'https://api.github.com'
 $UserAgent = 'emulebb-suite-bootstrapper'
 
@@ -79,6 +80,11 @@ function Test-SupportedReleaseTag {
     return $Tag -match '^emulebb-v.+' -or $Tag -match '^emulebb-nightly-\d{8}-[0-9a-fA-F]+(-run\d+)?$'
 }
 
+function Test-SupportedAmutorrentReleaseTag {
+    param([string]$Tag)
+    return $Tag -match '^amutorrent-v.+' -or $Tag -match '^amutorrent-nightly-\d{8}-[0-9a-fA-F]+(-run\d+)?$'
+}
+
 function Get-Release {
     if (-not [string]::IsNullOrWhiteSpace($Version)) {
         $tag = Get-ReleaseTag
@@ -108,6 +114,31 @@ function Get-Release {
     throw 'No matching eMuleBB release was found.'
 }
 
+function Get-AmutorrentRelease {
+    $releases = Invoke-RestMethod -Uri "$ApiBase/repos/$AmutorrentRepository/releases" -Headers @{ 'User-Agent' = $UserAgent }
+    $nightlyFallback = $null
+    foreach ($release in @($releases)) {
+        if ($release.draft) {
+            continue
+        }
+        $tag = [string]$release.tag_name
+        if (-not (Test-SupportedAmutorrentReleaseTag -Tag $tag)) {
+            continue
+        }
+        if ($release.prerelease) {
+            if ($null -eq $nightlyFallback) {
+                $nightlyFallback = $release
+            }
+            continue
+        }
+        return $release
+    }
+    if ($null -ne $nightlyFallback) {
+        return $nightlyFallback
+    }
+    throw 'No matching aMuTorrent release was found.'
+}
+
 function Get-ReleaseVersion {
     param([object]$Release, [string]$AssetArch)
     $tag = [string]$Release.tag_name
@@ -130,9 +161,20 @@ function Get-ReleaseVersion {
     throw "Unexpected release tag: $tag"
 }
 
-function Get-ReleaseBaseUrl {
+function Get-AmutorrentReleaseVersion {
     param([object]$Release)
-    return "https://github.com/$Repository/releases/download/$($Release.tag_name)"
+    foreach ($asset in @($Release.assets)) {
+        $name = [string]$asset.name
+        if ($name -match '^emulebb-(.+)-amutorrent-x64\.zip$') {
+            return $Matches[1]
+        }
+    }
+    throw "aMuTorrent release $($Release.tag_name) does not contain an x64 aMuTorrent ZIP asset."
+}
+
+function Get-ReleaseBaseUrl {
+    param([object]$Release, [string]$ReleaseRepository = $Repository)
+    return "https://github.com/$ReleaseRepository/releases/download/$($Release.tag_name)"
 }
 
 function Get-AssetUrl {
@@ -170,26 +212,37 @@ function Resolve-EffectiveBundle {
     if ($ResolvedPlatform -ne 'x64') {
         throw 'Controller and Full bundles are x64-only in v1 because aMuTorrent native node_modules are packaged for x64.'
     }
+    return $RequestedBundle
+}
+
+function Resolve-AmutorrentPackage {
+    param([string]$RequestedBundle)
+    $release = Get-AmutorrentRelease
+    $version = Get-AmutorrentReleaseVersion -Release $release
     $missing = @()
     foreach ($assetName in @(
-        "emulebb-$ResolvedVersion-amutorrent-x64.manifest.json",
-        "emulebb-$ResolvedVersion-amutorrent-x64.zip"
+        "emulebb-$version-amutorrent-x64.manifest.json",
+        "emulebb-$version-amutorrent-x64.zip"
     )) {
-        if ([string]::IsNullOrWhiteSpace((Find-AssetUrl -Release $Release -Name $assetName))) {
+        if ([string]::IsNullOrWhiteSpace((Find-AssetUrl -Release $release -Name $assetName))) {
             $missing += $assetName
         }
     }
     if ($missing.Count -eq 0) {
-        return $RequestedBundle
+        return [ordered]@{
+            Release = $release
+            Version = $version
+            BaseUrl = (Get-ReleaseBaseUrl -Release $release -ReleaseRepository $AmutorrentRepository)
+        }
     }
-    $message = "Release $($Release.tag_name) does not contain required $RequestedBundle asset(s): $($missing -join ', ')."
+    $message = "aMuTorrent release $($release.tag_name) does not contain required $RequestedBundle asset(s): $($missing -join ', ')."
     if ($NonInteractive -or -not (Test-InteractiveConsole)) {
-        throw "$message Re-run with -Bundle Core or choose a release/nightly with Full suite assets."
+        throw "$message Re-run with -Bundle Core or publish a complete aMuTorrent release."
     }
     Write-Warning "$message Core can still be installed."
     $choice = Read-Host 'Install Core instead? [y/N]'
     if ($choice -match '^[Yy]') {
-        return 'Core'
+        return $null
     }
     throw 'Bootstrap cancelled because required suite assets are missing.'
 }
@@ -275,12 +328,22 @@ $manifestName = "emulebb-$resolvedVersion-$assetArch.manifest.json"
 $zipUrl = Get-AssetUrl -Release $release -Name $zipName
 $manifestUrl = Get-AssetUrl -Release $release -Name $manifestName
 $effectiveBundle = Resolve-EffectiveBundle -Release $release -RequestedBundle $Bundle -ResolvedPlatform $resolvedPlatform -ResolvedVersion $resolvedVersion
+$amutorrentPackage = $null
+if ($effectiveBundle -ne 'Core') {
+    $amutorrentPackage = Resolve-AmutorrentPackage -RequestedBundle $effectiveBundle
+    if ($null -eq $amutorrentPackage) {
+        $effectiveBundle = 'Core'
+    }
+}
 $workRoot = Join-Path $env:TEMP "emulebb-suite-bootstrap-$resolvedVersion-$assetArch"
 $zipPath = Join-Path $workRoot $zipName
 $manifestPath = Join-Path $workRoot $manifestName
 $extractRoot = Join-Path $workRoot 'installer'
 
 Write-Step "Resolved release $($release.tag_name) for $resolvedPlatform"
+if ($effectiveBundle -ne 'Core') {
+    Write-Step "Resolved aMuTorrent release $($amutorrentPackage.Release.tag_name) for Full suite"
+}
 Invoke-Download -Url $manifestUrl -Destination $manifestPath
 Invoke-Download -Url $zipUrl -Destination $zipPath
 if (-not $DryRun) {
@@ -294,6 +357,10 @@ $installerParams = [ordered]@{
     Version = $resolvedVersion
     Platform = $resolvedPlatform
     ReleaseBaseUrl = $releaseBaseUrl
+}
+if ($effectiveBundle -ne 'Core') {
+    $installerParams['AmutorrentVersion'] = $amutorrentPackage.Version
+    $installerParams['AmutorrentReleaseBaseUrl'] = $amutorrentPackage.BaseUrl
 }
 if ($NonInteractive) { $installerParams['NonInteractive'] = $true }
 if ($NoStart) { $installerParams['NoStart'] = $true }

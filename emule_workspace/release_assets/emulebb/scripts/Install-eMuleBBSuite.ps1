@@ -17,6 +17,8 @@ param(
     [string]$DependencyChannel = 'Pinned',
 
     [string]$ReleaseBaseUrl,
+    [string]$AmutorrentReleaseBaseUrl,
+    [string]$AmutorrentVersion,
     [string]$NodeBaseUrl,
     [string]$DependencyManifest,
     [string]$ImportProfileDir,
@@ -234,6 +236,8 @@ function New-SuiteConfig {
         installRoot = $InstallRoot
         dependencyChannel = $DependencyChannel
         releaseBaseUrl = $ReleaseBaseUrl
+        amutorrentReleaseBaseUrl = $AmutorrentReleaseBaseUrl
+        amutorrentVersion = $AmutorrentVersion
         emulebbPackageFlavor = $EmulebbPackageFlavor
         emulebbExecutableName = (Get-EmulebbExecutableNameForFlavor -PackageFlavor $EmulebbPackageFlavor)
         nodeBaseUrl = $NodeBaseUrl
@@ -326,6 +330,8 @@ function Resolve-SuiteConfig {
         @('InstallKind', { param($c, $v) $c.installKind = $v }),
         @('DependencyChannel', { param($c, $v) $c.dependencyChannel = $v }),
         @('ReleaseBaseUrl', { param($c, $v) $c.releaseBaseUrl = $v }),
+        @('AmutorrentReleaseBaseUrl', { param($c, $v) $c.amutorrentReleaseBaseUrl = $v }),
+        @('AmutorrentVersion', { param($c, $v) $c.amutorrentVersion = $v }),
         @('NodeBaseUrl', { param($c, $v) $c.nodeBaseUrl = $v }),
         @('DependencyManifest', { param($c, $v) $c.dependencyManifest = $v }),
         @('ImportProfileDir', { param($c, $v) $c.importProfileDir = $v }),
@@ -1403,6 +1409,8 @@ $script:SuiteConfig.services.radarr.apiKey = Resolve-Secret $script:SuiteConfig.
 $script:SuiteConfig.services.sonarr.apiKey = Resolve-Secret $script:SuiteConfig.services.sonarr.apiKey
 
 $releaseBase = Resolve-OptionalValue -Value $script:SuiteConfig.releaseBaseUrl -Default "https://github.com/emulebb/emulebb/releases/download/emulebb-v$($script:SuiteConfig.version)"
+$amutorrentVersion = Resolve-OptionalValue -Value $script:SuiteConfig.amutorrentVersion -Default $script:SuiteConfig.version
+$amutorrentReleaseBase = Resolve-OptionalValue -Value $script:SuiteConfig.amutorrentReleaseBaseUrl -Default $releaseBase
 $nodeBase = Resolve-OptionalValue -Value $script:SuiteConfig.nodeBaseUrl -Default "https://nodejs.org/dist/$NodeVersion"
 $dependencyManifestPayload = Load-DependencyManifestPayload -ManifestPath $script:SuiteConfig.dependencyManifest
 $assetArch = if ($script:SuiteConfig.platform -eq 'ARM64') { 'arm64' } else { 'x64' }
@@ -1411,7 +1419,7 @@ $appRoot = Join-Path $script:Root 'apps'
 $emulebbPackage = Save-ReleaseZip -Name 'eMuleBB' -ZipUrl "$releaseBase/emulebb-$($script:SuiteConfig.version)$emulebbAssetSuffix-$assetArch.zip" -ManifestUrl "$releaseBase/emulebb-$($script:SuiteConfig.version)$emulebbAssetSuffix-$assetArch.manifest.json"
 $amutorrentPackage = $null
 if ($script:SuiteConfig.bundle -ne 'Core') {
-    $amutorrentPackage = Save-ReleaseZip -Name 'aMuTorrent' -ZipUrl "$releaseBase/emulebb-$($script:SuiteConfig.version)-amutorrent-x64.zip" -ManifestUrl "$releaseBase/emulebb-$($script:SuiteConfig.version)-amutorrent-x64.manifest.json"
+    $amutorrentPackage = Save-ReleaseZip -Name 'aMuTorrent' -ZipUrl "$amutorrentReleaseBase/emulebb-$amutorrentVersion-amutorrent-x64.zip" -ManifestUrl "$amutorrentReleaseBase/emulebb-$amutorrentVersion-amutorrent-x64.manifest.json"
 }
 
 Install-VerifiedReleaseZip -Name 'eMuleBB' -ArchivePath $emulebbPackage.ArchivePath -Destination $appRoot

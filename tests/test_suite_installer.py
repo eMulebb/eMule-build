@@ -326,6 +326,50 @@ def test_suite_installer_full_release_asset_gap_fails_before_app_replace(tmp_pat
     assert not (install_root / "apps" / "eMuleBB").exists()
 
 
+def test_suite_installer_full_can_use_separate_amutorrent_release_base(tmp_path: Path) -> None:
+    release_root = tmp_path / "release"
+    amutorrent_release_root = tmp_path / "amutorrent-release"
+    dependency_root = tmp_path / "dependencies"
+    install_root = tmp_path / "suite"
+    amutorrent_version = "0.7.3-nightly.20260604.9eff539e"
+    amutorrent_zip = amutorrent_release_root / f"emulebb-{amutorrent_version}-amutorrent-x64.zip"
+    amutorrent_manifest = amutorrent_release_root / f"emulebb-{amutorrent_version}-amutorrent-x64.manifest.json"
+    dependency_manifest = tmp_path / "dependency-manifest.json"
+    suite_install_fixtures.write_core_release(release_root)
+    suite_install_fixtures.write_zip(amutorrent_zip, {"aMuTorrent/server/server.js": b"server\n"})
+    _write_manifest(amutorrent_manifest, amutorrent_zip)
+    suite_install_fixtures.write_dependency_manifest(dependency_manifest, dependency_root)
+
+    repo_root = Path.cwd()
+    suite_install_fixtures.run_installer(
+        (repo_root / INSTALLER).resolve(),
+        [
+            "-NonInteractive",
+            "-NoStart",
+            "-Force",
+            "-Bundle",
+            "Full",
+            "-InstallRoot",
+            str(install_root),
+            "-ReleaseBaseUrl",
+            release_root.as_uri(),
+            "-AmutorrentReleaseBaseUrl",
+            amutorrent_release_root.as_uri(),
+            "-AmutorrentVersion",
+            amutorrent_version,
+            "-DependencyManifest",
+            str(dependency_manifest),
+        ],
+        cwd=repo_root,
+    )
+
+    assert (install_root / "apps" / "eMuleBB" / "emulebb.exe").is_file()
+    assert (install_root / "apps" / "aMuTorrent" / "server" / "server.js").is_file()
+    suite_config = suite_install_fixtures.read_suite_config(install_root)
+    assert suite_config["amutorrentReleaseBaseUrl"] == amutorrent_release_root.as_uri()
+    assert suite_config["amutorrentVersion"] == amutorrent_version
+
+
 def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_preserves_keys(tmp_path: Path) -> None:
     release_root = tmp_path / "release"
     dependency_root = tmp_path / "dependencies"
@@ -712,8 +756,11 @@ def test_suite_bootstrapper_requires_emulebb_package_root() -> None:
     assert "AmutorrentPort" in bootstrapper
     assert "AllowRemoteServiceBind" in bootstrapper
     assert "ReleaseBaseUrl" in bootstrapper
+    assert "AmutorrentReleaseBaseUrl" in bootstrapper
+    assert "emulebb/amutorrent" in bootstrapper
     assert "emulebb-nightly-" in bootstrapper
     assert "Test-SupportedReleaseTag" in bootstrapper
+    assert "Test-SupportedAmutorrentReleaseTag" in bootstrapper
     assert "& $installer @installerParams" in bootstrapper
     assert "& $installer @args" not in bootstrapper
 
@@ -769,6 +816,21 @@ def test_suite_bootstrapper_falls_back_to_nightly_when_only_legacy_stable_exists
     command = rf"""
 function Invoke-RestMethod {{
     param([string]$Uri, [hashtable]$Headers)
+    if ($Uri -eq 'https://api.github.com/repos/emulebb/amutorrent/releases') {{
+        return @(
+            [pscustomobject]@{{
+                tag_name = 'amutorrent-nightly-20260604-9eff539e'
+                draft = $false
+                prerelease = $true
+                assets = @(
+                    [pscustomobject]@{{
+                        name = 'emulebb-0.7.3-nightly.20260604.9eff539e-amutorrent-x64.zip'
+                        browser_download_url = 'https://example.invalid/emulebb-0.7.3-nightly.20260604.9eff539e-amutorrent-x64.zip'
+                    }}
+                )
+            }}
+        )
+    }}
     if ($Uri -ne 'https://api.github.com/repos/emulebb/emulebb/releases') {{
         throw "Unexpected release URI: $Uri"
     }}
@@ -818,6 +880,8 @@ param(
     [string]$Version,
     [string]$Platform,
     [string]$ReleaseBaseUrl,
+    [string]$AmutorrentVersion,
+    [string]$AmutorrentReleaseBaseUrl,
     [switch]$NoStart
 )
 Set-Content -Encoding UTF8 -LiteralPath '{captured_bundle.as_posix()}' -Value $Bundle
@@ -836,6 +900,25 @@ Set-Content -Encoding UTF8 -LiteralPath '{captured_bundle.as_posix()}' -Value $B
     command = rf"""
 function Invoke-RestMethod {{
     param([string]$Uri, [hashtable]$Headers)
+    if ($Uri -eq 'https://api.github.com/repos/emulebb/amutorrent/releases') {{
+        return @(
+            [pscustomobject]@{{
+                tag_name = 'amutorrent-nightly-20260604-9eff539e'
+                draft = $false
+                prerelease = $true
+                assets = @(
+                    [pscustomobject]@{{
+                        name = 'emulebb-0.7.3-nightly.20260604.9eff539e-amutorrent-x64.zip'
+                        browser_download_url = 'https://example.invalid/emulebb-0.7.3-nightly.20260604.9eff539e-amutorrent-x64.zip'
+                    }},
+                    [pscustomobject]@{{
+                        name = 'emulebb-0.7.3-nightly.20260604.9eff539e-amutorrent-x64.manifest.json'
+                        browser_download_url = 'https://example.invalid/emulebb-0.7.3-nightly.20260604.9eff539e-amutorrent-x64.manifest.json'
+                    }}
+                )
+            }}
+        )
+    }}
     if ($Uri -ne 'https://api.github.com/repos/emulebb/emulebb/releases') {{
         throw "Unexpected release URI: $Uri"
     }}
@@ -852,14 +935,6 @@ function Invoke-RestMethod {{
                 [pscustomobject]@{{
                     name = 'emulebb-0.7.3-nightly.20260604.5169162-x64.manifest.json'
                     browser_download_url = 'https://example.invalid/emulebb-0.7.3-nightly.20260604.5169162-x64.manifest.json'
-                }},
-                [pscustomobject]@{{
-                    name = 'emulebb-0.7.3-nightly.20260604.5169162-amutorrent-x64.zip'
-                    browser_download_url = 'https://example.invalid/emulebb-0.7.3-nightly.20260604.5169162-amutorrent-x64.zip'
-                }},
-                [pscustomobject]@{{
-                    name = 'emulebb-0.7.3-nightly.20260604.5169162-amutorrent-x64.manifest.json'
-                    browser_download_url = 'https://example.invalid/emulebb-0.7.3-nightly.20260604.5169162-amutorrent-x64.manifest.json'
                 }}
             )
         }}
@@ -883,6 +958,7 @@ function Invoke-WebRequest {{
     completed = _run_powershell(["-Command", command], cwd=repo_root)
 
     assert "Resolved release emulebb-nightly-20260604-5169162 for x64" in completed.stdout
+    assert "Resolved aMuTorrent release amutorrent-nightly-20260604-9eff539e for Full suite" in completed.stdout
     assert captured_bundle.read_text(encoding="utf-8-sig").strip() == "Full"
 
 
@@ -892,6 +968,21 @@ def test_suite_bootstrapper_noninteractive_full_requires_amutorrent_assets() -> 
     command = rf"""
 function Invoke-RestMethod {{
     param([string]$Uri, [hashtable]$Headers)
+    if ($Uri -eq 'https://api.github.com/repos/emulebb/amutorrent/releases') {{
+        return @(
+            [pscustomobject]@{{
+                tag_name = 'amutorrent-nightly-20260604-9eff539e'
+                draft = $false
+                prerelease = $true
+                assets = @(
+                    [pscustomobject]@{{
+                        name = 'emulebb-0.7.3-nightly.20260604.9eff539e-amutorrent-x64.zip'
+                        browser_download_url = 'https://example.invalid/emulebb-0.7.3-nightly.20260604.9eff539e-amutorrent-x64.zip'
+                    }}
+                )
+            }}
+        )
+    }}
     if ($Uri -ne 'https://api.github.com/repos/emulebb/emulebb/releases') {{
         throw "Unexpected release URI: $Uri"
     }}
@@ -926,9 +1017,9 @@ function Invoke-RestMethod {{
     )
 
     assert completed.returncode != 0
-    assert "does not contain required Full asset(s)" in completed.stdout
-    assert "emulebb-0.7.3-nightly.20260604.5169162-amutorrent-x64.zip" in completed.stdout
-    assert "Re-run with -Bundle Core" in completed.stdout
+    assert "aMuTorrent release amutorrent-nightly-20260604-9eff539e does not contain required Full asset(s)" in completed.stdout
+    assert "emulebb-0.7.3-nightly.20260604.9eff539e-amutorrent-x64.manifest.json" in completed.stdout
+    assert "publish a complete aMuTorrent release" in completed.stdout
 
 
 def test_suite_installer_rejects_positional_parameter_string_splat() -> None:
