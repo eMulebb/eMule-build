@@ -184,6 +184,37 @@ def test_suite_installer_copies_packaged_installer_into_suite_scripts(tmp_path: 
     assert (install_root / "scripts" / "Install-eMuleBBSuite.ps1").read_bytes() == installer_payload
 
 
+def test_suite_installer_accepts_local_emulebb_package_zip_override(tmp_path: Path) -> None:
+    release_root = tmp_path / "release"
+    install_root = tmp_path / "suite"
+    release = suite_install_fixtures.write_core_release(release_root)
+
+    repo_root = Path.cwd()
+    _run_powershell(
+        [
+            "-File",
+            str((repo_root / INSTALLER).resolve()),
+            "-NonInteractive",
+            "-NoStart",
+            "-Force",
+            "-Bundle",
+            "Core",
+            "-InstallRoot",
+            str(install_root),
+            "-EmulebbPackageZip",
+            str(release.package_zip),
+            "-EmulebbPackageManifest",
+            str(release.manifest),
+        ],
+        cwd=repo_root,
+    )
+
+    suite_config = json.loads((install_root / "manifests" / "suite-config.json").read_text(encoding="utf-8-sig"))
+    assert Path(suite_config["packageSources"]["emulebb"]["zip"]) == release.package_zip
+    assert Path(suite_config["packageSources"]["emulebb"]["manifest"]) == release.manifest
+    assert (install_root / "apps" / "eMuleBB" / "emulebb.exe").is_file()
+
+
 def test_suite_installer_core_install_uses_diagnostics_executable_name(tmp_path: Path) -> None:
     release_root = tmp_path / "release"
     install_root = tmp_path / "suite"
@@ -424,6 +455,14 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
         str(install_root),
         "-ReleaseBaseUrl",
         release_root.as_uri(),
+        "-EmulebbPackageZip",
+        str(package_zip),
+        "-EmulebbPackageManifest",
+        str(package_manifest),
+        "-AmutorrentPackageZip",
+        str(amutorrent_zip),
+        "-AmutorrentPackageManifest",
+        str(amutorrent_manifest),
         "-ControlBindAddress",
         "127.0.0.1",
         "-DependencyManifest",
@@ -451,6 +490,8 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     assert not ({4711, 4000, 9696, 7878, 8989} & set(service_ports))
     assert (install_root / "apps" / "eMuleBB" / "emulebb.exe").is_file()
     assert (install_root / "apps" / "aMuTorrent" / "server" / "server.js").is_file()
+    assert Path(suite_config["packageSources"]["emulebb"]["zip"]) == package_zip
+    assert Path(suite_config["packageSources"]["amutorrent"]["zip"]) == amutorrent_zip
     assert list((install_root / "runtime" / "node").rglob("node.exe"))
     assert list((install_root / "apps" / "prowlarr").rglob("Prowlarr.exe"))
     assert list((install_root / "apps" / "radarr").rglob("Radarr.exe"))
@@ -800,6 +841,8 @@ def test_suite_bootstrapper_requires_emulebb_package_root() -> None:
     assert "AllowRemoteServiceBind" in bootstrapper
     assert "ReleaseBaseUrl" in bootstrapper
     assert "AmutorrentReleaseBaseUrl" in bootstrapper
+    assert "EmulebbPackageZip" in bootstrapper
+    assert "AmutorrentPackageZip" in bootstrapper
     assert "emulebb/amutorrent" in bootstrapper
     assert "emulebb-nightly-" in bootstrapper
     assert "Test-SupportedReleaseTag" in bootstrapper
@@ -1003,6 +1046,74 @@ function Invoke-WebRequest {{
     assert "Resolved release emulebb-nightly-20260604-5169162 for x64" in completed.stdout
     assert "Resolved aMuTorrent release amutorrent-nightly-20260604-9eff539e for Full suite" in completed.stdout
     assert captured_bundle.read_text(encoding="utf-8-sig").strip() == "Full"
+
+
+def test_suite_bootstrapper_accepts_local_package_zip_overrides(tmp_path: Path) -> None:
+    repo_root = Path.cwd()
+    release_root = tmp_path / "release"
+    captured = tmp_path / "captured.json"
+    installer_payload = f"""#Requires -Version 5.1
+param(
+    [string]$Bundle,
+    [string]$InstallRoot,
+    [string]$Version,
+    [string]$Platform,
+    [string]$EmulebbPackageZip,
+    [string]$EmulebbPackageManifest,
+    [string]$AmutorrentVersion,
+    [string]$AmutorrentPackageZip,
+    [string]$AmutorrentPackageManifest,
+    [switch]$NoStart
+)
+@{{
+    bundle = $Bundle
+    version = $Version
+    platform = $Platform
+    emulebbPackageZip = $EmulebbPackageZip
+    emulebbPackageManifest = $EmulebbPackageManifest
+    amutorrentVersion = $AmutorrentVersion
+    amutorrentPackageZip = $AmutorrentPackageZip
+    amutorrentPackageManifest = $AmutorrentPackageManifest
+}} | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 -LiteralPath '{captured.as_posix()}'
+""".encode("utf-8")
+    package_zip = release_root / "emulebb-0.7.3-local.20260604-x64.zip"
+    package_manifest = release_root / "emulebb-0.7.3-local.20260604-x64.manifest.json"
+    amutorrent_zip = release_root / "emulebb-0.7.3-local.20260604-amutorrent-x64.zip"
+    amutorrent_manifest = release_root / "emulebb-0.7.3-local.20260604-amutorrent-x64.manifest.json"
+    suite_install_fixtures.write_zip(
+        package_zip,
+        {
+            "eMuleBB/emulebb.exe": b"exe\n",
+            "eMuleBB/scripts/Install-eMuleBBSuite.ps1": installer_payload,
+        },
+    )
+    suite_install_fixtures.write_manifest(package_manifest, package_zip)
+    suite_install_fixtures.write_zip(amutorrent_zip, {"aMuTorrent/server/server.js": b"server\n"})
+    suite_install_fixtures.write_manifest(amutorrent_manifest, amutorrent_zip)
+    bootstrapper_path = (repo_root / BOOTSTRAPPER).resolve()
+    command = rf"""
+function Invoke-RestMethod {{
+    throw 'GitHub API should not be called for local package overrides.'
+}}
+function Invoke-WebRequest {{
+    throw 'Downloads should not be used for local package overrides.'
+}}
+& '{bootstrapper_path}' -Bundle Full -NoStart -EmulebbPackageZip '{package_zip.as_posix()}' -EmulebbPackageManifest '{package_manifest.as_posix()}' -AmutorrentPackageZip '{amutorrent_zip.as_posix()}' -AmutorrentPackageManifest '{amutorrent_manifest.as_posix()}'
+"""
+
+    completed = _run_powershell(["-Command", command], cwd=repo_root)
+    captured_payload = json.loads(captured.read_text(encoding="utf-8-sig"))
+
+    assert "Resolved local eMuleBB package" in completed.stdout
+    assert "Resolved local aMuTorrent package" in completed.stdout
+    assert captured_payload["bundle"] == "Full"
+    assert captured_payload["version"] == "0.7.3-local.20260604"
+    assert captured_payload["platform"] == "x64"
+    assert Path(captured_payload["emulebbPackageZip"]) == package_zip
+    assert Path(captured_payload["emulebbPackageManifest"]) == package_manifest
+    assert captured_payload["amutorrentVersion"] == "0.7.3-local.20260604"
+    assert Path(captured_payload["amutorrentPackageZip"]) == amutorrent_zip
+    assert Path(captured_payload["amutorrentPackageManifest"]) == amutorrent_manifest
 
 
 def test_suite_bootstrapper_noninteractive_full_requires_amutorrent_assets() -> None:

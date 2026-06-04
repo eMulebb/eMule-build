@@ -19,6 +19,10 @@ param(
     [string]$ReleaseBaseUrl,
     [string]$AmutorrentReleaseBaseUrl,
     [string]$AmutorrentVersion,
+    [string]$EmulebbPackageZip,
+    [string]$EmulebbPackageManifest,
+    [string]$AmutorrentPackageZip,
+    [string]$AmutorrentPackageManifest,
     [string]$NodeBaseUrl,
     [string]$DependencyManifest,
     [string]$ImportProfileDir,
@@ -247,6 +251,16 @@ function New-SuiteConfig {
         releaseBaseUrl = $ReleaseBaseUrl
         amutorrentReleaseBaseUrl = $AmutorrentReleaseBaseUrl
         amutorrentVersion = $AmutorrentVersion
+        packageSources = [ordered]@{
+            emulebb = [ordered]@{
+                zip = $EmulebbPackageZip
+                manifest = $EmulebbPackageManifest
+            }
+            amutorrent = [ordered]@{
+                zip = $AmutorrentPackageZip
+                manifest = $AmutorrentPackageManifest
+            }
+        }
         emulebbPackageFlavor = $EmulebbPackageFlavor
         emulebbExecutableName = (Get-EmulebbExecutableNameForFlavor -PackageFlavor $EmulebbPackageFlavor)
         nodeBaseUrl = $NodeBaseUrl
@@ -432,6 +446,10 @@ function Resolve-SuiteConfig {
         @('ReleaseBaseUrl', { param($c, $v) $c.releaseBaseUrl = $v }),
         @('AmutorrentReleaseBaseUrl', { param($c, $v) $c.amutorrentReleaseBaseUrl = $v }),
         @('AmutorrentVersion', { param($c, $v) $c.amutorrentVersion = $v }),
+        @('EmulebbPackageZip', { param($c, $v) $c.packageSources.emulebb.zip = $v }),
+        @('EmulebbPackageManifest', { param($c, $v) $c.packageSources.emulebb.manifest = $v }),
+        @('AmutorrentPackageZip', { param($c, $v) $c.packageSources.amutorrent.zip = $v }),
+        @('AmutorrentPackageManifest', { param($c, $v) $c.packageSources.amutorrent.manifest = $v }),
         @('NodeBaseUrl', { param($c, $v) $c.nodeBaseUrl = $v }),
         @('DependencyManifest', { param($c, $v) $c.dependencyManifest = $v }),
         @('ImportProfileDir', { param($c, $v) $c.importProfileDir = $v }),
@@ -745,6 +763,12 @@ function Assert-SuiteConfig {
     if ($null -eq $Config.credentials) {
         $Config.credentials = [ordered]@{ username = 'admin'; password = '' }
     }
+    if ($null -eq $Config.packageSources) {
+        $Config.packageSources = [ordered]@{
+            emulebb = [ordered]@{ zip = ''; manifest = '' }
+            amutorrent = [ordered]@{ zip = ''; manifest = '' }
+        }
+    }
     if ([string]::IsNullOrWhiteSpace($Config.credentials.username) -or $Config.credentials.username -notmatch '^[a-zA-Z0-9_]{3,32}$') {
         throw "SuiteUsername must be 3-32 characters and contain only letters, numbers, or underscores: $($Config.credentials.username)"
     }
@@ -973,6 +997,61 @@ function Save-ReleaseZip {
         Assert-RequiredSha256 -Value $expectedHash -Description "$Name release manifest"
     }
     Assert-FileHash -Path $archivePath -ExpectedSha256 $expectedHash
+    return [ordered]@{
+        Name = $Name
+        ArchivePath = $archivePath
+    }
+}
+
+function Resolve-LocalManifestPath {
+    param([string]$ZipPath, [string]$ManifestPath)
+    if (-not [string]::IsNullOrWhiteSpace($ManifestPath)) {
+        return [IO.Path]::GetFullPath($ManifestPath)
+    }
+    if ([string]::IsNullOrWhiteSpace($ZipPath)) {
+        return ''
+    }
+    $candidate = [IO.Path]::Combine([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($ZipPath)), ([IO.Path]::GetFileNameWithoutExtension($ZipPath) + '.manifest.json'))
+    if (Test-Path -LiteralPath $candidate) {
+        return $candidate
+    }
+    return ''
+}
+
+function Save-PackageZip {
+    param(
+        [string]$Name,
+        [string]$ZipUrl,
+        [string]$ManifestUrl,
+        [string]$LocalZip,
+        [string]$LocalManifest
+    )
+    if ([string]::IsNullOrWhiteSpace($LocalZip)) {
+        return Save-ReleaseZip -Name $Name -ZipUrl $ZipUrl -ManifestUrl $ManifestUrl
+    }
+    $archivePath = [IO.Path]::GetFullPath($LocalZip)
+    if (-not $DryRun -and -not (Test-Path -LiteralPath $archivePath)) {
+        throw "$Name local package ZIP is missing: $archivePath"
+    }
+    $manifestPath = Resolve-LocalManifestPath -ZipPath $archivePath -ManifestPath $LocalManifest
+    if (-not [string]::IsNullOrWhiteSpace($manifestPath)) {
+        if (-not $DryRun -and -not (Test-Path -LiteralPath $manifestPath)) {
+            throw "$Name local package manifest is missing: $manifestPath"
+        }
+        if (-not $DryRun) {
+            $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
+            $sha256Property = @($manifest.PSObject.Properties | Where-Object { $_.Name -eq 'sha256' } | Select-Object -First 1)
+            $expectedHash = ''
+            if ($sha256Property.Count -gt 0) {
+                $expectedHash = [string]$sha256Property[0].Value
+            }
+            Assert-RequiredSha256 -Value $expectedHash -Description "$Name local package manifest"
+            Assert-FileHash -Path $archivePath -ExpectedSha256 $expectedHash
+        }
+        Write-Step "Using local $Name package $archivePath with manifest $manifestPath"
+    } else {
+        Write-Step "Using local $Name package $archivePath without a manifest sidecar"
+    }
     return [ordered]@{
         Name = $Name
         ArchivePath = $archivePath
@@ -1581,10 +1660,10 @@ $dependencyManifestPayload = Load-DependencyManifestPayload -ManifestPath $scrip
 $assetArch = if ($script:SuiteConfig.platform -eq 'ARM64') { 'arm64' } else { 'x64' }
 $emulebbAssetSuffix = if ($script:SuiteConfig.emulebbPackageFlavor -eq 'diagnostics') { '-diagnostics' } else { '' }
 $appRoot = Join-Path $script:Root 'apps'
-$emulebbPackage = Save-ReleaseZip -Name 'eMuleBB' -ZipUrl "$releaseBase/emulebb-$($script:SuiteConfig.version)$emulebbAssetSuffix-$assetArch.zip" -ManifestUrl "$releaseBase/emulebb-$($script:SuiteConfig.version)$emulebbAssetSuffix-$assetArch.manifest.json"
+$emulebbPackage = Save-PackageZip -Name 'eMuleBB' -ZipUrl "$releaseBase/emulebb-$($script:SuiteConfig.version)$emulebbAssetSuffix-$assetArch.zip" -ManifestUrl "$releaseBase/emulebb-$($script:SuiteConfig.version)$emulebbAssetSuffix-$assetArch.manifest.json" -LocalZip ([string]$script:SuiteConfig.packageSources.emulebb.zip) -LocalManifest ([string]$script:SuiteConfig.packageSources.emulebb.manifest)
 $amutorrentPackage = $null
 if ($script:SuiteConfig.bundle -ne 'Core') {
-    $amutorrentPackage = Save-ReleaseZip -Name 'aMuTorrent' -ZipUrl "$amutorrentReleaseBase/emulebb-$amutorrentVersion-amutorrent-x64.zip" -ManifestUrl "$amutorrentReleaseBase/emulebb-$amutorrentVersion-amutorrent-x64.manifest.json"
+    $amutorrentPackage = Save-PackageZip -Name 'aMuTorrent' -ZipUrl "$amutorrentReleaseBase/emulebb-$amutorrentVersion-amutorrent-x64.zip" -ManifestUrl "$amutorrentReleaseBase/emulebb-$amutorrentVersion-amutorrent-x64.manifest.json" -LocalZip ([string]$script:SuiteConfig.packageSources.amutorrent.zip) -LocalManifest ([string]$script:SuiteConfig.packageSources.amutorrent.manifest)
 }
 
 Install-VerifiedReleaseZip -Name 'eMuleBB' -ArchivePath $emulebbPackage.ArchivePath -Destination $appRoot

@@ -11,6 +11,11 @@ param(
     [ValidateSet('x64', 'ARM64')]
     [string]$Platform,
 
+    [string]$EmulebbPackageZip,
+    [string]$EmulebbPackageManifest,
+    [string]$AmutorrentPackageZip,
+    [string]$AmutorrentPackageManifest,
+
     [string]$P2PBindInterface,
     [string]$ControlBindAddress,
     [string]$EmulebbBindAddress,
@@ -161,6 +166,30 @@ function Get-ReleaseVersion {
     throw "Unexpected release tag: $tag"
 }
 
+function Get-LocalEmulebbPackageVersion {
+    param([string]$ZipPath)
+    $name = [IO.Path]::GetFileName($ZipPath)
+    if ($name -match '^emulebb-(.+?)(-diagnostics)?-(x64|arm64)\.zip$') {
+        return $Matches[1]
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Version)) {
+        return $Version
+    }
+    throw "Cannot infer eMuleBB package version from local ZIP name: $name. Pass -Version explicitly."
+}
+
+function Get-LocalEmulebbPackagePlatform {
+    param([string]$ZipPath)
+    $name = [IO.Path]::GetFileName($ZipPath)
+    if ($name -match '^emulebb-.+?(-diagnostics)?-arm64\.zip$') {
+        return 'ARM64'
+    }
+    if ($name -match '^emulebb-.+?(-diagnostics)?-x64\.zip$') {
+        return 'x64'
+    }
+    return Get-DefaultPlatform
+}
+
 function Get-AmutorrentReleaseVersion {
     param([object]$Release)
     foreach ($asset in @($Release.assets)) {
@@ -170,6 +199,15 @@ function Get-AmutorrentReleaseVersion {
         }
     }
     throw "aMuTorrent release $($Release.tag_name) does not contain an x64 aMuTorrent ZIP asset."
+}
+
+function Get-LocalAmutorrentPackageVersion {
+    param([string]$ZipPath, [string]$DefaultVersion)
+    $name = [IO.Path]::GetFileName($ZipPath)
+    if ($name -match '^emulebb-(.+)-amutorrent-x64\.zip$') {
+        return $Matches[1]
+    }
+    return $DefaultVersion
 }
 
 function Get-ReleaseBaseUrl {
@@ -296,6 +334,45 @@ function Assert-FileHash {
     }
 }
 
+function Resolve-LocalManifestPath {
+    param([string]$ZipPath, [string]$ManifestPath)
+    if (-not [string]::IsNullOrWhiteSpace($ManifestPath)) {
+        return [IO.Path]::GetFullPath($ManifestPath)
+    }
+    if ([string]::IsNullOrWhiteSpace($ZipPath)) {
+        return ''
+    }
+    $candidate = [IO.Path]::Combine([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($ZipPath)), ([IO.Path]::GetFileNameWithoutExtension($ZipPath) + '.manifest.json'))
+    if (Test-Path -LiteralPath $candidate) {
+        return $candidate
+    }
+    return ''
+}
+
+function Assert-LocalPackage {
+    param([string]$Name, [string]$ZipPath, [string]$ManifestPath)
+    if ($DryRun) {
+        return
+    }
+    if (-not (Test-Path -LiteralPath $ZipPath)) {
+        throw "$Name local package ZIP is missing: $ZipPath"
+    }
+    $resolvedManifest = Resolve-LocalManifestPath -ZipPath $ZipPath -ManifestPath $ManifestPath
+    if ([string]::IsNullOrWhiteSpace($resolvedManifest)) {
+        Write-Step "Using local $Name package $ZipPath without a manifest sidecar"
+        return
+    }
+    if (-not (Test-Path -LiteralPath $resolvedManifest)) {
+        throw "$Name local package manifest is missing: $resolvedManifest"
+    }
+    $manifest = Get-Content -Raw -LiteralPath $resolvedManifest | ConvertFrom-Json
+    if ($null -eq $manifest.PSObject.Properties['sha256'] -or [string]::IsNullOrWhiteSpace([string]$manifest.sha256)) {
+        throw "$Name local package manifest does not contain sha256: $resolvedManifest"
+    }
+    Assert-FileHash -Path $ZipPath -ExpectedSha256 ([string]$manifest.sha256)
+    Write-Step "Using local $Name package $ZipPath with manifest $resolvedManifest"
+}
+
 function Expand-Installer {
     param([string]$Archive, [string]$Destination)
     if ($DryRun) {
@@ -318,49 +395,81 @@ function Expand-Installer {
     }
 }
 
-$resolvedPlatform = Get-DefaultPlatform
-$release = Get-Release
-$assetArch = if ($resolvedPlatform -eq 'ARM64') { 'arm64' } else { 'x64' }
-$resolvedVersion = Get-ReleaseVersion -Release $release -AssetArch $assetArch
-$releaseBaseUrl = Get-ReleaseBaseUrl -Release $release
-$zipName = "emulebb-$resolvedVersion-$assetArch.zip"
-$manifestName = "emulebb-$resolvedVersion-$assetArch.manifest.json"
-$zipUrl = Get-AssetUrl -Release $release -Name $zipName
-$manifestUrl = Get-AssetUrl -Release $release -Name $manifestName
-$effectiveBundle = Resolve-EffectiveBundle -Release $release -RequestedBundle $Bundle -ResolvedPlatform $resolvedPlatform -ResolvedVersion $resolvedVersion
+$localEmulebbPackage = -not [string]::IsNullOrWhiteSpace($EmulebbPackageZip)
+if ($localEmulebbPackage) {
+    $zipPath = [IO.Path]::GetFullPath($EmulebbPackageZip)
+    $resolvedPlatform = if ([string]::IsNullOrWhiteSpace($Platform)) { Get-LocalEmulebbPackagePlatform -ZipPath $zipPath } else { $Platform }
+    $assetArch = if ($resolvedPlatform -eq 'ARM64') { 'arm64' } else { 'x64' }
+    $resolvedVersion = Get-LocalEmulebbPackageVersion -ZipPath $zipPath
+    $releaseBaseUrl = ''
+    $effectiveBundle = Resolve-EffectiveBundle -Release $null -RequestedBundle $Bundle -ResolvedPlatform $resolvedPlatform -ResolvedVersion $resolvedVersion
+    Assert-LocalPackage -Name 'eMuleBB' -ZipPath $zipPath -ManifestPath $EmulebbPackageManifest
+    Write-Step "Resolved local eMuleBB package $zipPath for $resolvedPlatform"
+} else {
+    $resolvedPlatform = Get-DefaultPlatform
+    $release = Get-Release
+    $assetArch = if ($resolvedPlatform -eq 'ARM64') { 'arm64' } else { 'x64' }
+    $resolvedVersion = Get-ReleaseVersion -Release $release -AssetArch $assetArch
+    $releaseBaseUrl = Get-ReleaseBaseUrl -Release $release
+    $zipName = "emulebb-$resolvedVersion-$assetArch.zip"
+    $manifestName = "emulebb-$resolvedVersion-$assetArch.manifest.json"
+    $zipUrl = Get-AssetUrl -Release $release -Name $zipName
+    $manifestUrl = Get-AssetUrl -Release $release -Name $manifestName
+    $effectiveBundle = Resolve-EffectiveBundle -Release $release -RequestedBundle $Bundle -ResolvedPlatform $resolvedPlatform -ResolvedVersion $resolvedVersion
+    $workRoot = Join-Path $env:TEMP "emulebb-suite-bootstrap-$resolvedVersion-$assetArch"
+    $zipPath = Join-Path $workRoot $zipName
+    $manifestPath = Join-Path $workRoot $manifestName
+    Write-Step "Resolved release $($release.tag_name) for $resolvedPlatform"
+    Invoke-Download -Url $manifestUrl -Destination $manifestPath
+    Invoke-Download -Url $zipUrl -Destination $zipPath
+    if (-not $DryRun) {
+        $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
+        Assert-FileHash -Path $zipPath -ExpectedSha256 ([string]$manifest.sha256)
+    }
+}
+
 $amutorrentPackage = $null
 if ($effectiveBundle -ne 'Core') {
-    $amutorrentPackage = Resolve-AmutorrentPackage -RequestedBundle $effectiveBundle
-    if ($null -eq $amutorrentPackage) {
-        $effectiveBundle = 'Core'
+    if (-not [string]::IsNullOrWhiteSpace($AmutorrentPackageZip)) {
+        $amutorrentZipPath = [IO.Path]::GetFullPath($AmutorrentPackageZip)
+        Assert-LocalPackage -Name 'aMuTorrent' -ZipPath $amutorrentZipPath -ManifestPath $AmutorrentPackageManifest
+        $amutorrentPackage = [ordered]@{
+            Release = $null
+            Version = (Get-LocalAmutorrentPackageVersion -ZipPath $amutorrentZipPath -DefaultVersion $resolvedVersion)
+            BaseUrl = ''
+            ZipPath = $amutorrentZipPath
+        }
+        Write-Step "Resolved local aMuTorrent package $amutorrentZipPath for $effectiveBundle suite"
+    } else {
+        $amutorrentPackage = Resolve-AmutorrentPackage -RequestedBundle $effectiveBundle
+        if ($null -eq $amutorrentPackage) {
+            $effectiveBundle = 'Core'
+        } else {
+            Write-Step "Resolved aMuTorrent release $($amutorrentPackage.Release.tag_name) for Full suite"
+        }
     }
 }
 $workRoot = Join-Path $env:TEMP "emulebb-suite-bootstrap-$resolvedVersion-$assetArch"
-$zipPath = Join-Path $workRoot $zipName
-$manifestPath = Join-Path $workRoot $manifestName
 $extractRoot = Join-Path $workRoot 'installer'
-
-Write-Step "Resolved release $($release.tag_name) for $resolvedPlatform"
-if ($effectiveBundle -ne 'Core') {
-    Write-Step "Resolved aMuTorrent release $($amutorrentPackage.Release.tag_name) for Full suite"
-}
-Invoke-Download -Url $manifestUrl -Destination $manifestPath
-Invoke-Download -Url $zipUrl -Destination $zipPath
-if (-not $DryRun) {
-    $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
-    Assert-FileHash -Path $zipPath -ExpectedSha256 ([string]$manifest.sha256)
-}
 $installer = Expand-Installer -Archive $zipPath -Destination $extractRoot
 $installerParams = [ordered]@{
     Bundle = $effectiveBundle
     InstallRoot = $InstallRoot
     Version = $resolvedVersion
     Platform = $resolvedPlatform
-    ReleaseBaseUrl = $releaseBaseUrl
+}
+if (-not [string]::IsNullOrWhiteSpace($releaseBaseUrl)) { $installerParams['ReleaseBaseUrl'] = $releaseBaseUrl }
+if ($localEmulebbPackage) {
+    $installerParams['EmulebbPackageZip'] = $zipPath
+    if (-not [string]::IsNullOrWhiteSpace($EmulebbPackageManifest)) { $installerParams['EmulebbPackageManifest'] = [IO.Path]::GetFullPath($EmulebbPackageManifest) }
 }
 if ($effectiveBundle -ne 'Core') {
     $installerParams['AmutorrentVersion'] = $amutorrentPackage.Version
-    $installerParams['AmutorrentReleaseBaseUrl'] = $amutorrentPackage.BaseUrl
+    if (-not [string]::IsNullOrWhiteSpace($amutorrentPackage.BaseUrl)) { $installerParams['AmutorrentReleaseBaseUrl'] = $amutorrentPackage.BaseUrl }
+    if ($amutorrentPackage.Contains('ZipPath') -and -not [string]::IsNullOrWhiteSpace($amutorrentPackage.ZipPath)) {
+        $installerParams['AmutorrentPackageZip'] = $amutorrentPackage.ZipPath
+        if (-not [string]::IsNullOrWhiteSpace($AmutorrentPackageManifest)) { $installerParams['AmutorrentPackageManifest'] = [IO.Path]::GetFullPath($AmutorrentPackageManifest) }
+    }
 }
 if ($NonInteractive) { $installerParams['NonInteractive'] = $true }
 if ($NoStart) { $installerParams['NoStart'] = $true }
