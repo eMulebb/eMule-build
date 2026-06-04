@@ -1662,6 +1662,19 @@ function Wait-Json {
     }
     throw "Timed out waiting for `$Uri"
 }
+function Set-ArrHostCredentials {
+    param([string]`$Name, [string]`$Url, [string]`$ApiPath, [string]`$ApiKey)
+    `$hostConfigUrl = "`$Url/`$ApiPath/config/host"
+    `$headers = @{ 'X-Api-Key' = `$ApiKey }
+    `$hostConfig = Invoke-RestMethod -Uri `$hostConfigUrl -Headers `$headers -TimeoutSec 20
+    `$hostConfig.authenticationMethod = 'forms'
+    `$hostConfig.authenticationRequired = 'enabled'
+    `$hostConfig.username = [string]`$Config.credentials.username
+    `$hostConfig.password = [string]`$Config.credentials.password
+    `$hostConfig.passwordConfirmation = [string]`$Config.credentials.password
+    Invoke-RestMethod -Method Put -Uri `$hostConfigUrl -Headers `$headers -ContentType 'application/json' -Body (`$hostConfig | ConvertTo-Json -Depth 20) -TimeoutSec 20 | Out-Null
+    Write-Host "`$Name web login configured."
+}
 function Ensure-EmuleBBAvailable {
     & (Join-Path `$Root 'scripts\Start-eMuleBB.ps1')
     Wait-Json -Uri "`$EmuleUrl/api/v1/app" -Headers @{ 'X-API-Key' = `$EmuleKey }
@@ -1771,6 +1784,9 @@ if (`$Bundle -eq 'Full') {
     Wait-Json -Uri "`$ProwlarrUrl/api/v1/system/status" -Headers @{ 'X-Api-Key' = `$ProwlarrKey }
     Wait-Json -Uri "`$RadarrUrl/api/v3/system/status" -Headers @{ 'X-Api-Key' = `$RadarrKey }
     Wait-Json -Uri "`$SonarrUrl/api/v3/system/status" -Headers @{ 'X-Api-Key' = `$SonarrKey }
+    Set-ArrHostCredentials -Name 'Prowlarr' -Url `$ProwlarrUrl -ApiPath 'api/v1' -ApiKey `$ProwlarrKey
+    Set-ArrHostCredentials -Name 'Radarr' -Url `$RadarrUrl -ApiPath 'api/v3' -ApiKey `$RadarrKey
+    Set-ArrHostCredentials -Name 'Sonarr' -Url `$SonarrUrl -ApiPath 'api/v3' -ApiKey `$SonarrKey
     Invoke-StepWithRetry -Name 'Prowlarr registration' -Operation {
         & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-Prowlarr.ps1') -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -IndexerName 'eMuleBB Suite' -NoRetry
     }
