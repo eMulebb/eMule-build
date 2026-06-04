@@ -92,8 +92,12 @@ def test_controlled_smoke_uses_reusable_core_offline_and_lan_suite() -> None:
     assert "--suite deterministic-two-client-transfer" in text
     assert "--test-network lan" in text
     assert "--platform ARM64" in text
+    assert "Expand-Archive -LiteralPath $packageZip" in text
+    assert r"scripts\command-line-smoke.py" in text
     assert "Release ARM64 eMuleBB package" in text
     assert "ARM64 offline command-line smoke" in text
+    assert "workspaces/workspace/state/test-reports/command-line-smoke/**" in text
+    assert "workspaces/workspace/state/test-artifacts/command-line-smoke/**" in text
     assert "workspaces/workspace/state/test-reports/live-e2e-suite/**" in text
     assert "workspaces/workspace/state/test-artifacts/live-e2e-suite/**" in text
     assert "workspaces/workspace/state/build-logs/**" in text
