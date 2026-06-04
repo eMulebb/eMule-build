@@ -144,9 +144,10 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "-AmutorrentUsername ([string]$Config.credentials.username)" in start_suite
     assert "-AmutorrentPassword ([string]$Config.credentials.password)" in start_suite
     assert "function Start-ArrHost" in start_suite
-    assert "$consoleName = $Name + '.Console.exe'" in start_suite
+    assert "$trayName = $Name + '.exe'" in start_suite
+    assert "Missing Windows tray host" in start_suite
     assert "Start-ProcessIfMissing -FilePath $exe.FullName" in start_suite
-    assert "-Hidden" in start_suite
+    assert "Start-ProcessIfMissing -FilePath $exe.FullName -ArgumentList @('/data='" in start_suite
     assert "function Ensure-EmuleBBAvailable" in start_suite
     assert "function Invoke-StepWithRetry" in start_suite
     assert "Invoke-StepWithRetry -Name 'Sonarr registration'" in start_suite
@@ -199,7 +200,8 @@ def test_suite_installer_copies_packaged_installer_into_suite_scripts(tmp_path: 
 def test_suite_installer_accepts_local_emulebb_package_zip_override(tmp_path: Path) -> None:
     release_root = tmp_path / "release"
     install_root = tmp_path / "suite"
-    release = suite_install_fixtures.write_core_release(release_root)
+    package_version = "0.7.3-nightly.20260604.localabc"
+    release = suite_install_fixtures.write_core_release(release_root, version=package_version)
 
     repo_root = Path.cwd()
     _run_powershell(
@@ -222,6 +224,7 @@ def test_suite_installer_accepts_local_emulebb_package_zip_override(tmp_path: Pa
     )
 
     suite_config = json.loads((install_root / "manifests" / "suite-config.json").read_text(encoding="utf-8-sig"))
+    assert suite_config["version"] == package_version
     assert Path(suite_config["packageSources"]["emulebb"]["zip"]) == release.package_zip
     assert Path(suite_config["packageSources"]["emulebb"]["manifest"]) == release.manifest
     assert (install_root / "apps" / "eMuleBB" / "emulebb.exe").is_file()

@@ -238,19 +238,48 @@ function Assert-EmulebbExecutableName {
     }
 }
 
+function Get-LocalPackageVersionFromZipName {
+    param([string]$ZipPath, [string]$PackageName)
+    if ([string]::IsNullOrWhiteSpace($ZipPath)) {
+        return ''
+    }
+    $name = [IO.Path]::GetFileName($ZipPath)
+    if ($PackageName -eq 'eMuleBB' -and $name -match '^emulebb-(.+?)(?:-diagnostics)?-(?:x64|ARM64)\.zip$') {
+        return $Matches[1]
+    }
+    if ($PackageName -eq 'aMuTorrent' -and $name -match '^emulebb-(.+?)-amutorrent-x64\.zip$') {
+        return $Matches[1]
+    }
+    throw "Cannot infer $PackageName package version from local ZIP name: $name. Pass -Version or -AmutorrentVersion explicitly."
+}
+
 function New-SuiteConfig {
     $controlBind = Resolve-OptionalValue -Value $ControlBindAddress -Default (Get-DefaultControlBindAddress)
+    $resolvedVersion = $Version
+    if (-not $script:InstallerBoundParameters.ContainsKey('Version')) {
+        $inferredVersion = Get-LocalPackageVersionFromZipName -ZipPath $EmulebbPackageZip -PackageName 'eMuleBB'
+        if (-not [string]::IsNullOrWhiteSpace($inferredVersion)) {
+            $resolvedVersion = $inferredVersion
+        }
+    }
+    $resolvedAmutorrentVersion = $AmutorrentVersion
+    if (-not $script:InstallerBoundParameters.ContainsKey('AmutorrentVersion')) {
+        $inferredAmutorrentVersion = Get-LocalPackageVersionFromZipName -ZipPath $AmutorrentPackageZip -PackageName 'aMuTorrent'
+        if (-not [string]::IsNullOrWhiteSpace($inferredAmutorrentVersion)) {
+            $resolvedAmutorrentVersion = $inferredAmutorrentVersion
+        }
+    }
     $config = [ordered]@{
         schema = 'emulebb.suite-config.v1'
         bundle = $Bundle
-        version = $Version
+        version = $resolvedVersion
         platform = $Platform
         installKind = $InstallKind
         installRoot = $InstallRoot
         dependencyChannel = $DependencyChannel
         releaseBaseUrl = $ReleaseBaseUrl
         amutorrentReleaseBaseUrl = $AmutorrentReleaseBaseUrl
-        amutorrentVersion = $AmutorrentVersion
+        amutorrentVersion = $resolvedAmutorrentVersion
         packageSources = [ordered]@{
             emulebb = [ordered]@{
                 zip = $EmulebbPackageZip
@@ -1516,12 +1545,12 @@ function Start-ProcessIfMissing {
 function Start-ArrHost {
     param([string]`$Name, [string]`$DataDir)
     `$appRoot = Join-Path `$Root ('apps\' + `$Name)
-    `$consoleName = `$Name + '.Console.exe'
-    `$exe = Get-ChildItem -Path `$appRoot -Filter `$consoleName -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    `$trayName = `$Name + '.exe'
+    `$exe = Get-ChildItem -Path `$appRoot -Filter `$trayName -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not `$exe) {
-        throw "Missing console host for `$Name under `$appRoot"
+        throw "Missing Windows tray host for `$Name under `$appRoot"
     }
-    Start-ProcessIfMissing -FilePath `$exe.FullName -ArgumentList @('/data=' + (Join-Path `$Root `$DataDir), '/nobrowser') -CommandLineContains (Join-Path `$Root `$DataDir) -Hidden
+    Start-ProcessIfMissing -FilePath `$exe.FullName -ArgumentList @('/data=' + (Join-Path `$Root `$DataDir), '/nobrowser') -CommandLineContains (Join-Path `$Root `$DataDir)
 }
 `$Bundle = [string]`$Config.bundle
 `$EmuleHost = Get-ClientHost `$Config.services.emulebb.bindAddress
