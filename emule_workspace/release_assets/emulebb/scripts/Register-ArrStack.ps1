@@ -5,6 +5,7 @@ param(
     [string]$Target,
     [string]$EmulebbBaseUrl,
     [string]$EmulebbApiKey,
+    [string]$EmulebbCategoryPath,
     [string]$ProwlarrUrl,
     [string]$ProwlarrApiKey,
     [string]$RadarrUrl,
@@ -273,7 +274,7 @@ function Save-QbitClient {
     Set-ObjectProperty -Target $payload -Name 'removeCompletedDownloads' -Value $false
     Set-ObjectProperty -Target $payload -Name 'removeFailedDownloads' -Value $false
     $categoryField = if ($Kind -eq 'radarr') { 'movieCategory' } else { 'tvCategory' }
-    $category = Get-ArrCategoryName -Kind $Kind
+    $category = (Get-ArrCategoryInfo -Kind $Kind).Name
     $urlBase = if ($uri.AbsolutePath -and $uri.AbsolutePath -ne '/') { $uri.AbsolutePath.TrimEnd('/') } else { '' }
     [void](Set-ProviderField -Provider $payload -Name 'host' -Value $uri.Host)
     [void](Set-ProviderField -Provider $payload -Name 'port' -Value $uri.Port)
@@ -295,17 +296,37 @@ function Save-QbitClient {
 
 function Get-ArrCategoryName {
     param([string]$Kind)
-    if ($Kind -eq 'radarr') {
-        return 'emulebb-radarr'
-    }
-    return 'emulebb-sonarr'
+    return (Get-ArrCategoryInfo -Kind $Kind).Name
 }
 
-function Test-EmuleCategoryExists {
+function Get-ArrCategoryRelativePath {
+    param([string]$Kind)
+    return (Get-ArrCategoryInfo -Kind $Kind).RelativePath
+}
+
+function Get-ArrCategoryInfo {
+    param([string]$Kind)
+    if ($Kind -eq 'radarr') {
+        return [pscustomobject]@{ Name = 'emulebb-radarr'; RelativePath = 'downloads\radarr' }
+    }
+    return [pscustomobject]@{ Name = 'emulebb-sonarr'; RelativePath = 'downloads\sonarr' }
+}
+
+function Normalize-OptionalCategoryPath {
+    param([string]$Path)
+    return (Normalize-ArgumentValue -Value $Path)
+}
+
+function Normalize-ComparablePath {
+    param([string]$Path)
+    return (Normalize-ArgumentValue -Value $Path).TrimEnd([char[]]@('\', '/'))
+}
+
+function Find-EmuleCategory {
     param($CategoriesResponse, [string]$Name)
     $items = @()
     if ($null -eq $CategoriesResponse) {
-        return $false
+        return $null
     }
     if ($CategoriesResponse.PSObject.Properties['data'] -and $CategoriesResponse.data.PSObject.Properties['items']) {
         $items = @($CategoriesResponse.data.items)
@@ -314,23 +335,44 @@ function Test-EmuleCategoryExists {
     }
     foreach ($item in $items) {
         if ($null -ne $item.PSObject.Properties['name'] -and [string]::Equals([string]$item.name, $Name, [StringComparison]::OrdinalIgnoreCase)) {
-            return $true
+            return $item
         }
     }
-    return $false
+    return $null
+}
+
+function Test-EmuleCategoryExists {
+    param($CategoriesResponse, [string]$Name)
+    return $null -ne (Find-EmuleCategory -CategoriesResponse $CategoriesResponse -Name $Name)
 }
 
 function Ensure-EmuleCategory {
-    param([string]$BaseUrl, [string]$ApiKey, [string]$Name)
+    param([string]$BaseUrl, [string]$ApiKey, [string]$Name, [string]$Path)
     $categories = Invoke-JsonApiWithRetry -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v1/categories'
-    if (Test-EmuleCategoryExists -CategoriesResponse $categories -Name $Name) {
+    $existing = Find-EmuleCategory -CategoriesResponse $categories -Name $Name
+    $normalizedPath = Normalize-OptionalCategoryPath -Path $Path
+    if ($null -ne $existing) {
+        if (-not [string]::IsNullOrWhiteSpace($normalizedPath) -and $existing.PSObject.Properties['id']) {
+            $currentPath = if ($existing.PSObject.Properties['path']) { [string]$existing.path } else { '' }
+            if ((Normalize-ComparablePath -Path $currentPath) -ne (Normalize-ComparablePath -Path $normalizedPath)) {
+                [void](Invoke-JsonApiWithRetry -BaseUrl $BaseUrl -ApiKey $ApiKey -Path (('/api/v1/categories/{0}' -f [int]$existing.id)) -Method 'PATCH' -Body @{
+                    path = $normalizedPath
+                })
+                Write-Host ('Updated eMuleBB category "{0}" path.' -f $Name) -ForegroundColor Green
+                return
+            }
+        }
         Write-Host ('eMuleBB category "{0}" is already configured.' -f $Name) -ForegroundColor Green
         return
     }
-    [void](Invoke-JsonApiWithRetry -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v1/categories' -Method 'POST' -Body @{
+    $body = @{
         name = $Name
         comment = 'eMuleBB Arr integration'
-    })
+    }
+    if (-not [string]::IsNullOrWhiteSpace($normalizedPath)) {
+        $body['path'] = $normalizedPath
+    }
+    [void](Invoke-JsonApiWithRetry -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v1/categories' -Method 'POST' -Body $body)
     Write-Host ('Created eMuleBB category "{0}".' -f $Name) -ForegroundColor Green
 }
 
@@ -479,8 +521,9 @@ $targetApiKey = Read-SecretValue -Prompt "$Target API key" -Value $targetApiKey
 
 if ($Action -eq 'Register') {
     $arrCategoryName = Get-ArrCategoryName -Kind $targetKind
+    $EmulebbCategoryPath = Normalize-OptionalCategoryPath -Path $EmulebbCategoryPath
     Run-TargetWithRetry -Name 'eMuleBB category registration' -NoRetry:$NoRetry -Operation {
-        Ensure-EmuleCategory -BaseUrl $EmulebbBaseUrl -ApiKey $EmulebbApiKey -Name $arrCategoryName
+        Ensure-EmuleCategory -BaseUrl $EmulebbBaseUrl -ApiKey $EmulebbApiKey -Name $arrCategoryName -Path $EmulebbCategoryPath
     }
 }
 

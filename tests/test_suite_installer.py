@@ -184,6 +184,8 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "Join-Path $Root 'media\\movies'" in start_suite
     assert "Ensure-ArrRootFolder -Name 'Sonarr'" in start_suite
     assert "Join-Path $Root 'media\\series'" in start_suite
+    assert "-EmulebbCategoryPath (Join-Path $Root 'downloads\\radarr')" in start_suite
+    assert "-EmulebbCategoryPath (Join-Path $Root 'downloads\\sonarr')" in start_suite
     assert "function Start-ArrHost" in start_suite
     assert "$trayName = $Name + '.exe'" in start_suite
     assert "Missing Windows tray host" in start_suite

@@ -776,6 +776,8 @@ function Invoke-JsonApi {
         + "\n"
         + _extract_powershell_function(script_text, "Get-ExistingDownloadClient")
         + "\n"
+        + _extract_powershell_function(script_text, "Get-ArrCategoryInfo")
+        + "\n"
         + _extract_powershell_function(script_text, "Get-ArrCategoryName")
         + "\n"
         + _extract_powershell_function(script_text, "Save-QbitClient")
@@ -831,22 +833,101 @@ function Invoke-JsonApi {
     }
     if ($Path -eq '/api/v1/categories' -and $Method -eq 'POST') {
         if ($Body.name -ne 'emulebb-sonarr') { throw ('unexpected category name: {0}' -f $Body.name) }
+        if ($Body.path -ne 'C:\\suite\\downloads\\sonarr') { throw ('unexpected category path: {0}' -f $Body.path) }
         return [pscustomobject]@{ id = 2; name = $Body.name }
     }
     throw ('unexpected call: {0} {1}' -f $Method, $Path)
 }
 """
+        + _extract_powershell_function(script_text, "Normalize-ArgumentValue")
+        + "\n"
         + _extract_powershell_function(script_text, "Get-HttpStatusCode")
         + "\n"
         + _extract_powershell_function(script_text, "Invoke-JsonApiWithRetry")
+        + "\n"
+        + _extract_powershell_function(script_text, "Normalize-OptionalCategoryPath")
+        + "\n"
+        + _extract_powershell_function(script_text, "Normalize-ComparablePath")
+        + "\n"
+        + _extract_powershell_function(script_text, "Find-EmuleCategory")
         + "\n"
         + _extract_powershell_function(script_text, "Test-EmuleCategoryExists")
         + "\n"
         + _extract_powershell_function(script_text, "Ensure-EmuleCategory")
         + """
-Ensure-EmuleCategory -BaseUrl 'http://emule' -ApiKey 'emule-key' -Name 'emulebb-sonarr'
+Ensure-EmuleCategory -BaseUrl 'http://emule' -ApiKey 'emule-key' -Name 'emulebb-sonarr' -Path 'C:\\suite\\downloads\\sonarr'
 if ($script:Calls.Count -ne 2) { throw ('expected 2 calls, got {0}' -f $script:Calls.Count) }
 if ($script:Calls[1].Method -ne 'POST') { throw ('expected POST, got {0}' -f $script:Calls[1].Method) }
+""",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(test_script),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+
+
+def test_register_arr_stack_updates_existing_emulebb_category_path(
+    workspace_root: Path,
+    tmp_path: Path,
+) -> None:
+    script_path = (
+        workspace_root
+        / "repos"
+        / "emulebb-build"
+        / "emule_workspace"
+        / "release_assets"
+        / "emulebb"
+        / "scripts"
+        / "Register-ArrStack.ps1"
+    )
+    script_text = script_path.read_text(encoding="utf-8")
+    test_script = tmp_path / "update-emule-category-path-test.ps1"
+    test_script.write_text(
+        """
+$script:Calls = @()
+function Invoke-JsonApi {
+    param([string]$BaseUrl, [string]$ApiKey, [string]$Path, [string]$Method = 'GET', $Body = $null)
+    $script:Calls += [pscustomobject]@{ BaseUrl = $BaseUrl; ApiKey = $ApiKey; Path = $Path; Method = $Method; Body = $Body }
+    if ($Path -eq '/api/v1/categories' -and $Method -eq 'GET') {
+        return @([pscustomobject]@{ id = 5; name = 'emulebb-radarr'; path = 'C:\\old\\radarr' })
+    }
+    if ($Path -eq '/api/v1/categories/5' -and $Method -eq 'PATCH') {
+        if ($Body.path -ne 'C:\\suite\\downloads\\radarr') { throw ('unexpected patched path: {0}' -f $Body.path) }
+        return [pscustomobject]@{ id = 5; name = 'emulebb-radarr'; path = $Body.path }
+    }
+    throw ('unexpected call: {0} {1}' -f $Method, $Path)
+}
+"""
+        + _extract_powershell_function(script_text, "Normalize-ArgumentValue")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-HttpStatusCode")
+        + "\n"
+        + _extract_powershell_function(script_text, "Invoke-JsonApiWithRetry")
+        + "\n"
+        + _extract_powershell_function(script_text, "Normalize-OptionalCategoryPath")
+        + "\n"
+        + _extract_powershell_function(script_text, "Normalize-ComparablePath")
+        + "\n"
+        + _extract_powershell_function(script_text, "Find-EmuleCategory")
+        + "\n"
+        + _extract_powershell_function(script_text, "Ensure-EmuleCategory")
+        + """
+Ensure-EmuleCategory -BaseUrl 'http://emule' -ApiKey 'emule-key' -Name 'emulebb-radarr' -Path 'C:\\suite\\downloads\\radarr'
+if ($script:Calls.Count -ne 2) { throw ('expected 2 calls, got {0}' -f $script:Calls.Count) }
+if ($script:Calls[1].Method -ne 'PATCH') { throw ('expected PATCH, got {0}' -f $script:Calls[1].Method) }
 """,
         encoding="utf-8",
     )
