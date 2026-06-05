@@ -97,7 +97,12 @@ ARR_LIVE_E2E_SUITES = frozenset(
     }
 )
 ARR_LIVE_E2E_PROFILES = frozenset({"controller-local"})
-INSTALLER_BACKED_LIVE_E2E_PROFILES = frozenset({"installer-controller-surface"})
+INSTALLER_BACKED_LIVE_E2E_PROFILES = frozenset(
+    {
+        "installer-controller-surface",
+        "installer-controller-surface-soak",
+    }
+)
 
 
 def invoke_test_runs(layout: WorkspaceLayout, options: WorkspaceOptions) -> None:

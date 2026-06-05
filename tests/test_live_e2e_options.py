@@ -729,6 +729,48 @@ def test_live_e2e_installer_controller_surface_profile_materializes_by_default(t
     assert captured["env"]["PROWLARR_URL"] == "http://192.0.2.11:9696"
 
 
+def test_live_e2e_installer_controller_surface_soak_materializes_by_default(tmp_path: Path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    materialize_calls: list[object] = []
+
+    def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
+        captured["command"] = list(command)
+
+    def fake_materialize(layout, workspace_options, install_options, *, run_id, suite_name, client_id, lan_bind_address=None):
+        materialize_calls.append(SimpleNamespace(lan_bind_address=lan_bind_address))
+        install_root = tmp_path / "workspaces" / "workspace" / "state" / "test-installs" / "run" / "live-e2e-suite" / "main"
+        app_exe = install_root / "apps" / "eMuleBB" / "emulebb.exe"
+        app_exe.parent.mkdir(parents=True)
+        app_exe.write_bytes(b"exe")
+        return SimpleNamespace(
+            target_path=install_root,
+            app_root=app_exe.parent,
+            app_exe=app_exe,
+            profile_dir=install_root / "profiles" / "emulebb",
+            profile_config_dir=install_root / "profiles" / "emulebb" / "config",
+            profile_seed_config_dir=install_root / "harness-profile-seed" / "config",
+        )
+
+    layout = make_layout(tmp_path)
+    monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+    monkeypatch.setattr(test_runs, "materialize_test_local_install", fake_materialize)
+    monkeypatch.setattr(test_runs, "ensure_split_tunnel_apps", lambda paths, **_kwargs: {"enabled": True})
+    monkeypatch.setattr(test_runs, "_start_materialized_arr_services", lambda *_args: [])
+
+    test_runs.invoke_live_e2e_suite(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+        LiveE2eOptions(profile="installer-controller-surface-soak"),
+    )
+
+    command = captured["command"]
+    assert isinstance(command, list)
+    assert materialize_calls[0].lan_bind_address == "192.0.2.11"
+    assert option_values(command, "--profile") == ["installer-controller-surface-soak"]
+    assert option_values(command, "--test-network") == ["vpn"]
+    assert option_values(command, "--live-process-monitor-profile-dir")[0].endswith("profiles\\emulebb")
+
+
 def test_live_e2e_plan_only_skips_installer_profile_materialization(tmp_path: Path, monkeypatch) -> None:
     captured: dict[str, object] = {}
 

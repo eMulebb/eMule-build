@@ -174,6 +174,7 @@ def _live_e2e_options(function: F) -> F:
             "beta-green",
             "controller-surface",
             "installer-controller-surface",
+            "installer-controller-surface-soak",
             "controller-local",
             "package-helpers",
             "beta-release",
