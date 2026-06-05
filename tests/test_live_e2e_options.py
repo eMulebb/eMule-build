@@ -1378,12 +1378,36 @@ def test_live_e2e_forwards_arr_download_proof_mode(tmp_path: Path, monkeypatch) 
     test_runs.invoke_live_e2e_suite(
         layout,
         WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+        LiveE2eOptions(suites=("radarr-emulebb",)),
+    )
+
+    command = captured["command"]
+    assert isinstance(command, list)
+    assert "--arr-download-proof-mode" not in command
+
+    test_runs.invoke_live_e2e_suite(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
         LiveE2eOptions(suites=("radarr-emulebb",), arr_download_proof_mode="handoff"),
     )
 
     command = captured["command"]
     assert isinstance(command, list)
     assert option_values(command, "--arr-download-proof-mode") == ["handoff"]
+
+    test_runs.invoke_live_e2e_suite(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+        LiveE2eOptions(
+            suites=("radarr-emulebb",),
+            arr_download_proof_mode="complete",
+            arr_download_proof_mode_explicit=True,
+        ),
+    )
+
+    command = captured["command"]
+    assert isinstance(command, list)
+    assert option_values(command, "--arr-download-proof-mode") == ["complete"]
 
 
 def test_live_e2e_forwards_profile_only_when_configured(tmp_path: Path, monkeypatch) -> None:

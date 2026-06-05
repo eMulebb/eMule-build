@@ -319,11 +319,17 @@ def _live_e2e_options(function: F) -> F:
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         defaults = LiveE2eOptions()
         pre_run_cleanup = kwargs.pop("pre_run_cleanup", None)
+        context = click.get_current_context(silent=True)
+        arr_download_proof_mode_explicit = (
+            context is not None
+            and context.get_parameter_source("arr_download_proof_mode") == click.core.ParameterSource.COMMANDLINE
+        )
         values = {
             key: kwargs.pop(key, getattr(defaults, key))
             for key in LiveE2eOptions.model_fields
             if key != "pre_run_cleanup"
         }
+        values["arr_download_proof_mode_explicit"] = arr_download_proof_mode_explicit
         if pre_run_cleanup is None:
             pre_run_cleanup = values["profile"] in BROAD_LIVE_E2E_PRE_RUN_CLEANUP_PROFILES
         live_options = LiveE2eOptions(**values, pre_run_cleanup=pre_run_cleanup)

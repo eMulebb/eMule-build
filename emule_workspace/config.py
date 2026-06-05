@@ -155,6 +155,7 @@ class LiveE2eOptions(BaseModel):
     sonarr_series_root: str | None = None
     acquisition_timeout_minutes: float | None = None
     arr_download_proof_mode: str = "complete"
+    arr_download_proof_mode_explicit: bool = False
     p2p_bind_interface_name: str = "hide.me"
     rest_server_search_count: int = 6
     rest_kad_search_count: int = 6
