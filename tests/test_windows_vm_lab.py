@@ -219,6 +219,7 @@ SCRIPT_PREFIX = "# script for"
 from __future__ import annotations
 
 from pathlib import Path
+import json
 
 from emule_test_harness import vm_host_fixture_contracts
 
@@ -242,8 +243,44 @@ def local_swarm_payload_paths(tests_repo_root):
         "harnessPackage": Path(tests_repo_root) / "emule_test_harness",
         "manifests": Path(tests_repo_root) / "manifests",
         "scripts": [Path(tests_repo_root) / "scripts" / "godzilla-local-swarm.py"],
-        "liveWireInputs": Path(tests_repo_root) / "live-wire-inputs.local.json",
+        "operatorLiveWireInputs": Path(tests_repo_root) / "live-wire-inputs.local.json",
+        "archiveLiveWireInputsName": "live-wire-inputs.local.json",
     }
+
+
+def write_local_swarm_payload_inputs(tests_repo_root, destination):
+    operator_path = Path(tests_repo_root) / "live-wire-inputs.local.json"
+    local_package_install = None
+    if operator_path.is_file():
+        operator_payload = json.loads(operator_path.read_text(encoding="utf-8"))
+        local_package_install = operator_payload.get("local_package_install")
+    payload = {
+        "schema": "emulebb-build-tests.live-wire-inputs.v1",
+        "search_terms": {
+            "generic_open": ["emulebb local swarm generated fixture"],
+            "documents": ["emulebb local swarm generated document"],
+            "radarr_movies": ["Night of the Living Dead"],
+            "sonarr_series": ["Dragnet"],
+        },
+        "auto_browse": {
+            "bootstrap_transfer_hashes": ["0123456789abcdef0123456789abcdef"],
+            "direct_bootstrap_transfers": [
+                {
+                    "hash": "0123456789abcdef0123456789abcdef",
+                    "name": "emulebb-local-swarm-placeholder.txt",
+                    "size": 1,
+                    "method": "direct_ed2k",
+                }
+            ],
+        },
+        "media_corpus": {"video_roots": []},
+    }
+    if isinstance(local_package_install, dict):
+        payload["local_package_install"] = local_package_install
+    destination = Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(json.dumps(payload), encoding="utf-8")
+    return destination
 
 
 def build_local_ed2k_target_payloads(vm_names):
@@ -913,7 +950,20 @@ def test_local_swarm_harness_payload_archive_is_curated(tmp_path: Path) -> None:
     (layout.tests_repo_root / "scripts" / "godzilla-local-swarm.py").write_text("# script\n", encoding="utf-8")
     (layout.tests_repo_root / "manifests").mkdir(parents=True, exist_ok=True)
     (layout.tests_repo_root / "manifests" / "release-campaigns.v1.json").write_text("{}\n", encoding="utf-8")
-    (layout.tests_repo_root / "live-wire-inputs.local.json").write_text("{}\n", encoding="utf-8")
+    (layout.tests_repo_root / "live-wire-inputs.local.json").write_text(
+        json.dumps(
+            {
+                "search_terms": {
+                    "radarr_movies": ["Operator Movie"],
+                    "sonarr_series": ["Operator Series"],
+                },
+                "local_package_install": {
+                    "dependency_manifest": "suite-dependencies.json",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     host_contracts = windows_vm_lab.load_windows_vm_host_contracts(layout)
 
     archive_path = windows_vm_lab._stage_local_swarm_harness_payload_archive(
@@ -924,10 +974,14 @@ def test_local_swarm_harness_payload_archive_is_curated(tmp_path: Path) -> None:
 
     with zipfile.ZipFile(archive_path) as archive:
         names = set(archive.namelist())
+        local_inputs = json.loads(archive.read("live-wire-inputs.local.json").decode("utf-8"))
     assert "emule_test_harness/live_e2e_suite.py" in names
     assert "scripts/godzilla-local-swarm.py" in names
     assert "manifests/release-campaigns.v1.json" in names
     assert "live-wire-inputs.local.json" in names
+    assert local_inputs["search_terms"]["radarr_movies"] == ["Night of the Living Dead"]
+    assert local_inputs["search_terms"]["sonarr_series"] == ["Dragnet"]
+    assert local_inputs["local_package_install"] == {"dependency_manifest": "suite-dependencies.json"}
     assert not any("node_modules" in name or "/.git/" in name or "workspaces/" in name for name in names)
     assert not any(name.endswith(".pyc") or "__pycache__" in name for name in names)
 

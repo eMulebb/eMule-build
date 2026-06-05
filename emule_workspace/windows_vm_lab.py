@@ -1117,9 +1117,12 @@ def _stage_local_swarm_harness_payload_archive(
             if not script.is_file():
                 raise RuntimeError(f"Windows VM local-swarm payload script is missing: {script}")
             _write_payload_file(archive, script, Path("scripts") / script.name)
-        live_wire_inputs_path = Path(payload.get("liveWireInputs", ""))
-        if live_wire_inputs_path.is_file():
-            _write_payload_file(archive, live_wire_inputs_path, Path("live-wire-inputs.local.json"))
+        local_swarm_inputs_path = host_contracts.write_local_swarm_payload_inputs(
+            layout.tests_repo_root,
+            run_report_dir / "local-swarm-live-wire-inputs.generated.json",
+        )
+        archive_inputs_name = str(payload.get("archiveLiveWireInputsName") or "live-wire-inputs.local.json")
+        _write_payload_file(archive, Path(local_swarm_inputs_path), Path(archive_inputs_name))
     return archive_path
 
 
