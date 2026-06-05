@@ -193,7 +193,17 @@ def invoke_release_campaign(
                 command_plan,
             )
             results.append(result)
-            _write_report(report_dir, campaign, campaign_options, started_at, plan, results, pre_run_cleanup, status="running")
+            _write_report(
+                layout,
+                report_dir,
+                campaign,
+                campaign_options,
+                started_at,
+                plan,
+                results,
+                pre_run_cleanup,
+                status="running",
+            )
             if result.status == "failed" and not campaign_options.continue_on_failure:
                 stop_error = ReleaseCampaignExecutionError(
                     f"Release campaign command failed: {result.command}: {result.error}"
@@ -201,7 +211,17 @@ def invoke_release_campaign(
                 break
 
         status = _aggregate_status(results, dry_run=campaign_options.dry_run)
-        _write_report(report_dir, campaign, campaign_options, started_at, plan, results, pre_run_cleanup, status=status)
+        _write_report(
+            layout,
+            report_dir,
+            campaign,
+            campaign_options,
+            started_at,
+            plan,
+            results,
+            pre_run_cleanup,
+            status=status,
+        )
         print("")
         print(f"Release campaign: {campaign_options.campaign}")
         print(f"Status: {status}")
@@ -213,7 +233,17 @@ def invoke_release_campaign(
             raise ReleaseCampaignExecutionError(f"Release campaign '{campaign_options.campaign}' completed with failures.")
     except Exception:
         status = _aggregate_status(results, dry_run=campaign_options.dry_run) if results else "failed"
-        _write_report(report_dir, campaign, campaign_options, started_at, plan, results, pre_run_cleanup, status=status)
+        _write_report(
+            layout,
+            report_dir,
+            campaign,
+            campaign_options,
+            started_at,
+            plan,
+            results,
+            pre_run_cleanup,
+            status=status,
+        )
         print(f"Release campaign report: {report_dir / release_campaign_result_file_name()}")
         raise
 
@@ -953,6 +983,7 @@ def _selected_campaign_scenario_mode(command: str) -> str:
 
 
 def _write_report(
+    layout: WorkspaceLayout,
     report_dir: Path,
     campaign: dict[str, Any],
     campaign_options: ReleaseCampaignOptions,
@@ -972,6 +1003,7 @@ def _write_report(
         "status": status,
         "startedAt": started_at.isoformat(),
         "updatedAt": datetime.now(timezone.utc).isoformat(),
+        "repoHeads": _workspace_repo_heads(layout),
         "options": {
             "testNetwork": campaign_options.test_network,
             "localVmSwarmMode": campaign_options.local_vm_swarm_mode,
@@ -1007,9 +1039,192 @@ def _write_report(
                 "status": item.status,
                 "durationSeconds": item.duration_seconds,
                 "error": item.error,
+                "scenarioEvidence": _command_scenario_evidence(layout, campaign, item),
             }
             for item in results
         ],
     }
     report_dir.mkdir(parents=True, exist_ok=True)
     (report_dir / release_campaign_result_file_name()).write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def _command_scenario_evidence(
+    layout: WorkspaceLayout,
+    campaign: dict[str, Any],
+    result: CampaignCommandResult,
+) -> list[dict[str, Any]]:
+    scenario_index = _campaign_scenario_index(campaign)
+    evidence_module = _load_release_campaigns_module(layout)
+    paths = _release_campaign_paths(layout, evidence_module) if evidence_module is not None else None
+    rows: list[dict[str, Any]] = []
+    for scenario_id in result.scenario_ids:
+        scenario_row = scenario_index.get(scenario_id)
+        if scenario_row is None:
+            rows.append(
+                {
+                    "scenarioId": scenario_id,
+                    "commandStatus": result.status,
+                    "evidenceStatus": "unknown",
+                    "evidence": [],
+                }
+            )
+            continue
+        _phase_id, scenario = scenario_row
+        evidence_reports: list[dict[str, Any]] = []
+        if paths is not None:
+            for evidence in scenario.get("evidence", ()):
+                try:
+                    report = evidence_module._build_evidence_report(paths, evidence)  # type: ignore[attr-defined]
+                except Exception as exc:  # pragma: no cover - defensive for malformed external reports.
+                    report = {
+                        "kind": str(evidence.get("kind", "artifact")),
+                        "required": bool(evidence.get("required", True)),
+                        "status": "unknown",
+                        "error": str(exc),
+                    }
+                evidence_reports.append(_augment_evidence_report(report))
+        evidence_status = _aggregate_command_evidence_status(result.status, evidence_reports)
+        rows.append(
+            {
+                "scenarioId": scenario_id,
+                "phaseId": scenario_row[0],
+                "title": str(scenario.get("title", "")),
+                "flowCategory": str(scenario.get("flowCategory", "")),
+                "required": bool(scenario.get("required", True)),
+                "blocking": bool(scenario.get("blocking", True)),
+                "commandStatus": result.status,
+                "evidenceStatus": evidence_status,
+                "evidence": evidence_reports,
+            }
+        )
+    return rows
+
+
+def _campaign_scenario_index(campaign: dict[str, Any]) -> dict[str, tuple[str, dict[str, Any]]]:
+    index: dict[str, tuple[str, dict[str, Any]]] = {}
+    for phase in campaign.get("phases", ()):
+        phase_id = str(phase.get("id", ""))
+        for scenario in phase.get("scenarios", ()):
+            scenario_id = str(scenario.get("id", ""))
+            if scenario_id:
+                index[scenario_id] = (phase_id, scenario)
+    return index
+
+
+def _load_release_campaigns_module(layout: WorkspaceLayout) -> ModuleType | None:
+    module_path = layout.tests_repo_root / "emule_test_harness" / "release_campaigns.py"
+    if not module_path.is_file():
+        return None
+    spec = importlib.util.spec_from_file_location("emulebb_release_campaign_evidence", module_path)
+    if spec is None or spec.loader is None:
+        return None
+    module = importlib.util.module_from_spec(spec)
+    added_repo_root = False
+    repo_root = str(layout.tests_repo_root)
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+        added_repo_root = True
+    try:
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+    except Exception:
+        return None
+    finally:
+        if added_repo_root:
+            try:
+                sys.path.remove(repo_root)
+            except ValueError:
+                pass
+    if not hasattr(module, "ReleaseCampaignPaths") or not hasattr(module, "_build_evidence_report"):
+        return None
+    return module
+
+
+def _release_campaign_paths(layout: WorkspaceLayout, module: ModuleType) -> Any:
+    return module.ReleaseCampaignPaths(  # type: ignore[attr-defined]
+        tests_repo_root=layout.tests_repo_root,
+        emule_workspace_root=layout.emule_workspace_root,
+        workspace_state_root=layout.workspace_root / "state",
+    )
+
+
+def _aggregate_command_evidence_status(command_status: str, evidence_reports: list[dict[str, Any]]) -> str:
+    if command_status in {"planned", "failed"}:
+        return command_status
+    if not evidence_reports:
+        return command_status
+    required_reports = [report for report in evidence_reports if report.get("required")]
+    reports = required_reports or evidence_reports
+    statuses = {str(report.get("status", "")) for report in reports}
+    if "failed" in statuses or "missing-evidence" in statuses or "stale-evidence" in statuses:
+        return "missing-evidence"
+    if "inconclusive" in statuses:
+        return "inconclusive"
+    if statuses <= {"passed", "present", "manual"}:
+        return "passed"
+    return "unknown"
+
+
+def _augment_evidence_report(report: dict[str, Any]) -> dict[str, Any]:
+    path = report.get("path")
+    if not isinstance(path, str) or not path.endswith(".manifest.json"):
+        return report
+    try:
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return report
+    package = {
+        key: payload.get(key)
+        for key in ("asset", "assetPath", "sha256", "sbomPath", "sbomSha256")
+        if payload.get(key)
+    }
+    if package:
+        updated = dict(report)
+        updated["package"] = package
+        return updated
+    return report
+
+
+def _workspace_repo_heads(layout: WorkspaceLayout) -> dict[str, dict[str, Any]]:
+    repos = {
+        "emulebb": layout.seed_repo_path,
+        "emulebb-main": layout.get_app_variant("main").path,
+        "emulebb-build": layout.build_repo_root,
+        "emulebb-build-tests": layout.tests_repo_root,
+        "emulebb-tooling": layout.tooling_repo_root,
+        "goed2k-server": layout.ed2k_server_repo_root,
+        "amule": layout.amule_repo_root,
+    }
+    return {name: _repo_head_payload(path) for name, path in repos.items() if _is_git_worktree(path)}
+
+
+def _is_git_worktree(path: Path) -> bool:
+    return path.exists() and (path / ".git").exists()
+
+
+def _repo_head_payload(path: Path) -> dict[str, Any]:
+    try:
+        head = _git_value(path, "rev-parse", "HEAD")
+        short_head = _git_value(path, "rev-parse", "--short=12", "HEAD")
+        branch = _git_value(path, "rev-parse", "--abbrev-ref", "HEAD")
+        status = _git_value(path, "status", "--short")
+    except Exception as exc:
+        return {
+            "path": str(path),
+            "status": "unavailable",
+            "error": str(exc),
+        }
+    return {
+        "path": str(path),
+        "head": head,
+        "shortHead": short_head,
+        "branch": branch,
+        "dirty": bool(status.strip()),
+        "statusLines": [line for line in status.splitlines() if line],
+    }
+
+
+def _git_value(path: Path, *args: str) -> str:
+    from .git import git_output
+
+    return git_output(path, *args).strip()

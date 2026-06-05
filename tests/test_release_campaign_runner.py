@@ -215,9 +215,46 @@ def test_campaign_execute_dry_run_writes_planned_report(tmp_path: Path) -> None:
     assert reports
     payload = json.loads(reports[-1].read_text(encoding="utf-8"))
     assert payload["status"] == "planned"
+    assert "repoHeads" in payload
     assert payload["options"]["localVmSwarmExecutionMode"] == "manifest"
     assert len(payload["plannedCommands"]) == 3
     assert all(row["status"] == "planned" for row in payload["commands"])
+    assert payload["commands"][0]["scenarioEvidence"][0]["scenarioId"] == "validate"
+    assert payload["commands"][0]["scenarioEvidence"][0]["commandStatus"] == "planned"
+    assert payload["commands"][0]["scenarioEvidence"][0]["evidenceStatus"] == "planned"
+
+
+def test_package_manifest_evidence_is_summarized_with_hashes(tmp_path: Path) -> None:
+    manifest = tmp_path / "package.manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "asset": "emulebb-0.7.3-rc.1-x64.zip",
+                "assetPath": "emulebb-0.7.3-rc.1-x64.zip",
+                "sha256": "a" * 64,
+                "sbomPath": "emulebb-0.7.3-rc.1-x64.sbom.spdx.json",
+                "sbomSha256": "b" * 64,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report = release_campaign_runner._augment_evidence_report(
+        {
+            "kind": "json-status",
+            "required": True,
+            "status": "present",
+            "path": str(manifest),
+        }
+    )
+
+    assert report["package"] == {
+        "asset": "emulebb-0.7.3-rc.1-x64.zip",
+        "assetPath": "emulebb-0.7.3-rc.1-x64.zip",
+        "sha256": "a" * 64,
+        "sbomPath": "emulebb-0.7.3-rc.1-x64.sbom.spdx.json",
+        "sbomSha256": "b" * 64,
+    }
 
 
 def test_campaign_report_records_local_vm_swarm_scenario_context(tmp_path: Path) -> None:
