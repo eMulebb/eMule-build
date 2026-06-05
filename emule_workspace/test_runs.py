@@ -96,7 +96,7 @@ ARR_LIVE_E2E_SUITES = frozenset(
         "sonarr-emulebb-local",
     }
 )
-ARR_LIVE_E2E_PROFILES = frozenset({"beta-green", "controller-surface", "controller-local"})
+ARR_LIVE_E2E_PROFILES = frozenset({"controller-local"})
 INSTALLER_BACKED_LIVE_E2E_PROFILES = frozenset({"installer-controller-surface"})
 
 
