@@ -422,12 +422,16 @@ def build_suite_installer_options(
 def choose_free_tcp_ports(count: int, *, host: str = "127.0.0.1") -> tuple[int, ...]:
     """Reserves and returns distinct free TCP ports for an isolated test install."""
 
+    bind_host = host.strip()
+    if bind_host in {"", "0.0.0.0", "::", "[::]"}:
+        raise ValueError("test install port probes must bind to one explicit interface")
+
     sockets: list[socket.socket] = []
     try:
         ports: list[int] = []
         for _ in range(count):
             probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            probe.bind((host, 0))
+            probe.bind((bind_host, 0))
             sockets.append(probe)
             ports.append(int(probe.getsockname()[1]))
         return tuple(ports)
