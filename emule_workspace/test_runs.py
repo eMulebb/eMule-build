@@ -1216,7 +1216,8 @@ def _resolve_workspace_argument(layout: WorkspaceLayout, value: str) -> str:
 def _resolve_workspace_path_argument(layout: WorkspaceLayout, value: str) -> str:
     """Resolves workspace-relative path knobs even when the target is created later."""
 
-    path = Path(value)
+    expanded = os.path.expandvars(value)
+    path = Path(expanded)
     if path.is_absolute():
         return str(path)
     return str((layout.emule_workspace_root / path).resolve())

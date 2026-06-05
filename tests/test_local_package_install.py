@@ -351,6 +351,29 @@ def test_load_local_install_config_rejects_retired_fields(tmp_path: Path, retire
         local_package_install.load_local_install_config(layout, None)
 
 
+def test_load_local_install_config_expands_local_install_env_vars(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    layout = _layout(tmp_path)
+    layout.tests_repo_root.mkdir(parents=True)
+    live_wire_path = layout.tests_repo_root / "live-wire-inputs.local.json"
+    target = tmp_path / "install"
+    import_profile = tmp_path / "import-profile"
+    monkeypatch.setenv("EMULEBB_LOCAL_INSTALL_PATH", str(target))
+    monkeypatch.setenv("EMULEBB_LOCAL_TEST_PROFILE_PATH", str(import_profile))
+    _write_live_wire(
+        live_wire_path,
+        Path("%EMULEBB_LOCAL_INSTALL_PATH%"),
+        import_profile_dir="%EMULEBB_LOCAL_TEST_PROFILE_PATH%",
+    )
+
+    config = local_package_install.load_local_install_config(layout, None)
+
+    assert config.target_path == target.resolve()
+    assert config.import_profile_dir == import_profile.resolve()
+
+
 def test_suite_installer_command_uses_full_bundle_and_existing_suite_config(tmp_path: Path) -> None:
     target = tmp_path / "install"
     live_wire_path = tmp_path / "live-wire-inputs.local.json"

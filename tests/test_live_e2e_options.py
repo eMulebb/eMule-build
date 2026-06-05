@@ -959,20 +959,21 @@ def test_live_e2e_forwards_explicit_live_process_monitor_profile_dir(tmp_path: P
     monkeypatch.setattr(test_runs, "run_native", fake_run_native)
     monkeypatch.setattr(test_runs, "ensure_split_tunnel_apps", lambda paths, **_kwargs: {"enabled": False})
 
-    profile_dir = r"F:\M\H06T01\dldz\EMULE_BIN"
+    profile_dir = tmp_path / "operator-profile"
+    monkeypatch.setenv("EMULEBB_LOCAL_TEST_PROFILE_PATH", str(profile_dir))
     test_runs.invoke_live_e2e_suite(
         layout,
         WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
         LiveE2eOptions(
             suites=("live-process-monitor",),
             test_network="vpn",
-            live_process_monitor_profile_dir=profile_dir,
+            live_process_monitor_profile_dir="%EMULEBB_LOCAL_TEST_PROFILE_PATH%",
         ),
     )
 
     command = captured["command"]
     assert isinstance(command, list)
-    assert option_values(command, "--live-process-monitor-profile-dir") == [profile_dir]
+    assert option_values(command, "--live-process-monitor-profile-dir") == [str(profile_dir)]
 
 
 def test_live_e2e_registers_materialized_exe_for_developer_hide_me_split_tunnel(tmp_path: Path, monkeypatch) -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import socket
 import zipfile
@@ -704,7 +705,7 @@ def _required_path(payload: dict[str, Any], key: str) -> Path:
     value = payload.get(key)
     if not isinstance(value, str) or not value.strip():
         raise RuntimeError(f"Local package install field {key!r} must be a non-empty path string.")
-    return Path(value.strip()).expanduser().resolve()
+    return _expanded_path(value)
 
 
 def _optional_nullable_path(payload: dict[str, Any], key: str) -> Path | None:
@@ -713,7 +714,11 @@ def _optional_nullable_path(payload: dict[str, Any], key: str) -> Path | None:
         return None
     if not isinstance(value, str) or not value.strip():
         raise RuntimeError(f"Local package install field {key!r} must be null or a non-empty path string.")
-    return Path(value.strip()).expanduser().resolve()
+    return _expanded_path(value)
+
+
+def _expanded_path(value: str) -> Path:
+    return Path(os.path.expandvars(value.strip())).expanduser().resolve()
 
 
 def _optional_string(payload: dict[str, Any], key: str, default: str) -> str:
