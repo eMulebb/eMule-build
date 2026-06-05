@@ -50,6 +50,7 @@ def option_values(command: list[str], option: str) -> list[str]:
 @pytest.fixture(autouse=True)
 def fake_network_context(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("X_LOCAL_IP", raising=False)
+    monkeypatch.setattr(test_runs, "build_apps", lambda *_args, **_kwargs: None)
 
     def resolve(*, workspace_root, test_network, vpn_interface_name=None, require_vpn=False, require_lan=False):
         values = {
@@ -61,6 +62,34 @@ def fake_network_context(monkeypatch: pytest.MonkeyPatch) -> None:
         return SimpleNamespace(env=lambda: values)
 
     monkeypatch.setattr(test_runs, "resolve_workspace_network_context", resolve)
+
+
+def test_live_e2e_rebuilds_workspace_app_with_startup_profiling_when_required(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_build_apps(_layout, _options, **kwargs):
+        captured.update(kwargs)
+
+    def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
+        captured["command"] = list(command)
+
+    layout = make_layout(tmp_path)
+    monkeypatch.setattr(test_runs, "build_apps", fake_build_apps)
+    monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+
+    test_runs.invoke_live_e2e_suite(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+        LiveE2eOptions(suites=("startup-profile",), startup_trace_mode="required"),
+    )
+
+    assert captured["clean"] is False
+    assert captured["app_variant_names"] == ("main",)
+    assert captured["enable_startup_profiling"] is True
+    assert "--startup-trace-mode" in captured["command"]
 
 
 def test_live_e2e_forwards_plan_only_option(tmp_path: Path, monkeypatch) -> None:

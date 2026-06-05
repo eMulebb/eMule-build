@@ -119,6 +119,7 @@ def build_apps(
     *,
     clean: bool,
     app_variant_names: tuple[str, ...],
+    enable_startup_profiling: bool | None = None,
 ) -> None:
     """Builds selected managed app variants."""
 
@@ -138,6 +139,12 @@ def build_apps(
             if download_slot_instrumentation:
                 enabled = download_slot_instrumentation.strip().lower() not in {"0", "false", "no", "off"}
                 extra_properties.append(f"/p:EnableDownloadSlotInstrumentation={'true' if enabled else 'false'}")
+            startup_profiling = env_override("EMULEBB_ENABLE_STARTUP_PROFILING")
+            if enable_startup_profiling is not None:
+                extra_properties.append(f"/p:EnableStartupProfiling={'true' if enable_startup_profiling else 'false'}")
+            elif startup_profiling:
+                enabled = startup_profiling.strip().lower() not in {"0", "false", "no", "off"}
+                extra_properties.append(f"/p:EnableStartupProfiling={'true' if enabled else 'false'}")
             override = env_override(layout.toolset_override_variable)
             if override:
                 extra_properties.append(f"/p:PlatformToolset={override}")

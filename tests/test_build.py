@@ -6,7 +6,7 @@ import pytest
 
 from emule_workspace import build
 from emule_workspace.config import WorkspaceOptions
-from emule_workspace.layout import TestTargets as LayoutTestTargets, WorkspaceLayout
+from emule_workspace.layout import AppVariant, TestTargets as LayoutTestTargets, WorkspaceLayout
 
 
 def test_build_libs_passes_default_toolset_to_msbuild_dependencies(
@@ -40,6 +40,30 @@ def test_build_libs_clean_release_x64_removes_generated_dependency_outputs(
     capture_build_libs_msbuild_calls(tmp_path, monkeypatch, clean=True, removed_generated=removed)
 
     assert [kind for _repo, kind in removed] == ["zlib", "mbedtls"]
+
+
+def test_build_apps_forwards_startup_profiling_option(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured = capture_build_apps_msbuild_call(
+        tmp_path,
+        monkeypatch,
+        enable_startup_profiling=True,
+    )
+
+    assert "/p:EnableStartupProfiling=true" in captured["extra_properties"]
+
+
+def test_build_apps_honors_startup_profiling_env_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("EMULEBB_ENABLE_STARTUP_PROFILING", "off")
+
+    captured = capture_build_apps_msbuild_call(tmp_path, monkeypatch)
+
+    assert "/p:EnableStartupProfiling=false" in captured["extra_properties"]
 
 
 def capture_build_libs_msbuild_calls(
@@ -83,9 +107,41 @@ def capture_build_libs_msbuild_calls(
     return calls
 
 
-def make_layout(tmp_path: Path) -> WorkspaceLayout:
+def capture_build_apps_msbuild_call(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    enable_startup_profiling: bool | None = None,
+) -> dict[str, object]:
+    layout = make_layout(tmp_path, app_variants=True)
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(build, "assert_app_layout", lambda _layout: None)
+    monkeypatch.setattr(build, "ensure_app_dependency_artifacts", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(build, "verify_app_control_flow_guard", lambda *_args, **_kwargs: None)
+
+    def fake_invoke_msbuild_project(*_args, **kwargs):
+        captured["project_path"] = kwargs["project_path"]
+        captured["extra_properties"] = tuple(kwargs.get("extra_properties") or ())
+        captured["step_name"] = kwargs["step_name"]
+
+    monkeypatch.setattr(build, "invoke_msbuild_project", fake_invoke_msbuild_project)
+
+    build.build_apps(
+        layout,
+        WorkspaceOptions(workspace_root=layout.emule_workspace_root, configuration="Release", platform="x64"),
+        clean=False,
+        app_variant_names=("main",),
+        enable_startup_profiling=enable_startup_profiling,
+    )
+
+    return captured
+
+
+def make_layout(tmp_path: Path, *, app_variants: bool = False) -> WorkspaceLayout:
     emule_workspace_root = tmp_path / "workspace-root"
     workspace_root = emule_workspace_root / "workspaces" / "workspace"
+    app_root = workspace_root / "app" / "emulebb-main"
     return WorkspaceLayout(
         emule_workspace_root=emule_workspace_root,
         workspace_name="workspace",
@@ -98,7 +154,7 @@ def make_layout(tmp_path: Path) -> WorkspaceLayout:
         seed_repo_path=emule_workspace_root / "repos" / "emulebb",
         seed_repo_branch="main",
         dependencies=(),
-        app_variants=(),
+        app_variants=(AppVariant(name="main", path=app_root, branch="main"),) if app_variants else (),
         test_targets=LayoutTestTargets(test_build_variant="main", test_run_variant="main", baseline_variant="community"),
         toolset_override_variable="EMULEBB_VS_PLATFORM_TOOLSET",
     )

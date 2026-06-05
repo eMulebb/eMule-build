@@ -27,6 +27,7 @@ from .config import (
     VariantComparisonOptions,
     WorkspaceOptions,
 )
+from .build import build_apps
 from .cleanup import run_pre_test_cleanup
 from .hide_me_split_tunnel import ensure_split_tunnel_apps, restart_hide_me_after_upnp_failure_if_requested
 from .layout import WorkspaceLayout, get_test_build_tag
@@ -351,6 +352,14 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
         app_exe = materialized.app_exe
         profile_seed_config_dir = materialized.profile_seed_config_dir
         live_process_monitor_profile_dir = materialized.profile_dir
+    elif _live_e2e_requires_startup_profiled_workspace_build(live_options):
+        build_apps(
+            layout,
+            options,
+            clean=False,
+            app_variant_names=(layout.test_targets.test_run_variant,),
+            enable_startup_profiling=True,
+        )
     if live_options.live_process_monitor_profile_dir:
         live_process_monitor_profile_dir = Path(
             _resolve_workspace_path_argument(layout, live_options.live_process_monitor_profile_dir)
@@ -1155,6 +1164,12 @@ def _live_e2e_materialize_test_install(live_options: LiveE2eOptions) -> bool:
     if live_options.plan_only:
         return False
     return live_options.materialize_test_install or live_options.profile in INSTALLER_BACKED_LIVE_E2E_PROFILES
+
+
+def _live_e2e_requires_startup_profiled_workspace_build(live_options: LiveE2eOptions) -> bool:
+    """Returns whether workspace-app live E2E needs the startup profiling compile flag."""
+
+    return not live_options.plan_only and live_options.startup_trace_mode == "required"
 
 
 def _live_e2e_effective_test_network(live_options: LiveE2eOptions) -> TestNetwork:
