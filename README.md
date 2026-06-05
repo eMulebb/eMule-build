@@ -266,7 +266,8 @@ Windows VM package-smoke examples:
 - active workflow docs/scripts drifting back to `.sln` / `.slnx` entrypoints
 - active warning suppressions drifting beyond the approved narrow third-party exceptions
 - modified tracked text files drifting from repo `.editorconfig` / `.gitattributes`
-- tracked PowerShell files outside the approved `repos\emulebb-tooling\scripts` release/admin boundary
+- tracked PowerShell files outside the approved package runtime boundary,
+  `repos\emulebb-build\emule_workspace\release_assets\emulebb\scripts\*.ps1`
 - missing shared test helper scripts
 
 Tracked-file cleanliness is intentionally a separate explicit audit via
