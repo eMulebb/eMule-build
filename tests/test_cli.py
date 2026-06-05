@@ -260,6 +260,7 @@ def test_test_certification_help_exposes_release_gate_options() -> None:
     assert "--live-wire-inputs-file" in result.output
     assert "--radarr-movie-root" in result.output
     assert "--sonarr-series-root" in result.output
+    assert "--vpn-guard-live-config" in result.output
     assert "--p2p-bind-interface-name" in result.output
     assert "--continue-on-failure" in result.output
     assert "--skip-pre-run-cleanup" in result.output

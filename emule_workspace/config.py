@@ -347,6 +347,7 @@ class ReleaseCampaignOptions(BaseModel):
     sonarr_series_root: str | None = None
     acquisition_timeout_minutes: float | None = None
     p2p_bind_interface_name: str = "hide.me"
+    vpn_guard_live_config: str | None = None
     skip_live_seed_refresh: bool = False
 
 

@@ -374,7 +374,7 @@ def test_campaign_execute_applies_campaign_runtime_inputs(tmp_path: Path, monkey
         },
     ]
     write_campaign(layout, campaign)
-    live_calls: list[tuple[str | None, str | None, str | None, float | None, str, bool, str]] = []
+    live_calls: list[tuple[str | None, str | None, str | None, float | None, str, str | None, bool, str]] = []
     certification_calls: list[tuple[str | None, str | None, str | None, float | None, str, bool, str]] = []
 
     monkeypatch.setattr(
@@ -392,6 +392,7 @@ def test_campaign_execute_applies_campaign_runtime_inputs(tmp_path: Path, monkey
                 options.sonarr_series_root,
                 options.acquisition_timeout_minutes,
                 options.p2p_bind_interface_name,
+                options.vpn_guard_live_config,
                 options.skip_live_seed_refresh,
                 options.test_network,
             )
@@ -425,14 +426,14 @@ def test_campaign_execute_applies_campaign_runtime_inputs(tmp_path: Path, monkey
             sonarr_series_root="S:/series",
             acquisition_timeout_minutes=12.5,
             p2p_bind_interface_name="hide.me",
+            vpn_guard_live_config="vpn-guard-live.local.json",
             skip_live_seed_refresh=True,
             test_network="all",
         ),
     )
 
-    expected = [("inputs.local.json", "R:/movies", "S:/series", 12.5, "hide.me", True, "all")]
-    assert live_calls == expected
-    assert certification_calls == expected
+    assert live_calls == [("inputs.local.json", "R:/movies", "S:/series", 12.5, "hide.me", "vpn-guard-live.local.json", True, "all")]
+    assert certification_calls == [("inputs.local.json", "R:/movies", "S:/series", 12.5, "hide.me", True, "all")]
 
 
 def test_campaign_execute_dispatches_amutorrent_live_commands(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

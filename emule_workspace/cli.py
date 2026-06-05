@@ -1041,6 +1041,7 @@ def test_overnight_local_hammer(
 @click.option("--sonarr-series-root", default=None, help="Sonarr-visible series root for campaign live checks.")
 @click.option("--acquisition-timeout-minutes", default=None, type=float, help="Arr acquisition timeout forwarded to campaign live checks.")
 @click.option("--p2p-bind-interface-name", default="hide.me", show_default=True)
+@click.option("--vpn-guard-live-config", default=None, help="Runtime VPN Guard config forwarded to campaign live checks.")
 @click.option("--skip-live-seed-refresh", is_flag=True, help="Reuse the existing live seed state in campaign live checks.")
 def test_release_campaign(
     *,
@@ -1061,6 +1062,7 @@ def test_release_campaign(
     sonarr_series_root: str | None,
     acquisition_timeout_minutes: float | None,
     p2p_bind_interface_name: str,
+    vpn_guard_live_config: str | None,
     skip_live_seed_refresh: bool,
     workspace_options: WorkspaceOptions,
     layout,
@@ -1085,6 +1087,7 @@ def test_release_campaign(
         sonarr_series_root=sonarr_series_root,
         acquisition_timeout_minutes=acquisition_timeout_minutes,
         p2p_bind_interface_name=p2p_bind_interface_name,
+        vpn_guard_live_config=vpn_guard_live_config,
         skip_live_seed_refresh=skip_live_seed_refresh,
     )
     _locked(
