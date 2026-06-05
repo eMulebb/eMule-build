@@ -452,6 +452,11 @@ def invoke_windows_vm_tests(
         if uses_local_swarm
         else ()
     )
+    local_swarm_dependency_asset_paths = (
+        _local_swarm_dependency_asset_paths(layout)
+        if uses_local_swarm
+        else ()
+    )
     local_swarm_node_archive_path = (
         _ensure_local_swarm_node_archive(layout, workspace_options.platform)
         if uses_local_swarm and not effective_dry_run
@@ -516,6 +521,7 @@ def invoke_windows_vm_tests(
                     profile=options.profile,
                     package_zip=package_zip,
                     local_swarm_release_asset_paths=local_swarm_release_asset_paths,
+                    local_swarm_dependency_asset_paths=local_swarm_dependency_asset_paths,
                     local_swarm_node_archive_path=local_swarm_node_archive_path,
                     release_version=options.release_version,
                     platform=workspace_options.platform,
@@ -800,6 +806,7 @@ def run_windows_vm_profile_smoke(
     profile: str,
     package_zip: Path,
     local_swarm_release_asset_paths: Sequence[Path],
+    local_swarm_dependency_asset_paths: Sequence[Path],
     local_swarm_node_archive_path: Path | None,
     release_version: str,
     platform: str,
@@ -854,6 +861,11 @@ def run_windows_vm_profile_smoke(
         if is_local_swarm_profile
         else ()
     )
+    local_swarm_dependency_manifest_entries = (
+        _local_swarm_dependency_manifest_entries(layout)
+        if is_local_swarm_profile
+        else {}
+    )
     provisioning_guest_ips = config.hyperv.provisioning_guest_ips or DEFAULT_PROVISIONING_GUEST_IPS
     local_swarm_lan_bind_addr = provisioning_guest_ips.get(target.key, "")
     script = _ps_with_payload(
@@ -875,6 +887,8 @@ def run_windows_vm_profile_smoke(
                 else ""
             ),
             "localSwarmReleaseAssetPaths": [str(path) for path in local_swarm_release_asset_paths],
+            "localSwarmDependencyAssetPaths": [str(path) for path in local_swarm_dependency_asset_paths],
+            "localSwarmDependencyManifestEntries": local_swarm_dependency_manifest_entries,
             "localSwarmNodeArchivePath": (
                 str(local_swarm_node_archive_path)
                 if local_swarm_node_archive_path is not None
@@ -1103,6 +1117,9 @@ def _stage_local_swarm_harness_payload_archive(
             if not script.is_file():
                 raise RuntimeError(f"Windows VM local-swarm payload script is missing: {script}")
             _write_payload_file(archive, script, Path("scripts") / script.name)
+        live_wire_inputs_path = Path(payload.get("liveWireInputs", ""))
+        if live_wire_inputs_path.is_file():
+            _write_payload_file(archive, live_wire_inputs_path, Path("live-wire-inputs.local.json"))
     return archive_path
 
 
@@ -2064,6 +2081,68 @@ def _local_swarm_release_asset_paths(layout: WorkspaceLayout, release_version: s
         release_root / f"emulebb-{release_version}-amutorrent-{arch}.zip",
         release_root / f"emulebb-{release_version}-amutorrent-{arch}.manifest.json",
     )
+
+
+def _local_swarm_dependency_asset_paths(layout: WorkspaceLayout) -> tuple[Path, ...]:
+    return tuple(Path(entry["path"]) for entry in _local_swarm_dependency_manifest_entries(layout).values())
+
+
+def _local_swarm_dependency_manifest_entries(layout: WorkspaceLayout) -> dict[str, dict[str, str]]:
+    live_wire_inputs = layout.tests_repo_root / "live-wire-inputs.local.json"
+    if not live_wire_inputs.is_file():
+        return {}
+    try:
+        payload = json.loads(live_wire_inputs.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Windows VM local-swarm live-wire inputs are invalid JSON: {live_wire_inputs}") from exc
+    local_install = payload.get("local_package_install")
+    if not isinstance(local_install, dict):
+        return {}
+    raw_manifest = local_install.get("dependency_manifest")
+    if not isinstance(raw_manifest, str) or not raw_manifest.strip():
+        return {}
+    manifest_path = Path(raw_manifest).expanduser()
+    if not manifest_path.is_absolute():
+        manifest_path = (layout.emule_workspace_root / manifest_path).resolve()
+    if not manifest_path.is_file():
+        raise RuntimeError(f"Windows VM local-swarm dependency manifest is missing: {manifest_path}")
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Windows VM local-swarm dependency manifest is invalid JSON: {manifest_path}") from exc
+    entries: dict[str, dict[str, str]] = {}
+    for name in ("prowlarr", "radarr", "sonarr"):
+        item = manifest.get(name)
+        if not isinstance(item, dict):
+            raise RuntimeError(f"Windows VM local-swarm dependency manifest is missing {name!r}: {manifest_path}")
+        raw_path = item.get("path")
+        raw_url = item.get("url")
+        raw_location = raw_path if isinstance(raw_path, str) and raw_path.strip() else raw_url
+        if not isinstance(raw_location, str) or not raw_location.strip():
+            raise RuntimeError(f"Windows VM local-swarm dependency {name!r} is missing a local path or URL: {manifest_path}")
+        dependency_path = _path_from_local_dependency_url(raw_location)
+        if not dependency_path.is_file():
+            raise RuntimeError(f"Windows VM local-swarm dependency asset is missing: {dependency_path}")
+        entries[name] = {
+            "path": str(dependency_path),
+            "fileName": dependency_path.name,
+            "repo": str(item.get("repo") or ""),
+            "tag": str(item.get("tag") or "local"),
+            "assetPattern": str(item.get("assetPattern") or ".*\\.zip$"),
+            "exeName": str(item.get("exeName") or ""),
+            "sha256": str(item.get("sha256") or ""),
+        }
+    return entries
+
+
+def _path_from_local_dependency_url(raw_url: str) -> Path:
+    candidate = Path(raw_url)
+    if candidate.is_file():
+        return candidate.resolve()
+    parsed = urllib.parse.urlparse(raw_url)
+    if parsed.scheme.lower() == "file":
+        return Path(urllib.request.url2pathname(parsed.path)).resolve()
+    raise RuntimeError(f"Windows VM local-swarm dependency URL must be a local file path: {raw_url}")
 
 
 def _local_swarm_node_archive_path(layout: WorkspaceLayout, platform: str) -> Path:

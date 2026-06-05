@@ -242,6 +242,7 @@ def local_swarm_payload_paths(tests_repo_root):
         "harnessPackage": Path(tests_repo_root) / "emule_test_harness",
         "manifests": Path(tests_repo_root) / "manifests",
         "scripts": [Path(tests_repo_root) / "scripts" / "godzilla-local-swarm.py"],
+        "liveWireInputs": Path(tests_repo_root) / "live-wire-inputs.local.json",
     }
 
 
@@ -715,6 +716,7 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
             profile="search-ui-local-swarm-vm",
             package_zip=tmp_path / "package.zip",
             local_swarm_release_asset_paths=release_asset_paths,
+            local_swarm_dependency_asset_paths=[],
             local_swarm_node_archive_path=windows_vm_lab._local_swarm_node_archive_path(layout, "x64"),
             release_version="0.7.3-rc.1",
             platform="x64",
@@ -737,6 +739,8 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
     assert "localSwarmManifestsPath" not in captured[0]
     assert "localSwarmScriptPaths" not in captured[0]
     assert "localSwarmReleaseAssetPaths" in captured[0]
+    assert "localSwarmDependencyAssetPaths" in captured[0]
+    assert "localSwarmDependencyManifestEntries" in captured[0]
     assert "localSwarmNodeArchivePath" in captured[0]
     assert "localSwarmNodeSha256" in captured[0]
     assert "releaseVersion" in captured[0]
@@ -793,6 +797,7 @@ def test_windows_vm_profile_smoke_payload_stages_harness_for_plain_profiles(tmp_
         profile="rest-smoke-stress",
         package_zip=tmp_path / "package.zip",
         local_swarm_release_asset_paths=[],
+        local_swarm_dependency_asset_paths=[],
         local_swarm_node_archive_path=None,
         release_version="0.7.3-rc.1",
         platform="x64",
@@ -810,6 +815,58 @@ def test_windows_vm_profile_smoke_payload_stages_harness_for_plain_profiles(tmp_
     assert "local-swarm-harness-payload.zip" in captured[0]
     assert "emulebb-test-nat" in captured[0]
     assert '"provisioning"' in captured[0]
+
+
+def test_local_swarm_dependency_assets_are_read_from_live_wire_manifest(tmp_path: Path) -> None:
+    layout = _layout(tmp_path)
+    dependency_root = tmp_path / "deps"
+    dependency_root.mkdir(parents=True)
+    dependency_manifest = dependency_root / "dependency-manifest.json"
+    assets = {
+        "prowlarr": dependency_root / "Prowlarr.master.2.3.5.5327.windows-core-x64.zip",
+        "radarr": dependency_root / "Radarr.master.6.1.1.10360.windows-core-x64.zip",
+        "sonarr": dependency_root / "Sonarr.main.4.0.17.2952.win-x64.zip",
+    }
+    for path in assets.values():
+        path.write_text("zip\n", encoding="utf-8")
+    dependency_manifest.write_text(
+        json.dumps(
+            {
+                name: {
+                    "repo": f"{name}/{name}",
+                    "tag": "local",
+                    "assetPattern": ".*\\.zip$",
+                    "exeName": f"{name.title()}.exe",
+                    "url": f"https://example.invalid/{path.name}",
+                    "path": str(path),
+                    "sha256": "a" * 64,
+                }
+                for name, path in assets.items()
+            }
+        ),
+        encoding="utf-8",
+    )
+    layout.tests_repo_root.mkdir(parents=True, exist_ok=True)
+    (layout.tests_repo_root / "live-wire-inputs.local.json").write_text(
+        json.dumps(
+            {
+                "schema": "emulebb-build-tests.live-wire-inputs.v1",
+                "local_package_install": {
+                    "target_path": str(tmp_path / "suite"),
+                    "dependency_manifest": str(dependency_manifest),
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    entries = windows_vm_lab._local_swarm_dependency_manifest_entries(layout)
+    paths = windows_vm_lab._local_swarm_dependency_asset_paths(layout)
+
+    assert set(entries) == {"prowlarr", "radarr", "sonarr"}
+    assert entries["radarr"]["fileName"] == assets["radarr"].name
+    assert entries["sonarr"]["sha256"] == "a" * 64
+    assert paths == tuple(assets[name].resolve() for name in ("prowlarr", "radarr", "sonarr"))
 
 
 def test_windows_vm_package_smoke_payload_uses_lan_bind_addr(tmp_path: Path) -> None:
@@ -856,6 +913,7 @@ def test_local_swarm_harness_payload_archive_is_curated(tmp_path: Path) -> None:
     (layout.tests_repo_root / "scripts" / "godzilla-local-swarm.py").write_text("# script\n", encoding="utf-8")
     (layout.tests_repo_root / "manifests").mkdir(parents=True, exist_ok=True)
     (layout.tests_repo_root / "manifests" / "release-campaigns.v1.json").write_text("{}\n", encoding="utf-8")
+    (layout.tests_repo_root / "live-wire-inputs.local.json").write_text("{}\n", encoding="utf-8")
     host_contracts = windows_vm_lab.load_windows_vm_host_contracts(layout)
 
     archive_path = windows_vm_lab._stage_local_swarm_harness_payload_archive(
@@ -869,6 +927,7 @@ def test_local_swarm_harness_payload_archive_is_curated(tmp_path: Path) -> None:
     assert "emule_test_harness/live_e2e_suite.py" in names
     assert "scripts/godzilla-local-swarm.py" in names
     assert "manifests/release-campaigns.v1.json" in names
+    assert "live-wire-inputs.local.json" in names
     assert not any("node_modules" in name or "/.git/" in name or "workspaces/" in name for name in names)
     assert not any(name.endswith(".pyc") or "__pycache__" in name for name in names)
 
