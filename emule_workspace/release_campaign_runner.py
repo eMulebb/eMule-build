@@ -58,6 +58,7 @@ _CERTIFICATION_VALUE_OPTIONS = {
     "--sonarr-series-root",
     "--acquisition-timeout-minutes",
     "--p2p-bind-interface-name",
+    "--vpn-guard-live-config",
 }
 _CERTIFICATION_FLAG_OPTIONS = {"--skip-live-seed-refresh"}
 _LIVE_E2E_VALUE_OPTIONS = {
@@ -563,6 +564,7 @@ def _certification_options(campaign_options: ReleaseCampaignOptions, tokens: lis
         acquisition_timeout_minutes=_option_float(tokens, "--acquisition-timeout-minutes")
         or campaign_options.acquisition_timeout_minutes,
         p2p_bind_interface_name=_option_value(tokens, "--p2p-bind-interface-name") or campaign_options.p2p_bind_interface_name,
+        vpn_guard_live_config=_option_value(tokens, "--vpn-guard-live-config") or campaign_options.vpn_guard_live_config,
         skip_live_seed_refresh="--skip-live-seed-refresh" in tokens or campaign_options.skip_live_seed_refresh,
     )
 

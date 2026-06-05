@@ -1106,6 +1106,7 @@ def test_release_campaign(
 @click.option("--sonarr-series-root", default=None, help="Sonarr-visible series root for Sonarr import live checks.")
 @click.option("--acquisition-timeout-minutes", default=None, type=float, help="Arr acquisition timeout forwarded to live suites.")
 @click.option("--p2p-bind-interface-name", default="hide.me", show_default=True)
+@click.option("--vpn-guard-live-config", default=None, help="Runtime VPN Guard config forwarded to certification live checks.")
 @click.option("--skip-live-seed-refresh", is_flag=True, help="Reuse the existing live seed state.")
 @click.option("--continue-on-failure", is_flag=True, help="Run remaining certification steps after a failed or inconclusive step.")
 @click.option("--skip-pre-run-cleanup", is_flag=True, help="Do not prune old generated outcomes before the certification run.")
@@ -1118,6 +1119,7 @@ def test_certification(
     sonarr_series_root: str | None,
     acquisition_timeout_minutes: float | None,
     p2p_bind_interface_name: str,
+    vpn_guard_live_config: str | None,
     skip_live_seed_refresh: bool,
     continue_on_failure: bool,
     skip_pre_run_cleanup: bool,
@@ -1136,6 +1138,7 @@ def test_certification(
         sonarr_series_root=sonarr_series_root,
         acquisition_timeout_minutes=acquisition_timeout_minutes,
         p2p_bind_interface_name=p2p_bind_interface_name,
+        vpn_guard_live_config=vpn_guard_live_config,
         skip_live_seed_refresh=skip_live_seed_refresh,
     )
     _locked(

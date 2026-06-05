@@ -385,6 +385,7 @@ def _live_options(
         sonarr_series_root=certification_options.sonarr_series_root,
         acquisition_timeout_minutes=certification_options.acquisition_timeout_minutes,
         p2p_bind_interface_name=certification_options.p2p_bind_interface_name,
+        vpn_guard_live_config=certification_options.vpn_guard_live_config,
         rest_coverage_budget="contract",
         rest_stress_budget="smoke",
         search_ui_search_rounds=search_ui_search_rounds,
