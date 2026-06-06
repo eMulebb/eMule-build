@@ -122,6 +122,52 @@ function Get-HttpStatusCode {
     }
 }
 
+function Get-HttpErrorDetail {
+    param($Exception)
+    if ($null -eq $Exception -or $null -eq $Exception.Response) {
+        return ''
+    }
+    $response = $Exception.Response
+    $status = Get-HttpStatusCode -Exception $Exception
+    $statusText = if ($status -gt 0) { "HTTP $status" } else { 'HTTP request failed' }
+    try {
+        if (-not [string]::IsNullOrWhiteSpace([string]$response.StatusDescription)) {
+            $statusText = "$statusText $($response.StatusDescription)"
+        }
+    } catch {
+    }
+    $detail = ''
+    try {
+        $stream = $response.GetResponseStream()
+        if ($null -ne $stream) {
+            $reader = New-Object IO.StreamReader($stream)
+            try {
+                $detail = $reader.ReadToEnd()
+            } finally {
+                $reader.Dispose()
+            }
+        }
+    } catch {
+    }
+    $detail = ([string]$detail -replace '\s+', ' ').Trim()
+    if ($detail.Length -gt 1200) {
+        $detail = $detail.Substring(0, 1200) + '...'
+    }
+    if ([string]::IsNullOrWhiteSpace($detail)) {
+        return $statusText
+    }
+    return "$statusText`: $detail"
+}
+
+function Get-ExceptionMessage {
+    param($Exception)
+    $detail = Get-HttpErrorDetail -Exception $Exception
+    if (-not [string]::IsNullOrWhiteSpace($detail)) {
+        return $detail
+    }
+    return $Exception.Message
+}
+
 function Ensure-AmutorrentLogin {
     param([string]$BaseUrl, [string]$ApiKey)
     if (-not [string]::IsNullOrWhiteSpace($ApiKey) -or $null -ne $script:AmutorrentWebSession) {
@@ -178,7 +224,7 @@ function Invoke-AmutorrentApi {
         if ($statusCode -eq 401 -or $statusCode -eq 403) {
             throw "aMuTorrent rejected the request. Use an admin user's API key from Settings > User Management or pass -AmutorrentUsername and -AmutorrentPassword."
         }
-        throw
+        throw "aMuTorrent request failed at $uri. $(Get-ExceptionMessage -Exception $_.Exception)"
     }
 }
 
@@ -502,7 +548,7 @@ function Run-TargetWithRetry {
             & $Operation
             return
         } catch {
-            Write-Host ('{0} failed: {1}' -f $Name, $_.Exception.Message) -ForegroundColor Red
+            Write-Host ('{0} failed: {1}' -f $Name, (Get-ExceptionMessage -Exception $_.Exception)) -ForegroundColor Red
             if ($NoRetry) {
                 throw
             }
