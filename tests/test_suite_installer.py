@@ -950,6 +950,8 @@ def test_suite_installer_requires_hashed_pinned_dependencies() -> None:
     assert "cc4fdffc4a82a3805e53aa9c016749fd17247eb21dd6764b1b53ced471695bb7" in installer
     assert "19a81e69dedd8d317b5fa8a1a9c48d63bc3b3f3ba87b84c94ff6d75b1803e419" in installer
     assert "Latest dependency resolution requires -DependencyManifest entries with exact URLs and SHA256 hashes." in installer
+    assert "DependencyChannel Latest requires -DependencyManifest with exact URLs and SHA256 hashes." in installer
+    assert "Latest dependency releases are unavailable unless you pass -DependencyManifest." in installer
     assert "$Name dependency download requires a SHA256 hash." in installer
     assert "Downloading $Name dependency $assetName" in installer
     assert "Verifying $Name dependency" in installer
@@ -1072,11 +1074,14 @@ def test_suite_generated_update_and_start_scripts_are_refresh_safe() -> None:
     assert "Copy-Item -Force -LiteralPath $PSCommandPath -Destination (Join-Path $scriptsDir 'Install-eMuleBBSuite.ps1')" not in installer
     assert "function Test-ProcessRunning" in installer
     assert "function Start-ProcessIfMissing" in installer
+    assert "function Read-WizardPortValue" in installer
+    assert "Enter a number from 0 to 65535. Use 0 to auto-select a free suite port." in installer
     assert "eMuleBB is already running" in installer
     assert "function Test-EmuleRunning" in installer
     assert "eMuleBB executable is missing" in installer
     assert "eMuleBB did not stay running after launch" in installer
     assert "Start-ProcessIfMissing -Name 'aMuTorrent' -FilePath `$node" in installer
+    assert installer.index("`$nodeMatch = Get-ChildItem -Path (Join-Path `$Root 'runtime\\node')") < installer.index("`$node = (Get-Command node.exe -ErrorAction SilentlyContinue).Source")
     assert "Start skipped because -NoStart was used" in installer
     assert "credentials.html" in installer
     assert "if (-not $DryRun -and -not $NonInteractive)" in installer

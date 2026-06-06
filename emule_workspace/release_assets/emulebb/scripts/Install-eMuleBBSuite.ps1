@@ -590,6 +590,18 @@ function Read-WizardValue {
     return $value.Trim()
 }
 
+function Read-WizardPortValue {
+    param([string]$Prompt, [int]$Default)
+    while ($true) {
+        $raw = Read-WizardValue -Prompt "$Prompt (0=auto, 1-65535=explicit)" -Default ([string]$Default)
+        $port = 0
+        if ([int]::TryParse($raw, [ref]$port) -and $port -ge 0 -and $port -le 65535) {
+            return $port
+        }
+        Write-Host 'Enter a number from 0 to 65535. Use 0 to auto-select a free suite port.' -ForegroundColor Yellow
+    }
+}
+
 function Read-WizardChoice {
     param([string]$Prompt, [string[]]$Choices, [int]$DefaultIndex = 0)
     while ($true) {
@@ -696,12 +708,22 @@ function Invoke-InstallWizard {
                 if ($choice -lt 0) { $step--; continue }
                 if ($choice -eq 1) {
                     foreach ($serviceName in @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr')) {
-                        $Config.services[$serviceName].port = [int](Read-WizardValue -Prompt "$serviceName port" -Default ([string]$Config.services[$serviceName].port))
+                        $Config.services[$serviceName].port = Read-WizardPortValue -Prompt "$serviceName port" -Default ([int]$Config.services[$serviceName].port)
                     }
                 }
                 $step++
             }
             4 {
+                if ([string]::IsNullOrWhiteSpace([string]$Config.dependencyManifest)) {
+                    if ($Config.dependencyChannel -eq 'Latest') {
+                        Write-Host 'Latest dependency releases require -DependencyManifest with exact URLs and SHA256 hashes. Using pinned dependency versions.' -ForegroundColor Yellow
+                        $Config.dependencyChannel = 'Pinned'
+                    }
+                    Write-Host 'Latest dependency releases are unavailable unless you pass -DependencyManifest. Using pinned dependency versions.' -ForegroundColor Yellow
+                    $Config.dependencyChannel = 'Pinned'
+                    $step++
+                    continue
+                }
                 $choice = Read-WizardChoice -Prompt 'Dependency resolution' -Choices @('Pinned dependency versions', 'Latest dependency releases') -DefaultIndex $(if ($Config.dependencyChannel -eq 'Latest') { 1 } else { 0 })
                 if ($choice -lt 0) { $step--; continue }
                 $Config.dependencyChannel = @('Pinned', 'Latest')[$choice]
@@ -835,6 +857,9 @@ function Assert-SuiteConfig {
     }
     if (@('standard', 'diagnostics') -notcontains $Config.emulebbPackageFlavor) {
         throw "EmulebbPackageFlavor must be standard or diagnostics: $($Config.emulebbPackageFlavor)"
+    }
+    if ($Config.dependencyChannel -eq 'Latest' -and [string]::IsNullOrWhiteSpace([string]$Config.dependencyManifest)) {
+        throw 'DependencyChannel Latest requires -DependencyManifest with exact URLs and SHA256 hashes. Use the default pinned dependencies, or pass -DependencyManifest C:\Path\dependencies.json.'
     }
     Assert-EmulebbExecutableName -PackageFlavor ([string]$Config.emulebbPackageFlavor) -ExecutableName ([string]$Config.emulebbExecutableName)
     if ($null -eq $Config.credentials) {
@@ -2159,10 +2184,12 @@ if (`$Bundle -eq 'Full') {
     }
 }
 if (`$Bundle -ne 'Core') {
-    `$node = (Get-Command node.exe -ErrorAction SilentlyContinue).Source
-    if (-not `$node) {
-        `$nodeMatch = Get-ChildItem -Path (Join-Path `$Root 'runtime\node') -Filter node.exe -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
-        if (`$nodeMatch) { `$node = `$nodeMatch.FullName }
+    `$node = `$null
+    `$nodeMatch = Get-ChildItem -Path (Join-Path `$Root 'runtime\node') -Filter node.exe -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (`$nodeMatch) {
+        `$node = `$nodeMatch.FullName
+    } else {
+        `$node = (Get-Command node.exe -ErrorAction SilentlyContinue).Source
     }
     if (-not (Test-Path -LiteralPath `$node)) { throw 'Node is not available. Re-run Install-eMuleBBSuite.ps1 to install the pinned runtime.' }
     `$amutorrentServer = Join-Path `$Root 'apps\aMuTorrent\server\server.js'
