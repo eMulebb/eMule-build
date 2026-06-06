@@ -1793,6 +1793,65 @@ function Wait-Json {
     }
     throw "Timed out waiting for `$Uri"
 }
+function Set-ObjectProperty {
+    param(`$Target, [string]`$Name, `$Value)
+    if (`$null -ne `$Target.PSObject.Properties[`$Name]) {
+        `$Target.`$Name = `$Value
+    } else {
+        `$Target | Add-Member -NotePropertyName `$Name -NotePropertyValue `$Value -Force
+    }
+}
+function Get-ObjectPropertyValue {
+    param(`$Target, [string]`$Name, `$Default = `$null)
+    if (`$null -eq `$Target -or `$null -eq `$Target.PSObject.Properties[`$Name]) {
+        return `$Default
+    }
+    return `$Target.PSObject.Properties[`$Name].Value
+}
+function Get-OrCreateObjectProperty {
+    param(`$Target, [string]`$Name)
+    `$value = Get-ObjectPropertyValue -Target `$Target -Name `$Name -Default `$null
+    if (`$null -eq `$value) {
+        `$value = [pscustomobject]@{}
+        Set-ObjectProperty -Target `$Target -Name `$Name -Value `$value
+    }
+    return `$value
+}
+function Initialize-AmutorrentConfig {
+    param([string]`$DataDir, [string]`$BindAddress, [int]`$Port, [string]`$Username, [string]`$Password)
+    New-Item -ItemType Directory -Force -Path `$DataDir | Out-Null
+    `$configPath = Join-Path `$DataDir 'config.json'
+    if (Test-Path -LiteralPath `$configPath) {
+        `$config = Get-Content -Raw -LiteralPath `$configPath | ConvertFrom-Json
+        if (`$null -eq `$config) { `$config = [pscustomobject]@{} }
+    } else {
+        `$config = [pscustomobject]@{}
+    }
+    if ([string]::IsNullOrWhiteSpace([string](Get-ObjectPropertyValue -Target `$config -Name 'version' -Default ''))) {
+        Set-ObjectProperty -Target `$config -Name 'version' -Value '1.0'
+    }
+    Set-ObjectProperty -Target `$config -Name 'firstRunCompleted' -Value `$true
+    `$server = Get-OrCreateObjectProperty -Target `$config -Name 'server'
+    Set-ObjectProperty -Target `$server -Name 'host' -Value `$BindAddress
+    Set-ObjectProperty -Target `$server -Name 'port' -Value `$Port
+    `$auth = Get-OrCreateObjectProperty -Target `$server -Name 'auth'
+    Set-ObjectProperty -Target `$auth -Name 'enabled' -Value `$true
+    if ([string]::IsNullOrWhiteSpace([string](Get-ObjectPropertyValue -Target `$auth -Name 'adminUsername' -Default ''))) {
+        Set-ObjectProperty -Target `$auth -Name 'adminUsername' -Value `$Username
+    }
+    if ([string]::IsNullOrWhiteSpace([string](Get-ObjectPropertyValue -Target `$auth -Name 'password' -Default ''))) {
+        Set-ObjectProperty -Target `$auth -Name 'password' -Value `$Password
+    }
+    `$directories = Get-OrCreateObjectProperty -Target `$config -Name 'directories'
+    Set-ObjectProperty -Target `$directories -Name 'data' -Value `$DataDir
+    Set-ObjectProperty -Target `$directories -Name 'logs' -Value (Join-Path `$DataDir 'logs')
+    Set-ObjectProperty -Target `$directories -Name 'geoip' -Value (Join-Path `$DataDir 'geoip')
+    if (`$null -eq `$config.PSObject.Properties['clients'] -or `$null -eq `$config.clients) {
+        Set-ObjectProperty -Target `$config -Name 'clients' -Value @()
+    }
+    `$config | ConvertTo-Json -Depth 40 | Set-Content -Encoding UTF8 -LiteralPath `$configPath
+    Write-Host "aMuTorrent bootstrap config ready: `$configPath"
+}
 function Set-ArrHostCredentials {
     param([string]`$Name, [string]`$Url, [string]`$ApiPath, [string]`$ApiKey)
     `$hostConfigUrl = "`$Url/`$ApiPath/config/host"
@@ -1900,18 +1959,8 @@ if (`$Bundle -ne 'Core') {
     }
     if (-not (Test-Path -LiteralPath `$node)) { throw 'Node is not available. Re-run Install-eMuleBBSuite.ps1 to install the pinned runtime.' }
     `$amutorrentServer = Join-Path `$Root 'apps\aMuTorrent\server\server.js'
-    `$env:EMULEBB_ENABLED = 'true'
-    `$env:EMULEBB_HOST = `$EmuleHost
-    `$env:EMULEBB_PORT = [string]`$EmulePort
-    `$env:EMULEBB_API_KEY = `$EmuleKey
-    `$env:EMULEBB_USE_SSL = 'false'
     `$env:AMUTORRENT_DATA_DIR = Join-Path `$Root 'data\amutorrent'
-    `$env:PORT = [string]`$Config.services.amutorrent.port
-    `$env:BIND_ADDRESS = [string]`$Config.services.amutorrent.bindAddress
-    `$env:WEB_AUTH_ENABLED = 'true'
-    `$env:WEB_AUTH_ADMIN_USERNAME = [string]`$Config.credentials.username
-    `$env:WEB_AUTH_PASSWORD = [string]`$Config.credentials.password
-    `$env:SKIP_SETUP_WIZARD = 'true'
+    Initialize-AmutorrentConfig -DataDir `$env:AMUTORRENT_DATA_DIR -BindAddress ([string]`$Config.services.amutorrent.bindAddress) -Port ([int]`$Config.services.amutorrent.port) -Username ([string]`$Config.credentials.username) -Password ([string]`$Config.credentials.password)
     Start-ProcessIfMissing -FilePath `$node -ArgumentList @(`$amutorrentServer) -WorkingDirectory (Join-Path `$Root 'apps\aMuTorrent') -CommandLineContains `$amutorrentServer -Hidden
 }
 Ensure-EmuleBBAvailable

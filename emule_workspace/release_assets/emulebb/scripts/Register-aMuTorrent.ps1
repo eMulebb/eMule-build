@@ -267,6 +267,47 @@ function Test-EnvOwnedClient {
     return $null -ne $fromEnv
 }
 
+function Test-ClientHasActiveEnvField {
+    param($Client)
+    $fromEnv = Get-ObjectPropertyValue -Target $Client -Name '_fromEnv' -Default $null
+    if ($null -eq $fromEnv) {
+        return ([string](Get-ObjectPropertyValue -Target $Client -Name 'source' -Default '') -eq 'env')
+    }
+    foreach ($field in @('host', 'port', 'apiKey', 'useSsl', 'path')) {
+        if ((Get-ObjectPropertyValue -Target $fromEnv -Name $field -Default $false) -eq $true) {
+            return $true
+        }
+    }
+    return $false
+}
+
+function Test-StaleEnvOwnedClient {
+    param($Client)
+    if ($Client.type -ne 'emulebb' -or -not (Test-EnvOwnedClient -Client $Client)) {
+        return $false
+    }
+    if (Test-ClientHasActiveEnvField -Client $Client) {
+        return $false
+    }
+    $host = [string](Get-ObjectPropertyValue -Target $Client -Name 'host' -Default '')
+    $port = [int](Get-ObjectPropertyValue -Target $Client -Name 'port' -Default 0)
+    $apiKey = [string](Get-ObjectPropertyValue -Target $Client -Name 'apiKey' -Default '')
+    return [string]::IsNullOrWhiteSpace($host) -or $port -le 0 -or [string]::IsNullOrWhiteSpace($apiKey)
+}
+
+function Remove-StaleEnvOwnedEmulebbClients {
+    param($Clients)
+    $kept = @()
+    foreach ($client in @($Clients)) {
+        if (Test-StaleEnvOwnedClient -Client $client) {
+            Write-Host ('Removed stale env-owned aMuTorrent eMuleBB client "{0}".' -f $client.name) -ForegroundColor Yellow
+            continue
+        }
+        $kept += $client
+    }
+    return ,@($kept)
+}
+
 function Test-ClientConnectionMatch {
     param($Client, $Connection)
     $clientPath = [string](Get-ObjectPropertyValue -Target $Client -Name 'path' -Default '')
@@ -281,10 +322,10 @@ function Assert-CanRepairClient {
     if ($null -eq $Client) {
         return
     }
-    # aMuTorrent treats source:'env' and _fromEnv fields as operator-owned
-    # settings. Writing over them via /api/config/save would appear to work for
-    # this run, then be reverted by the next process start from EMULEBB_*.
-    if ([string](Get-ObjectPropertyValue -Target $Client -Name 'source' -Default '') -eq 'env') {
+    # Active env-owned settings would be overwritten on next process start, so
+    # refuse to repair them. Stale env markers with no active fields can be
+    # converted into normal persisted config entries.
+    if ([string](Get-ObjectPropertyValue -Target $Client -Name 'source' -Default '') -eq 'env' -and (Test-ClientHasActiveEnvField -Client $Client)) {
         throw 'The matching aMuTorrent eMuleBB client is owned by EMULEBB_* environment variables. Repair those variables or remove the env-owned client before using this script.'
     }
     $fromEnv = Get-ObjectPropertyValue -Target $Client -Name '_fromEnv' -Default $null
@@ -295,6 +336,8 @@ function Assert-CanRepairClient {
             }
         }
     }
+    Remove-PropertyIfPresent -Target $Client -Name 'source'
+    Remove-PropertyIfPresent -Target $Client -Name '_fromEnv'
 }
 
 function New-EmulebbClient {
@@ -334,6 +377,7 @@ function Update-EmulebbClient {
     if ($null -eq $Client.PSObject.Properties['color']) {
         Set-ObjectProperty -Target $Client -Name 'color' -Value $null
     }
+    Remove-PropertyIfPresent -Target $Client -Name 'source'
     Remove-PropertyIfPresent -Target $Client -Name '_fromEnv'
     return $Client
 }
@@ -379,9 +423,10 @@ function Register-EmulebbClient {
     $config = Invoke-AmutorrentApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/config/current'
     $config = Copy-JsonObject -Value $config
     $clients = Get-ClientArray -Config $config
+    $clients = Remove-StaleEnvOwnedEmulebbClients -Clients $clients
     $index = Find-EmulebbClientIndex -Clients $clients -TargetId $Id -Name $Name -Connection $connection
     if ($index -ge 0) {
-        if ((Test-EnvOwnedClient -Client $clients[$index]) -and (Test-ClientConnectionMatch -Client $clients[$index] -Connection $connection)) {
+        if ((Test-EnvOwnedClient -Client $clients[$index]) -and (Test-ClientHasActiveEnvField -Client $clients[$index]) -and (Test-ClientConnectionMatch -Client $clients[$index] -Connection $connection)) {
             Write-Host ('aMuTorrent eMuleBB client "{0}" is already configured from EMULEBB_* environment variables.' -f $clients[$index].name) -ForegroundColor Green
             return
         }

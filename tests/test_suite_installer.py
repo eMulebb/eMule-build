@@ -161,10 +161,18 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     start_suite = (install_root / "scripts" / "Start-Suite.ps1").read_text(encoding="utf-8-sig")
     assert "suite-config.json" in start_suite
     assert "Start-eMuleBB.ps1" in start_suite
-    assert "$env:BIND_ADDRESS = [string]$Config.services.amutorrent.bindAddress" in start_suite
-    assert "$env:WEB_AUTH_ENABLED = 'true'" in start_suite
-    assert "$env:WEB_AUTH_ADMIN_USERNAME = [string]$Config.credentials.username" in start_suite
-    assert "$env:WEB_AUTH_PASSWORD = [string]$Config.credentials.password" in start_suite
+    assert "function Initialize-AmutorrentConfig" in start_suite
+    assert "$env:AMUTORRENT_DATA_DIR = Join-Path $Root 'data\\amutorrent'" in start_suite
+    assert "Initialize-AmutorrentConfig -DataDir $env:AMUTORRENT_DATA_DIR" in start_suite
+    assert "Set-ObjectProperty -Target $server -Name 'host' -Value $BindAddress" in start_suite
+    assert "Set-ObjectProperty -Target $server -Name 'port' -Value $Port" in start_suite
+    assert "Set-ObjectProperty -Target $auth -Name 'enabled' -Value $true" in start_suite
+    assert "Set-ObjectProperty -Target $auth -Name 'password' -Value $Password" in start_suite
+    assert "$env:EMULEBB_" not in start_suite
+    assert "$env:BIND_ADDRESS" not in start_suite
+    assert "$env:WEB_AUTH_" not in start_suite
+    assert "$env:PORT" not in start_suite
+    assert "$env:SKIP_SETUP_WIZARD" not in start_suite
     assert "/api/auth/status" in start_suite
     assert "Register-aMuTorrent.ps1" in start_suite
     assert "-AmutorrentUsername ([string]$Config.credentials.username)" in start_suite
@@ -201,8 +209,9 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "-SyncProwlarrOnly" in start_suite
     assert start_suite.index("Invoke-StepWithRetry -Name 'Radarr registration'") < start_suite.index("Invoke-StepWithRetry -Name 'Sonarr registration'")
     assert start_suite.index("Invoke-StepWithRetry -Name 'Sonarr registration'") < start_suite.index("Invoke-StepWithRetry -Name 'Prowlarr application sync'")
-    assert start_suite.index("foreach ($item in @(@('Prowlarr'") < start_suite.index("$env:PORT = [string]$Config.services.amutorrent.port")
-    assert start_suite.index("$env:PORT = [string]$Config.services.amutorrent.port") < start_suite.index("Start-ProcessIfMissing -FilePath $node")
+    assert start_suite.index("foreach ($item in @(@('Prowlarr'") < start_suite.index("Initialize-AmutorrentConfig -DataDir $env:AMUTORRENT_DATA_DIR")
+    assert start_suite.index("Initialize-AmutorrentConfig -DataDir $env:AMUTORRENT_DATA_DIR") < start_suite.index("Start-ProcessIfMissing -FilePath $node")
+    assert start_suite.index("Start-ProcessIfMissing -FilePath $node") < start_suite.index("Invoke-StepWithRetry -Name 'aMuTorrent registration'")
 
     stop_suite = (install_root / "scripts" / "Stop-Suite.ps1").read_text(encoding="utf-8-sig")
     assert "Get-CimInstance Win32_Process" in stop_suite
@@ -874,7 +883,7 @@ def test_suite_installer_keeps_full_suite_service_binds_config_driven() -> None:
     installer = INSTALLER.read_text(encoding="utf-8")
 
     assert '"  <BindAddress>$BindAddress</BindAddress>"' in installer
-    assert "`$env:BIND_ADDRESS = [string]`$Config.services.amutorrent.bindAddress" in installer
+    assert "Initialize-AmutorrentConfig -DataDir `$env:AMUTORRENT_DATA_DIR -BindAddress ([string]`$Config.services.amutorrent.bindAddress)" in installer
     assert "Get-ClientHost `$Config.services.prowlarr.bindAddress" in installer
     assert "Get-ClientHost `$Config.services.radarr.bindAddress" in installer
     assert "Get-ClientHost `$Config.services.sonarr.bindAddress" in installer
@@ -927,6 +936,18 @@ def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() 
     assert "[switch]$SyncProwlarrOnly" in register_arr_stack
     assert "if ($SyncProwlarrOnly)" in register_arr_stack
     assert "if ($ProwlarrUrl -and -not $SkipProwlarrSync)" in register_arr_stack
+
+
+def test_suite_amutorrent_registration_repairs_stale_env_owned_clients() -> None:
+    script_path = Path("emule_workspace/release_assets/emulebb/scripts/Register-aMuTorrent.ps1")
+    _assert_powershell_parse(Path.cwd() / script_path, cwd=Path.cwd())
+    register_amutorrent = script_path.read_text(encoding="utf-8")
+
+    assert "function Test-ClientHasActiveEnvField" in register_amutorrent
+    assert "function Remove-StaleEnvOwnedEmulebbClients" in register_amutorrent
+    assert "$clients = Remove-StaleEnvOwnedEmulebbClients -Clients $clients" in register_amutorrent
+    assert "Remove-PropertyIfPresent -Target $Client -Name 'source'" in register_amutorrent
+    assert "Test-ClientHasActiveEnvField -Client $clients[$index]" in register_amutorrent
 
 
 def test_suite_installer_global_bind_is_default_not_override() -> None:
