@@ -455,10 +455,10 @@ $extractRoot = Join-Path $workRoot 'installer'
 $installer = Expand-Installer -Archive $zipPath -Destination $extractRoot
 $installerParams = [ordered]@{
     Bundle = $effectiveBundle
-    InstallRoot = $InstallRoot
     Version = $resolvedVersion
     Platform = $resolvedPlatform
 }
+if ($PSBoundParameters.ContainsKey('InstallRoot')) { $installerParams['InstallRoot'] = $InstallRoot }
 if (-not [string]::IsNullOrWhiteSpace($releaseBaseUrl)) { $installerParams['ReleaseBaseUrl'] = $releaseBaseUrl }
 if ($localEmulebbPackage) {
     $installerParams['EmulebbPackageZip'] = $zipPath
