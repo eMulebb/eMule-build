@@ -1186,6 +1186,9 @@ def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() 
     assert "function Get-ProwlarrCommandFailureDetail" in register_arr_stack
     assert "Prowlarr application sync failed: {0}. {1}" in register_arr_stack
     assert "function Save-ArrProwlarrIndexer" in register_arr_stack
+    assert "function Save-ProwlarrQbitClient" in register_arr_stack
+    assert "Run-TargetWithRetry -Name 'Prowlarr download client registration'" in register_arr_stack
+    assert "/api/v1/downloadclient?forceSave=true" in register_arr_stack
     assert "[switch]$VerifyIndexerOnly" in register_arr_stack
     assert "function Get-ArrProwlarrIndexerName" in register_arr_stack
     assert "function Get-ExistingArrIndexers" in register_arr_stack
@@ -1208,6 +1211,7 @@ def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() 
     assert "$script:targetUrl = Normalize-ArgumentValue -Value $RadarrUrl" in register_arr_stack
     assert "$script:targetUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue" in register_arr_stack
     assert register_arr_stack.index("Run-TargetWithRetry -Name 'eMuleBB category registration'") < register_arr_stack.index("$script:EmulebbBaseUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue")
+    assert register_arr_stack.index("Run-TargetWithRetry -Name \"Prowlarr $Target application registration\"") < register_arr_stack.index("Run-TargetWithRetry -Name 'Prowlarr download client registration'")
     assert register_arr_stack.index("Run-TargetWithRetry -Name (\"$Target download client {0}\"") < register_arr_stack.index("$script:targetUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue", register_arr_stack.index("Run-TargetWithRetry -Name (\"$Target download client {0}\""))
     assert "Set-ProviderField -Provider $payload -Name 'password' -Value $EmuleApiKey" in register_arr_stack
     assert "Set-ProviderField -Provider $payload -Name 'apiKey' -Value $ArrKey" in register_arr_stack

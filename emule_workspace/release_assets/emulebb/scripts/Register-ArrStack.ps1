@@ -320,9 +320,31 @@ function Get-QbitSchema {
     throw 'Arr did not expose the qBittorrent download-client schema.'
 }
 
+function Get-ProwlarrQbitSchema {
+    param([string]$BaseUrl, [string]$ApiKey)
+    $schemas = Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v1/downloadclient/schema'
+    foreach ($schema in @($schemas)) {
+        if ($schema.implementation -eq 'QBittorrent') {
+            return $schema
+        }
+    }
+    throw 'Prowlarr did not expose the qBittorrent download-client schema.'
+}
+
 function Get-ExistingDownloadClient {
     param([string]$BaseUrl, [string]$ApiKey, [string]$Name)
     $clients = Invoke-JsonApiWithRetry -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v3/downloadclient'
+    foreach ($client in @($clients)) {
+        if ($client.name -eq $Name) {
+            return $client
+        }
+    }
+    return $null
+}
+
+function Get-ExistingProwlarrDownloadClient {
+    param([string]$BaseUrl, [string]$ApiKey, [string]$Name)
+    $clients = Invoke-JsonApiWithRetry -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v1/downloadclient'
     foreach ($client in @($clients)) {
         if ($client.name -eq $Name) {
             return $client
@@ -450,6 +472,49 @@ function Save-QbitClient {
     return Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v3/downloadclient?forceSave=true' -Method 'POST' -Body $payload
 }
 
+function Save-ProwlarrQbitClient {
+    param(
+        [string]$BaseUrl,
+        [string]$ApiKey,
+        [string]$EmuleBaseUrl,
+        [string]$EmuleApiKey,
+        [string]$Name
+    )
+    $normalizedEmuleBaseUrl = Normalize-HttpBaseUrl -Value $EmuleBaseUrl -Name 'EmuleBaseUrl'
+    $uri = [Uri]$normalizedEmuleBaseUrl
+    $existing = Get-ExistingProwlarrDownloadClient -BaseUrl $BaseUrl -ApiKey $ApiKey -Name $Name
+    if ($null -ne $existing) {
+        $payload = $existing
+    } else {
+        $payload = Get-ProwlarrQbitSchema -BaseUrl $BaseUrl -ApiKey $ApiKey
+    }
+    Set-ObjectProperty -Target $payload -Name 'name' -Value $Name
+    Set-ObjectProperty -Target $payload -Name 'enable' -Value $true
+    Set-ObjectProperty -Target $payload -Name 'priority' -Value 1
+    Set-ObjectProperty -Target $payload -Name 'implementation' -Value 'QBittorrent'
+    Set-ObjectProperty -Target $payload -Name 'implementationName' -Value 'qBittorrent'
+    Set-ObjectProperty -Target $payload -Name 'configContract' -Value 'QBittorrentSettings'
+    Set-ObjectProperty -Target $payload -Name 'protocol' -Value 'torrent'
+    Set-ObjectProperty -Target $payload -Name 'removeCompletedDownloads' -Value $false
+    Set-ObjectProperty -Target $payload -Name 'removeFailedDownloads' -Value $false
+    $urlBase = if ($uri.AbsolutePath -and $uri.AbsolutePath -ne '/') { $uri.AbsolutePath.TrimEnd('/') } else { '' }
+    [void](Set-ProviderField -Provider $payload -Name 'host' -Value $uri.Host)
+    [void](Set-ProviderField -Provider $payload -Name 'port' -Value $uri.Port)
+    [void](Set-ProviderField -Provider $payload -Name 'useSsl' -Value ($uri.Scheme -eq 'https'))
+    [void](Set-ProviderField -Provider $payload -Name 'urlBase' -Value $urlBase)
+    [void](Set-ProviderField -Provider $payload -Name 'username' -Value 'emule')
+    [void](Set-ProviderField -Provider $payload -Name 'password' -Value $EmuleApiKey)
+    [void](Set-ProviderField -Provider $payload -Name 'category' -Value '' -Optional)
+    [void](Set-ProviderField -Provider $payload -Name 'initialState' -Value 0 -Optional)
+    if ($uri.Scheme -eq 'https') {
+        [void](Set-ProviderField -Provider $payload -Name 'certificateValidation' -Value 1 -Optional)
+    }
+    if ($null -ne $existing -and $existing.id) {
+        return Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path (('/api/v1/downloadclient/{0}?forceSave=true' -f [int]$existing.id)) -Method 'PUT' -Body $payload
+    }
+    return Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v1/downloadclient?forceSave=true' -Method 'POST' -Body $payload
+}
+
 function Get-ArrCategoryName {
     param([string]$Kind)
     return (Get-ArrCategoryInfo -Kind $Kind).Name
@@ -568,6 +633,66 @@ function Save-ArrProwlarrIndexer {
     $saved = Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v3/indexer?forceSave=true' -Method 'POST' -Body $payload
     Remove-DuplicateArrIndexers -BaseUrl $BaseUrl -ApiKey $ApiKey -Indexers $existingIndexers -KeepId ([int]$saved.id) -Name $Name
     return $saved
+}
+
+function Assert-ProviderFieldEquals {
+    param($Provider, [string]$FieldName, $ExpectedValue, [string]$FailureMessage)
+    $actualValue = Get-ProviderFieldValue -Provider $Provider -Name $FieldName
+    if ([string]$actualValue -ne [string]$ExpectedValue) {
+        throw ($FailureMessage -f $actualValue)
+    }
+}
+
+function Test-CategorySetEquals {
+    param($Actual, $Expected)
+    $actualItems = @($Actual | ForEach-Object { [int]$_ } | Sort-Object)
+    $expectedItems = @($Expected | ForEach-Object { [int]$_ } | Sort-Object)
+    if ($actualItems.Count -ne $expectedItems.Count) {
+        return $false
+    }
+    for ($i = 0; $i -lt $actualItems.Count; $i++) {
+        if ($actualItems[$i] -ne $expectedItems[$i]) {
+            return $false
+        }
+    }
+    return $true
+}
+
+function Verify-ArrProwlarrIndexer {
+    param(
+        [string]$Kind,
+        [string]$BaseUrl,
+        [string]$ApiKey,
+        [string]$Name,
+        [string]$ProwlarrBaseUrl,
+        [string]$ProwlarrKey
+    )
+    $managedName = Get-ArrProwlarrIndexerName -Name $Name
+    $prowlarrIndexer = Get-ProwlarrIndexer -BaseUrl $ProwlarrBaseUrl -ApiKey $ProwlarrKey -Name $Name
+    if ($null -eq $prowlarrIndexer -or -not $prowlarrIndexer.id) {
+        throw "Prowlarr indexer '$Name' did not return an id."
+    }
+
+    $indexers = @(Get-ExistingArrIndexers -BaseUrl $BaseUrl -ApiKey $ApiKey -Name $Name)
+    $indexer = Get-PreferredArrIndexer -Indexers $indexers -Name $Name
+    if ($null -eq $indexer) {
+        throw "Arr indexer '$managedName' was not found after Prowlarr application sync."
+    }
+
+    $expectedBaseUrl = (Normalize-HttpBaseUrl -Value $ProwlarrBaseUrl -Name 'ProwlarrBaseUrl') + '/' + [int]$prowlarrIndexer.id
+    $actualBaseUrl = [string](Get-ProviderFieldValue -Provider $indexer -Name 'baseUrl')
+    if ($actualBaseUrl.TrimEnd('/').ToLowerInvariant() -ne $expectedBaseUrl.ToLowerInvariant()) {
+        throw ('Arr indexer "{0}" points at "{1}" instead of "{2}". Run Prowlarr application sync again.' -f $indexer.name, $actualBaseUrl, $expectedBaseUrl)
+    }
+    Assert-ProviderFieldEquals -Provider $indexer -FieldName 'apiPath' -ExpectedValue '/api' -FailureMessage ('Arr indexer "{0}" has unexpected apiPath: {{0}}' -f $indexer.name)
+    Assert-ProviderFieldEquals -Provider $indexer -FieldName 'apiKey' -ExpectedValue $ProwlarrKey -FailureMessage ('Arr indexer "{0}" has an unexpected Prowlarr API key.' -f $indexer.name)
+
+    $actualCategories = @(Get-ProviderFieldValue -Provider $indexer -Name 'categories')
+    $expectedCategories = Get-ArrIndexerCategories -Kind $Kind
+    if (-not (Test-CategorySetEquals -Actual $actualCategories -Expected $expectedCategories)) {
+        throw ('Arr indexer "{0}" has categories "{1}" instead of "{2}". Run Prowlarr application sync again.' -f $indexer.name, ($actualCategories -join ','), ($expectedCategories -join ','))
+    }
+    return $indexer
 }
 
 function Ensure-EmuleCategory {
@@ -792,7 +917,7 @@ if ($VerifyIndexerOnly) {
         $script:ProwlarrApiKey = Read-RequiredSecretValue -Prompt 'Prowlarr API key' -Value $script:ProwlarrApiKey -Name 'ProwlarrApiKey'
         $script:targetUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt (Get-ArrUrlPrompt -Target $Target) -Value $script:targetUrl) -Name ("${Target}Url")
         $script:targetApiKey = Read-RequiredSecretValue -Prompt "$Target API key" -Value $script:targetApiKey -Name ("${Target}ApiKey")
-        $saved = Save-ArrProwlarrIndexer -Kind $targetKind -BaseUrl $script:targetUrl -ApiKey $script:targetApiKey -Name $DownloadClientName -ProwlarrBaseUrl $script:ProwlarrUrl -ProwlarrKey $script:ProwlarrApiKey
+        $saved = Verify-ArrProwlarrIndexer -Kind $targetKind -BaseUrl $script:targetUrl -ApiKey $script:targetApiKey -Name $DownloadClientName -ProwlarrBaseUrl $script:ProwlarrUrl -ProwlarrKey $script:ProwlarrApiKey
         Write-Host ('{0} indexer "{1}" is configured with id {2}.' -f $Target, $saved.name, $saved.id) -ForegroundColor Green
     }
     return
@@ -841,6 +966,22 @@ if ($Action -eq 'Register' -and $ProwlarrUrl) {
     }
 }
 
+if ($Action -eq 'Register' -and $ProwlarrUrl) {
+    Run-TargetWithRetry -Name 'Prowlarr download client registration' -NoRetry:$NoRetry -OnRetry {
+        $script:ProwlarrUrl = ''
+        $script:ProwlarrApiKey = ''
+        $script:EmulebbBaseUrl = ''
+        $script:EmulebbApiKey = ''
+    } -Operation {
+        $script:ProwlarrUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'Prowlarr URL for download client setup (example http://LAN-IP:9696)' -Value $script:ProwlarrUrl) -Name 'ProwlarrUrl'
+        $script:ProwlarrApiKey = Read-RequiredSecretValue -Prompt 'Prowlarr API key' -Value $script:ProwlarrApiKey -Name 'ProwlarrApiKey'
+        $script:EmulebbBaseUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'eMuleBB base URL (example http://LAN-IP:4711)' -Value $script:EmulebbBaseUrl) -Name 'EmulebbBaseUrl'
+        $script:EmulebbApiKey = Read-RequiredSecretValue -Prompt 'eMuleBB API key' -Value $script:EmulebbApiKey -Name 'EmulebbApiKey'
+        $saved = Save-ProwlarrQbitClient -BaseUrl $script:ProwlarrUrl -ApiKey $script:ProwlarrApiKey -EmuleBaseUrl $script:EmulebbBaseUrl -EmuleApiKey $script:EmulebbApiKey -Name $DownloadClientName
+        Write-Host ('Prowlarr download client saved with id {0}.' -f $saved.id) -ForegroundColor Green
+    }
+}
+
 Run-TargetWithRetry -Name ("$Target download client {0}" -f $Action.ToLowerInvariant()) -NoRetry:$NoRetry -OnRetry {
     $script:targetUrl = ''
     $script:targetApiKey = ''
@@ -883,7 +1024,7 @@ if ($Action -eq 'Register' -and $ProwlarrUrl -and -not $SkipProwlarrSync) {
         $script:ProwlarrApiKey = Read-RequiredSecretValue -Prompt 'Prowlarr API key' -Value $script:ProwlarrApiKey -Name 'ProwlarrApiKey'
         $script:targetUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt (Get-ArrUrlPrompt -Target $Target) -Value $script:targetUrl) -Name ("${Target}Url")
         $script:targetApiKey = Read-RequiredSecretValue -Prompt "$Target API key" -Value $script:targetApiKey -Name ("${Target}ApiKey")
-        $saved = Save-ArrProwlarrIndexer -Kind $targetKind -BaseUrl $script:targetUrl -ApiKey $script:targetApiKey -Name $DownloadClientName -ProwlarrBaseUrl $script:ProwlarrUrl -ProwlarrKey $script:ProwlarrApiKey
+        $saved = Verify-ArrProwlarrIndexer -Kind $targetKind -BaseUrl $script:targetUrl -ApiKey $script:targetApiKey -Name $DownloadClientName -ProwlarrBaseUrl $script:ProwlarrUrl -ProwlarrKey $script:ProwlarrApiKey
         Write-Host ('{0} indexer "{1}" is configured with id {2}.' -f $Target, $saved.name, $saved.id) -ForegroundColor Green
     }
 }

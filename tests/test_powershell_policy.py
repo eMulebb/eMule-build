@@ -806,6 +806,96 @@ if ($saved.id -ne 88) { throw ('unexpected saved id: {0}' -f $saved.id) }
     assert completed.returncode == 0, completed.stderr + completed.stdout
 
 
+def test_register_arr_stack_saves_prowlarr_download_client(
+    workspace_root: Path,
+    tmp_path: Path,
+) -> None:
+    script_path = (
+        workspace_root
+        / "repos"
+        / "emulebb-build"
+        / "emule_workspace"
+        / "release_assets"
+        / "emulebb"
+        / "scripts"
+        / "Register-ArrStack.ps1"
+    )
+    script_text = script_path.read_text(encoding="utf-8")
+    test_script = tmp_path / "save-prowlarr-client-test.ps1"
+    test_script.write_text(
+        """
+function Invoke-JsonApi {
+    param([string]$BaseUrl, [string]$ApiKey, [string]$Path, [string]$Method = 'GET', $Body = $null)
+    if ($Path -eq '/api/v1/downloadclient') { return @() }
+    if ($Path -eq '/api/v1/downloadclient/schema') {
+        return @([pscustomobject]@{
+            implementation = 'QBittorrent'
+            fields = @(
+                [pscustomobject]@{ name = 'host' },
+                [pscustomobject]@{ name = 'port' },
+                [pscustomobject]@{ name = 'useSsl' },
+                [pscustomobject]@{ name = 'urlBase' },
+                [pscustomobject]@{ name = 'username' },
+                [pscustomobject]@{ name = 'password' },
+                [pscustomobject]@{ name = 'category' },
+                [pscustomobject]@{ name = 'initialState' }
+            )
+        })
+    }
+    if ($Path -eq '/api/v1/downloadclient?forceSave=true' -and $Method -eq 'POST') {
+        $hostName = ($Body.fields | Where-Object { $_.name -eq 'host' }).value
+        $urlBase = ($Body.fields | Where-Object { $_.name -eq 'urlBase' }).value
+        $category = ($Body.fields | Where-Object { $_.name -eq 'category' }).value
+        if ($hostName -ne 'emule') { throw ('unexpected host: {0}' -f $hostName) }
+        if ($urlBase -ne '/proxy') { throw ('unexpected urlBase: {0}' -f $urlBase) }
+        if ($category -ne '') { throw ('unexpected category: {0}' -f $category) }
+        return [pscustomobject]@{ id = 99; name = $Body.name }
+    }
+    throw ('unexpected call: {0} {1}' -f $Method, $Path)
+}
+        """
+        + _extract_powershell_function(script_text, "Set-ObjectProperty")
+        + "\n"
+        + _extract_powershell_function(script_text, "Set-ProviderField")
+        + "\n"
+        + _extract_powershell_function(script_text, "Normalize-ArgumentValue")
+        + "\n"
+        + _extract_powershell_function(script_text, "Normalize-HttpBaseUrl")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-HttpStatusCode")
+        + "\n"
+        + _extract_powershell_function(script_text, "Invoke-JsonApiWithRetry")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-ProwlarrQbitSchema")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-ExistingProwlarrDownloadClient")
+        + "\n"
+        + _extract_powershell_function(script_text, "Save-ProwlarrQbitClient")
+        + """
+$saved = Save-ProwlarrQbitClient -BaseUrl 'http://prowlarr' -ApiKey 'secret' -EmuleBaseUrl "'http://emule:4711/proxy/'" -EmuleApiKey 'emule-key' -Name 'eMuleBB'
+if ($saved -is [array]) { throw ('Save-ProwlarrQbitClient emitted an array with {0} items' -f $saved.Count) }
+if ($saved.id -ne 99) { throw ('unexpected saved id: {0}' -f $saved.id) }
+""",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(test_script),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+
+
 def test_register_arr_stack_ensures_matching_emulebb_category(
     workspace_root: Path,
     tmp_path: Path,
@@ -1356,6 +1446,103 @@ $saved = Save-ArrProwlarrIndexer -Kind 'radarr' -BaseUrl 'http://radarr' -ApiKey
 if ($saved.id -ne 1) { throw ('unexpected saved id: {0}' -f $saved.id) }
 $deleteCalls = @($script:Calls | Where-Object { $_.Method -eq 'DELETE' -and $_.Path -eq '/api/v3/indexer/2' })
 if ($deleteCalls.Count -ne 1) { throw ('expected one duplicate delete, got {0}' -f $deleteCalls.Count) }
+""",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(test_script),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+
+
+def test_register_arr_stack_verifies_arr_indexer_without_resaving(
+    workspace_root: Path,
+    tmp_path: Path,
+) -> None:
+    script_path = (
+        workspace_root
+        / "repos"
+        / "emulebb-build"
+        / "emule_workspace"
+        / "release_assets"
+        / "emulebb"
+        / "scripts"
+        / "Register-ArrStack.ps1"
+    )
+    script_text = script_path.read_text(encoding="utf-8")
+    test_script = tmp_path / "verify-arr-prowlarr-indexer-test.ps1"
+    test_script.write_text(
+        """
+$script:Calls = @()
+function Invoke-JsonApi {
+    param([string]$BaseUrl, [string]$ApiKey, [string]$Path, [string]$Method = 'GET', $Body = $null)
+    $script:Calls += [pscustomobject]@{ BaseUrl = $BaseUrl; ApiKey = $ApiKey; Path = $Path; Method = $Method; Body = $Body }
+    if ($Method -ne 'GET') {
+        throw ('verification must not mutate Arr indexers: {0} {1}' -f $Method, $Path)
+    }
+    if ($Path -eq '/api/v1/indexer') {
+        return @([pscustomobject]@{ id = 7; name = 'eMuleBB Suite' })
+    }
+    if ($Path -eq '/api/v3/indexer') {
+        return @([pscustomobject]@{
+            id = 44
+            name = 'eMuleBB Suite (Prowlarr)'
+            fields = @(
+                [pscustomobject]@{ name = 'baseUrl'; value = 'http://prowlarr/7/' },
+                [pscustomobject]@{ name = 'apiPath'; value = '/api' },
+                [pscustomobject]@{ name = 'apiKey'; value = 'prowlarr-key' },
+                [pscustomobject]@{ name = 'categories'; value = @(2000) }
+            )
+        })
+    }
+    throw ('unexpected call: {0} {1}' -f $Method, $Path)
+}
+function Test-ApiKeyRejectedError { param($Exception) return $false }
+"""
+        + _extract_powershell_function(script_text, "Normalize-ArgumentValue")
+        + "\n"
+        + _extract_powershell_function(script_text, "Normalize-HttpBaseUrl")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-HttpStatusCode")
+        + "\n"
+        + _extract_powershell_function(script_text, "Invoke-JsonApiWithRetry")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-ProviderFieldValue")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-ArrProwlarrIndexerName")
+        + "\n"
+        + _extract_powershell_function(script_text, "Test-ArrProwlarrIndexerName")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-ExistingArrIndexers")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-PreferredArrIndexer")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-ArrIndexerCategories")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-ProwlarrIndexer")
+        + "\n"
+        + _extract_powershell_function(script_text, "Assert-ProviderFieldEquals")
+        + "\n"
+        + _extract_powershell_function(script_text, "Test-CategorySetEquals")
+        + "\n"
+        + _extract_powershell_function(script_text, "Verify-ArrProwlarrIndexer")
+        + """
+$verified = Verify-ArrProwlarrIndexer -Kind 'radarr' -BaseUrl 'http://radarr' -ApiKey 'radarr-key' -Name 'eMuleBB Suite' -ProwlarrBaseUrl 'http://prowlarr' -ProwlarrKey 'prowlarr-key'
+if ($verified.id -ne 44) { throw ('unexpected verified id: {0}' -f $verified.id) }
+$mutatingCalls = @($script:Calls | Where-Object { $_.Method -ne 'GET' })
+if ($mutatingCalls.Count -ne 0) { throw ('expected no mutating calls, got {0}' -f $mutatingCalls.Count) }
 """,
         encoding="utf-8",
     )
