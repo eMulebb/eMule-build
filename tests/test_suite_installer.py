@@ -959,6 +959,17 @@ def test_suite_installer_keeps_full_suite_service_binds_config_driven() -> None:
     assert "$bytes[0] -eq 172 -and $bytes[1] -ge 16 -and $bytes[1] -le 31" in installer
     assert "$bytes[0] -eq 192 -and $bytes[1] -eq 168" in installer
     assert "function ConvertTo-IPv4SubnetMask" in installer
+    assert "function Test-VirtualLikeInterfaceName" in installer
+    assert "function Get-AutoLanCandidateRank" in installer
+    assert "Get-NetAdapter -ErrorAction Stop" in installer
+    assert "IsVirtualLike = [bool](Test-VirtualLikeInterfaceName -Name $interfaceText)" in installer
+    assert "Get-AutoLanCandidateRank -Candidate $_" in installer
+    assert "'vethernet'" in installer
+    assert "'default switch'" in installer
+    assert "'hyper-v'" in installer
+    assert "'vmware'" in installer
+    assert "'virtualbox'" in installer
+    assert "'bluetooth'" in installer
     assert "function Get-BindableInterfaceOptions" in installer
     assert "' [VPN-like]'" in installer
     assert "InterfaceAlias = [string]$info.InterfaceAlias" in installer
@@ -974,6 +985,100 @@ def test_suite_installer_keeps_full_suite_service_binds_config_driven() -> None:
     assert "will bind to non-loopback address $Address" not in installer
     assert "bind address $Address exposes the service" not in installer
     assert "will bind to all interfaces" not in installer
+
+
+def test_suite_installer_recomputes_client_host_when_bind_changes(tmp_path: Path) -> None:
+    config_path = tmp_path / "suite-config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "schema": "emulebb.suite-config.v1",
+                "bundle": "Core",
+                "installRoot": r"C:\SuiteProbe",
+                "services": {
+                    name: {
+                        "bindAddress": "192.168.1.10",
+                        "clientHost": "192.168.1.10",
+                        "port": port,
+                        **({"apiKey": ""} if name in {"emulebb", "prowlarr", "radarr", "sonarr"} else {}),
+                    }
+                    for name, port in {
+                        "emulebb": 54002,
+                        "amutorrent": 54003,
+                        "prowlarr": 54004,
+                        "radarr": 54005,
+                        "sonarr": 54006,
+                    }.items()
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    completed = suite_install_fixtures.run_installer(
+        (Path.cwd() / INSTALLER).resolve(),
+        [
+            "-NonInteractive",
+            "-DryRun",
+            "-ConfigFile",
+            str(config_path),
+            "-ControlBindAddress",
+            "127.0.0.1",
+            "-EmulebbPort",
+            "54002",
+        ],
+        cwd=Path.cwd(),
+    )
+
+    assert "emulebb: 127.0.0.1:54002" in completed.stdout
+    assert "client URL host: 192.168.1.10" not in completed.stdout
+
+
+def test_suite_installer_rejects_stale_wildcard_client_host(tmp_path: Path) -> None:
+    config_path = tmp_path / "suite-config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "schema": "emulebb.suite-config.v1",
+                "bundle": "Core",
+                "installRoot": r"C:\SuiteProbe",
+                "services": {
+                    name: {
+                        "bindAddress": "0.0.0.0",
+                        "clientHost": "203.0.113.55",
+                        "port": port,
+                        **({"apiKey": ""} if name in {"emulebb", "prowlarr", "radarr", "sonarr"} else {}),
+                    }
+                    for name, port in {
+                        "emulebb": 54002,
+                        "amutorrent": 54003,
+                        "prowlarr": 54004,
+                        "radarr": 54005,
+                        "sonarr": 54006,
+                    }.items()
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    completed = suite_install_fixtures.run_installer(
+        (Path.cwd() / INSTALLER).resolve(),
+        [
+            "-NonInteractive",
+            "-DryRun",
+            "-ConfigFile",
+            str(config_path),
+        ],
+        cwd=Path.cwd(),
+        check=False,
+    )
+
+    assert completed.returncode != 0
+    assert "clientHost 203.0.113.55 is not a local IPv4 address" in completed.stdout
+    assert "set services.emulebb.clientHost to a current LAN/VPN IP" in completed.stdout
 
 
 def test_suite_installer_preserves_app_roots_when_extracting_multiple_packages() -> None:

@@ -224,6 +224,17 @@ function Test-VpnLikeInterfaceName {
     return $false
 }
 
+function Test-VirtualLikeInterfaceName {
+    param([string]$Name)
+    $lowered = ([string]$Name).ToLowerInvariant()
+    foreach ($token in @('vethernet', 'default switch', 'hyper-v', 'vmware', 'virtualbox', 'virtual ', 'bluetooth')) {
+        if ($lowered.Contains($token)) {
+            return $true
+        }
+    }
+    return $false
+}
+
 function Test-AutoLanIPv4Address {
     param([string]$Address)
     if ([string]::IsNullOrWhiteSpace($Address)) {
@@ -266,14 +277,35 @@ function ConvertTo-IPv4SubnetMask {
 function Get-LocalIPv4InterfaceInfos {
     $candidates = @()
     try {
+        $adaptersByName = @{}
+        $adaptersByIndex = @{}
+        try {
+            foreach ($adapter in @(Get-NetAdapter -ErrorAction Stop)) {
+                $adaptersByName[[string]$adapter.Name] = $adapter
+                $adaptersByIndex[[int]$adapter.ifIndex] = $adapter
+            }
+        } catch {
+        }
         $candidates += @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
             Where-Object { $_.AddressState -eq 'Preferred' -and $_.IPAddress -notlike '169.254.*' } |
             ForEach-Object {
+                $adapter = $null
+                if ($adaptersByName.ContainsKey([string]$_.InterfaceAlias)) {
+                    $adapter = $adaptersByName[[string]$_.InterfaceAlias]
+                } elseif ($adaptersByIndex.ContainsKey([int]$_.InterfaceIndex)) {
+                    $adapter = $adaptersByIndex[[int]$_.InterfaceIndex]
+                }
+                $description = if ($null -eq $adapter) { '' } else { [string]$adapter.InterfaceDescription }
+                $status = if ($null -eq $adapter) { '' } else { [string]$adapter.Status }
+                $interfaceText = ('{0} {1}' -f $_.InterfaceAlias, $description)
                 [pscustomobject]@{
                     InterfaceAlias = [string]$_.InterfaceAlias
+                    InterfaceDescription = $description
+                    AdapterStatus = $status
                     IPAddress = [string]$_.IPAddress
                     PrefixLength = [int]$_.PrefixLength
-                    IsVpnLike = [bool](Test-VpnLikeInterfaceName -Name $_.InterfaceAlias)
+                    IsVpnLike = [bool](Test-VpnLikeInterfaceName -Name $interfaceText)
+                    IsVirtualLike = [bool](Test-VirtualLikeInterfaceName -Name $interfaceText)
                 }
             })
     } catch {
@@ -283,9 +315,12 @@ function Get-LocalIPv4InterfaceInfos {
                 ForEach-Object {
                     [pscustomobject]@{
                         InterfaceAlias = ''
+                        InterfaceDescription = ''
+                        AdapterStatus = ''
                         IPAddress = [string]$_.IPAddressToString
                         PrefixLength = $null
                         IsVpnLike = $false
+                        IsVirtualLike = $false
                     }
                 })
         } catch {
@@ -294,15 +329,31 @@ function Get-LocalIPv4InterfaceInfos {
     return @($candidates)
 }
 
+function Get-AutoLanCandidateRank {
+    param($Candidate)
+    if ([string]$Candidate.AdapterStatus -eq 'Up' -and -not [bool]$Candidate.IsVpnLike -and -not [bool]$Candidate.IsVirtualLike) {
+        return 0
+    }
+    if ([string]$Candidate.AdapterStatus -eq 'Up' -and [bool]$Candidate.IsVpnLike) {
+        return 1
+    }
+    if ([string]$Candidate.AdapterStatus -eq 'Up' -and -not [bool]$Candidate.IsVirtualLike) {
+        return 2
+    }
+    if ([bool]$Candidate.IsVpnLike) {
+        return 3
+    }
+    if ([bool]$Candidate.IsVirtualLike) {
+        return 4
+    }
+    return 5
+}
+
 function Get-AutoLanBindAddress {
     $privateCandidates = @(Get-LocalIPv4InterfaceInfos | Where-Object { Test-AutoLanIPv4Address -Address $_.IPAddress })
-    foreach ($candidate in @($privateCandidates | Where-Object { -not $_.IsVpnLike })) {
-        return $candidate.IPAddress
-    }
-    foreach ($candidate in $privateCandidates) {
-        if ($candidate.IsVpnLike) {
-            return $candidate.IPAddress
-        }
+    $candidate = @($privateCandidates | Sort-Object @{ Expression = { Get-AutoLanCandidateRank -Candidate $_ } }, InterfaceAlias, IPAddress | Select-Object -First 1)
+    if ($candidate.Count -gt 0) {
+        return $candidate[0].IPAddress
     }
     return ''
 }
@@ -329,10 +380,14 @@ function Resolve-ServiceClientHost {
     param([string]$ServiceName, [string]$BindAddress, [string]$ExistingClientHost)
     $bind = ([string]$BindAddress).Trim()
     $existing = ([string]$ExistingClientHost).Trim()
-    if (-not [string]::IsNullOrWhiteSpace($existing) -and -not (Test-WildcardBindAddress -Address $existing)) {
-        return $existing
-    }
     if (Test-WildcardBindAddress -Address $bind) {
+        if (-not [string]::IsNullOrWhiteSpace($existing)) {
+            if (Test-WildcardBindAddress -Address $existing) {
+                throw "$ServiceName clientHost cannot be a wildcard address: $existing. Set services.$ServiceName.clientHost to a concrete LAN/VPN IP, or explicit 127.0.0.1 for local-only use."
+            }
+            Assert-ServiceClientHost -ServiceName $ServiceName -ClientHost $existing
+            return $existing
+        }
         $detected = Get-AutoLanBindAddress
         if (-not [string]::IsNullOrWhiteSpace($detected)) {
             return $detected
@@ -340,6 +395,31 @@ function Resolve-ServiceClientHost {
         throw "$ServiceName binds to $bind, but no LAN/VPN IPv4 address was detected for generated client URLs. Pass -ControlBindAddress or the service-specific bind parameter with a concrete LAN/VPN IP, or pass explicit 127.0.0.1 for local-only use."
     }
     return $bind
+}
+
+function Assert-ServiceClientHost {
+    param([string]$ServiceName, [string]$ClientHost)
+    if ([string]::IsNullOrWhiteSpace($ClientHost)) {
+        throw "$ServiceName clientHost must not be empty."
+    }
+    if (Test-LoopbackAddressText -Address $ClientHost) {
+        return
+    }
+    if (Test-WildcardBindAddress -Address $ClientHost) {
+        throw "$ServiceName clientHost cannot be a wildcard address: $ClientHost. Set services.$ServiceName.clientHost to a concrete LAN/VPN IP, or explicit 127.0.0.1 for local-only use."
+    }
+    try {
+        $parsed = [Net.IPAddress]::Parse($ClientHost)
+    } catch {
+        throw "$ServiceName clientHost must be an IPv4 address, not '$ClientHost'. Set services.$ServiceName.clientHost to a concrete LAN/VPN IP, or explicit 127.0.0.1 for local-only use."
+    }
+    if ($parsed.AddressFamily -ne [Net.Sockets.AddressFamily]::InterNetwork) {
+        throw "$ServiceName clientHost must be an IPv4 address, not '$ClientHost'."
+    }
+    $localAddresses = @(Get-LocalIPv4Addresses)
+    if ($localAddresses -notcontains $ClientHost) {
+        throw "$ServiceName clientHost $ClientHost is not a local IPv4 address. Local addresses: $($localAddresses -join ', '). Re-run scripts\Install-eMuleBBSuite.ps1 with -Force, or edit manifests\suite-config.json and set services.$ServiceName.clientHost to a current LAN/VPN IP."
+    }
 }
 
 function Set-SuiteClientHosts {
