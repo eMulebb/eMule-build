@@ -979,6 +979,9 @@ def test_suite_installer_requires_hashed_pinned_dependencies() -> None:
     assert "DependencyChannel Latest requires -DependencyManifest with exact URLs and SHA256 hashes." in installer
     assert "Latest dependency releases are unavailable unless you pass -DependencyManifest." in installer
     assert "$Name dependency download requires a SHA256 hash." in installer
+    assert "function Get-DependencyDownloadRecoveryMessage" in installer
+    assert "pass -DependencyManifest with reachable file paths or URLs and SHA256 hashes" in installer
+    assert "Failed to download $Url -> $Destination. $($_.Exception.Message) $(Get-DependencyDownloadRecoveryMessage)" in installer
     assert "Downloading $Name dependency $assetName" in installer
     assert "Verifying $Name dependency" in installer
     assert "Extracting $Name dependency" in installer
@@ -1165,6 +1168,9 @@ def test_suite_bootstrapper_requires_emulebb_package_root() -> None:
     assert "eMule/scripts/Install-eMuleBBSuite.ps1" not in bootstrapper
     assert "Release ZIP does not contain eMuleBB/scripts/Install-eMuleBBSuite.ps1." in bootstrapper
     assert "Assert-FileHash" in bootstrapper
+    assert "function Assert-RequiredSha256" in bootstrapper
+    assert "$Description must include a SHA256 hash." in bootstrapper
+    assert "Assert-RequiredSha256 -Value ([string]$manifest.sha256) -Description 'Downloaded eMuleBB release manifest'" in bootstrapper
     assert "IncludePrerelease" in bootstrapper
     assert "EmulebbBindAddress" in bootstrapper
     assert "AmutorrentPort" in bootstrapper

@@ -493,6 +493,13 @@ function Assert-FileHash {
     }
 }
 
+function Assert-RequiredSha256 {
+    param([string]$Value, [string]$Description)
+    if ($Value -notmatch '^[0-9a-fA-F]{64}$') {
+        throw "$Description must include a SHA256 hash."
+    }
+}
+
 function Resolve-LocalManifestPath {
     param([string]$ZipPath, [string]$ManifestPath)
     if (-not [string]::IsNullOrWhiteSpace($ManifestPath)) {
@@ -528,6 +535,7 @@ function Assert-LocalPackage {
     if ($null -eq $manifest.PSObject.Properties['sha256'] -or [string]::IsNullOrWhiteSpace([string]$manifest.sha256)) {
         throw "$Name local package manifest does not contain sha256: $resolvedManifest"
     }
+    Assert-RequiredSha256 -Value ([string]$manifest.sha256) -Description "$Name local package manifest"
     Assert-FileHash -Path $ZipPath -ExpectedSha256 ([string]$manifest.sha256)
     Write-Step "Using local $Name package $ZipPath with manifest $resolvedManifest"
 }
@@ -583,6 +591,7 @@ if ($localEmulebbPackage) {
     Invoke-Download -Url $zipUrl -Destination $zipPath
     if (-not $DryRun) {
         $manifest = Read-JsonFile -Path $manifestPath -Description 'Downloaded eMuleBB release manifest'
+        Assert-RequiredSha256 -Value ([string]$manifest.sha256) -Description 'Downloaded eMuleBB release manifest'
         Assert-FileHash -Path $zipPath -ExpectedSha256 ([string]$manifest.sha256)
     }
 }

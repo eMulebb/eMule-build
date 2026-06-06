@@ -1034,6 +1034,10 @@ function Invoke-HttpDownload {
     }
 }
 
+function Get-DependencyDownloadRecoveryMessage {
+    return 'Check your network or proxy and rerun the installer. If GitHub downloads are blocked, pass -DependencyManifest with reachable file paths or URLs and SHA256 hashes for the Arr and Node dependency ZIPs.'
+}
+
 function Invoke-Download {
     param([string]$Url, [string]$Destination)
     if ($DryRun) {
@@ -1061,7 +1065,7 @@ function Invoke-Download {
         Invoke-HttpDownload -Url $Url -TempPath $tmp -Destination $Destination
         Move-Item -Force -LiteralPath $tmp -Destination $Destination
     } catch {
-        throw "Failed to download $Url -> $Destination. $($_.Exception.Message)"
+        throw "Failed to download $Url -> $Destination. $($_.Exception.Message) $(Get-DependencyDownloadRecoveryMessage)"
     } finally {
         Remove-Item -Force -LiteralPath $tmp -ErrorAction SilentlyContinue
     }
