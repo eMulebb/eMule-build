@@ -148,11 +148,19 @@ function Invoke-JsonApi {
     )
     $headers = @{ 'X-Api-Key' = $ApiKey }
     $uri = (Normalize-HttpBaseUrl -Value $BaseUrl -Name 'BaseUrl') + $Path
-    if ($null -eq $Body) {
-        return Invoke-RestMethod -Uri $uri -Method $Method -Headers $headers -TimeoutSec 90 -ErrorAction Stop
+    try {
+        if ($null -eq $Body) {
+            return Invoke-RestMethod -Uri $uri -Method $Method -Headers $headers -TimeoutSec 90 -ErrorAction Stop
+        }
+        $json = $Body | ConvertTo-Json -Depth 20
+        return Invoke-RestMethod -Uri $uri -Method $Method -Headers $headers -Body $json -ContentType 'application/json; charset=utf-8' -TimeoutSec 90 -ErrorAction Stop
+    } catch {
+        $statusCode = Get-HttpStatusCode -Exception $_.Exception
+        if ($statusCode -eq 401 -or $statusCode -eq 403) {
+            throw "Arr API key was rejected by $uri. Copy the API key from Settings > General in the matching Radarr/Sonarr web UI, then rerun this script."
+        }
+        throw
     }
-    $json = $Body | ConvertTo-Json -Depth 20
-    return Invoke-RestMethod -Uri $uri -Method $Method -Headers $headers -Body $json -ContentType 'application/json; charset=utf-8' -TimeoutSec 90 -ErrorAction Stop
 }
 
 function Get-HttpStatusCode {

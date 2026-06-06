@@ -137,6 +137,16 @@ function Assert-NoSpaces {
     }
 }
 
+function Assert-InstallRootValue {
+    param([string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        throw 'InstallRoot is required. Pass -InstallRoot C:\eMuleBBSuite or choose a short absolute folder in the installer wizard.'
+    }
+    if ($Path -match '[<>|"*?]') {
+        throw "InstallRoot contains characters Windows cannot use in folder names: $Path. Choose a short absolute folder such as C:\eMuleBBSuite or C:\eMuleBB."
+    }
+}
+
 function New-Secret {
     param([int]$Length = 24)
     $alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
@@ -212,7 +222,7 @@ function Test-VpnLikeInterfaceName {
 
 function Test-AutoLanIPv4Address {
     param([string]$Address)
-    if ([string]::IsNullOrWhiteSpace($Address) -or -not $Address.StartsWith('192.168.')) {
+    if ([string]::IsNullOrWhiteSpace($Address)) {
         return $false
     }
     try {
@@ -220,18 +230,46 @@ function Test-AutoLanIPv4Address {
     } catch {
         return $false
     }
-    return $parsed.AddressFamily -eq [Net.Sockets.AddressFamily]::InterNetwork
+    if ($parsed.AddressFamily -ne [Net.Sockets.AddressFamily]::InterNetwork) {
+        return $false
+    }
+    $bytes = $parsed.GetAddressBytes()
+    if ($bytes[0] -eq 10) {
+        return $true
+    }
+    if ($bytes[0] -eq 172 -and $bytes[1] -ge 16 -and $bytes[1] -le 31) {
+        return $true
+    }
+    if ($bytes[0] -eq 192 -and $bytes[1] -eq 168) {
+        return $true
+    }
+    return $false
 }
 
-function Get-AutoLanBindAddress {
+function ConvertTo-IPv4SubnetMask {
+    param([Nullable[int]]$PrefixLength)
+    if ($null -eq $PrefixLength -or $PrefixLength -lt 0 -or $PrefixLength -gt 32) {
+        return ''
+    }
+    $bits = ('1' * $PrefixLength) + ('0' * (32 - $PrefixLength))
+    $octets = @()
+    for ($offset = 0; $offset -lt 32; $offset += 8) {
+        $octets += [Convert]::ToInt32($bits.Substring($offset, 8), 2)
+    }
+    return ($octets -join '.')
+}
+
+function Get-LocalIPv4InterfaceInfos {
     $candidates = @()
     try {
         $candidates += @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
-            Where-Object { $_.AddressState -eq 'Preferred' } |
+            Where-Object { $_.AddressState -eq 'Preferred' -and $_.IPAddress -notlike '169.254.*' } |
             ForEach-Object {
                 [pscustomobject]@{
                     InterfaceAlias = [string]$_.InterfaceAlias
                     IPAddress = [string]$_.IPAddress
+                    PrefixLength = [int]$_.PrefixLength
+                    IsVpnLike = [bool](Test-VpnLikeInterfaceName -Name $_.InterfaceAlias)
                 }
             })
     } catch {
@@ -242,13 +280,23 @@ function Get-AutoLanBindAddress {
                     [pscustomobject]@{
                         InterfaceAlias = ''
                         IPAddress = [string]$_.IPAddressToString
+                        PrefixLength = $null
+                        IsVpnLike = $false
                     }
                 })
         } catch {
         }
     }
-    foreach ($candidate in $candidates) {
-        if ((Test-AutoLanIPv4Address -Address $candidate.IPAddress) -and -not (Test-VpnLikeInterfaceName -Name $candidate.InterfaceAlias)) {
+    return @($candidates)
+}
+
+function Get-AutoLanBindAddress {
+    $privateCandidates = @(Get-LocalIPv4InterfaceInfos | Where-Object { Test-AutoLanIPv4Address -Address $_.IPAddress })
+    foreach ($candidate in @($privateCandidates | Where-Object { -not $_.IsVpnLike })) {
+        return $candidate.IPAddress
+    }
+    foreach ($candidate in $privateCandidates) {
+        if ($candidate.IsVpnLike) {
             return $candidate.IPAddress
         }
     }
@@ -629,26 +677,26 @@ function Read-WizardChoice {
     }
 }
 
-function Get-BindableInterfaceNames {
-    $names = @()
-    try {
-        $names = @(Get-NetIPConfiguration -ErrorAction Stop |
-            Where-Object { $_.IPv4Address -and $_.NetAdapter.Status -eq 'Up' } |
-            ForEach-Object { $_.InterfaceAlias } |
-            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
-            Sort-Object -Unique)
-    } catch {
-        try {
-            $names = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
-                Where-Object { $_.IPAddress -notlike '169.254.*' } |
-                ForEach-Object { $_.InterfaceAlias } |
-                Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
-                Sort-Object -Unique)
-        } catch {
-            $names = @()
+function Get-BindableInterfaceOptions {
+    $options = @()
+    foreach ($info in @(Get-LocalIPv4InterfaceInfos | Sort-Object InterfaceAlias, IPAddress)) {
+        if ([string]::IsNullOrWhiteSpace($info.InterfaceAlias)) {
+            continue
+        }
+        $prefix = if ($null -ne $info.PrefixLength) { "/$($info.PrefixLength)" } else { '' }
+        $mask = ConvertTo-IPv4SubnetMask -PrefixLength $info.PrefixLength
+        $maskText = if ([string]::IsNullOrWhiteSpace($mask)) { '' } else { " ($mask)" }
+        $vpnText = if ($info.IsVpnLike) { ' [VPN-like]' } else { '' }
+        $options += [pscustomobject]@{
+            InterfaceAlias = [string]$info.InterfaceAlias
+            Label = ('{0} - {1}{2}{3}{4}' -f $info.InterfaceAlias, $info.IPAddress, $prefix, $maskText, $vpnText)
         }
     }
-    return $names
+    return @($options)
+}
+
+function Get-BindableInterfaceNames {
+    return @(Get-BindableInterfaceOptions | ForEach-Object { $_.InterfaceAlias } | Sort-Object -Unique)
 }
 
 function Invoke-InstallWizard {
@@ -685,16 +733,16 @@ function Invoke-InstallWizard {
                 $step++
             }
             2 {
-                $names = @(Get-BindableInterfaceNames)
+                $interfaceOptions = @(Get-BindableInterfaceOptions)
                 $choices = @('No P2P bind')
-                $choices += $names
+                $choices += @($interfaceOptions | ForEach-Object { $_.Label })
                 $choices += 'Custom interface name'
                 $choice = Read-WizardChoice -Prompt 'eMuleBB P2P bind interface' -Choices $choices -DefaultIndex 0
                 if ($choice -lt 0) { $step--; continue }
                 if ($choice -eq 0) {
                     $Config.p2p.bindInterface = ''
-                } elseif ($choice -le $names.Count) {
-                    $Config.p2p.bindInterface = $names[$choice - 1]
+                } elseif ($choice -le $interfaceOptions.Count) {
+                    $Config.p2p.bindInterface = $interfaceOptions[$choice - 1].InterfaceAlias
                 } else {
                     $Config.p2p.bindInterface = Read-WizardValue -Prompt 'P2P bind interface name' -Default $Config.p2p.bindInterface
                 }
@@ -2396,7 +2444,13 @@ $script:SuiteConfig = Resolve-SuiteConfig
 if (-not $NonInteractive -and (Test-InteractiveConsole)) {
     Invoke-InstallWizard -Config $script:SuiteConfig
 }
-$script:Root = [IO.Path]::GetFullPath([string]$script:SuiteConfig.installRoot)
+$rawInstallRoot = [string]$script:SuiteConfig.installRoot
+Assert-InstallRootValue -Path $rawInstallRoot
+try {
+    $script:Root = [IO.Path]::GetFullPath($rawInstallRoot)
+} catch {
+    throw "InstallRoot is not a valid Windows path: $rawInstallRoot. Choose a short absolute folder such as C:\eMuleBBSuite or C:\eMuleBB."
+}
 $script:SuiteConfig.installRoot = $script:Root
 Assert-NoSpaces -Path $script:Root
 Resolve-ServicePorts -Config $script:SuiteConfig

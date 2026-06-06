@@ -25,15 +25,15 @@ param(
     [string]$RadarrBindAddress,
     [string]$SonarrBindAddress,
 
-    [ValidateRange(1, 65535)]
+    [ValidateRange(0, 65535)]
     [int]$EmulebbPort = 4711,
-    [ValidateRange(1, 65535)]
+    [ValidateRange(0, 65535)]
     [int]$AmutorrentPort = 4000,
-    [ValidateRange(1, 65535)]
+    [ValidateRange(0, 65535)]
     [int]$ProwlarrPort = 9696,
-    [ValidateRange(1, 65535)]
+    [ValidateRange(0, 65535)]
     [int]$RadarrPort = 7878,
-    [ValidateRange(1, 65535)]
+    [ValidateRange(0, 65535)]
     [int]$SonarrPort = 8989,
 
     [switch]$IncludePrerelease,

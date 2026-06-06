@@ -925,6 +925,14 @@ def test_suite_installer_keeps_full_suite_service_binds_config_driven() -> None:
     assert "Get-DefaultControlBindAddress" in installer
     assert "Get-AutoLanBindAddress" in installer
     assert "Test-AutoLanIPv4Address" in installer
+    assert "$bytes[0] -eq 10" in installer
+    assert "$bytes[0] -eq 172 -and $bytes[1] -ge 16 -and $bytes[1] -le 31" in installer
+    assert "$bytes[0] -eq 192 -and $bytes[1] -eq 168" in installer
+    assert "function ConvertTo-IPv4SubnetMask" in installer
+    assert "function Get-BindableInterfaceOptions" in installer
+    assert "' [VPN-like]'" in installer
+    assert "InterfaceAlias = [string]$info.InterfaceAlias" in installer
+    assert "Label = ('{0} - {1}{2}{3}{4}'" in installer
     assert "'hide.me'" in installer
     assert "X_LOCAL_IP" in installer
     assert "Non-loopback control-service bind detected" not in installer
@@ -977,6 +985,8 @@ def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() 
     assert "function Get-HttpErrorDetail" in register_arr_stack
     assert "function Get-ExceptionMessage" in register_arr_stack
     assert "Get-ExceptionMessage -Exception $_.Exception" in register_arr_stack
+    assert "Arr API key was rejected by $uri." in register_arr_stack
+    assert "Copy the API key from Settings > General in the matching Radarr/Sonarr web UI" in register_arr_stack
     assert "function Read-RequiredSecretValue" in register_arr_stack
     assert "-AsSecureString" not in register_arr_stack
     assert "return Normalize-ArgumentValue -Value (Read-Host $Prompt)" in register_arr_stack
@@ -1017,6 +1027,8 @@ def test_suite_prowlarr_registration_requires_and_passes_api_keys() -> None:
     assert "function Get-HttpErrorDetail" in register_prowlarr
     assert "function Get-ExceptionMessage" in register_prowlarr
     assert "Get-ExceptionMessage -Exception $_.Exception" in register_prowlarr
+    assert "Prowlarr API key was rejected by $uri." in register_prowlarr
+    assert "Copy the API key from Settings > General in the Prowlarr web UI" in register_prowlarr
     assert "function Read-RequiredSecretValue" in register_prowlarr
     assert "-AsSecureString" not in register_prowlarr
     assert "return Normalize-ArgumentValue -Value (Read-Host $Prompt)" in register_prowlarr
@@ -1087,6 +1099,10 @@ def test_suite_generated_update_and_start_scripts_are_refresh_safe() -> None:
     assert "if (-not $DryRun -and -not $NonInteractive)" in installer
     assert "Start-Process -FilePath (Join-Path $script:Root 'credentials.html')" in installer
     assert "must be exactly 24 alphanumeric characters, or blank to generate a new key." in installer
+    assert "function Assert-InstallRootValue" in installer
+    assert "InstallRoot is required. Pass -InstallRoot C:\\eMuleBBSuite" in installer
+    assert "InstallRoot contains characters Windows cannot use in folder names" in installer
+    assert "InstallRoot is not a valid Windows path" in installer
     assert "function Enable-Tls12" in installer
     assert "[Net.SecurityProtocolType]::Tls12" in installer
     assert "Choose a short folder such as C:\\eMuleBBSuite or C:\\eMuleBB" in installer
@@ -1132,6 +1148,8 @@ def test_suite_bootstrapper_requires_emulebb_package_root() -> None:
     assert "DependencyManifest" in bootstrapper
     assert "function Enable-Tls12" in bootstrapper
     assert "[Net.SecurityProtocolType]::Tls12" in bootstrapper
+    assert "[ValidateRange(0, 65535)]" in bootstrapper
+    assert "[ValidateRange(1, 65535)]" not in bootstrapper
     assert "function Invoke-GitHubApi" in bootstrapper
     assert "download the package assets in a browser from GitHub Releases" in bootstrapper
     assert "https://github.com/emulebb/emulebb/releases" in bootstrapper
