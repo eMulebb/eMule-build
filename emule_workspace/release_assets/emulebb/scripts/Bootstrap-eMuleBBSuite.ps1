@@ -393,7 +393,7 @@ function Invoke-HttpDownload {
     Write-Host "  $activity"
     $invokeWebRequestCommand = Get-Command Invoke-WebRequest -ErrorAction SilentlyContinue
     if ($null -ne $invokeWebRequestCommand -and $invokeWebRequestCommand.CommandType -eq 'Function') {
-        Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $TempPath -Headers @{ 'User-Agent' = $UserAgent }
+        Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $TempPath -Headers @{ 'User-Agent' = $UserAgent } -ErrorAction Stop
         if (Test-Path -LiteralPath $TempPath) {
             Write-Host ('  Downloaded {0}' -f (Format-DownloadSize -Bytes ([IO.FileInfo]$TempPath).Length))
         }
@@ -456,14 +456,24 @@ function Invoke-Download {
         New-Item -ItemType Directory -Force -Path $parent | Out-Null
     }
     $tmp = "$Destination.tmp"
-    Remove-Item -Force -LiteralPath $tmp -ErrorAction SilentlyContinue
-    try {
-        Invoke-HttpDownload -Url $Url -TempPath $tmp -Destination $Destination
-        Move-Item -Force -LiteralPath $tmp -Destination $Destination
-    } catch {
-        throw "Failed to download $Url -> $Destination. $(Get-ExceptionMessage -Exception $_.Exception) $(Get-LocalPackageRecoveryMessage)"
-    } finally {
+    $maxAttempts = 4
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
         Remove-Item -Force -LiteralPath $tmp -ErrorAction SilentlyContinue
+        try {
+            Invoke-HttpDownload -Url $Url -TempPath $tmp -Destination $Destination
+            Move-Item -Force -LiteralPath $tmp -Destination $Destination
+            return
+        } catch {
+            $message = Get-ExceptionMessage -Exception $_.Exception
+            if ($attempt -ge $maxAttempts) {
+                throw "Failed to download $Url -> $Destination after $maxAttempts attempts. $message $(Get-LocalPackageRecoveryMessage)"
+            }
+            $delaySeconds = [Math]::Min(30, 5 * $attempt)
+            Write-Warning "Download attempt $attempt of $maxAttempts failed for $Url. $message Retrying in $delaySeconds seconds..."
+            Start-Sleep -Seconds $delaySeconds
+        } finally {
+            Remove-Item -Force -LiteralPath $tmp -ErrorAction SilentlyContinue
+        }
     }
 }
 

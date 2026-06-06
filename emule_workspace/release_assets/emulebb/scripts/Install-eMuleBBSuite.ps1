@@ -1099,7 +1099,7 @@ function Invoke-HttpDownload {
     Write-Host "  $activity"
     $invokeWebRequestCommand = Get-Command Invoke-WebRequest -ErrorAction SilentlyContinue
     if ($null -ne $invokeWebRequestCommand -and $invokeWebRequestCommand.CommandType -eq 'Function') {
-        Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $TempPath
+        Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $TempPath -ErrorAction Stop
         if (Test-Path -LiteralPath $TempPath) {
             Write-Host ('  Downloaded {0}' -f (Format-DownloadSize -Bytes ([IO.FileInfo]$TempPath).Length))
         }
@@ -1166,25 +1166,35 @@ function Invoke-Download {
         New-Item -ItemType Directory -Force -Path $parent | Out-Null
     }
     $tmp = "$Destination.tmp"
-    Remove-Item -Force -LiteralPath $tmp -ErrorAction SilentlyContinue
     $uri = $null
-    try {
-        if ([Uri]::TryCreate($Url, [UriKind]::Absolute, [ref]$uri) -and $uri.IsFile) {
-            Copy-Item -Force -LiteralPath $uri.LocalPath -Destination $tmp
-            Move-Item -Force -LiteralPath $tmp -Destination $Destination
-            return
-        }
-        if (Test-Path -LiteralPath $Url) {
-            Copy-Item -Force -LiteralPath $Url -Destination $tmp
-            Move-Item -Force -LiteralPath $tmp -Destination $Destination
-            return
-        }
-        Invoke-HttpDownload -Url $Url -TempPath $tmp -Destination $Destination
-        Move-Item -Force -LiteralPath $tmp -Destination $Destination
-    } catch {
-        throw "Failed to download $Url -> $Destination. $($_.Exception.Message) $(Get-DependencyDownloadRecoveryMessage)"
-    } finally {
+    $maxAttempts = 4
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
         Remove-Item -Force -LiteralPath $tmp -ErrorAction SilentlyContinue
+        try {
+            if ([Uri]::TryCreate($Url, [UriKind]::Absolute, [ref]$uri) -and $uri.IsFile) {
+                Copy-Item -Force -LiteralPath $uri.LocalPath -Destination $tmp
+                Move-Item -Force -LiteralPath $tmp -Destination $Destination
+                return
+            }
+            if (Test-Path -LiteralPath $Url) {
+                Copy-Item -Force -LiteralPath $Url -Destination $tmp
+                Move-Item -Force -LiteralPath $tmp -Destination $Destination
+                return
+            }
+            Invoke-HttpDownload -Url $Url -TempPath $tmp -Destination $Destination
+            Move-Item -Force -LiteralPath $tmp -Destination $Destination
+            return
+        } catch {
+            $message = $_.Exception.Message
+            if ($attempt -ge $maxAttempts) {
+                throw "Failed to download $Url -> $Destination after $maxAttempts attempts. $message $(Get-DependencyDownloadRecoveryMessage)"
+            }
+            $delaySeconds = [Math]::Min(30, 5 * $attempt)
+            Write-Warning "Download attempt $attempt of $maxAttempts failed for $Url. $message Retrying in $delaySeconds seconds..."
+            Start-Sleep -Seconds $delaySeconds
+        } finally {
+            Remove-Item -Force -LiteralPath $tmp -ErrorAction SilentlyContinue
+        }
     }
 }
 
