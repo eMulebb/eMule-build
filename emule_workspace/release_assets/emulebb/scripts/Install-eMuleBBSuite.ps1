@@ -1922,7 +1922,22 @@ $startEmuleBB = @"
 #Requires -Version 5.1
 `$ErrorActionPreference = 'Stop'
 `$Root = '$rootLiteral'
-`$Config = Get-Content -Raw -LiteralPath (Join-Path `$Root 'manifests\suite-config.json') | ConvertFrom-Json
+function Read-SuiteConfig {
+    `$configPath = Join-Path `$Root 'manifests\suite-config.json'
+    if (-not (Test-Path -LiteralPath `$configPath)) {
+        throw "Suite config is missing: `$configPath. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to rebuild the suite config."
+    }
+    try {
+        `$config = Get-Content -Raw -LiteralPath `$configPath | ConvertFrom-Json
+    } catch {
+        throw "Suite config is not valid JSON: `$configPath. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to rebuild it. `$(`$_.Exception.Message)"
+    }
+    if (`$null -eq `$config -or `$null -eq `$config.PSObject.Properties['services']) {
+        throw "Suite config is incomplete: `$configPath. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to rebuild it."
+    }
+    return `$config
+}
+`$Config = Read-SuiteConfig
 `$EmuleExe = if ([string]::IsNullOrWhiteSpace([string]`$Config.emulebbExecutableName)) { 'emulebb.exe' } else { [string]`$Config.emulebbExecutableName }
 `$Emule = Join-Path (Join-Path `$Root 'apps\eMuleBB') `$EmuleExe
 function Test-EmuleRunning {
@@ -1948,7 +1963,22 @@ $startSuite = @"
 #Requires -Version 5.1
 `$ErrorActionPreference = 'Stop'
 `$Root = '$rootLiteral'
-`$Config = Get-Content -Raw -LiteralPath (Join-Path `$Root 'manifests\suite-config.json') | ConvertFrom-Json
+function Read-SuiteConfig {
+    `$configPath = Join-Path `$Root 'manifests\suite-config.json'
+    if (-not (Test-Path -LiteralPath `$configPath)) {
+        throw "Suite config is missing: `$configPath. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to rebuild the suite config."
+    }
+    try {
+        `$config = Get-Content -Raw -LiteralPath `$configPath | ConvertFrom-Json
+    } catch {
+        throw "Suite config is not valid JSON: `$configPath. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to rebuild it. `$(`$_.Exception.Message)"
+    }
+    if (`$null -eq `$config -or `$null -eq `$config.PSObject.Properties['services']) {
+        throw "Suite config is incomplete: `$configPath. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to rebuild it."
+    }
+    return `$config
+}
+`$Config = Read-SuiteConfig
 function Get-ClientHost {
     param([string]`$BindAddress)
     if (`$BindAddress -eq '0.0.0.0' -or `$BindAddress -eq '::') {
@@ -2101,11 +2131,11 @@ function Set-ArrHostCredentials {
     `$hostConfigUrl = "`$Url/`$ApiPath/config/host"
     `$headers = @{ 'X-Api-Key' = `$ApiKey }
     `$hostConfig = Invoke-SuiteJsonApi -Name "`$Name host config read" -Uri `$hostConfigUrl -Headers `$headers
-    `$hostConfig.authenticationMethod = 'forms'
-    `$hostConfig.authenticationRequired = 'enabled'
-    `$hostConfig.username = [string]`$Config.credentials.username
-    `$hostConfig.password = [string]`$Config.credentials.password
-    `$hostConfig.passwordConfirmation = [string]`$Config.credentials.password
+    Set-ObjectProperty -Target `$hostConfig -Name 'authenticationMethod' -Value 'forms'
+    Set-ObjectProperty -Target `$hostConfig -Name 'authenticationRequired' -Value 'enabled'
+    Set-ObjectProperty -Target `$hostConfig -Name 'username' -Value ([string]`$Config.credentials.username)
+    Set-ObjectProperty -Target `$hostConfig -Name 'password' -Value ([string]`$Config.credentials.password)
+    Set-ObjectProperty -Target `$hostConfig -Name 'passwordConfirmation' -Value ([string]`$Config.credentials.password)
     [void](Invoke-SuiteJsonApi -Name "`$Name web login update" -Uri `$hostConfigUrl -Method 'PUT' -Headers `$headers -Body `$hostConfig)
     Write-Host "`$Name web login configured."
 }
@@ -2190,6 +2220,9 @@ function Test-ProcessRunning {
 }
 function Start-ProcessIfMissing {
     param([string]`$Name, [string]`$FilePath, [string[]]`$ArgumentList = @(), [string]`$WorkingDirectory = '', [string]`$CommandLineContains = '', [switch]`$Hidden)
+    if ([string]::IsNullOrWhiteSpace(`$FilePath)) {
+        throw "`$Name executable path is empty. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to refresh suite files."
+    }
     if (-not (Test-Path -LiteralPath `$FilePath)) {
         throw "`$Name executable is missing: `$FilePath"
     }
@@ -2239,7 +2272,7 @@ if (`$Bundle -ne 'Core') {
     } else {
         `$node = (Get-Command node.exe -ErrorAction SilentlyContinue).Source
     }
-    if (-not (Test-Path -LiteralPath `$node)) { throw 'Node is not available. Re-run Install-eMuleBBSuite.ps1 to install the pinned runtime.' }
+    if ([string]::IsNullOrWhiteSpace(`$node) -or -not (Test-Path -LiteralPath `$node)) { throw 'Node is not available. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to install the pinned runtime.' }
     `$amutorrentServer = Join-Path `$Root 'apps\aMuTorrent\server\server.js'
     `$env:AMUTORRENT_DATA_DIR = Join-Path `$Root 'data\amutorrent'
     Initialize-AmutorrentConfig -DataDir `$env:AMUTORRENT_DATA_DIR -BindAddress ([string]`$Config.services.amutorrent.bindAddress) -Port ([int]`$Config.services.amutorrent.port) -Username ([string]`$Config.credentials.username) -Password ([string]`$Config.credentials.password)
@@ -2350,7 +2383,22 @@ Write-Host 'eMuleBB Suite stop request completed.'
 #Requires -Version 5.1
 `$ErrorActionPreference = 'Stop'
 `$Root = '$rootLiteral'
-`$Config = Get-Content -Raw -LiteralPath (Join-Path `$Root 'manifests\suite-config.json') | ConvertFrom-Json
+function Read-SuiteConfig {
+    `$configPath = Join-Path `$Root 'manifests\suite-config.json'
+    if (-not (Test-Path -LiteralPath `$configPath)) {
+        throw "Suite config is missing: `$configPath. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to rebuild the suite config."
+    }
+    try {
+        `$config = Get-Content -Raw -LiteralPath `$configPath | ConvertFrom-Json
+    } catch {
+        throw "Suite config is not valid JSON: `$configPath. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to rebuild it. `$(`$_.Exception.Message)"
+    }
+    if (`$null -eq `$config -or `$null -eq `$config.PSObject.Properties['services']) {
+        throw "Suite config is incomplete: `$configPath. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to rebuild it."
+    }
+    return `$config
+}
+`$Config = Read-SuiteConfig
 Write-Host "Suite root: `$Root"
 Write-Host "Bundle: `$(`$Config.bundle)"
 foreach (`$name in @('emulebb','amutorrent','prowlarr','radarr','sonarr')) {

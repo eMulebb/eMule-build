@@ -297,14 +297,15 @@ function Save-Indexer {
         $payload = Get-GenericTorznabSchema -BaseUrl $BaseUrl -ApiKey $ApiKey
     }
 
-    $payload.name = $Name
-    $payload.enable = $true
+    Set-ObjectProperty -Target $payload -Name 'name' -Value $Name
+    Set-ObjectProperty -Target $payload -Name 'enable' -Value $true
     Set-ObjectProperty -Target $payload -Name 'appProfileId' -Value $AppProfileId
-    $payload.priority = [int]($payload.priority -as [int])
-    if ($payload.priority -le 0) { $payload.priority = 25 }
-    $payload.implementation = 'Torznab'
-    $payload.implementationName = 'Torznab'
-    $payload.configContract = 'TorznabSettings'
+    $priority = [int]((Get-ObjectPropertyValue -Target $payload -Name 'priority' -Default 0) -as [int])
+    if ($priority -le 0) { $priority = 25 }
+    Set-ObjectProperty -Target $payload -Name 'priority' -Value $priority
+    Set-ObjectProperty -Target $payload -Name 'implementation' -Value 'Torznab'
+    Set-ObjectProperty -Target $payload -Name 'implementationName' -Value 'Torznab'
+    Set-ObjectProperty -Target $payload -Name 'configContract' -Value 'TorznabSettings'
     $normalizedTorznabBaseUrl = Normalize-HttpBaseUrl -Value $TorznabBaseUrl -Name 'TorznabBaseUrl'
     [void](Set-ProviderField -Provider $payload -Name 'baseUrl' -Value $normalizedTorznabBaseUrl)
     [void](Set-ProviderField -Provider $payload -Name 'apiPath' -Value '/api')
@@ -326,7 +327,7 @@ function Save-Indexer {
             throw
         }
         $disabledPayload = Copy-JsonObject -Value $payload
-        $disabledPayload.enable = $false
+        Set-ObjectProperty -Target $disabledPayload -Name 'enable' -Value $false
         $created = Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v1/indexer?forceSave=true' -Method 'POST' -Body $disabledPayload
         if ($null -eq $created -or -not $created.id) {
             throw 'Prowlarr did not return an id for the disabled indexer fallback.'
