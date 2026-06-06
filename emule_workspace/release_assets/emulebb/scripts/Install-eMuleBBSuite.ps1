@@ -871,7 +871,7 @@ function Invoke-InstallWizard {
             }
             2 {
                 $interfaceOptions = @(Get-BindableInterfaceOptions)
-                $choices = @('No P2P bind')
+                $choices = @('Any interface (no P2P bind)')
                 $choices += @($interfaceOptions | ForEach-Object { $_.Label })
                 $choices += 'Custom interface name'
                 $choice = Read-WizardChoice -Prompt 'eMuleBB P2P bind interface' -Choices $choices -DefaultIndex 0
@@ -949,7 +949,7 @@ function Write-ConfigSummary {
         Write-Host ("  {0}: {1}:{2}{3}" -f $serviceName, $service.bindAddress, $service.port, $clientHostText)
     }
     if ([string]::IsNullOrWhiteSpace($Config.p2p.bindInterface)) {
-        Write-Host '  P2P bind interface: none'
+        Write-Host '  P2P bind interface: Any interface (no bind; OS-selected route)'
     } else {
         Write-Host "  P2P bind interface: $($Config.p2p.bindInterface) (warn-only policy)"
     }
@@ -1928,6 +1928,7 @@ function Write-CredentialsFile {
         $lines.Add('')
         $lines.Add('First-run setup')
         $lines.Add('Run scripts\Start-Suite.ps1 once before adding movies or series. It starts the suite, registers aMuTorrent/Prowlarr/Radarr/Sonarr, and creates the Radarr/Sonarr root folders.')
+        $lines.Add('If a registration script asks for Action, press Enter to use the default Register option. Choose Unregister only when you are intentionally removing an integration.')
     }
     $lines.Add('')
     $lines.Add('Files')
@@ -2010,7 +2011,7 @@ function Write-CredentialsFile {
   <div class="grid">
 $cardsHtml
   </div>
-  <footer>Keep this file private. API keys and passwords are shown here for first-run setup and recovery. For Full installs, run scripts\Start-Suite.ps1 once before adding movies or series so Radarr/Sonarr root folders and suite registrations are created.</footer>
+  <footer>Keep this file private. API keys and passwords are shown here for first-run setup and recovery. For Full installs, run scripts\Start-Suite.ps1 once before adding movies or series so Radarr/Sonarr root folders and suite registrations are created. If a registration script asks for Action, press Enter to use the default Register option; choose Unregister only when removing an integration.</footer>
 </main>
 <script>
 document.addEventListener('click', async function (event) {

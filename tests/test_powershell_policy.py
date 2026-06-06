@@ -1150,6 +1150,106 @@ if ($script:PollCount -ne 1) { throw ('expected one status poll, got {0}' -f $sc
     assert completed.returncode == 0, completed.stderr + completed.stdout
 
 
+def test_register_arr_stack_saves_arr_indexer_from_prowlarr_proxy(
+    workspace_root: Path,
+    tmp_path: Path,
+) -> None:
+    script_path = (
+        workspace_root
+        / "repos"
+        / "emulebb-build"
+        / "emule_workspace"
+        / "release_assets"
+        / "emulebb"
+        / "scripts"
+        / "Register-ArrStack.ps1"
+    )
+    script_text = script_path.read_text(encoding="utf-8")
+    test_script = tmp_path / "save-arr-prowlarr-indexer-test.ps1"
+    test_script.write_text(
+        """
+$script:Calls = @()
+function Invoke-JsonApi {
+    param([string]$BaseUrl, [string]$ApiKey, [string]$Path, [string]$Method = 'GET', $Body = $null)
+    $script:Calls += [pscustomobject]@{ BaseUrl = $BaseUrl; ApiKey = $ApiKey; Path = $Path; Method = $Method; Body = $Body }
+    if ($Path -eq '/api/v3/indexer') { return @() }
+    if ($Path -eq '/api/v1/indexer') { return @([pscustomobject]@{ id = 1; name = 'eMuleBB Suite' }) }
+    if ($Path -eq '/api/v3/indexer/schema') {
+        return @([pscustomobject]@{
+            implementation = 'Torznab'
+            fields = @(
+                [pscustomobject]@{ name = 'baseUrl' },
+                [pscustomobject]@{ name = 'apiPath' },
+                [pscustomobject]@{ name = 'apiKey' },
+                [pscustomobject]@{ name = 'categories' },
+                [pscustomobject]@{ name = 'animeCategories' }
+            )
+        })
+    }
+    if ($Path -eq '/api/v3/indexer?forceSave=true' -and $Method -eq 'POST') {
+        $baseUrl = ($Body.fields | Where-Object { $_.name -eq 'baseUrl' }).value
+        $apiPath = ($Body.fields | Where-Object { $_.name -eq 'apiPath' }).value
+        $apiKey = ($Body.fields | Where-Object { $_.name -eq 'apiKey' }).value
+        $categories = (($Body.fields | Where-Object { $_.name -eq 'categories' }).value) -join ','
+        if ($Body.name -ne 'eMuleBB Suite') { throw ('unexpected name: {0}' -f $Body.name) }
+        if ($Body.implementation -ne 'Torznab') { throw ('unexpected implementation: {0}' -f $Body.implementation) }
+        if (-not $Body.enableAutomaticSearch) { throw 'automatic search was not enabled' }
+        if ($baseUrl -ne 'http://prowlarr/1') { throw ('unexpected baseUrl: {0}' -f $baseUrl) }
+        if ($apiPath -ne '/api') { throw ('unexpected apiPath: {0}' -f $apiPath) }
+        if ($apiKey -ne 'prowlarr-key') { throw ('unexpected apiKey: {0}' -f $apiKey) }
+        if ($categories -ne '2000') { throw ('unexpected categories: {0}' -f $categories) }
+        return [pscustomobject]@{ id = 44; name = $Body.name }
+    }
+    throw ('unexpected call: {0} {1}' -f $Method, $Path)
+}
+function Test-ApiKeyRejectedError { param($Exception) return $false }
+"""
+        + _extract_powershell_function(script_text, "Normalize-ArgumentValue")
+        + "\n"
+        + _extract_powershell_function(script_text, "Normalize-HttpBaseUrl")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-HttpStatusCode")
+        + "\n"
+        + _extract_powershell_function(script_text, "Invoke-JsonApiWithRetry")
+        + "\n"
+        + _extract_powershell_function(script_text, "Set-ObjectProperty")
+        + "\n"
+        + _extract_powershell_function(script_text, "Set-ProviderField")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-TorznabSchema")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-ExistingArrIndexer")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-ArrIndexerCategories")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-ProwlarrIndexer")
+        + "\n"
+        + _extract_powershell_function(script_text, "Save-ArrProwlarrIndexer")
+        + """
+$saved = Save-ArrProwlarrIndexer -Kind 'radarr' -BaseUrl 'http://radarr' -ApiKey 'radarr-key' -Name 'eMuleBB Suite' -ProwlarrBaseUrl 'http://prowlarr' -ProwlarrKey 'prowlarr-key'
+if ($saved.id -ne 44) { throw ('unexpected saved id: {0}' -f $saved.id) }
+if ($script:Calls.Count -ne 4) { throw ('expected 4 API calls, got {0}' -f $script:Calls.Count) }
+""",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(test_script),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+
+
 def test_register_arr_stack_retry_wrapper_does_not_shadow_selected_action(
     workspace_root: Path,
     tmp_path: Path,

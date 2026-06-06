@@ -686,6 +686,7 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     assert f"Password: {first_keys['emulebb']}" in credentials
     assert "First-run setup" in credentials
     assert "Run scripts\\Start-Suite.ps1 once before adding movies or series" in credentials
+    assert "press Enter to use the default Register option" in credentials
     credentials_html = (install_root / "credentials.html").read_text(encoding="utf-8-sig")
     assert "eMuleBB Suite Credentials" in credentials_html
     assert "Radarr/Sonarr Download Client" in credentials_html
@@ -694,6 +695,7 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     assert 'target="_blank"' in credentials_html
     assert 'rel="noopener noreferrer"' in credentials_html
     assert "run scripts\\Start-Suite.ps1 once before adding movies or series" in credentials_html
+    assert "press Enter to use the default Register option" in credentials_html
     assert suite_password in credentials_html
     for key in first_keys.values():
         assert key in credentials_html
@@ -984,6 +986,10 @@ def test_suite_installer_keeps_full_suite_service_binds_config_driven() -> None:
     assert "'virtualbox'" in installer
     assert "'bluetooth'" in installer
     assert "function Get-BindableInterfaceOptions" in installer
+    assert "Any interface (no P2P bind)" in installer
+    assert "P2P bind interface: Any interface (no bind; OS-selected route)" in installer
+    assert "No P2P bind" not in installer
+    assert "P2P bind interface: none" not in installer
     assert "' [VPN-like]'" in installer
     assert "InterfaceAlias = [string]$info.InterfaceAlias" in installer
     assert "Label = ('{0} - {1}{2}{3}{4}'" in installer
@@ -1160,6 +1166,17 @@ def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() 
     assert "$script:targetUrl = ''" in register_arr_stack
     assert "function Get-ProwlarrCommandFailureDetail" in register_arr_stack
     assert "Prowlarr application sync failed: {0}. {1}" in register_arr_stack
+    assert "function Save-ArrProwlarrIndexer" in register_arr_stack
+    assert "function Get-ArrIndexerCategories" in register_arr_stack
+    assert "Prowlarr indexer '$Name' is not registered. Run Register-Prowlarr.ps1 first" in register_arr_stack
+    assert "Prowlarr URL for indexer verification (example http://LAN-IP:9696)" in register_arr_stack
+    assert "First-time setup or repair: press Enter to register. Choose U only to remove this Arr integration." in register_arr_stack
+    assert "Run-TargetWithRetry -Name \"$Target indexer verification\"" in register_arr_stack
+    assert "/api/v3/indexer?forceSave=true" in register_arr_stack
+    assert "/api/v3/indexer/{0}?forceSave=true" in register_arr_stack
+    assert "Set-ProviderField -Provider $payload -Name 'apiKey' -Value $ProwlarrKey" in register_arr_stack
+    assert "Set-ProviderField -Provider $payload -Name 'categories' -Value (Get-ArrIndexerCategories -Kind $Kind)" in register_arr_stack
+    assert "Set-ProviderField -Provider $payload -Name 'syncCategories' -Value (Get-ArrIndexerCategories -Kind $Kind) -Optional" in register_arr_stack
     assert "Read-RequiredSecretValue -Prompt 'Prowlarr API key' -Value $script:ProwlarrApiKey -Name 'ProwlarrApiKey'" in register_arr_stack
     assert "Read-RequiredSecretValue -Prompt 'eMuleBB API key' -Value $script:EmulebbApiKey -Name 'EmulebbApiKey'" in register_arr_stack
     assert "Read-RequiredSecretValue -Prompt \"$Target API key\" -Value $script:targetApiKey -Name (\"${Target}ApiKey\")" in register_arr_stack
@@ -1177,6 +1194,7 @@ def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() 
     assert register_arr_stack.index("if ($SyncProwlarrOnly)") < register_arr_stack.index("$ProwlarrUrl = Read-OptionalValue")
     assert "if ($ProwlarrUrl -and -not $SkipProwlarrSync)" in register_arr_stack
     assert "$ProwlarrUrl = Normalize-HttpBaseUrl -Value $ProwlarrUrl" not in register_arr_stack
+    assert register_arr_stack.index("Run-TargetWithRetry -Name \"$Target indexer verification\"") < register_arr_stack.index("if ($ProwlarrUrl -and -not $SkipProwlarrSync)")
 
 
 def test_suite_prowlarr_registration_requires_and_passes_api_keys() -> None:
@@ -1203,6 +1221,7 @@ def test_suite_prowlarr_registration_requires_and_passes_api_keys() -> None:
     assert "$EmulebbBaseUrl = ''" in register_prowlarr
     assert "$EmulebbApiKey = ''" in register_prowlarr
     assert "Set-ProviderField -Provider $payload -Name 'apiKey' -Value $TorznabApiKey" in register_prowlarr
+    assert "First-time setup or repair: press Enter to register. Choose U only to remove this Prowlarr indexer." in register_prowlarr
 
 
 def test_suite_amutorrent_registration_repairs_stale_env_owned_clients() -> None:
@@ -1220,6 +1239,7 @@ def test_suite_amutorrent_registration_repairs_stale_env_owned_clients() -> None
     assert "Get-ExceptionMessage -Exception $_.Exception" in register_amutorrent
     assert "-AsSecureString" not in register_amutorrent
     assert "return Normalize-ArgumentValue -Value (Read-Host $Prompt)" in register_amutorrent
+    assert "First-time setup or repair: press Enter to register/repair. Choose U only to remove this aMuTorrent client." in register_amutorrent
     assert "[switch]$PromptWhenBlank" in register_amutorrent
     assert "\nexit " not in register_amutorrent
     assert 'throw "$Name cancelled by user."' in register_amutorrent

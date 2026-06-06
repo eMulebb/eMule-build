@@ -71,6 +71,7 @@ function Read-ActionValue {
         throw "Action must be Register or Unregister, not '$Value'."
     }
     while ($true) {
+        Write-Host 'First-time setup or repair: press Enter to register/repair. Choose U only to remove this aMuTorrent client.' -ForegroundColor Cyan
         $answer = Read-Host 'Action [R]egister/repair/[U]nregister (default Register)'
         if ([string]::IsNullOrWhiteSpace($answer)) { return 'Register' }
         $normalized = $answer.Trim().ToLowerInvariant()

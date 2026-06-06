@@ -83,6 +83,7 @@ function Read-ActionValue {
         throw "Action must be Register or Unregister, not '$Value'."
     }
     while ($true) {
+        Write-Host 'First-time setup or repair: press Enter to register. Choose U only to remove this Arr integration.' -ForegroundColor Cyan
         $answer = Read-Host 'Action [R]egister/[U]nregister (default Register)'
         if ([string]::IsNullOrWhiteSpace($answer)) { return 'Register' }
         $normalized = $answer.Trim().ToLowerInvariant()
@@ -329,6 +330,28 @@ function Get-ExistingDownloadClient {
     return $null
 }
 
+function Get-TorznabSchema {
+    param([string]$BaseUrl, [string]$ApiKey)
+    $schemas = Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v3/indexer/schema'
+    foreach ($schema in @($schemas)) {
+        if ($schema.implementation -eq 'Torznab') {
+            return $schema
+        }
+    }
+    throw 'Arr did not expose the Torznab indexer schema.'
+}
+
+function Get-ExistingArrIndexer {
+    param([string]$BaseUrl, [string]$ApiKey, [string]$Name)
+    $indexers = Invoke-JsonApiWithRetry -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v3/indexer'
+    foreach ($indexer in @($indexers)) {
+        if ($indexer.name -eq $Name) {
+            return $indexer
+        }
+    }
+    return $null
+}
+
 function Save-QbitClient {
     param(
         [string]$Kind,
@@ -381,6 +404,14 @@ function Get-ArrCategoryName {
     return (Get-ArrCategoryInfo -Kind $Kind).Name
 }
 
+function Get-ArrIndexerCategories {
+    param([string]$Kind)
+    if ($Kind -eq 'radarr') {
+        return ,@(2000)
+    }
+    return ,@(5000)
+}
+
 function Get-ArrCategoryRelativePath {
     param([string]$Kind)
     return (Get-ArrCategoryInfo -Kind $Kind).RelativePath
@@ -426,6 +457,60 @@ function Find-EmuleCategory {
 function Test-EmuleCategoryExists {
     param($CategoriesResponse, [string]$Name)
     return $null -ne (Find-EmuleCategory -CategoriesResponse $CategoriesResponse -Name $Name)
+}
+
+function Get-ProwlarrIndexer {
+    param([string]$BaseUrl, [string]$ApiKey, [string]$Name)
+    $indexers = Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v1/indexer'
+    foreach ($indexer in @($indexers)) {
+        if ($indexer.name -eq $Name) {
+            return $indexer
+        }
+    }
+    throw "Prowlarr indexer '$Name' is not registered. Run Register-Prowlarr.ps1 first, then rerun this script."
+}
+
+function Save-ArrProwlarrIndexer {
+    param(
+        [string]$Kind,
+        [string]$BaseUrl,
+        [string]$ApiKey,
+        [string]$Name,
+        [string]$ProwlarrBaseUrl,
+        [string]$ProwlarrKey
+    )
+    $existing = Get-ExistingArrIndexer -BaseUrl $BaseUrl -ApiKey $ApiKey -Name $Name
+    $prowlarrIndexer = Get-ProwlarrIndexer -BaseUrl $ProwlarrBaseUrl -ApiKey $ProwlarrKey -Name $Name
+    if ($null -eq $prowlarrIndexer -or -not $prowlarrIndexer.id) {
+        throw "Prowlarr indexer '$Name' did not return an id."
+    }
+
+    if ($null -ne $existing) {
+        $payload = $existing
+    } else {
+        $payload = Get-TorznabSchema -BaseUrl $BaseUrl -ApiKey $ApiKey
+    }
+    $proxyBaseUrl = (Normalize-HttpBaseUrl -Value $ProwlarrBaseUrl -Name 'ProwlarrBaseUrl') + '/' + [int]$prowlarrIndexer.id
+    Set-ObjectProperty -Target $payload -Name 'name' -Value $Name
+    Set-ObjectProperty -Target $payload -Name 'enable' -Value $true
+    Set-ObjectProperty -Target $payload -Name 'enableRss' -Value $true
+    Set-ObjectProperty -Target $payload -Name 'enableAutomaticSearch' -Value $true
+    Set-ObjectProperty -Target $payload -Name 'enableInteractiveSearch' -Value $true
+    Set-ObjectProperty -Target $payload -Name 'priority' -Value 25
+    Set-ObjectProperty -Target $payload -Name 'implementation' -Value 'Torznab'
+    Set-ObjectProperty -Target $payload -Name 'implementationName' -Value 'Torznab'
+    Set-ObjectProperty -Target $payload -Name 'configContract' -Value 'TorznabSettings'
+    Set-ObjectProperty -Target $payload -Name 'protocol' -Value 'torrent'
+    [void](Set-ProviderField -Provider $payload -Name 'baseUrl' -Value $proxyBaseUrl)
+    [void](Set-ProviderField -Provider $payload -Name 'apiPath' -Value '/api')
+    [void](Set-ProviderField -Provider $payload -Name 'apiKey' -Value $ProwlarrKey)
+    [void](Set-ProviderField -Provider $payload -Name 'categories' -Value (Get-ArrIndexerCategories -Kind $Kind))
+    [void](Set-ProviderField -Provider $payload -Name 'animeCategories' -Value @() -Optional)
+
+    if ($null -ne $existing -and $existing.id) {
+        return Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path (('/api/v3/indexer/{0}?forceSave=true' -f [int]$existing.id)) -Method 'PUT' -Body $payload
+    }
+    return Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v3/indexer?forceSave=true' -Method 'POST' -Body $payload
 }
 
 function Ensure-EmuleCategory {
@@ -586,6 +671,8 @@ function Save-ProwlarrApplication {
     [void](Set-ProviderField -Provider $payload -Name 'baseUrl' -Value $normalizedArrUrl)
     [void](Set-ProviderField -Provider $payload -Name 'apiKey' -Value $ArrKey)
     [void](Set-ProviderField -Provider $payload -Name 'prowlarrUrl' -Value $normalizedProwlarrBaseUrl -Optional)
+    [void](Set-ProviderField -Provider $payload -Name 'syncCategories' -Value (Get-ArrIndexerCategories -Kind $Kind) -Optional)
+    [void](Set-ProviderField -Provider $payload -Name 'animeSyncCategories' -Value @() -Optional)
     if ($null -ne $existing -and $existing.id) {
         return Invoke-JsonApi -BaseUrl $normalizedProwlarrBaseUrl -ApiKey $ProwlarrKey -Path (('/api/v1/applications/{0}?forceSave=true' -f [int]$existing.id)) -Method 'PUT' -Body $payload
     }
@@ -687,6 +774,22 @@ Run-TargetWithRetry -Name ("$Target download client {0}" -f $Action.ToLowerInvar
         $script:EmulebbApiKey = Read-RequiredSecretValue -Prompt 'eMuleBB API key' -Value $script:EmulebbApiKey -Name 'EmulebbApiKey'
         $saved = Save-QbitClient -Kind $targetKind -BaseUrl $script:targetUrl -ApiKey $script:targetApiKey -EmuleBaseUrl $script:EmulebbBaseUrl -EmuleApiKey $script:EmulebbApiKey -Name $DownloadClientName
         Write-Host ('{0} download client saved with id {1}.' -f $Target, $saved.id) -ForegroundColor Green
+    }
+}
+
+if ($Action -eq 'Register' -and $ProwlarrUrl) {
+    Run-TargetWithRetry -Name "$Target indexer verification" -NoRetry:$NoRetry -OnRetry {
+        $script:ProwlarrUrl = ''
+        $script:ProwlarrApiKey = ''
+        $script:targetUrl = ''
+        $script:targetApiKey = ''
+    } -Operation {
+        $script:ProwlarrUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'Prowlarr URL for indexer verification (example http://LAN-IP:9696)' -Value $script:ProwlarrUrl) -Name 'ProwlarrUrl'
+        $script:ProwlarrApiKey = Read-RequiredSecretValue -Prompt 'Prowlarr API key' -Value $script:ProwlarrApiKey -Name 'ProwlarrApiKey'
+        $script:targetUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt (Get-ArrUrlPrompt -Target $Target) -Value $script:targetUrl) -Name ("${Target}Url")
+        $script:targetApiKey = Read-RequiredSecretValue -Prompt "$Target API key" -Value $script:targetApiKey -Name ("${Target}ApiKey")
+        $saved = Save-ArrProwlarrIndexer -Kind $targetKind -BaseUrl $script:targetUrl -ApiKey $script:targetApiKey -Name $DownloadClientName -ProwlarrBaseUrl $script:ProwlarrUrl -ProwlarrKey $script:ProwlarrApiKey
+        Write-Host ('{0} indexer "{1}" is configured with id {2}.' -f $Target, $saved.name, $saved.id) -ForegroundColor Green
     }
 }
 
