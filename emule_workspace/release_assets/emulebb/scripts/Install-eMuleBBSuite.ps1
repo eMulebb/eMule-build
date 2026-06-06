@@ -1516,6 +1516,7 @@ function New-DefaultEmulePreferencesText {
         "IncomingDir=$(Join-Path $script:Root 'downloads\incoming')"
         "TempDir=$(Join-Path $script:Root 'downloads\temp')"
         'CreateCrashDump=2'
+        'SaveLogToDisk=1'
         "BindInterface=$p2pInterface"
         'BindAddr='
         'BlockNetworkWhenBindUnavailableAtStartup=0'
@@ -1627,6 +1628,7 @@ function Update-EmulePreferencesFile {
         [pscustomobject]@{ Section = 'eMule'; Key = 'IncomingDir'; Value = (Join-Path $script:Root 'downloads\incoming') }
         [pscustomobject]@{ Section = 'eMule'; Key = 'TempDir'; Value = (Join-Path $script:Root 'downloads\temp') }
         [pscustomobject]@{ Section = 'eMule'; Key = 'CreateCrashDump'; Value = '2' }
+        [pscustomobject]@{ Section = 'eMule'; Key = 'SaveLogToDisk'; Value = '1' }
         [pscustomobject]@{ Section = 'eMule'; Key = 'BindInterface'; Value = [string]$Config.p2p.bindInterface }
         [pscustomobject]@{ Section = 'eMule'; Key = 'BindAddr'; Value = '' }
         [pscustomobject]@{ Section = 'eMule'; Key = 'BlockNetworkWhenBindUnavailableAtStartup'; Value = '0' }
@@ -2291,26 +2293,45 @@ function Ensure-ArrRootFolder {
     `$rootFolderUrl = "`$Url/`$ApiPath/rootfolder"
     `$headers = @{ 'X-Api-Key' = `$ApiKey }
     `$normalizedPath = [IO.Path]::GetFullPath(`$Path).TrimEnd('\')
-    `$rootFolders = @(Invoke-SuiteJsonApi -Name "`$Name root folder list" -Uri `$rootFolderUrl -Headers `$headers)
-    foreach (`$rootFolder in `$rootFolders) {
-        if (`$null -eq `$rootFolder -or `$null -eq `$rootFolder.PSObject.Properties['path']) {
-            continue
+    function Test-ArrRootFolderPath {
+        param(`$RootFolder, [string]`$ExpectedPath)
+        if (`$null -eq `$RootFolder -or `$null -eq `$RootFolder.PSObject.Properties['path']) {
+            return `$false
         }
-        if ([string]::Equals(([IO.Path]::GetFullPath([string]`$rootFolder.path).TrimEnd('\')), `$normalizedPath, [StringComparison]::OrdinalIgnoreCase)) {
-            Write-Host "`$Name root folder already configured: `$normalizedPath"
-            return
-        }
+        return [string]::Equals(([IO.Path]::GetFullPath([string]`$RootFolder.path).TrimEnd('\')), `$ExpectedPath, [StringComparison]::OrdinalIgnoreCase)
     }
-    [void](Invoke-SuiteJsonApi -Name "`$Name root folder create" -Uri `$rootFolderUrl -Method 'POST' -Headers `$headers -Body @{ path = `$normalizedPath })
-    `$rootFolders = @(Invoke-SuiteJsonApi -Name "`$Name root folder verify" -Uri `$rootFolderUrl -Headers `$headers)
-    foreach (`$rootFolder in `$rootFolders) {
-        if (`$null -eq `$rootFolder -or `$null -eq `$rootFolder.PSObject.Properties['path']) {
-            continue
+    function Test-ArrRootFolderCollection {
+        param(`$RootFolders, [string]`$ExpectedPath)
+        foreach (`$rootFolder in @(`$RootFolders)) {
+            if (Test-ArrRootFolderPath -RootFolder `$rootFolder -ExpectedPath `$ExpectedPath) {
+                return `$true
+            }
         }
-        if ([string]::Equals(([IO.Path]::GetFullPath([string]`$rootFolder.path).TrimEnd('\')), `$normalizedPath, [StringComparison]::OrdinalIgnoreCase)) {
+        return `$false
+    }
+    `$rootFolders = @(Invoke-SuiteJsonApi -Name "`$Name root folder list" -Uri `$rootFolderUrl -Headers `$headers)
+    if (Test-ArrRootFolderCollection -RootFolders `$rootFolders -ExpectedPath `$normalizedPath) {
+        Write-Host "`$Name root folder already configured: `$normalizedPath"
+        return
+    }
+    try {
+        `$createdRootFolder = Invoke-SuiteJsonApi -Name "`$Name root folder create" -Uri `$rootFolderUrl -Method 'POST' -Headers `$headers -Body @{ path = `$normalizedPath }
+        if (Test-ArrRootFolderPath -RootFolder `$createdRootFolder -ExpectedPath `$normalizedPath) {
             Write-Host "`$Name root folder configured: `$normalizedPath"
             return
         }
+    } catch {
+        `$message = Get-ExceptionMessage -Exception `$_.Exception
+        if (`$message -match 'already configured as a root folder') {
+            Write-Host "`$Name root folder already configured: `$normalizedPath"
+            return
+        }
+        throw
+    }
+    `$rootFolders = @(Invoke-SuiteJsonApi -Name "`$Name root folder verify" -Uri `$rootFolderUrl -Headers `$headers)
+    if (Test-ArrRootFolderCollection -RootFolders `$rootFolders -ExpectedPath `$normalizedPath) {
+        Write-Host "`$Name root folder configured: `$normalizedPath"
+        return
     }
     throw "`$Name did not persist root folder `$normalizedPath. Open `$Name, go to Settings > Media Management > Root Folders, and add that folder manually before adding movies or series."
 }

@@ -212,12 +212,16 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "Invoke-SuiteJsonApi -Name \"$Name web login update\"" in start_suite
     assert "Invoke-StepWithRetry -Name 'Arr web login setup'" in start_suite
     assert "function Ensure-ArrRootFolder" in start_suite
+    assert "function Test-ArrRootFolderPath" in start_suite
+    assert "function Test-ArrRootFolderCollection" in start_suite
     assert "$rootFolderUrl = \"$Url/$ApiPath/rootfolder\"" in start_suite
     assert "New-Item -ItemType Directory -Force -Path $Path" in start_suite
+    assert "$createdRootFolder = Invoke-SuiteJsonApi -Name \"$Name root folder create\"" in start_suite
+    assert "already configured as a root folder" in start_suite
     assert "Invoke-SuiteJsonApi -Name \"$Name root folder verify\"" in start_suite
     assert "did not persist root folder" in start_suite
     assert "Settings > Media Management > Root Folders" in start_suite
-    assert "$rootFolder.PSObject.Properties['path']" in start_suite
+    assert "$RootFolder.PSObject.Properties['path']" in start_suite
     assert "Ensure-ArrRootFolder -Name 'Radarr'" in start_suite
     assert "Join-Path $Root 'media\\movies'" in start_suite
     assert "Ensure-ArrRootFolder -Name 'Sonarr'" in start_suite
@@ -641,6 +645,14 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     assert "BindAddr=\n" in preferences
     assert f"BindAddr={suite_config['services']['emulebb']['bindAddress']}" in preferences
     assert f"Port={suite_config['services']['emulebb']['port']}" in preferences
+    assert "SaveLogToDisk=1" in preferences
+    assert "SaveDebugToDisk=" not in preferences
+    assert "VerboseOptions=" not in preferences
+    assert "Verbose=" not in preferences
+    assert "FullVerbose=" not in preferences
+    assert "MaxLogFileSize=" not in preferences
+    assert "MaxLogBuff=" not in preferences
+    assert "LogFileFormat=" not in preferences
     category_sections = _read_ini_sections(install_root / "profiles" / "emulebb" / "config" / "Category.ini")
     assert category_sections["General"]["Count"] == "3"
     categories_by_title = {
@@ -656,6 +668,7 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     assert (install_root / "downloads" / "sonarr").is_dir()
     for service_name in ("prowlarr", "radarr", "sonarr"):
         arr_config = (install_root / "data" / service_name / "config.xml").read_text(encoding="utf-8-sig")
+        assert "<LogLevel>info</LogLevel>" in arr_config
         assert f"<BindAddress>{suite_config['services'][service_name]['bindAddress']}</BindAddress>" in arr_config
         assert f"<Port>{suite_config['services'][service_name]['port']}</Port>" in arr_config
         assert f"<ApiKey>{first_keys[service_name]}</ApiKey>" in arr_config
