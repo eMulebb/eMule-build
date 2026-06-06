@@ -167,7 +167,13 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "https://upd.emule-security.org/nodes.dat" in start_emulebb
     assert "$Name bootstrap file ready: $Destination" in start_emulebb
     assert "eMuleBB can still start, but first public connection may require manual server/node updates" in start_emulebb
+    assert "function Show-EmuleLaunchReturnNotice" in start_emulebb
+    assert "return to this PowerShell window so setup can complete the app registrations" in start_emulebb
+    assert "Continuing in 6 seconds..." in start_emulebb
+    assert "Start-Sleep -Seconds 6" in start_emulebb
     assert start_emulebb.index("Ensure-EmuleBootstrapFiles") < start_emulebb.index("Start-Process -FilePath $Emule")
+    assert start_emulebb.index("Ensure-EmuleBootstrapFiles") < start_emulebb.index("Show-EmuleLaunchReturnNotice")
+    assert start_emulebb.index("Show-EmuleLaunchReturnNotice") < start_emulebb.index("Start-Process -FilePath $Emule")
     assert "eMuleBB executable is missing" in start_emulebb
     assert "eMuleBB could not be started from" in start_emulebb
     assert "eMuleBB did not stay running after launch" in start_emulebb
@@ -175,12 +181,8 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     start_suite = (install_root / "scripts" / "Start-Suite.ps1").read_text(encoding="utf-8-sig")
     assert "suite-config.json" in start_suite
     assert "Start-eMuleBB.ps1" in start_suite
-    assert "function Show-EmuleLaunchReturnNotice" in start_suite
-    assert "return to this PowerShell window so setup can complete the app registrations" in start_suite
-    assert "Continuing in 6 seconds..." in start_suite
-    assert "Start-Sleep -Seconds 6" in start_suite
     suite_launch = start_suite.index("& (Join-Path $Root 'scripts\\Start-eMuleBB.ps1')", start_suite.index("$EmuleKey ="))
-    assert start_suite.index("Show-EmuleLaunchReturnNotice", start_suite.index("$EmuleKey =")) < suite_launch
+    assert "Show-EmuleLaunchReturnNotice" not in start_suite
     assert "function Initialize-AmutorrentConfig" in start_suite
     assert "$env:AMUTORRENT_DATA_DIR = Join-Path $Root 'data\\amutorrent'" in start_suite
     assert "Initialize-AmutorrentConfig -DataDir $env:AMUTORRENT_DATA_DIR" in start_suite

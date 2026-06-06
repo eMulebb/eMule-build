@@ -2122,7 +2122,13 @@ function Ensure-EmuleBootstrapFiles {
     Invoke-EmuleBootstrapFileDownload -Name 'server.met' -Url 'https://upd.emule-security.org/server.met' -Destination (Join-Path `$configDir 'server.met')
     Invoke-EmuleBootstrapFileDownload -Name 'nodes.dat' -Url 'https://upd.emule-security.org/nodes.dat' -Destination (Join-Path `$configDir 'nodes.dat')
 }
+function Show-EmuleLaunchReturnNotice {
+    Write-Host 'eMuleBB will launch now. After eMuleBB is running, return to this PowerShell window so setup can complete the app registrations.' -ForegroundColor Cyan
+    Write-Host 'Continuing in 6 seconds...'
+    Start-Sleep -Seconds 6
+}
 Ensure-EmuleBootstrapFiles
+Show-EmuleLaunchReturnNotice
 try {
     Start-Process -FilePath `$Emule -ArgumentList @('-c', (Join-Path `$Root 'profiles\emulebb')) -ErrorAction Stop | Out-Null
 } catch {
@@ -2470,17 +2476,11 @@ function Start-ArrHost {
     }
     Start-ProcessIfMissing -Name `$Name -FilePath `$exe.FullName -ArgumentList @('/data=' + (Join-Path `$Root `$DataDir), '/nobrowser') -CommandLineContains (Join-Path `$Root `$DataDir)
 }
-function Show-EmuleLaunchReturnNotice {
-    Write-Host 'eMuleBB will launch now. After eMuleBB is running, return to this PowerShell window so setup can complete the app registrations.' -ForegroundColor Cyan
-    Write-Host 'Continuing in 6 seconds...'
-    Start-Sleep -Seconds 6
-}
 `$Bundle = [string]`$Config.bundle
 `$EmuleHost = Get-ServiceClientHost -ServiceName 'emulebb' -Service `$Config.services.emulebb
 `$EmulePort = [int]`$Config.services.emulebb.port
 `$EmuleUrl = "http://`$(`$EmuleHost):`$EmulePort"
 `$EmuleKey = [string]`$Config.services.emulebb.apiKey
-Show-EmuleLaunchReturnNotice
 & (Join-Path `$Root 'scripts\Start-eMuleBB.ps1')
 if (`$Bundle -eq 'Full') {
     foreach (`$item in @(@('Prowlarr','data\prowlarr'), @('Radarr','data\radarr'), @('Sonarr','data\sonarr'))) {
