@@ -100,6 +100,16 @@ function Read-SecretValue {
     }
 }
 
+function Read-RequiredSecretValue {
+    param([string]$Prompt, [string]$Value, [string]$Name)
+    $secret = Read-SecretValue -Prompt $Prompt -Value $Value
+    while ([string]::IsNullOrWhiteSpace($secret)) {
+        Write-Host "$Name is required." -ForegroundColor Yellow
+        $secret = Read-SecretValue -Prompt $Prompt -Value ''
+    }
+    return Normalize-ArgumentValue -Value $secret
+}
+
 function Get-HttpStatusCode {
     param($Exception)
     if ($null -eq $Exception -or $null -eq $Exception.Response) {
@@ -513,7 +523,7 @@ $InstanceId = Normalize-ArgumentValue -Value $InstanceId
 
 if ($Action -eq 'Register') {
     $EmulebbBaseUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'eMuleBB base URL (example http://LAN-IP:4711)' -Value $EmulebbBaseUrl) -Name 'EmulebbBaseUrl'
-    $EmulebbApiKey = Read-SecretValue -Prompt 'eMuleBB API key' -Value $EmulebbApiKey
+    $EmulebbApiKey = Read-RequiredSecretValue -Prompt 'eMuleBB API key' -Value $EmulebbApiKey -Name 'EmulebbApiKey'
 }
 
 Run-TargetWithRetry -Name "aMuTorrent eMuleBB $Action" -NoRetry:$NoRetry -Operation {

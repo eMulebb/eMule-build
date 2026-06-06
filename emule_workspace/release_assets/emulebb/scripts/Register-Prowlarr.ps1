@@ -130,6 +130,52 @@ function Get-HttpStatusCode {
     }
 }
 
+function Get-HttpErrorDetail {
+    param($Exception)
+    if ($null -eq $Exception -or $null -eq $Exception.Response) {
+        return ''
+    }
+    $response = $Exception.Response
+    $status = Get-HttpStatusCode -Exception $Exception
+    $statusText = if ($status -gt 0) { "HTTP $status" } else { 'HTTP request failed' }
+    try {
+        if (-not [string]::IsNullOrWhiteSpace([string]$response.StatusDescription)) {
+            $statusText = "$statusText $($response.StatusDescription)"
+        }
+    } catch {
+    }
+    $detail = ''
+    try {
+        $stream = $response.GetResponseStream()
+        if ($null -ne $stream) {
+            $reader = New-Object IO.StreamReader($stream)
+            try {
+                $detail = $reader.ReadToEnd()
+            } finally {
+                $reader.Dispose()
+            }
+        }
+    } catch {
+    }
+    $detail = ([string]$detail -replace '\s+', ' ').Trim()
+    if ($detail.Length -gt 1200) {
+        $detail = $detail.Substring(0, 1200) + '...'
+    }
+    if ([string]::IsNullOrWhiteSpace($detail)) {
+        return $statusText
+    }
+    return "$statusText`: $detail"
+}
+
+function Get-ExceptionMessage {
+    param($Exception)
+    $detail = Get-HttpErrorDetail -Exception $Exception
+    if (-not [string]::IsNullOrWhiteSpace($detail)) {
+        return $detail
+    }
+    return $Exception.Message
+}
+
 function Copy-JsonObject {
     param($Value)
     return ($Value | ConvertTo-Json -Depth 20 | ConvertFrom-Json)
@@ -333,7 +379,7 @@ do {
         Write-Host ('Registered Prowlarr indexer "{0}" with id {1}.' -f $saved.name, $saved.id) -ForegroundColor Green
         exit 0
     } catch {
-        if (-not (Confirm-Retry -Message ('{0} failed: {1}' -f $Action, $_.Exception.Message) -NoRetry:$NoRetry)) {
+        if (-not (Confirm-Retry -Message ('{0} failed: {1}' -f $Action, (Get-ExceptionMessage -Exception $_.Exception)) -NoRetry:$NoRetry)) {
             exit 1
         }
         $ProwlarrUrl = ''

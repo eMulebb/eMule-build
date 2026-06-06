@@ -1887,6 +1887,23 @@ function Ensure-EmuleBBAvailable {
     & (Join-Path `$Root 'scripts\Start-eMuleBB.ps1')
     Wait-Json -Uri "`$EmuleUrl/api/v1/app" -Headers @{ 'X-API-Key' = `$EmuleKey }
 }
+function Ensure-SuiteServicesAvailable {
+    Ensure-EmuleBBAvailable
+    if (`$Bundle -ne 'Core' -and -not [string]::IsNullOrWhiteSpace(`$AmutorrentUrl)) {
+        Wait-Json -Uri "`$AmutorrentUrl/api/auth/status"
+    }
+    if (`$Bundle -eq 'Full') {
+        if (-not [string]::IsNullOrWhiteSpace(`$ProwlarrUrl) -and -not [string]::IsNullOrWhiteSpace(`$ProwlarrKey)) {
+            Wait-Json -Uri "`$ProwlarrUrl/api/v1/system/status" -Headers @{ 'X-Api-Key' = `$ProwlarrKey }
+        }
+        if (-not [string]::IsNullOrWhiteSpace(`$RadarrUrl) -and -not [string]::IsNullOrWhiteSpace(`$RadarrKey)) {
+            Wait-Json -Uri "`$RadarrUrl/api/v3/system/status" -Headers @{ 'X-Api-Key' = `$RadarrKey }
+        }
+        if (-not [string]::IsNullOrWhiteSpace(`$SonarrUrl) -and -not [string]::IsNullOrWhiteSpace(`$SonarrKey)) {
+            Wait-Json -Uri "`$SonarrUrl/api/v3/system/status" -Headers @{ 'X-Api-Key' = `$SonarrKey }
+        }
+    }
+}
 function Invoke-StepWithRetry {
     param([string]`$Name, [scriptblock]`$Operation)
     for (`$attempt = 1; `$attempt -le 3; `$attempt++) {
@@ -1896,7 +1913,7 @@ function Invoke-StepWithRetry {
         } catch {
             if (`$attempt -ge 3) { throw }
             Write-Warning "`$Name failed on attempt `$(`$attempt): `$(`$_.Exception.Message)"
-            Ensure-EmuleBBAvailable
+            Ensure-SuiteServicesAvailable
             Start-Sleep -Seconds 3
         }
     }

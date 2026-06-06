@@ -203,7 +203,13 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "Start-ProcessIfMissing -FilePath $exe.FullName" in start_suite
     assert "Start-ProcessIfMissing -FilePath $exe.FullName -ArgumentList @('/data='" in start_suite
     assert "function Ensure-EmuleBBAvailable" in start_suite
+    assert "function Ensure-SuiteServicesAvailable" in start_suite
+    assert "Wait-Json -Uri \"$AmutorrentUrl/api/auth/status\"" in start_suite
+    assert "Wait-Json -Uri \"$ProwlarrUrl/api/v1/system/status\" -Headers @{ 'X-Api-Key' = $ProwlarrKey }" in start_suite
+    assert "Wait-Json -Uri \"$RadarrUrl/api/v3/system/status\" -Headers @{ 'X-Api-Key' = $RadarrKey }" in start_suite
+    assert "Wait-Json -Uri \"$SonarrUrl/api/v3/system/status\" -Headers @{ 'X-Api-Key' = $SonarrKey }" in start_suite
     assert "function Invoke-StepWithRetry" in start_suite
+    assert "Ensure-SuiteServicesAvailable" in start_suite
     assert "Invoke-StepWithRetry -Name 'Sonarr registration'" in start_suite
     assert "-ProwlarrApiKey $ProwlarrKey" in start_suite
     assert "-RadarrApiKey $RadarrKey" in start_suite
@@ -940,6 +946,9 @@ def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() 
     assert "example http://LAN-IP:4711" in register_arr_stack
     assert "[switch]$SkipProwlarrSync" in register_arr_stack
     assert "[switch]$SyncProwlarrOnly" in register_arr_stack
+    assert "function Get-HttpErrorDetail" in register_arr_stack
+    assert "function Get-ExceptionMessage" in register_arr_stack
+    assert "Get-ExceptionMessage -Exception $_.Exception" in register_arr_stack
     assert "function Read-RequiredSecretValue" in register_arr_stack
     assert "Read-RequiredSecretValue -Prompt 'Prowlarr API key' -Value $ProwlarrApiKey -Name 'ProwlarrApiKey'" in register_arr_stack
     assert "Read-RequiredSecretValue -Prompt 'eMuleBB API key' -Value $EmulebbApiKey -Name 'EmulebbApiKey'" in register_arr_stack
@@ -947,6 +956,9 @@ def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() 
     assert "Set-ProviderField -Provider $payload -Name 'password' -Value $EmuleApiKey" in register_arr_stack
     assert "Set-ProviderField -Provider $payload -Name 'apiKey' -Value $ArrKey" in register_arr_stack
     assert "if ($SyncProwlarrOnly)" in register_arr_stack
+    assert "Read-RequiredValue -Prompt 'Prowlarr URL for application sync'" in register_arr_stack
+    assert "throw 'ProwlarrUrl is required for -SyncProwlarrOnly.'" not in register_arr_stack
+    assert register_arr_stack.index("if ($SyncProwlarrOnly)") < register_arr_stack.index("$ProwlarrUrl = Read-OptionalValue")
     assert "if ($ProwlarrUrl -and -not $SkipProwlarrSync)" in register_arr_stack
 
 
@@ -958,6 +970,9 @@ def test_suite_prowlarr_registration_requires_and_passes_api_keys() -> None:
     assert "example http://127.0.0.1" not in register_prowlarr
     assert "example http://LAN-IP:9696" in register_prowlarr
     assert "example http://LAN-IP:4711" in register_prowlarr
+    assert "function Get-HttpErrorDetail" in register_prowlarr
+    assert "function Get-ExceptionMessage" in register_prowlarr
+    assert "Get-ExceptionMessage -Exception $_.Exception" in register_prowlarr
     assert "function Read-RequiredSecretValue" in register_prowlarr
     assert "Read-RequiredSecretValue -Prompt 'Prowlarr API key' -Value $ProwlarrApiKey -Name 'ProwlarrApiKey'" in register_prowlarr
     assert "Read-RequiredSecretValue -Prompt 'eMuleBB API key' -Value $EmulebbApiKey -Name 'EmulebbApiKey'" in register_prowlarr
@@ -972,6 +987,8 @@ def test_suite_amutorrent_registration_repairs_stale_env_owned_clients() -> None
     assert "example http://127.0.0.1" not in register_amutorrent
     assert "example http://LAN-IP:4000" in register_amutorrent
     assert "example http://LAN-IP:4711" in register_amutorrent
+    assert "function Read-RequiredSecretValue" in register_amutorrent
+    assert "Read-RequiredSecretValue -Prompt 'eMuleBB API key' -Value $EmulebbApiKey -Name 'EmulebbApiKey'" in register_amutorrent
     assert "function Test-ClientHasActiveEnvField" in register_amutorrent
     assert "function Remove-StaleEnvOwnedEmulebbClients" in register_amutorrent
     assert "$clients = Remove-StaleEnvOwnedEmulebbClients -Clients $clients" in register_amutorrent
