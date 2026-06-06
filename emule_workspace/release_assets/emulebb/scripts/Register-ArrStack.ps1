@@ -221,6 +221,14 @@ function Get-ExceptionMessage {
     return $Exception.Message
 }
 
+function Test-ApiKeyRejectedError {
+    param($Exception)
+    if ($null -eq $Exception -or [string]::IsNullOrWhiteSpace([string]$Exception.Message)) {
+        return $false
+    }
+    return ([string]$Exception.Message).StartsWith('Arr API key was rejected by ', [StringComparison]::OrdinalIgnoreCase)
+}
+
 function Invoke-JsonApiWithRetry {
     param(
         [string]$BaseUrl,
@@ -234,6 +242,9 @@ function Invoke-JsonApiWithRetry {
         try {
             return Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path $Path -Method $Method -Body $Body
         } catch {
+            if (Test-ApiKeyRejectedError -Exception $_.Exception) {
+                throw
+            }
             $statusCode = Get-HttpStatusCode -Exception $_.Exception
             if ($statusCode -eq 404 -and $Method -eq 'DELETE') {
                 return $null

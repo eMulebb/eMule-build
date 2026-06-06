@@ -145,6 +145,10 @@ function Assert-InstallRootValue {
     if ($Path -match '[<>|"*?]') {
         throw "InstallRoot contains characters Windows cannot use in folder names: $Path. Choose a short absolute folder such as C:\eMuleBBSuite or C:\eMuleBB."
     }
+    $root = [IO.Path]::GetPathRoot($Path)
+    if ([string]::IsNullOrWhiteSpace($root) -or -not [IO.Path]::IsPathRooted($Path) -or $root -notmatch '^[A-Za-z]:\\$') {
+        throw "InstallRoot must be an absolute drive path such as C:\eMuleBBSuite or D:\eMuleBB, not '$Path'."
+    }
 }
 
 function New-Secret {
@@ -2080,12 +2084,8 @@ function Initialize-AmutorrentConfig {
     Set-ObjectProperty -Target `$server -Name 'port' -Value `$Port
     `$auth = Get-OrCreateObjectProperty -Target `$server -Name 'auth'
     Set-ObjectProperty -Target `$auth -Name 'enabled' -Value `$true
-    if ([string]::IsNullOrWhiteSpace([string](Get-ObjectPropertyValue -Target `$auth -Name 'adminUsername' -Default ''))) {
-        Set-ObjectProperty -Target `$auth -Name 'adminUsername' -Value `$Username
-    }
-    if ([string]::IsNullOrWhiteSpace([string](Get-ObjectPropertyValue -Target `$auth -Name 'password' -Default ''))) {
-        Set-ObjectProperty -Target `$auth -Name 'password' -Value `$Password
-    }
+    Set-ObjectProperty -Target `$auth -Name 'adminUsername' -Value `$Username
+    Set-ObjectProperty -Target `$auth -Name 'password' -Value `$Password
     `$directories = Get-OrCreateObjectProperty -Target `$config -Name 'directories'
     Set-ObjectProperty -Target `$directories -Name 'data' -Value `$DataDir
     Set-ObjectProperty -Target `$directories -Name 'logs' -Value (Join-Path `$DataDir 'logs')
@@ -2264,11 +2264,17 @@ if (`$Bundle -eq 'Full') {
     Wait-Json -Name 'Prowlarr' -Uri "`$ProwlarrUrl/api/v1/system/status" -Headers @{ 'X-Api-Key' = `$ProwlarrKey }
     Wait-Json -Name 'Radarr' -Uri "`$RadarrUrl/api/v3/system/status" -Headers @{ 'X-Api-Key' = `$RadarrKey }
     Wait-Json -Name 'Sonarr' -Uri "`$SonarrUrl/api/v3/system/status" -Headers @{ 'X-Api-Key' = `$SonarrKey }
-    Set-ArrHostCredentials -Name 'Prowlarr' -Url `$ProwlarrUrl -ApiPath 'api/v1' -ApiKey `$ProwlarrKey
-    Set-ArrHostCredentials -Name 'Radarr' -Url `$RadarrUrl -ApiPath 'api/v3' -ApiKey `$RadarrKey
-    Set-ArrHostCredentials -Name 'Sonarr' -Url `$SonarrUrl -ApiPath 'api/v3' -ApiKey `$SonarrKey
-    Ensure-ArrRootFolder -Name 'Radarr' -Url `$RadarrUrl -ApiPath 'api/v3' -ApiKey `$RadarrKey -Path (Join-Path `$Root 'media\movies')
-    Ensure-ArrRootFolder -Name 'Sonarr' -Url `$SonarrUrl -ApiPath 'api/v3' -ApiKey `$SonarrKey -Path (Join-Path `$Root 'media\series')
+    Invoke-StepWithRetry -Name 'Arr web login setup' -Operation {
+        Set-ArrHostCredentials -Name 'Prowlarr' -Url `$ProwlarrUrl -ApiPath 'api/v1' -ApiKey `$ProwlarrKey
+        Set-ArrHostCredentials -Name 'Radarr' -Url `$RadarrUrl -ApiPath 'api/v3' -ApiKey `$RadarrKey
+        Set-ArrHostCredentials -Name 'Sonarr' -Url `$SonarrUrl -ApiPath 'api/v3' -ApiKey `$SonarrKey
+    }
+    Invoke-StepWithRetry -Name 'Radarr root folder setup' -Operation {
+        Ensure-ArrRootFolder -Name 'Radarr' -Url `$RadarrUrl -ApiPath 'api/v3' -ApiKey `$RadarrKey -Path (Join-Path `$Root 'media\movies')
+    }
+    Invoke-StepWithRetry -Name 'Sonarr root folder setup' -Operation {
+        Ensure-ArrRootFolder -Name 'Sonarr' -Url `$SonarrUrl -ApiPath 'api/v3' -ApiKey `$SonarrKey -Path (Join-Path `$Root 'media\series')
+    }
     Invoke-StepWithRetry -Name 'Prowlarr registration' -Operation {
         & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-Prowlarr.ps1') -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -IndexerName 'eMuleBB Suite' -AppProfileName 'eMuleBB Suite' -NoRetry
     }

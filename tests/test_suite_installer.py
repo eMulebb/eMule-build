@@ -170,7 +170,9 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "Set-ObjectProperty -Target $server -Name 'host' -Value $BindAddress" in start_suite
     assert "Set-ObjectProperty -Target $server -Name 'port' -Value $Port" in start_suite
     assert "Set-ObjectProperty -Target $auth -Name 'enabled' -Value $true" in start_suite
+    assert "Set-ObjectProperty -Target $auth -Name 'adminUsername' -Value $Username" in start_suite
     assert "Set-ObjectProperty -Target $auth -Name 'password' -Value $Password" in start_suite
+    assert "Get-ObjectPropertyValue -Target $auth -Name 'password'" not in start_suite
     assert "$env:EMULEBB_" not in start_suite
     assert "$env:BIND_ADDRESS" not in start_suite
     assert "$env:WEB_AUTH_" not in start_suite
@@ -198,6 +200,7 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "Timed out waiting for $Name at $Uri" in start_suite
     assert "Check $Root\\data\\radarr\\logs" in start_suite
     assert "Invoke-SuiteJsonApi -Name \"$Name web login update\"" in start_suite
+    assert "Invoke-StepWithRetry -Name 'Arr web login setup'" in start_suite
     assert "function Ensure-ArrRootFolder" in start_suite
     assert "$rootFolderUrl = \"$Url/$ApiPath/rootfolder\"" in start_suite
     assert "New-Item -ItemType Directory -Force -Path $Path" in start_suite
@@ -209,6 +212,8 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "Join-Path $Root 'media\\movies'" in start_suite
     assert "Ensure-ArrRootFolder -Name 'Sonarr'" in start_suite
     assert "Join-Path $Root 'media\\series'" in start_suite
+    assert "Invoke-StepWithRetry -Name 'Radarr root folder setup'" in start_suite
+    assert "Invoke-StepWithRetry -Name 'Sonarr root folder setup'" in start_suite
     assert "-EmulebbCategoryPath (Join-Path $Root 'downloads\\radarr')" in start_suite
     assert "-EmulebbCategoryPath (Join-Path $Root 'downloads\\sonarr')" in start_suite
     assert "function Start-ArrHost" in start_suite
@@ -232,6 +237,9 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "-SkipProwlarrSync" in start_suite
     assert "Invoke-StepWithRetry -Name 'Prowlarr application sync'" in start_suite
     assert "-SyncProwlarrOnly" in start_suite
+    assert start_suite.index("Invoke-StepWithRetry -Name 'Arr web login setup'") < start_suite.index("Invoke-StepWithRetry -Name 'Radarr root folder setup'")
+    assert start_suite.index("Invoke-StepWithRetry -Name 'Radarr root folder setup'") < start_suite.index("Invoke-StepWithRetry -Name 'Sonarr root folder setup'")
+    assert start_suite.index("Invoke-StepWithRetry -Name 'Sonarr root folder setup'") < start_suite.index("Invoke-StepWithRetry -Name 'Prowlarr registration'")
     assert start_suite.index("Invoke-StepWithRetry -Name 'Radarr registration'") < start_suite.index("Invoke-StepWithRetry -Name 'Sonarr registration'")
     assert start_suite.index("Invoke-StepWithRetry -Name 'Sonarr registration'") < start_suite.index("Invoke-StepWithRetry -Name 'Prowlarr application sync'")
     assert start_suite.index("foreach ($item in @(@('Prowlarr'") < start_suite.index("Initialize-AmutorrentConfig -DataDir $env:AMUTORRENT_DATA_DIR")
@@ -987,6 +995,8 @@ def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() 
     assert "Get-ExceptionMessage -Exception $_.Exception" in register_arr_stack
     assert "Arr API key was rejected by $uri." in register_arr_stack
     assert "Copy the API key from Settings > General in the matching Radarr/Sonarr web UI" in register_arr_stack
+    assert "function Test-ApiKeyRejectedError" in register_arr_stack
+    assert "if (Test-ApiKeyRejectedError -Exception $_.Exception)" in register_arr_stack
     assert "function Read-RequiredSecretValue" in register_arr_stack
     assert "-AsSecureString" not in register_arr_stack
     assert "return Normalize-ArgumentValue -Value (Read-Host $Prompt)" in register_arr_stack
@@ -1102,6 +1112,8 @@ def test_suite_generated_update_and_start_scripts_are_refresh_safe() -> None:
     assert "function Assert-InstallRootValue" in installer
     assert "InstallRoot is required. Pass -InstallRoot C:\\eMuleBBSuite" in installer
     assert "InstallRoot contains characters Windows cannot use in folder names" in installer
+    assert "InstallRoot must be an absolute drive path" in installer
+    assert "[IO.Path]::IsPathRooted($Path)" in installer
     assert "InstallRoot is not a valid Windows path" in installer
     assert "function Enable-Tls12" in installer
     assert "[Net.SecurityProtocolType]::Tls12" in installer
