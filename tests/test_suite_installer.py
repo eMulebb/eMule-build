@@ -966,8 +966,12 @@ def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() 
 
     assert "example http://127.0.0.1" not in register_arr_stack
     assert "example http://LAN-IP:4711" in register_arr_stack
+    assert "example http://LAN-IP:9696" in register_arr_stack
+    assert "example http://LAN-IP:7878" in register_arr_stack
+    assert "example http://LAN-IP:8989" in register_arr_stack
     assert "[switch]$SkipProwlarrSync" in register_arr_stack
     assert "[switch]$SyncProwlarrOnly" in register_arr_stack
+    assert "function Get-ArrUrlPrompt" in register_arr_stack
     assert "function Get-HttpErrorDetail" in register_arr_stack
     assert "function Get-ExceptionMessage" in register_arr_stack
     assert "Get-ExceptionMessage -Exception $_.Exception" in register_arr_stack
@@ -993,7 +997,7 @@ def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() 
     assert "Set-ProviderField -Provider $payload -Name 'password' -Value $EmuleApiKey" in register_arr_stack
     assert "Set-ProviderField -Provider $payload -Name 'apiKey' -Value $ArrKey" in register_arr_stack
     assert "if ($SyncProwlarrOnly)" in register_arr_stack
-    assert "Read-RequiredValue -Prompt 'Prowlarr URL for application sync'" in register_arr_stack
+    assert "Read-RequiredValue -Prompt 'Prowlarr URL for application sync (example http://LAN-IP:9696)'" in register_arr_stack
     assert "throw 'ProwlarrUrl is required for -SyncProwlarrOnly.'" not in register_arr_stack
     assert register_arr_stack.index("if ($SyncProwlarrOnly)") < register_arr_stack.index("$ProwlarrUrl = Read-OptionalValue")
     assert "if ($ProwlarrUrl -and -not $SkipProwlarrSync)" in register_arr_stack
@@ -1078,6 +1082,9 @@ def test_suite_generated_update_and_start_scripts_are_refresh_safe() -> None:
     assert "if (-not $DryRun -and -not $NonInteractive)" in installer
     assert "Start-Process -FilePath (Join-Path $script:Root 'credentials.html')" in installer
     assert "must be exactly 24 alphanumeric characters, or blank to generate a new key." in installer
+    assert "function Enable-Tls12" in installer
+    assert "[Net.SecurityProtocolType]::Tls12" in installer
+    assert "Choose a short folder such as C:\\eMuleBBSuite or C:\\eMuleBB" in installer
     assert "InstallRoot already exists:" in installer
     assert "Choose a different -InstallRoot" in installer
     assert "function Invoke-HttpDownload" in installer
@@ -1118,6 +1125,8 @@ def test_suite_bootstrapper_requires_emulebb_package_root() -> None:
     assert "EmulebbPackageZip" in bootstrapper
     assert "AmutorrentPackageZip" in bootstrapper
     assert "DependencyManifest" in bootstrapper
+    assert "function Enable-Tls12" in bootstrapper
+    assert "[Net.SecurityProtocolType]::Tls12" in bootstrapper
     assert "function Invoke-GitHubApi" in bootstrapper
     assert "download the package assets in a browser from GitHub Releases" in bootstrapper
     assert "https://github.com/emulebb/emulebb/releases" in bootstrapper

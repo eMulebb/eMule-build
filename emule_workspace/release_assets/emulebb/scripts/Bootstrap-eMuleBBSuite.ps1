@@ -48,6 +48,19 @@ param(
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 
+function Enable-Tls12 {
+    try {
+        $tls12 = [Net.SecurityProtocolType]::Tls12
+        if (([Net.ServicePointManager]::SecurityProtocol -band $tls12) -ne $tls12) {
+            [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor $tls12
+        }
+    } catch {
+        Write-Warning "Could not enable TLS 1.2 for HTTPS downloads. If GitHub downloads fail, use the local package ZIP parameters. $($_.Exception.Message)"
+    }
+}
+
+Enable-Tls12
+
 $Repository = 'emulebb/emulebb'
 $AmutorrentRepository = 'emulebb/amutorrent'
 $ApiBase = 'https://api.github.com'

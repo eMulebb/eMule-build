@@ -127,6 +127,17 @@ function Read-RequiredSecretValue {
     return Normalize-ArgumentValue -Value $secret
 }
 
+function Get-ArrUrlPrompt {
+    param([string]$Target)
+    if ($Target -eq 'Radarr') {
+        return 'Radarr URL for eMuleBB download client (example http://LAN-IP:7878)'
+    }
+    if ($Target -eq 'Sonarr') {
+        return 'Sonarr URL for eMuleBB download client (example http://LAN-IP:8989)'
+    }
+    return "$Target URL for eMuleBB download client"
+}
+
 function Invoke-JsonApi {
     param(
         [string]$BaseUrl,
@@ -590,14 +601,14 @@ if ($SyncProwlarrOnly) {
         $script:ProwlarrUrl = ''
         $script:ProwlarrApiKey = ''
     } -Operation {
-        $script:ProwlarrUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'Prowlarr URL for application sync' -Value $script:ProwlarrUrl) -Name 'ProwlarrUrl'
+        $script:ProwlarrUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'Prowlarr URL for application sync (example http://LAN-IP:9696)' -Value $script:ProwlarrUrl) -Name 'ProwlarrUrl'
         $script:ProwlarrApiKey = Read-RequiredSecretValue -Prompt 'Prowlarr API key' -Value $script:ProwlarrApiKey -Name 'ProwlarrApiKey'
         Invoke-ProwlarrSync -BaseUrl $script:ProwlarrUrl -ApiKey $script:ProwlarrApiKey
     }
     exit 0
 }
 
-$ProwlarrUrl = Read-OptionalValue -Prompt 'Prowlarr URL for application sync (blank to skip)' -Value $ProwlarrUrl
+$ProwlarrUrl = Read-OptionalValue -Prompt 'Prowlarr URL for application sync (example http://LAN-IP:9696, blank to skip)' -Value $ProwlarrUrl
 
 $Action = Read-ActionValue -Value $Action
 $Target = Read-TargetValue -Value $Target
@@ -631,9 +642,9 @@ if ($Action -eq 'Register' -and $ProwlarrUrl) {
         $script:targetUrl = ''
         $script:targetApiKey = ''
     } -Operation {
-        $script:ProwlarrUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'Prowlarr URL for application sync' -Value $script:ProwlarrUrl) -Name 'ProwlarrUrl'
+        $script:ProwlarrUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'Prowlarr URL for application sync (example http://LAN-IP:9696)' -Value $script:ProwlarrUrl) -Name 'ProwlarrUrl'
         $script:ProwlarrApiKey = Read-RequiredSecretValue -Prompt 'Prowlarr API key' -Value $script:ProwlarrApiKey -Name 'ProwlarrApiKey'
-        $script:targetUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt ("$Target URL for eMuleBB download client") -Value $script:targetUrl) -Name ("${Target}Url")
+        $script:targetUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt (Get-ArrUrlPrompt -Target $Target) -Value $script:targetUrl) -Name ("${Target}Url")
         $script:targetApiKey = Read-RequiredSecretValue -Prompt "$Target API key" -Value $script:targetApiKey -Name ("${Target}ApiKey")
         $saved = Save-ProwlarrApplication -ProwlarrBaseUrl $script:ProwlarrUrl -ProwlarrKey $script:ProwlarrApiKey -Kind $targetKind -ArrUrl $script:targetUrl -ArrKey $script:targetApiKey
         Write-Host ('Prowlarr {0} application saved with id {1}.' -f $Target, $saved.id) -ForegroundColor Green
@@ -648,7 +659,7 @@ Run-TargetWithRetry -Name ("$Target download client {0}" -f $Action.ToLowerInvar
         $script:EmulebbApiKey = ''
     }
 } -Operation {
-    $script:targetUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt ("$Target URL for eMuleBB download client") -Value $script:targetUrl) -Name ("${Target}Url")
+    $script:targetUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt (Get-ArrUrlPrompt -Target $Target) -Value $script:targetUrl) -Name ("${Target}Url")
     $script:targetApiKey = Read-RequiredSecretValue -Prompt "$Target API key" -Value $script:targetApiKey -Name ("${Target}ApiKey")
     if ($Action -eq 'Unregister') {
         Remove-QbitClient -BaseUrl $script:targetUrl -ApiKey $script:targetApiKey -Name $DownloadClientName
@@ -665,7 +676,7 @@ if ($ProwlarrUrl -and -not $SkipProwlarrSync) {
         $script:ProwlarrUrl = ''
         $script:ProwlarrApiKey = ''
     } -Operation {
-        $script:ProwlarrUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'Prowlarr URL for application sync' -Value $script:ProwlarrUrl) -Name 'ProwlarrUrl'
+        $script:ProwlarrUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'Prowlarr URL for application sync (example http://LAN-IP:9696)' -Value $script:ProwlarrUrl) -Name 'ProwlarrUrl'
         $script:ProwlarrApiKey = Read-RequiredSecretValue -Prompt 'Prowlarr API key' -Value $script:ProwlarrApiKey -Name 'ProwlarrApiKey'
         Invoke-ProwlarrSync -BaseUrl $script:ProwlarrUrl -ApiKey $script:ProwlarrApiKey
     }

@@ -65,6 +65,20 @@ param(
 
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
+
+function Enable-Tls12 {
+    try {
+        $tls12 = [Net.SecurityProtocolType]::Tls12
+        if (([Net.ServicePointManager]::SecurityProtocol -band $tls12) -ne $tls12) {
+            [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor $tls12
+        }
+    } catch {
+        Write-Warning "Could not enable TLS 1.2 for HTTPS downloads. If downloads fail, download the ZIP assets in a browser and pass the local package parameters. $($_.Exception.Message)"
+    }
+}
+
+Enable-Tls12
+
 if ($Bundle -like '-*') {
     throw "Install-eMuleBBSuite.ps1 was invoked with positional parameter strings. Call it with named parameters, for example -Bundle Full, not an argv string array."
 }
@@ -119,7 +133,7 @@ function Write-Step {
 function Assert-NoSpaces {
     param([string]$Path)
     if ($Path -match '\s') {
-        throw "InstallRoot must not contain spaces for v1 suite installs: $Path"
+        throw "InstallRoot must not contain spaces for v1 suite installs: $Path. Choose a short folder such as C:\eMuleBBSuite or C:\eMuleBB, not C:\Program Files\... or a path under a user profile with spaces."
     }
 }
 
