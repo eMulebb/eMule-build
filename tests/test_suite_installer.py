@@ -241,7 +241,11 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     stop_suite = (install_root / "scripts" / "Stop-Suite.ps1").read_text(encoding="utf-8-sig")
     assert "Get-CimInstance Win32_Process" in stop_suite
     assert "apps\\aMuTorrent\\server\\server.js" in stop_suite
-    assert "$_.Name -eq 'node.exe'" in stop_suite
+    assert "$Process.Name -eq 'node.exe'" in stop_suite
+    assert "StartsWith($Root" not in stop_suite
+    assert "No eMuleBB Suite processes are running." in stop_suite
+    assert "Stopping {0} (PID {1})" in stop_suite
+    assert "eMuleBB Suite stop request completed." in stop_suite
 
     for generated_script in (
         "Start-eMuleBB.ps1",
@@ -1032,6 +1036,9 @@ def test_suite_amutorrent_registration_repairs_stale_env_owned_clients() -> None
     assert "Get-ExceptionMessage -Exception $_.Exception" in register_amutorrent
     assert "-AsSecureString" not in register_amutorrent
     assert "return Normalize-ArgumentValue -Value (Read-Host $Prompt)" in register_amutorrent
+    assert "[switch]$PromptWhenBlank" in register_amutorrent
+    assert "$script:AmutorrentApiKeyWasProvided = $PSBoundParameters.ContainsKey('AmutorrentApiKey')" in register_amutorrent
+    assert "-PromptWhenBlank:(-not $script:AmutorrentApiKeyWasProvided)" in register_amutorrent
     assert "[scriptblock]$OnRetry = $null" in register_amutorrent
     assert "$script:AmutorrentUrl = ''" in register_amutorrent
     assert "$script:AmutorrentWebSession = $null" in register_amutorrent
@@ -1073,6 +1080,10 @@ def test_suite_generated_update_and_start_scripts_are_refresh_safe() -> None:
     assert "must be exactly 24 alphanumeric characters, or blank to generate a new key." in installer
     assert "InstallRoot already exists:" in installer
     assert "Choose a different -InstallRoot" in installer
+    assert "function Invoke-HttpDownload" in installer
+    assert "Write-Progress -Activity $activity -Status $status -PercentComplete $percent" in installer
+    assert "Downloaded {0}" in installer
+    assert "$ProgressPreference = 'SilentlyContinue'" not in installer
 
 
 def test_suite_windows_system_helpers_explain_admin_requirement() -> None:
@@ -1119,6 +1130,10 @@ def test_suite_bootstrapper_requires_emulebb_package_root() -> None:
     assert "Test-SupportedAmutorrentReleaseTag" in bootstrapper
     assert "& $installer @installerParams" in bootstrapper
     assert "& $installer @args" not in bootstrapper
+    assert "function Invoke-HttpDownload" in bootstrapper
+    assert "Write-Progress -Activity $activity -Status $status -PercentComplete $percent" in bootstrapper
+    assert "Downloaded {0}" in bootstrapper
+    assert "$ProgressPreference = 'SilentlyContinue'" not in bootstrapper
 
 
 @pytest.mark.parametrize(

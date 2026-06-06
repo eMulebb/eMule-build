@@ -862,6 +862,78 @@ function Assert-SuiteConfig {
     }
 }
 
+function Format-DownloadSize {
+    param([long]$Bytes)
+    if ($Bytes -ge 1GB) {
+        return ('{0:N1} GB' -f ($Bytes / 1GB))
+    }
+    if ($Bytes -ge 1MB) {
+        return ('{0:N1} MB' -f ($Bytes / 1MB))
+    }
+    if ($Bytes -ge 1KB) {
+        return ('{0:N1} KB' -f ($Bytes / 1KB))
+    }
+    return ('{0} bytes' -f $Bytes)
+}
+
+function Invoke-HttpDownload {
+    param([string]$Url, [string]$TempPath, [string]$Destination)
+    $activity = "Downloading $(Split-Path -Leaf $Destination)"
+    Write-Host "  $activity"
+    $invokeWebRequestCommand = Get-Command Invoke-WebRequest -ErrorAction SilentlyContinue
+    if ($null -ne $invokeWebRequestCommand -and $invokeWebRequestCommand.CommandType -eq 'Function') {
+        Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $TempPath
+        if (Test-Path -LiteralPath $TempPath) {
+            Write-Host ('  Downloaded {0}' -f (Format-DownloadSize -Bytes ([IO.FileInfo]$TempPath).Length))
+        }
+        return
+    }
+    $request = [System.Net.HttpWebRequest][System.Net.WebRequest]::Create($Url)
+    $request.UserAgent = 'eMuleBB-Suite-Installer'
+    $request.AllowAutoRedirect = $true
+    $response = $request.GetResponse()
+    try {
+        $total = [long]$response.ContentLength
+        $inputStream = $response.GetResponseStream()
+        $outputStream = [System.IO.File]::Open($TempPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+        try {
+            $buffer = New-Object byte[] (1024 * 1024)
+            $downloaded = [long]0
+            $nextHostReport = (Get-Date).AddSeconds(5)
+            do {
+                $read = $inputStream.Read($buffer, 0, $buffer.Length)
+                if ($read -le 0) {
+                    break
+                }
+                $outputStream.Write($buffer, 0, $read)
+                $downloaded += $read
+                $now = Get-Date
+                if ($total -gt 0) {
+                    $percent = [int]([Math]::Min(100, [Math]::Floor(($downloaded * 100.0) / $total)))
+                    $status = '{0} of {1} ({2}%)' -f (Format-DownloadSize -Bytes $downloaded), (Format-DownloadSize -Bytes $total), $percent
+                    Write-Progress -Activity $activity -Status $status -PercentComplete $percent
+                } else {
+                    $status = '{0} downloaded' -f (Format-DownloadSize -Bytes $downloaded)
+                    Write-Progress -Activity $activity -Status $status
+                }
+                if ($now -ge $nextHostReport) {
+                    Write-Host "  $status"
+                    $nextHostReport = $now.AddSeconds(5)
+                }
+            } while ($true)
+            Write-Progress -Activity $activity -Completed
+            Write-Host ('  Downloaded {0}' -f (Format-DownloadSize -Bytes $downloaded))
+        } finally {
+            $outputStream.Dispose()
+            if ($null -ne $inputStream) {
+                $inputStream.Dispose()
+            }
+        }
+    } finally {
+        $response.Dispose()
+    }
+}
+
 function Invoke-Download {
     param([string]$Url, [string]$Destination)
     if ($DryRun) {
@@ -875,7 +947,6 @@ function Invoke-Download {
     $tmp = "$Destination.tmp"
     Remove-Item -Force -LiteralPath $tmp -ErrorAction SilentlyContinue
     $uri = $null
-    $previousProgressPreference = $ProgressPreference
     try {
         if ([Uri]::TryCreate($Url, [UriKind]::Absolute, [ref]$uri) -and $uri.IsFile) {
             Copy-Item -Force -LiteralPath $uri.LocalPath -Destination $tmp
@@ -887,13 +958,11 @@ function Invoke-Download {
             Move-Item -Force -LiteralPath $tmp -Destination $Destination
             return
         }
-        $ProgressPreference = 'SilentlyContinue'
-        Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $tmp
+        Invoke-HttpDownload -Url $Url -TempPath $tmp -Destination $Destination
         Move-Item -Force -LiteralPath $tmp -Destination $Destination
     } catch {
         throw "Failed to download $Url -> $Destination. $($_.Exception.Message)"
     } finally {
-        $ProgressPreference = $previousProgressPreference
         Remove-Item -Force -LiteralPath $tmp -ErrorAction SilentlyContinue
     }
 }
@@ -2130,13 +2199,57 @@ if (`$Bundle -eq 'Full') {
 #Requires -Version 5.1
 `$ErrorActionPreference = 'Stop'
 `$Root = '$rootLiteral'
-`$amutorrentServer = Join-Path `$Root 'apps\aMuTorrent\server\server.js'
-Get-CimInstance Win32_Process | Where-Object {
-    (-not [string]::IsNullOrWhiteSpace(`$_.ExecutablePath) -and `$_.ExecutablePath.StartsWith(`$Root, [StringComparison]::OrdinalIgnoreCase)) -or
-    (`$_.Name -eq 'node.exe' -and ([string]`$_.CommandLine).IndexOf(`$amutorrentServer, [StringComparison]::OrdinalIgnoreCase) -ge 0)
-} | ForEach-Object {
-    Stop-Process -Id `$_.ProcessId -Force
+`$ConfigPath = Join-Path `$Root 'manifests\suite-config.json'
+`$EmuleExeName = 'emulebb.exe'
+if (Test-Path -LiteralPath `$ConfigPath) {
+    try {
+        `$Config = Get-Content -Raw -LiteralPath `$ConfigPath | ConvertFrom-Json
+        if (-not [string]::IsNullOrWhiteSpace([string]`$Config.emulebbExecutableName)) {
+            `$EmuleExeName = [string]`$Config.emulebbExecutableName
+        }
+    } catch {
+        Write-Warning "Could not read `$ConfigPath. Using default eMuleBB executable name. `$(`$_.Exception.Message)"
+    }
 }
+`$amutorrentServer = Join-Path `$Root 'apps\aMuTorrent\server\server.js'
+`$serviceExecutables = @(
+    (Join-Path (Join-Path `$Root 'apps\eMuleBB') `$EmuleExeName),
+    (Join-Path `$Root 'apps\Prowlarr\Prowlarr.exe'),
+    (Join-Path `$Root 'apps\Radarr\Radarr.exe'),
+    (Join-Path `$Root 'apps\Sonarr\Sonarr.exe')
+)
+function Test-SuiteProcess {
+    param(`$Process)
+    `$executablePath = [string]`$Process.ExecutablePath
+    `$commandLine = [string]`$Process.CommandLine
+    if (`$Process.Name -eq 'node.exe' -and `$commandLine.IndexOf(`$amutorrentServer, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+        return `$true
+    }
+    if ([string]::IsNullOrWhiteSpace(`$executablePath)) {
+        return `$false
+    }
+    foreach (`$serviceExecutable in `$serviceExecutables) {
+        if ([string]::Equals(`$executablePath, `$serviceExecutable, [StringComparison]::OrdinalIgnoreCase)) {
+            return `$true
+        }
+    }
+    return `$false
+}
+`$processes = @(Get-CimInstance Win32_Process | Where-Object { Test-SuiteProcess -Process `$_ })
+if (`$processes.Count -eq 0) {
+    Write-Host 'No eMuleBB Suite processes are running.'
+    exit 0
+}
+foreach (`$process in `$processes) {
+    `$label = if ([string]::IsNullOrWhiteSpace([string]`$process.ExecutablePath)) { [string]`$process.Name } else { [string]`$process.ExecutablePath }
+    Write-Host ("Stopping {0} (PID {1})" -f `$label, `$process.ProcessId)
+    try {
+        Stop-Process -Id `$process.ProcessId -Force -ErrorAction Stop
+    } catch {
+        Write-Warning "Could not stop PID `$(`$process.ProcessId): `$(`$_.Exception.Message)"
+    }
+}
+Write-Host 'eMuleBB Suite stop request completed.'
 "@ | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $scriptsDir 'Stop-Suite.ps1')
     @"
 #Requires -Version 5.1
@@ -2150,10 +2263,36 @@ foreach (`$name in @('emulebb','amutorrent','prowlarr','radarr','sonarr')) {
     Write-Host ("{0}: {1}:{2}" -f `$name, `$service.bindAddress, `$service.port)
 }
 `$amutorrentServer = Join-Path `$Root 'apps\aMuTorrent\server\server.js'
-Get-CimInstance Win32_Process | Where-Object {
-    (-not [string]::IsNullOrWhiteSpace(`$_.ExecutablePath) -and `$_.ExecutablePath.StartsWith(`$Root, [StringComparison]::OrdinalIgnoreCase)) -or
-    (`$_.Name -eq 'node.exe' -and ([string]`$_.CommandLine).IndexOf(`$amutorrentServer, [StringComparison]::OrdinalIgnoreCase) -ge 0)
-} | Select-Object ProcessId, Name, ExecutablePath, CommandLine
+`$emuleExeName = if ([string]::IsNullOrWhiteSpace([string]`$Config.emulebbExecutableName)) { 'emulebb.exe' } else { [string]`$Config.emulebbExecutableName }
+`$serviceExecutables = @(
+    (Join-Path (Join-Path `$Root 'apps\eMuleBB') `$emuleExeName),
+    (Join-Path `$Root 'apps\Prowlarr\Prowlarr.exe'),
+    (Join-Path `$Root 'apps\Radarr\Radarr.exe'),
+    (Join-Path `$Root 'apps\Sonarr\Sonarr.exe')
+)
+function Test-SuiteProcess {
+    param(`$Process)
+    `$executablePath = [string]`$Process.ExecutablePath
+    `$commandLine = [string]`$Process.CommandLine
+    if (`$Process.Name -eq 'node.exe' -and `$commandLine.IndexOf(`$amutorrentServer, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+        return `$true
+    }
+    if ([string]::IsNullOrWhiteSpace(`$executablePath)) {
+        return `$false
+    }
+    foreach (`$serviceExecutable in `$serviceExecutables) {
+        if ([string]::Equals(`$executablePath, `$serviceExecutable, [StringComparison]::OrdinalIgnoreCase)) {
+            return `$true
+        }
+    }
+    return `$false
+}
+`$processes = @(Get-CimInstance Win32_Process | Where-Object { Test-SuiteProcess -Process `$_ } | Select-Object ProcessId, Name, ExecutablePath, CommandLine)
+if (`$processes.Count -eq 0) {
+    Write-Host 'No eMuleBB Suite processes are running.'
+} else {
+    `$processes
+}
 "@ | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $scriptsDir 'Get-SuiteStatus.ps1')
     @"
 #Requires -Version 5.1

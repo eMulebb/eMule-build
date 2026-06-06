@@ -351,6 +351,78 @@ function Resolve-AmutorrentPackage {
     throw 'Bootstrap cancelled because required suite assets are missing.'
 }
 
+function Format-DownloadSize {
+    param([long]$Bytes)
+    if ($Bytes -ge 1GB) {
+        return ('{0:N1} GB' -f ($Bytes / 1GB))
+    }
+    if ($Bytes -ge 1MB) {
+        return ('{0:N1} MB' -f ($Bytes / 1MB))
+    }
+    if ($Bytes -ge 1KB) {
+        return ('{0:N1} KB' -f ($Bytes / 1KB))
+    }
+    return ('{0} bytes' -f $Bytes)
+}
+
+function Invoke-HttpDownload {
+    param([string]$Url, [string]$TempPath, [string]$Destination)
+    $activity = "Downloading $(Split-Path -Leaf $Destination)"
+    Write-Host "  $activity"
+    $invokeWebRequestCommand = Get-Command Invoke-WebRequest -ErrorAction SilentlyContinue
+    if ($null -ne $invokeWebRequestCommand -and $invokeWebRequestCommand.CommandType -eq 'Function') {
+        Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $TempPath -Headers @{ 'User-Agent' = $UserAgent }
+        if (Test-Path -LiteralPath $TempPath) {
+            Write-Host ('  Downloaded {0}' -f (Format-DownloadSize -Bytes ([IO.FileInfo]$TempPath).Length))
+        }
+        return
+    }
+    $request = [System.Net.HttpWebRequest][System.Net.WebRequest]::Create($Url)
+    $request.UserAgent = $UserAgent
+    $request.AllowAutoRedirect = $true
+    $response = $request.GetResponse()
+    try {
+        $total = [long]$response.ContentLength
+        $inputStream = $response.GetResponseStream()
+        $outputStream = [System.IO.File]::Open($TempPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+        try {
+            $buffer = New-Object byte[] (1024 * 1024)
+            $downloaded = [long]0
+            $nextHostReport = (Get-Date).AddSeconds(5)
+            do {
+                $read = $inputStream.Read($buffer, 0, $buffer.Length)
+                if ($read -le 0) {
+                    break
+                }
+                $outputStream.Write($buffer, 0, $read)
+                $downloaded += $read
+                $now = Get-Date
+                if ($total -gt 0) {
+                    $percent = [int]([Math]::Min(100, [Math]::Floor(($downloaded * 100.0) / $total)))
+                    $status = '{0} of {1} ({2}%)' -f (Format-DownloadSize -Bytes $downloaded), (Format-DownloadSize -Bytes $total), $percent
+                    Write-Progress -Activity $activity -Status $status -PercentComplete $percent
+                } else {
+                    $status = '{0} downloaded' -f (Format-DownloadSize -Bytes $downloaded)
+                    Write-Progress -Activity $activity -Status $status
+                }
+                if ($now -ge $nextHostReport) {
+                    Write-Host "  $status"
+                    $nextHostReport = $now.AddSeconds(5)
+                }
+            } while ($true)
+            Write-Progress -Activity $activity -Completed
+            Write-Host ('  Downloaded {0}' -f (Format-DownloadSize -Bytes $downloaded))
+        } finally {
+            $outputStream.Dispose()
+            if ($null -ne $inputStream) {
+                $inputStream.Dispose()
+            }
+        }
+    } finally {
+        $response.Dispose()
+    }
+}
+
 function Invoke-Download {
     param([string]$Url, [string]$Destination)
     if ($DryRun) {
@@ -363,15 +435,12 @@ function Invoke-Download {
     }
     $tmp = "$Destination.tmp"
     Remove-Item -Force -LiteralPath $tmp -ErrorAction SilentlyContinue
-    $previousProgressPreference = $ProgressPreference
     try {
-        $ProgressPreference = 'SilentlyContinue'
-        Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $tmp -Headers @{ 'User-Agent' = $UserAgent } -ErrorAction Stop
+        Invoke-HttpDownload -Url $Url -TempPath $tmp -Destination $Destination
         Move-Item -Force -LiteralPath $tmp -Destination $Destination
     } catch {
         throw "Failed to download $Url -> $Destination. $(Get-ExceptionMessage -Exception $_.Exception) $(Get-LocalPackageRecoveryMessage)"
     } finally {
-        $ProgressPreference = $previousProgressPreference
         Remove-Item -Force -LiteralPath $tmp -ErrorAction SilentlyContinue
     }
 }

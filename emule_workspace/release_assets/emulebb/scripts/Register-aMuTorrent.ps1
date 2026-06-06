@@ -81,14 +81,17 @@ function Read-ActionValue {
 }
 
 function Read-SecretValue {
-    param([string]$Prompt, [string]$Value, [switch]$Optional)
+    param([string]$Prompt, [string]$Value, [switch]$Optional, [switch]$PromptWhenBlank)
     if (-not [string]::IsNullOrWhiteSpace($Value)) {
         return Normalize-ArgumentValue -Value $Value
     }
     if ($Optional) {
-        # aMuTorrent can run with authentication disabled during local installs
-        # and helper E2E tests, so an explicit blank admin key must stay blank
-        # instead of falling through to an interactive secret prompt.
+        if ($PromptWhenBlank) {
+            return Normalize-ArgumentValue -Value (Read-Host $Prompt)
+        }
+        # aMuTorrent can run with authentication disabled during local installs,
+        # helper E2E tests, and generated suite startup. An explicit blank admin
+        # key must stay blank instead of falling through to an interactive prompt.
         return ''
     }
     return Normalize-ArgumentValue -Value (Read-Host $Prompt)
@@ -558,11 +561,13 @@ function Run-TargetWithRetry {
 }
 
 $Action = Read-ActionValue -Value $Action
+$script:AmutorrentApiKeyWasProvided = $PSBoundParameters.ContainsKey('AmutorrentApiKey')
 Write-Host ('eMuleBB aMuTorrent Integration - {0}' -f $Action) -ForegroundColor Cyan
 
 Run-TargetWithRetry -Name "aMuTorrent eMuleBB $Action" -NoRetry:$NoRetry -OnRetry {
     $script:AmutorrentUrl = ''
     $script:AmutorrentApiKey = ''
+    $script:AmutorrentApiKeyWasProvided = $false
     $script:AmutorrentWebSession = $null
     if ($script:Action -eq 'Register') {
         $script:EmulebbBaseUrl = ''
@@ -570,7 +575,7 @@ Run-TargetWithRetry -Name "aMuTorrent eMuleBB $Action" -NoRetry:$NoRetry -OnRetr
     }
 } -Operation {
     $script:AmutorrentUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'aMuTorrent URL (example http://LAN-IP:4000)' -Value $script:AmutorrentUrl) -Name 'AmutorrentUrl'
-    $script:AmutorrentApiKey = Read-SecretValue -Prompt 'aMuTorrent admin API key (blank only when auth is disabled)' -Value $script:AmutorrentApiKey -Optional
+    $script:AmutorrentApiKey = Read-SecretValue -Prompt 'aMuTorrent admin API key (press Enter only when auth is disabled or username/password was provided)' -Value $script:AmutorrentApiKey -Optional -PromptWhenBlank:(-not $script:AmutorrentApiKeyWasProvided)
     $script:InstanceName = Read-RequiredValue -Prompt 'aMuTorrent eMuleBB instance name' -Value $script:InstanceName
     $script:InstanceId = Normalize-ArgumentValue -Value $script:InstanceId
     if ($Action -eq 'Unregister') {
