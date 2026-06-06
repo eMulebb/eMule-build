@@ -318,13 +318,6 @@ function Test-WildcardBindAddress {
 }
 
 function Get-DefaultControlBindAddress {
-    $envAddress = [string]$env:X_LOCAL_IP
-    if (-not [string]::IsNullOrWhiteSpace($envAddress)) {
-        $envAddress = $envAddress.Trim()
-        if (-not (Test-LoopbackAddressText -Address $envAddress) -and -not (Test-WildcardBindAddress -Address $envAddress)) {
-            return $envAddress
-        }
-    }
     $lanAddress = Get-AutoLanBindAddress
     if (-not [string]::IsNullOrWhiteSpace($lanAddress)) {
         return $lanAddress
@@ -887,9 +880,6 @@ function Write-ConfigSummary {
 
 function Get-LocalIPv4Addresses {
     $addresses = @('127.0.0.1')
-    if (-not [string]::IsNullOrWhiteSpace($env:X_LOCAL_IP)) {
-        $addresses += $env:X_LOCAL_IP.Trim()
-    }
     try {
         $addresses += @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
             ForEach-Object { $_.IPAddress } |
@@ -919,11 +909,6 @@ function Assert-ServiceBindAddress {
         return
     }
     if ($Address -eq '0.0.0.0') {
-        if (-not $AllowRemote) {
-            Write-Warning "$ServiceName bind address $Address exposes the service."
-            return
-        }
-        Write-Warning "$ServiceName will bind to all interfaces."
         return
     }
     $localAddresses = @(Get-LocalIPv4Addresses)

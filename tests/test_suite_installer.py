@@ -964,7 +964,7 @@ def test_suite_installer_keeps_full_suite_service_binds_config_driven() -> None:
     assert "InterfaceAlias = [string]$info.InterfaceAlias" in installer
     assert "Label = ('{0} - {1}{2}{3}{4}'" in installer
     assert "'hide.me'" in installer
-    assert "X_LOCAL_IP" in installer
+    assert "X_LOCAL_IP" not in installer
     assert "Default local bind" not in installer
     assert "Detected LAN/VPN bind" in installer
     assert "Non-loopback control-service bind detected" not in installer
@@ -972,6 +972,8 @@ def test_suite_installer_keeps_full_suite_service_binds_config_driven() -> None:
     assert "Back to service binds" not in installer
     assert "bind address $Address is not loopback" not in installer
     assert "will bind to non-loopback address $Address" not in installer
+    assert "bind address $Address exposes the service" not in installer
+    assert "will bind to all interfaces" not in installer
 
 
 def test_suite_installer_preserves_app_roots_when_extracting_multiple_packages() -> None:
