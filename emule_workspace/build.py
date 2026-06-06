@@ -139,6 +139,10 @@ def build_apps(
             if download_slot_instrumentation:
                 enabled = download_slot_instrumentation.strip().lower() not in {"0", "false", "no", "off"}
                 extra_properties.append(f"/p:EnableDownloadSlotInstrumentation={'true' if enabled else 'false'}")
+            packet_diagnostics = env_override("EMULEBB_ENABLE_PACKET_DIAGNOSTICS")
+            if packet_diagnostics:
+                enabled = packet_diagnostics.strip().lower() not in {"0", "false", "no", "off"}
+                extra_properties.append(f"/p:EnablePacketDiagnostics={'true' if enabled else 'false'}")
             startup_profiling = env_override("EMULEBB_ENABLE_STARTUP_PROFILING")
             if enable_startup_profiling is not None:
                 extra_properties.append(f"/p:EnableStartupProfiling={'true' if enable_startup_profiling else 'false'}")
