@@ -712,6 +712,59 @@ if ($script:Calls[1].Method -ne 'DELETE') { throw ('unexpected delete method: {0
     assert completed.returncode == 0, completed.stderr + completed.stdout
 
 
+def test_register_arr_stack_http_error_helpers_tolerate_missing_response(
+    workspace_root: Path,
+    tmp_path: Path,
+) -> None:
+    script_path = (
+        workspace_root
+        / "repos"
+        / "emulebb-build"
+        / "emule_workspace"
+        / "release_assets"
+        / "emulebb"
+        / "scripts"
+        / "Register-ArrStack.ps1"
+    )
+    script_text = script_path.read_text(encoding="utf-8")
+    test_script = tmp_path / "missing-response-error-test.ps1"
+    test_script.write_text(
+        _extract_powershell_function(script_text, "Get-ExceptionResponse")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-HttpStatusCode")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-HttpErrorDetail")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-ExceptionMessage")
+        + """
+$exception = New-Object System.InvalidOperationException('plain failure')
+$status = Get-HttpStatusCode -Exception $exception
+if ($status -ne 0) { throw ('unexpected status: {0}' -f $status) }
+$detail = Get-HttpErrorDetail -Exception $exception
+if ($detail -ne '') { throw ('unexpected detail: {0}' -f $detail) }
+$message = Get-ExceptionMessage -Exception $exception
+if ($message -ne 'plain failure') { throw ('unexpected message: {0}' -f $message) }
+""",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(test_script),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+
+
 def test_register_arr_stack_save_client_returns_only_saved_provider(
     workspace_root: Path,
     tmp_path: Path,

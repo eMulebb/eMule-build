@@ -165,13 +165,30 @@ function Invoke-JsonApi {
     }
 }
 
+function Get-ExceptionResponse {
+    param($Exception)
+    if ($null -eq $Exception) {
+        return $null
+    }
+    try {
+        $responseProperty = $Exception.PSObject.Properties['Response']
+        if ($null -eq $responseProperty) {
+            return $null
+        }
+        return $responseProperty.Value
+    } catch {
+        return $null
+    }
+}
+
 function Get-HttpStatusCode {
     param($Exception)
-    if ($null -eq $Exception -or $null -eq $Exception.Response) {
+    $response = Get-ExceptionResponse -Exception $Exception
+    if ($null -eq $response) {
         return 0
     }
     try {
-        return [int]$Exception.Response.StatusCode
+        return [int]$response.StatusCode
     } catch {
         return 0
     }
@@ -179,10 +196,10 @@ function Get-HttpStatusCode {
 
 function Get-HttpErrorDetail {
     param($Exception)
-    if ($null -eq $Exception -or $null -eq $Exception.Response) {
+    $response = Get-ExceptionResponse -Exception $Exception
+    if ($null -eq $response) {
         return ''
     }
-    $response = $Exception.Response
     $status = Get-HttpStatusCode -Exception $Exception
     $statusText = if ($status -gt 0) { "HTTP $status" } else { 'HTTP request failed' }
     try {
