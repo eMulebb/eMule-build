@@ -370,17 +370,6 @@ function Get-ExistingProwlarrDownloadClient {
     return $null
 }
 
-function Get-TorznabSchema {
-    param([string]$BaseUrl, [string]$ApiKey)
-    $schemas = Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v3/indexer/schema'
-    foreach ($schema in @($schemas)) {
-        if ($schema.implementation -eq 'Torznab') {
-            return $schema
-        }
-    }
-    throw 'Arr did not expose the Torznab indexer schema.'
-}
-
 function Get-ArrProwlarrIndexerName {
     param([string]$Name)
     if ($Name.EndsWith(' (Prowlarr)', [StringComparison]::OrdinalIgnoreCase)) {
@@ -424,22 +413,6 @@ function Get-PreferredArrIndexer {
         }
     }
     return $null
-}
-
-function Remove-DuplicateArrIndexers {
-    param([string]$BaseUrl, [string]$ApiKey, $Indexers, [int]$KeepId, [string]$Name)
-    foreach ($indexerGroup in @($Indexers)) {
-        foreach ($indexer in @($indexerGroup)) {
-            if ($null -eq $indexer -or -not $indexer.id) {
-                continue
-            }
-            if ([int]$indexer.id -eq $KeepId) {
-                continue
-            }
-            Invoke-DeleteJsonApiWithRetry -BaseUrl $BaseUrl -ApiKey $ApiKey -Path (('/api/v3/indexer/{0}' -f [int]$indexer.id))
-            Write-Host ('Removed duplicate Arr indexer "{0}" with id {1}.' -f $indexer.name, $indexer.id) -ForegroundColor Yellow
-        }
-    }
 }
 
 function Save-QbitClient {
@@ -601,55 +574,6 @@ function Get-ProwlarrIndexer {
         }
     }
     throw "Prowlarr indexer '$Name' is not registered. Run Register-Prowlarr.ps1 first, then rerun this script."
-}
-
-function Save-ArrProwlarrIndexer {
-    param(
-        [string]$Kind,
-        [string]$BaseUrl,
-        [string]$ApiKey,
-        [string]$Name,
-        [string]$ProwlarrBaseUrl,
-        [string]$ProwlarrKey
-    )
-    $managedName = Get-ArrProwlarrIndexerName -Name $Name
-    $existingIndexers = @(Get-ExistingArrIndexers -BaseUrl $BaseUrl -ApiKey $ApiKey -Name $Name)
-    $existing = Get-PreferredArrIndexer -Indexers $existingIndexers -Name $Name
-    $prowlarrIndexer = Get-ProwlarrIndexer -BaseUrl $ProwlarrBaseUrl -ApiKey $ProwlarrKey -Name $Name
-    if ($null -eq $prowlarrIndexer -or -not $prowlarrIndexer.id) {
-        throw "Prowlarr indexer '$Name' did not return an id."
-    }
-
-    if ($null -ne $existing) {
-        $payload = $existing
-    } else {
-        $payload = Get-TorznabSchema -BaseUrl $BaseUrl -ApiKey $ApiKey
-    }
-    $proxyBaseUrl = (Normalize-HttpBaseUrl -Value $ProwlarrBaseUrl -Name 'ProwlarrBaseUrl') + '/' + [int]$prowlarrIndexer.id
-    Set-ObjectProperty -Target $payload -Name 'name' -Value $managedName
-    Set-ObjectProperty -Target $payload -Name 'enable' -Value $true
-    Set-ObjectProperty -Target $payload -Name 'enableRss' -Value $true
-    Set-ObjectProperty -Target $payload -Name 'enableAutomaticSearch' -Value $true
-    Set-ObjectProperty -Target $payload -Name 'enableInteractiveSearch' -Value $true
-    Set-ObjectProperty -Target $payload -Name 'priority' -Value 25
-    Set-ObjectProperty -Target $payload -Name 'implementation' -Value 'Torznab'
-    Set-ObjectProperty -Target $payload -Name 'implementationName' -Value 'Torznab'
-    Set-ObjectProperty -Target $payload -Name 'configContract' -Value 'TorznabSettings'
-    Set-ObjectProperty -Target $payload -Name 'protocol' -Value 'torrent'
-    [void](Set-ProviderField -Provider $payload -Name 'baseUrl' -Value $proxyBaseUrl)
-    [void](Set-ProviderField -Provider $payload -Name 'apiPath' -Value '/api')
-    [void](Set-ProviderField -Provider $payload -Name 'apiKey' -Value $ProwlarrKey)
-    [void](Set-ProviderField -Provider $payload -Name 'categories' -Value (Get-ArrIndexerCategories -Kind $Kind))
-    [void](Set-ProviderField -Provider $payload -Name 'animeCategories' -Value @() -Optional)
-
-    if ($null -ne $existing -and $existing.id) {
-        $saved = Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path (('/api/v3/indexer/{0}?forceSave=true' -f [int]$existing.id)) -Method 'PUT' -Body $payload
-        Remove-DuplicateArrIndexers -BaseUrl $BaseUrl -ApiKey $ApiKey -Indexers $existingIndexers -KeepId ([int]$saved.id) -Name $Name
-        return $saved
-    }
-    $saved = Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v3/indexer?forceSave=true' -Method 'POST' -Body $payload
-    Remove-DuplicateArrIndexers -BaseUrl $BaseUrl -ApiKey $ApiKey -Indexers $existingIndexers -KeepId ([int]$saved.id) -Name $Name
-    return $saved
 }
 
 function Assert-ProviderFieldEquals {
@@ -950,12 +874,15 @@ if ($VerifyIndexerOnly) {
     return
 }
 
-$ProwlarrUrl = Read-OptionalValue -Prompt 'Prowlarr URL for application sync (example http://LAN-IP:9696, blank to skip)' -Value $ProwlarrUrl
+$ProwlarrUrl = Read-OptionalValue -Prompt 'Prowlarr URL for application sync (example http://LAN-IP:9696)' -Value $ProwlarrUrl
 
 $Action = Read-ActionValue -Value $Action
 $Target = Read-TargetValue -Value $Target
 $targetKind = $Target.ToLowerInvariant()
 Write-Host ('eMuleBB {0} Integration - {1}' -f $Target, $Action) -ForegroundColor Cyan
+if ($Action -eq 'Register' -and [string]::IsNullOrWhiteSpace($ProwlarrUrl)) {
+    throw 'ProwlarrUrl is required for Arr registration. Register eMuleBB in Prowlarr and let Prowlarr sync indexers to Radarr/Sonarr.'
+}
 if ($Target -eq 'Radarr') {
     $script:targetUrl = Normalize-ArgumentValue -Value $RadarrUrl
     $script:targetApiKey = Normalize-ArgumentValue -Value $RadarrApiKey

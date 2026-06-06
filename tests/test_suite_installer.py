@@ -1191,23 +1191,19 @@ def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() 
     assert "$script:targetUrl = ''" in register_arr_stack
     assert "function Get-ProwlarrCommandFailureDetail" in register_arr_stack
     assert "Prowlarr application sync failed: {0}. {1}" in register_arr_stack
-    assert "function Save-ArrProwlarrIndexer" in register_arr_stack
     assert "function Save-ProwlarrQbitClient" in register_arr_stack
     assert "Run-TargetWithRetry -Name 'Prowlarr download client registration'" in register_arr_stack
     assert "/api/v1/downloadclient?forceSave=true" in register_arr_stack
     assert "[switch]$VerifyIndexerOnly" in register_arr_stack
     assert "function Get-ArrProwlarrIndexerName" in register_arr_stack
     assert "function Get-ExistingArrIndexers" in register_arr_stack
-    assert "function Remove-DuplicateArrIndexers" in register_arr_stack
     assert "function Get-ArrIndexerCategories" in register_arr_stack
     assert "Prowlarr indexer '$Name' is not registered. Run Register-Prowlarr.ps1 first" in register_arr_stack
     assert "Prowlarr URL for indexer verification (example http://LAN-IP:9696)" in register_arr_stack
     assert "First-time setup or repair: press Enter to register. Choose U only to remove this Arr integration." in register_arr_stack
     assert "Run-TargetWithRetry -Name \"$Target indexer verification\"" in register_arr_stack
-    assert "/api/v3/indexer?forceSave=true" in register_arr_stack
-    assert "/api/v3/indexer/{0}?forceSave=true" in register_arr_stack
-    assert "Set-ProviderField -Provider $payload -Name 'apiKey' -Value $ProwlarrKey" in register_arr_stack
-    assert "Set-ProviderField -Provider $payload -Name 'categories' -Value (Get-ArrIndexerCategories -Kind $Kind)" in register_arr_stack
+    assert "/api/v3/indexer?forceSave=true" not in register_arr_stack
+    assert "/api/v3/indexer/{0}?forceSave=true" not in register_arr_stack
     assert "Set-ProviderField -Provider $payload -Name 'syncCategories' -Value (Get-ArrIndexerCategories -Kind $Kind) -Optional" in register_arr_stack
     assert "Read-RequiredSecretValue -Prompt 'Prowlarr API key' -Value $script:ProwlarrApiKey -Name 'ProwlarrApiKey'" in register_arr_stack
     assert "Read-RequiredSecretValue -Prompt 'eMuleBB API key' -Value $script:EmulebbApiKey -Name 'EmulebbApiKey'" in register_arr_stack
@@ -1225,6 +1221,7 @@ def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() 
     assert "if ($VerifyIndexerOnly)" in register_arr_stack
     assert "Read-RequiredValue -Prompt 'Prowlarr URL for application sync (example http://LAN-IP:9696)'" in register_arr_stack
     assert "throw 'ProwlarrUrl is required for -SyncProwlarrOnly.'" not in register_arr_stack
+    assert "ProwlarrUrl is required for Arr registration." in register_arr_stack
     assert register_arr_stack.index("if ($SyncProwlarrOnly)") < register_arr_stack.index("$ProwlarrUrl = Read-OptionalValue")
     assert register_arr_stack.index("if ($VerifyIndexerOnly)") < register_arr_stack.index("$ProwlarrUrl = Read-OptionalValue")
     assert "if ($ProwlarrUrl -and -not $SkipProwlarrSync)" in register_arr_stack
