@@ -15,6 +15,7 @@ param(
     [string]$DownloadClientName = 'eMuleBB',
     [switch]$SkipProwlarrSync,
     [switch]$SyncProwlarrOnly,
+    [switch]$VerifyIndexerOnly,
     [switch]$NoRetry
 )
 
@@ -341,15 +342,65 @@ function Get-TorznabSchema {
     throw 'Arr did not expose the Torznab indexer schema.'
 }
 
-function Get-ExistingArrIndexer {
+function Get-ArrProwlarrIndexerName {
+    param([string]$Name)
+    if ($Name.EndsWith(' (Prowlarr)', [StringComparison]::OrdinalIgnoreCase)) {
+        return $Name
+    }
+    return "$Name (Prowlarr)"
+}
+
+function Test-ArrProwlarrIndexerName {
+    param([string]$ActualName, [string]$Name)
+    return [string]::Equals($ActualName, $Name, [StringComparison]::OrdinalIgnoreCase) -or [string]::Equals($ActualName, (Get-ArrProwlarrIndexerName -Name $Name), [StringComparison]::OrdinalIgnoreCase)
+}
+
+function Get-ExistingArrIndexers {
     param([string]$BaseUrl, [string]$ApiKey, [string]$Name)
+    $matches = @()
     $indexers = Invoke-JsonApiWithRetry -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v3/indexer'
-    foreach ($indexer in @($indexers)) {
-        if ($indexer.name -eq $Name) {
+    foreach ($indexerGroup in @($indexers)) {
+        foreach ($indexer in @($indexerGroup)) {
+            if (Test-ArrProwlarrIndexerName -ActualName ([string]$indexer.name) -Name $Name) {
+                $matches += $indexer
+            }
+        }
+    }
+    return $matches
+}
+
+function Get-PreferredArrIndexer {
+    param($Indexers, [string]$Name)
+    $managedName = Get-ArrProwlarrIndexerName -Name $Name
+    foreach ($indexerGroup in @($Indexers)) {
+        foreach ($indexer in @($indexerGroup)) {
+            if ([string]::Equals([string]$indexer.name, $managedName, [StringComparison]::OrdinalIgnoreCase)) {
+                return $indexer
+            }
+        }
+    }
+    foreach ($indexerGroup in @($Indexers)) {
+        foreach ($indexer in @($indexerGroup)) {
             return $indexer
         }
     }
     return $null
+}
+
+function Remove-DuplicateArrIndexers {
+    param([string]$BaseUrl, [string]$ApiKey, $Indexers, [int]$KeepId, [string]$Name)
+    foreach ($indexerGroup in @($Indexers)) {
+        foreach ($indexer in @($indexerGroup)) {
+            if ($null -eq $indexer -or -not $indexer.id) {
+                continue
+            }
+            if ([int]$indexer.id -eq $KeepId) {
+                continue
+            }
+            Invoke-DeleteJsonApiWithRetry -BaseUrl $BaseUrl -ApiKey $ApiKey -Path (('/api/v3/indexer/{0}' -f [int]$indexer.id))
+            Write-Host ('Removed duplicate Arr indexer "{0}" with id {1}.' -f $indexer.name, $indexer.id) -ForegroundColor Yellow
+        }
+    }
 }
 
 function Save-QbitClient {
@@ -479,7 +530,9 @@ function Save-ArrProwlarrIndexer {
         [string]$ProwlarrBaseUrl,
         [string]$ProwlarrKey
     )
-    $existing = Get-ExistingArrIndexer -BaseUrl $BaseUrl -ApiKey $ApiKey -Name $Name
+    $managedName = Get-ArrProwlarrIndexerName -Name $Name
+    $existingIndexers = @(Get-ExistingArrIndexers -BaseUrl $BaseUrl -ApiKey $ApiKey -Name $Name)
+    $existing = Get-PreferredArrIndexer -Indexers $existingIndexers -Name $Name
     $prowlarrIndexer = Get-ProwlarrIndexer -BaseUrl $ProwlarrBaseUrl -ApiKey $ProwlarrKey -Name $Name
     if ($null -eq $prowlarrIndexer -or -not $prowlarrIndexer.id) {
         throw "Prowlarr indexer '$Name' did not return an id."
@@ -491,7 +544,7 @@ function Save-ArrProwlarrIndexer {
         $payload = Get-TorznabSchema -BaseUrl $BaseUrl -ApiKey $ApiKey
     }
     $proxyBaseUrl = (Normalize-HttpBaseUrl -Value $ProwlarrBaseUrl -Name 'ProwlarrBaseUrl') + '/' + [int]$prowlarrIndexer.id
-    Set-ObjectProperty -Target $payload -Name 'name' -Value $Name
+    Set-ObjectProperty -Target $payload -Name 'name' -Value $managedName
     Set-ObjectProperty -Target $payload -Name 'enable' -Value $true
     Set-ObjectProperty -Target $payload -Name 'enableRss' -Value $true
     Set-ObjectProperty -Target $payload -Name 'enableAutomaticSearch' -Value $true
@@ -508,9 +561,13 @@ function Save-ArrProwlarrIndexer {
     [void](Set-ProviderField -Provider $payload -Name 'animeCategories' -Value @() -Optional)
 
     if ($null -ne $existing -and $existing.id) {
-        return Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path (('/api/v3/indexer/{0}?forceSave=true' -f [int]$existing.id)) -Method 'PUT' -Body $payload
+        $saved = Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path (('/api/v3/indexer/{0}?forceSave=true' -f [int]$existing.id)) -Method 'PUT' -Body $payload
+        Remove-DuplicateArrIndexers -BaseUrl $BaseUrl -ApiKey $ApiKey -Indexers $existingIndexers -KeepId ([int]$saved.id) -Name $Name
+        return $saved
     }
-    return Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v3/indexer?forceSave=true' -Method 'POST' -Body $payload
+    $saved = Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v3/indexer?forceSave=true' -Method 'POST' -Body $payload
+    Remove-DuplicateArrIndexers -BaseUrl $BaseUrl -ApiKey $ApiKey -Indexers $existingIndexers -KeepId ([int]$saved.id) -Name $Name
+    return $saved
 }
 
 function Ensure-EmuleCategory {
@@ -714,6 +771,33 @@ if ($SyncProwlarrOnly) {
     return
 }
 
+if ($VerifyIndexerOnly) {
+    $Target = Read-TargetValue -Value $Target
+    $targetKind = $Target.ToLowerInvariant()
+    Write-Host ('eMuleBB {0} Indexer Verification' -f $Target) -ForegroundColor Cyan
+    if ($Target -eq 'Radarr') {
+        $script:targetUrl = Normalize-ArgumentValue -Value $RadarrUrl
+        $script:targetApiKey = Normalize-ArgumentValue -Value $RadarrApiKey
+    } else {
+        $script:targetUrl = Normalize-ArgumentValue -Value $SonarrUrl
+        $script:targetApiKey = Normalize-ArgumentValue -Value $SonarrApiKey
+    }
+    Run-TargetWithRetry -Name "$Target indexer verification" -NoRetry:$NoRetry -OnRetry {
+        $script:ProwlarrUrl = ''
+        $script:ProwlarrApiKey = ''
+        $script:targetUrl = ''
+        $script:targetApiKey = ''
+    } -Operation {
+        $script:ProwlarrUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'Prowlarr URL for indexer verification (example http://LAN-IP:9696)' -Value $script:ProwlarrUrl) -Name 'ProwlarrUrl'
+        $script:ProwlarrApiKey = Read-RequiredSecretValue -Prompt 'Prowlarr API key' -Value $script:ProwlarrApiKey -Name 'ProwlarrApiKey'
+        $script:targetUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt (Get-ArrUrlPrompt -Target $Target) -Value $script:targetUrl) -Name ("${Target}Url")
+        $script:targetApiKey = Read-RequiredSecretValue -Prompt "$Target API key" -Value $script:targetApiKey -Name ("${Target}ApiKey")
+        $saved = Save-ArrProwlarrIndexer -Kind $targetKind -BaseUrl $script:targetUrl -ApiKey $script:targetApiKey -Name $DownloadClientName -ProwlarrBaseUrl $script:ProwlarrUrl -ProwlarrKey $script:ProwlarrApiKey
+        Write-Host ('{0} indexer "{1}" is configured with id {2}.' -f $Target, $saved.name, $saved.id) -ForegroundColor Green
+    }
+    return
+}
+
 $ProwlarrUrl = Read-OptionalValue -Prompt 'Prowlarr URL for application sync (example http://LAN-IP:9696, blank to skip)' -Value $ProwlarrUrl
 
 $Action = Read-ActionValue -Value $Action
@@ -777,7 +861,18 @@ Run-TargetWithRetry -Name ("$Target download client {0}" -f $Action.ToLowerInvar
     }
 }
 
-if ($Action -eq 'Register' -and $ProwlarrUrl) {
+if ($ProwlarrUrl -and -not $SkipProwlarrSync) {
+    Run-TargetWithRetry -Name 'Prowlarr application sync' -NoRetry:$NoRetry -OnRetry {
+        $script:ProwlarrUrl = ''
+        $script:ProwlarrApiKey = ''
+    } -Operation {
+        $script:ProwlarrUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'Prowlarr URL for application sync (example http://LAN-IP:9696)' -Value $script:ProwlarrUrl) -Name 'ProwlarrUrl'
+        $script:ProwlarrApiKey = Read-RequiredSecretValue -Prompt 'Prowlarr API key' -Value $script:ProwlarrApiKey -Name 'ProwlarrApiKey'
+        Invoke-ProwlarrSync -BaseUrl $script:ProwlarrUrl -ApiKey $script:ProwlarrApiKey
+    }
+}
+
+if ($Action -eq 'Register' -and $ProwlarrUrl -and -not $SkipProwlarrSync) {
     Run-TargetWithRetry -Name "$Target indexer verification" -NoRetry:$NoRetry -OnRetry {
         $script:ProwlarrUrl = ''
         $script:ProwlarrApiKey = ''
@@ -790,17 +885,6 @@ if ($Action -eq 'Register' -and $ProwlarrUrl) {
         $script:targetApiKey = Read-RequiredSecretValue -Prompt "$Target API key" -Value $script:targetApiKey -Name ("${Target}ApiKey")
         $saved = Save-ArrProwlarrIndexer -Kind $targetKind -BaseUrl $script:targetUrl -ApiKey $script:targetApiKey -Name $DownloadClientName -ProwlarrBaseUrl $script:ProwlarrUrl -ProwlarrKey $script:ProwlarrApiKey
         Write-Host ('{0} indexer "{1}" is configured with id {2}.' -f $Target, $saved.name, $saved.id) -ForegroundColor Green
-    }
-}
-
-if ($ProwlarrUrl -and -not $SkipProwlarrSync) {
-    Run-TargetWithRetry -Name 'Prowlarr application sync' -NoRetry:$NoRetry -OnRetry {
-        $script:ProwlarrUrl = ''
-        $script:ProwlarrApiKey = ''
-    } -Operation {
-        $script:ProwlarrUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'Prowlarr URL for application sync (example http://LAN-IP:9696)' -Value $script:ProwlarrUrl) -Name 'ProwlarrUrl'
-        $script:ProwlarrApiKey = Read-RequiredSecretValue -Prompt 'Prowlarr API key' -Value $script:ProwlarrApiKey -Name 'ProwlarrApiKey'
-        Invoke-ProwlarrSync -BaseUrl $script:ProwlarrUrl -ApiKey $script:ProwlarrApiKey
     }
 }
 

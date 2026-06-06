@@ -1191,7 +1191,7 @@ function Invoke-JsonApi {
         $apiPath = ($Body.fields | Where-Object { $_.name -eq 'apiPath' }).value
         $apiKey = ($Body.fields | Where-Object { $_.name -eq 'apiKey' }).value
         $categories = (($Body.fields | Where-Object { $_.name -eq 'categories' }).value) -join ','
-        if ($Body.name -ne 'eMuleBB Suite') { throw ('unexpected name: {0}' -f $Body.name) }
+        if ($Body.name -ne 'eMuleBB Suite (Prowlarr)') { throw ('unexpected name: {0}' -f $Body.name) }
         if ($Body.implementation -ne 'Torznab') { throw ('unexpected implementation: {0}' -f $Body.implementation) }
         if (-not $Body.enableAutomaticSearch) { throw 'automatic search was not enabled' }
         if ($baseUrl -ne 'http://prowlarr/1') { throw ('unexpected baseUrl: {0}' -f $baseUrl) }
@@ -1212,13 +1212,23 @@ function Test-ApiKeyRejectedError { param($Exception) return $false }
         + "\n"
         + _extract_powershell_function(script_text, "Invoke-JsonApiWithRetry")
         + "\n"
+        + _extract_powershell_function(script_text, "Invoke-DeleteJsonApiWithRetry")
+        + "\n"
         + _extract_powershell_function(script_text, "Set-ObjectProperty")
         + "\n"
         + _extract_powershell_function(script_text, "Set-ProviderField")
         + "\n"
         + _extract_powershell_function(script_text, "Get-TorznabSchema")
         + "\n"
-        + _extract_powershell_function(script_text, "Get-ExistingArrIndexer")
+        + _extract_powershell_function(script_text, "Get-ArrProwlarrIndexerName")
+        + "\n"
+        + _extract_powershell_function(script_text, "Test-ArrProwlarrIndexerName")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-ExistingArrIndexers")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-PreferredArrIndexer")
+        + "\n"
+        + _extract_powershell_function(script_text, "Remove-DuplicateArrIndexers")
         + "\n"
         + _extract_powershell_function(script_text, "Get-ArrIndexerCategories")
         + "\n"
@@ -1229,6 +1239,123 @@ function Test-ApiKeyRejectedError { param($Exception) return $false }
 $saved = Save-ArrProwlarrIndexer -Kind 'radarr' -BaseUrl 'http://radarr' -ApiKey 'radarr-key' -Name 'eMuleBB Suite' -ProwlarrBaseUrl 'http://prowlarr' -ProwlarrKey 'prowlarr-key'
 if ($saved.id -ne 44) { throw ('unexpected saved id: {0}' -f $saved.id) }
 if ($script:Calls.Count -ne 4) { throw ('expected 4 API calls, got {0}' -f $script:Calls.Count) }
+""",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(test_script),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+
+
+def test_register_arr_stack_removes_duplicate_arr_indexer_after_prowlarr_sync(
+    workspace_root: Path,
+    tmp_path: Path,
+) -> None:
+    script_path = (
+        workspace_root
+        / "repos"
+        / "emulebb-build"
+        / "emule_workspace"
+        / "release_assets"
+        / "emulebb"
+        / "scripts"
+        / "Register-ArrStack.ps1"
+    )
+    script_text = script_path.read_text(encoding="utf-8")
+    test_script = tmp_path / "dedupe-arr-prowlarr-indexer-test.ps1"
+    test_script.write_text(
+        """
+$script:Calls = @()
+function Invoke-JsonApi {
+    param([string]$BaseUrl, [string]$ApiKey, [string]$Path, [string]$Method = 'GET', $Body = $null)
+    $script:Calls += [pscustomobject]@{ BaseUrl = $BaseUrl; ApiKey = $ApiKey; Path = $Path; Method = $Method; Body = $Body }
+    if ($Path -eq '/api/v3/indexer' -and $Method -eq 'GET') {
+        return @(
+            [pscustomobject]@{
+                id = 2
+                name = 'eMuleBB Suite'
+                implementation = 'Torznab'
+                fields = @(
+                    [pscustomobject]@{ name = 'baseUrl'; value = 'http://prowlarr/1' },
+                    [pscustomobject]@{ name = 'apiPath'; value = '/api' },
+                    [pscustomobject]@{ name = 'apiKey'; value = 'prowlarr-key' },
+                    [pscustomobject]@{ name = 'categories'; value = @(2000) },
+                    [pscustomobject]@{ name = 'animeCategories'; value = @() }
+                )
+            },
+            [pscustomobject]@{
+                id = 1
+                name = 'eMuleBB Suite (Prowlarr)'
+                implementation = 'Torznab'
+                fields = @(
+                    [pscustomobject]@{ name = 'baseUrl'; value = 'http://prowlarr/1' },
+                    [pscustomobject]@{ name = 'apiPath'; value = '/api' },
+                    [pscustomobject]@{ name = 'apiKey'; value = 'prowlarr-key' },
+                    [pscustomobject]@{ name = 'categories'; value = @(2000) },
+                    [pscustomobject]@{ name = 'animeCategories'; value = @() }
+                )
+            }
+        )
+    }
+    if ($Path -eq '/api/v1/indexer') { return @([pscustomobject]@{ id = 1; name = 'eMuleBB Suite' }) }
+    if ($Path -eq '/api/v3/indexer/1?forceSave=true' -and $Method -eq 'PUT') {
+        if ($Body.name -ne 'eMuleBB Suite (Prowlarr)') { throw ('unexpected name: {0}' -f $Body.name) }
+        return [pscustomobject]@{ id = 1; name = $Body.name }
+    }
+    if ($Path -eq '/api/v3/indexer/2' -and $Method -eq 'DELETE') { return $null }
+    throw ('unexpected call: {0} {1}' -f $Method, $Path)
+}
+function Test-ApiKeyRejectedError { param($Exception) return $false }
+"""
+        + _extract_powershell_function(script_text, "Normalize-ArgumentValue")
+        + "\n"
+        + _extract_powershell_function(script_text, "Normalize-HttpBaseUrl")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-HttpStatusCode")
+        + "\n"
+        + _extract_powershell_function(script_text, "Invoke-JsonApiWithRetry")
+        + "\n"
+        + _extract_powershell_function(script_text, "Invoke-DeleteJsonApiWithRetry")
+        + "\n"
+        + _extract_powershell_function(script_text, "Set-ObjectProperty")
+        + "\n"
+        + _extract_powershell_function(script_text, "Set-ProviderField")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-TorznabSchema")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-ArrProwlarrIndexerName")
+        + "\n"
+        + _extract_powershell_function(script_text, "Test-ArrProwlarrIndexerName")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-ExistingArrIndexers")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-PreferredArrIndexer")
+        + "\n"
+        + _extract_powershell_function(script_text, "Remove-DuplicateArrIndexers")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-ArrIndexerCategories")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-ProwlarrIndexer")
+        + "\n"
+        + _extract_powershell_function(script_text, "Save-ArrProwlarrIndexer")
+        + """
+$saved = Save-ArrProwlarrIndexer -Kind 'radarr' -BaseUrl 'http://radarr' -ApiKey 'radarr-key' -Name 'eMuleBB Suite' -ProwlarrBaseUrl 'http://prowlarr' -ProwlarrKey 'prowlarr-key'
+if ($saved.id -ne 1) { throw ('unexpected saved id: {0}' -f $saved.id) }
+$deleteCalls = @($script:Calls | Where-Object { $_.Method -eq 'DELETE' -and $_.Path -eq '/api/v3/indexer/2' })
+if ($deleteCalls.Count -ne 1) { throw ('expected one duplicate delete, got {0}' -f $deleteCalls.Count) }
 """,
         encoding="utf-8",
     )

@@ -161,6 +161,13 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "'emulebb.exe'" in start_emulebb
     assert "profiles\\emulebb" in start_emulebb
     assert "function Test-EmuleRunning" in start_emulebb
+    assert "function Invoke-EmuleBootstrapFileDownload" in start_emulebb
+    assert "function Ensure-EmuleBootstrapFiles" in start_emulebb
+    assert "https://upd.emule-security.org/server.met" in start_emulebb
+    assert "https://upd.emule-security.org/nodes.dat" in start_emulebb
+    assert "$Name bootstrap file ready: $Destination" in start_emulebb
+    assert "eMuleBB can still start, but first public connection may require manual server/node updates" in start_emulebb
+    assert start_emulebb.index("Ensure-EmuleBootstrapFiles") < start_emulebb.index("Start-Process -FilePath $Emule")
     assert "eMuleBB executable is missing" in start_emulebb
     assert "eMuleBB could not be started from" in start_emulebb
     assert "eMuleBB did not stay running after launch" in start_emulebb
@@ -168,6 +175,12 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     start_suite = (install_root / "scripts" / "Start-Suite.ps1").read_text(encoding="utf-8-sig")
     assert "suite-config.json" in start_suite
     assert "Start-eMuleBB.ps1" in start_suite
+    assert "function Show-EmuleLaunchReturnNotice" in start_suite
+    assert "return to this PowerShell window so setup can complete the app registrations" in start_suite
+    assert "Continuing in 6 seconds..." in start_suite
+    assert "Start-Sleep -Seconds 6" in start_suite
+    suite_launch = start_suite.index("& (Join-Path $Root 'scripts\\Start-eMuleBB.ps1')", start_suite.index("$EmuleKey ="))
+    assert start_suite.index("Show-EmuleLaunchReturnNotice", start_suite.index("$EmuleKey =")) < suite_launch
     assert "function Initialize-AmutorrentConfig" in start_suite
     assert "$env:AMUTORRENT_DATA_DIR = Join-Path $Root 'data\\amutorrent'" in start_suite
     assert "Initialize-AmutorrentConfig -DataDir $env:AMUTORRENT_DATA_DIR" in start_suite
@@ -253,11 +266,17 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "-SkipProwlarrSync" in start_suite
     assert "Invoke-StepWithRetry -Name 'Prowlarr application sync'" in start_suite
     assert "-SyncProwlarrOnly" in start_suite
+    assert "Invoke-StepWithRetry -Name 'Radarr indexer verification'" in start_suite
+    assert "Invoke-StepWithRetry -Name 'Sonarr indexer verification'" in start_suite
+    assert "-VerifyIndexerOnly -Target Radarr" in start_suite
+    assert "-VerifyIndexerOnly -Target Sonarr" in start_suite
     assert start_suite.index("Invoke-StepWithRetry -Name 'Arr web login setup'") < start_suite.index("Invoke-StepWithRetry -Name 'Radarr root folder setup'")
     assert start_suite.index("Invoke-StepWithRetry -Name 'Radarr root folder setup'") < start_suite.index("Invoke-StepWithRetry -Name 'Sonarr root folder setup'")
     assert start_suite.index("Invoke-StepWithRetry -Name 'Sonarr root folder setup'") < start_suite.index("Invoke-StepWithRetry -Name 'Prowlarr registration'")
     assert start_suite.index("Invoke-StepWithRetry -Name 'Radarr registration'") < start_suite.index("Invoke-StepWithRetry -Name 'Sonarr registration'")
     assert start_suite.index("Invoke-StepWithRetry -Name 'Sonarr registration'") < start_suite.index("Invoke-StepWithRetry -Name 'Prowlarr application sync'")
+    assert start_suite.index("Invoke-StepWithRetry -Name 'Prowlarr application sync'") < start_suite.index("Invoke-StepWithRetry -Name 'Radarr indexer verification'")
+    assert start_suite.index("Invoke-StepWithRetry -Name 'Radarr indexer verification'") < start_suite.index("Invoke-StepWithRetry -Name 'Sonarr indexer verification'")
     assert start_suite.index("foreach ($item in @(@('Prowlarr'") < start_suite.index("Initialize-AmutorrentConfig -DataDir $env:AMUTORRENT_DATA_DIR")
     assert start_suite.index("Initialize-AmutorrentConfig -DataDir $env:AMUTORRENT_DATA_DIR") < start_suite.index("Start-ProcessIfMissing -Name 'aMuTorrent' -FilePath $node")
     assert start_suite.index("Start-ProcessIfMissing -Name 'aMuTorrent' -FilePath $node") < start_suite.index("Invoke-StepWithRetry -Name 'aMuTorrent registration'")
@@ -1167,6 +1186,10 @@ def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() 
     assert "function Get-ProwlarrCommandFailureDetail" in register_arr_stack
     assert "Prowlarr application sync failed: {0}. {1}" in register_arr_stack
     assert "function Save-ArrProwlarrIndexer" in register_arr_stack
+    assert "[switch]$VerifyIndexerOnly" in register_arr_stack
+    assert "function Get-ArrProwlarrIndexerName" in register_arr_stack
+    assert "function Get-ExistingArrIndexers" in register_arr_stack
+    assert "function Remove-DuplicateArrIndexers" in register_arr_stack
     assert "function Get-ArrIndexerCategories" in register_arr_stack
     assert "Prowlarr indexer '$Name' is not registered. Run Register-Prowlarr.ps1 first" in register_arr_stack
     assert "Prowlarr URL for indexer verification (example http://LAN-IP:9696)" in register_arr_stack
@@ -1189,12 +1212,14 @@ def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() 
     assert "Set-ProviderField -Provider $payload -Name 'password' -Value $EmuleApiKey" in register_arr_stack
     assert "Set-ProviderField -Provider $payload -Name 'apiKey' -Value $ArrKey" in register_arr_stack
     assert "if ($SyncProwlarrOnly)" in register_arr_stack
+    assert "if ($VerifyIndexerOnly)" in register_arr_stack
     assert "Read-RequiredValue -Prompt 'Prowlarr URL for application sync (example http://LAN-IP:9696)'" in register_arr_stack
     assert "throw 'ProwlarrUrl is required for -SyncProwlarrOnly.'" not in register_arr_stack
     assert register_arr_stack.index("if ($SyncProwlarrOnly)") < register_arr_stack.index("$ProwlarrUrl = Read-OptionalValue")
+    assert register_arr_stack.index("if ($VerifyIndexerOnly)") < register_arr_stack.index("$ProwlarrUrl = Read-OptionalValue")
     assert "if ($ProwlarrUrl -and -not $SkipProwlarrSync)" in register_arr_stack
     assert "$ProwlarrUrl = Normalize-HttpBaseUrl -Value $ProwlarrUrl" not in register_arr_stack
-    assert register_arr_stack.index("Run-TargetWithRetry -Name \"$Target indexer verification\"") < register_arr_stack.index("if ($ProwlarrUrl -and -not $SkipProwlarrSync)")
+    assert register_arr_stack.index("if ($ProwlarrUrl -and -not $SkipProwlarrSync)") < register_arr_stack.rindex("Run-TargetWithRetry -Name \"$Target indexer verification\"")
 
 
 def test_suite_prowlarr_registration_requires_and_passes_api_keys() -> None:

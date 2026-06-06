@@ -2083,6 +2083,36 @@ if (`$Existing) {
     Write-Host "eMuleBB is already running: PID `$(`$Existing.Id)"
     return
 }
+function Invoke-EmuleBootstrapFileDownload {
+    param([string]`$Name, [string]`$Url, [string]`$Destination)
+    `$existingFile = Get-Item -LiteralPath `$Destination -ErrorAction SilentlyContinue
+    if (`$existingFile -and `$existingFile.Length -gt 0) {
+        Write-Host "`$Name bootstrap file already present: `$Destination"
+        return
+    }
+    New-Item -ItemType Directory -Force -Path ([IO.Path]::GetDirectoryName(`$Destination)) | Out-Null
+    `$tempPath = "`$Destination.download"
+    Remove-Item -Force -LiteralPath `$tempPath -ErrorAction SilentlyContinue
+    try {
+        Write-Host "Downloading `$Name bootstrap file: `$Url"
+        Invoke-WebRequest -UseBasicParsing -Uri `$Url -OutFile `$tempPath -ErrorAction Stop
+        `$downloaded = Get-Item -LiteralPath `$tempPath -ErrorAction Stop
+        if (`$downloaded.Length -le 0) {
+            throw "downloaded file was empty"
+        }
+        Move-Item -Force -LiteralPath `$tempPath -Destination `$Destination
+        Write-Host "`$Name bootstrap file ready: `$Destination"
+    } catch {
+        Remove-Item -Force -LiteralPath `$tempPath -ErrorAction SilentlyContinue
+        Write-Warning "Could not download `$Name bootstrap file from `$Url to `$Destination. eMuleBB can still start, but first public connection may require manual server/node updates. `$(`$_.Exception.Message)"
+    }
+}
+function Ensure-EmuleBootstrapFiles {
+    `$configDir = Join-Path `$Root 'profiles\emulebb\config'
+    Invoke-EmuleBootstrapFileDownload -Name 'server.met' -Url 'https://upd.emule-security.org/server.met' -Destination (Join-Path `$configDir 'server.met')
+    Invoke-EmuleBootstrapFileDownload -Name 'nodes.dat' -Url 'https://upd.emule-security.org/nodes.dat' -Destination (Join-Path `$configDir 'nodes.dat')
+}
+Ensure-EmuleBootstrapFiles
 try {
     Start-Process -FilePath `$Emule -ArgumentList @('-c', (Join-Path `$Root 'profiles\emulebb')) -ErrorAction Stop | Out-Null
 } catch {
@@ -2430,11 +2460,17 @@ function Start-ArrHost {
     }
     Start-ProcessIfMissing -Name `$Name -FilePath `$exe.FullName -ArgumentList @('/data=' + (Join-Path `$Root `$DataDir), '/nobrowser') -CommandLineContains (Join-Path `$Root `$DataDir)
 }
+function Show-EmuleLaunchReturnNotice {
+    Write-Host 'eMuleBB will launch now. After eMuleBB is running, return to this PowerShell window so setup can complete the app registrations.' -ForegroundColor Cyan
+    Write-Host 'Continuing in 6 seconds...'
+    Start-Sleep -Seconds 6
+}
 `$Bundle = [string]`$Config.bundle
 `$EmuleHost = Get-ServiceClientHost -ServiceName 'emulebb' -Service `$Config.services.emulebb
 `$EmulePort = [int]`$Config.services.emulebb.port
 `$EmuleUrl = "http://`$(`$EmuleHost):`$EmulePort"
 `$EmuleKey = [string]`$Config.services.emulebb.apiKey
+Show-EmuleLaunchReturnNotice
 & (Join-Path `$Root 'scripts\Start-eMuleBB.ps1')
 if (`$Bundle -eq 'Full') {
     foreach (`$item in @(@('Prowlarr','data\prowlarr'), @('Radarr','data\radarr'), @('Sonarr','data\sonarr'))) {
@@ -2496,6 +2532,12 @@ if (`$Bundle -eq 'Full') {
     }
     Invoke-StepWithRetry -Name 'Prowlarr application sync' -Operation {
         & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -SyncProwlarrOnly -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -NoRetry
+    }
+    Invoke-StepWithRetry -Name 'Radarr indexer verification' -Operation {
+        & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -VerifyIndexerOnly -Target Radarr -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -RadarrUrl `$RadarrUrl -RadarrApiKey `$RadarrKey -DownloadClientName 'eMuleBB Suite' -NoRetry
+    }
+    Invoke-StepWithRetry -Name 'Sonarr indexer verification' -Operation {
+        & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -VerifyIndexerOnly -Target Sonarr -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -SonarrUrl `$SonarrUrl -SonarrApiKey `$SonarrKey -DownloadClientName 'eMuleBB Suite' -NoRetry
     }
 }
 "@
