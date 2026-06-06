@@ -270,7 +270,14 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "-RadarrApiKey $RadarrKey" in start_suite
     assert "-SonarrApiKey $SonarrKey" in start_suite
     assert "-SkipProwlarrSync" in start_suite
-    assert "Invoke-StepWithRetry -Name 'Prowlarr application sync'" in start_suite
+    assert "function Test-ArrIndexerSynced" in start_suite
+    assert "function Wait-ArrIndexersSynced" in start_suite
+    assert "function Invoke-ProwlarrSyncIfNeeded" in start_suite
+    assert "AddSeconds(30)" in start_suite
+    assert "Start-Sleep -Seconds 2" in start_suite
+    assert "Prowlarr application sync completed automatically." in start_suite
+    assert "triggering ApplicationIndexerSync" in start_suite
+    assert "Invoke-StepWithRetry -Name 'Prowlarr conditional application sync'" in start_suite
     assert "-SyncProwlarrOnly" in start_suite
     assert "Invoke-StepWithRetry -Name 'Radarr indexer verification'" in start_suite
     assert "Invoke-StepWithRetry -Name 'Sonarr indexer verification'" in start_suite
@@ -280,8 +287,8 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert start_suite.index("Invoke-StepWithRetry -Name 'Radarr root folder setup'") < start_suite.index("Invoke-StepWithRetry -Name 'Sonarr root folder setup'")
     assert start_suite.index("Invoke-StepWithRetry -Name 'Sonarr root folder setup'") < start_suite.index("Invoke-StepWithRetry -Name 'Prowlarr registration'")
     assert start_suite.index("Invoke-StepWithRetry -Name 'Radarr registration'") < start_suite.index("Invoke-StepWithRetry -Name 'Sonarr registration'")
-    assert start_suite.index("Invoke-StepWithRetry -Name 'Sonarr registration'") < start_suite.index("Invoke-StepWithRetry -Name 'Prowlarr application sync'")
-    assert start_suite.index("Invoke-StepWithRetry -Name 'Prowlarr application sync'") < start_suite.index("Invoke-StepWithRetry -Name 'Radarr indexer verification'")
+    assert start_suite.index("Invoke-StepWithRetry -Name 'Sonarr registration'") < start_suite.index("Invoke-StepWithRetry -Name 'Prowlarr conditional application sync'")
+    assert start_suite.index("Invoke-StepWithRetry -Name 'Prowlarr conditional application sync'") < start_suite.index("Invoke-StepWithRetry -Name 'Radarr indexer verification'")
     assert start_suite.index("Invoke-StepWithRetry -Name 'Radarr indexer verification'") < start_suite.index("Invoke-StepWithRetry -Name 'Sonarr indexer verification'")
     assert start_suite.index("foreach ($item in @(@('Prowlarr'") < start_suite.index("Initialize-AmutorrentConfig -DataDir $env:AMUTORRENT_DATA_DIR")
     assert start_suite.index("Initialize-AmutorrentConfig -DataDir $env:AMUTORRENT_DATA_DIR") < start_suite.index("Start-ProcessIfMissing -Name 'aMuTorrent' -FilePath $node")
