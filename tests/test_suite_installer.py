@@ -1198,7 +1198,7 @@ function Invoke-WebRequest {{
 
 
 @pytest.mark.parametrize("pass_install_root", [False, True])
-def test_suite_bootstrapper_only_hands_explicit_install_root_to_installer(tmp_path: Path, pass_install_root: bool) -> None:
+def test_suite_bootstrapper_hands_resolved_install_root_to_installer(tmp_path: Path, pass_install_root: bool) -> None:
     repo_root = Path.cwd()
     release_root = tmp_path / "release"
     captured = tmp_path / "captured-install-root.json"
@@ -1241,14 +1241,16 @@ param(
         str(package_manifest),
     ]
     if pass_install_root:
-        command.extend(["-InstallRoot", r"c:\jesus"])
+        command.extend(["-InstallRoot", r"C:\SuiteSample"])
 
     _run_powershell(command, cwd=repo_root)
     captured_payload = json.loads(captured.read_text(encoding="utf-8-sig"))
 
-    assert captured_payload["hasInstallRoot"] is pass_install_root
+    assert captured_payload["hasInstallRoot"] is True
     if pass_install_root:
-        assert captured_payload["installRoot"] == r"c:\jesus"
+        assert captured_payload["installRoot"] == r"C:\SuiteSample"
+    else:
+        assert captured_payload["installRoot"] == r"C:\eMuleBBSuite"
 
 
 def test_suite_bootstrapper_accepts_local_package_zip_overrides(tmp_path: Path) -> None:

@@ -452,13 +452,16 @@ if ($effectiveBundle -ne 'Core') {
 }
 $workRoot = Join-Path $env:TEMP "emulebb-suite-bootstrap-$resolvedVersion-$assetArch"
 $extractRoot = Join-Path $workRoot 'installer'
+if (-not $DryRun -and (Test-Path -LiteralPath $extractRoot)) {
+    Remove-Item -Recurse -Force -LiteralPath $extractRoot
+}
 $installer = Expand-Installer -Archive $zipPath -Destination $extractRoot
 $installerParams = [ordered]@{
     Bundle = $effectiveBundle
+    InstallRoot = $InstallRoot
     Version = $resolvedVersion
     Platform = $resolvedPlatform
 }
-if ($PSBoundParameters.ContainsKey('InstallRoot')) { $installerParams['InstallRoot'] = $InstallRoot }
 if (-not [string]::IsNullOrWhiteSpace($releaseBaseUrl)) { $installerParams['ReleaseBaseUrl'] = $releaseBaseUrl }
 if ($localEmulebbPackage) {
     $installerParams['EmulebbPackageZip'] = $zipPath
