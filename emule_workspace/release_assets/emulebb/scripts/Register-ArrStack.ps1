@@ -123,6 +123,16 @@ function Read-SecretValue {
     }
 }
 
+function Read-RequiredSecretValue {
+    param([string]$Prompt, [string]$Value, [string]$Name)
+    $secret = Read-SecretValue -Prompt $Prompt -Value $Value
+    while ([string]::IsNullOrWhiteSpace($secret)) {
+        Write-Host "$Name is required." -ForegroundColor Yellow
+        $secret = Read-SecretValue -Prompt $Prompt -Value ''
+    }
+    return Normalize-ArgumentValue -Value $secret
+}
+
 function Invoke-JsonApi {
     param(
         [string]$BaseUrl,
@@ -505,7 +515,7 @@ function Run-TargetWithRetry {
 $ProwlarrUrl = Read-OptionalValue -Prompt 'Prowlarr URL for application sync (blank to skip)' -Value $ProwlarrUrl
 if ($ProwlarrUrl) {
     $ProwlarrUrl = Normalize-HttpBaseUrl -Value $ProwlarrUrl -Name 'ProwlarrUrl'
-    $ProwlarrApiKey = Read-SecretValue -Prompt 'Prowlarr API key' -Value $ProwlarrApiKey
+    $ProwlarrApiKey = Read-RequiredSecretValue -Prompt 'Prowlarr API key' -Value $ProwlarrApiKey -Name 'ProwlarrApiKey'
 }
 
 if ($SyncProwlarrOnly) {
@@ -524,14 +534,14 @@ $Target = Read-TargetValue -Value $Target
 $targetKind = $Target.ToLowerInvariant()
 Write-Host ('eMuleBB {0} Integration - {1}' -f $Target, $Action) -ForegroundColor Cyan
 if ($Action -eq 'Register') {
-    $EmulebbBaseUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'eMuleBB base URL (example http://127.0.0.1:4711)' -Value $EmulebbBaseUrl) -Name 'EmulebbBaseUrl'
-    $EmulebbApiKey = Read-SecretValue -Prompt 'eMuleBB API key' -Value $EmulebbApiKey
+    $EmulebbBaseUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'eMuleBB base URL (example http://LAN-IP:4711)' -Value $EmulebbBaseUrl) -Name 'EmulebbBaseUrl'
+    $EmulebbApiKey = Read-RequiredSecretValue -Prompt 'eMuleBB API key' -Value $EmulebbApiKey -Name 'EmulebbApiKey'
 }
 
 $targetUrl = if ($Target -eq 'Radarr') { $RadarrUrl } else { $SonarrUrl }
 $targetApiKey = if ($Target -eq 'Radarr') { $RadarrApiKey } else { $SonarrApiKey }
 $targetUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt ("$Target URL for eMuleBB download client") -Value $targetUrl) -Name ("${Target}Url")
-$targetApiKey = Read-SecretValue -Prompt "$Target API key" -Value $targetApiKey
+$targetApiKey = Read-RequiredSecretValue -Prompt "$Target API key" -Value $targetApiKey -Name ("${Target}ApiKey")
 
 if ($Action -eq 'Register') {
     $arrCategoryName = Get-ArrCategoryName -Kind $targetKind

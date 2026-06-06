@@ -506,13 +506,13 @@ function Run-TargetWithRetry {
 
 $Action = Read-ActionValue -Value $Action
 Write-Host ('eMuleBB aMuTorrent Integration - {0}' -f $Action) -ForegroundColor Cyan
-$AmutorrentUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'aMuTorrent URL (example http://127.0.0.1:4000)' -Value $AmutorrentUrl) -Name 'AmutorrentUrl'
+$AmutorrentUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'aMuTorrent URL (example http://LAN-IP:4000)' -Value $AmutorrentUrl) -Name 'AmutorrentUrl'
 $AmutorrentApiKey = Read-SecretValue -Prompt 'aMuTorrent admin API key (blank only when auth is disabled)' -Value $AmutorrentApiKey -Optional
 $InstanceName = Read-RequiredValue -Prompt 'aMuTorrent eMuleBB instance name' -Value $InstanceName
 $InstanceId = Normalize-ArgumentValue -Value $InstanceId
 
 if ($Action -eq 'Register') {
-    $EmulebbBaseUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'eMuleBB base URL (example http://127.0.0.1:4711)' -Value $EmulebbBaseUrl) -Name 'EmulebbBaseUrl'
+    $EmulebbBaseUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'eMuleBB base URL (example http://LAN-IP:4711)' -Value $EmulebbBaseUrl) -Name 'EmulebbBaseUrl'
     $EmulebbApiKey = Read-SecretValue -Prompt 'eMuleBB API key' -Value $EmulebbApiKey
 }
 

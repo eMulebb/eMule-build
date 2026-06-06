@@ -91,6 +91,16 @@ function Read-SecretValue {
     }
 }
 
+function Read-RequiredSecretValue {
+    param([string]$Prompt, [string]$Value, [string]$Name)
+    $secret = Read-SecretValue -Prompt $Prompt -Value $Value
+    while ([string]::IsNullOrWhiteSpace($secret)) {
+        Write-Host "$Name is required." -ForegroundColor Yellow
+        $secret = Read-SecretValue -Prompt $Prompt -Value ''
+    }
+    return Normalize-ArgumentValue -Value $secret
+}
+
 function Invoke-JsonApi {
     param(
         [string]$BaseUrl,
@@ -307,14 +317,14 @@ $Action = Read-ActionValue -Value $Action
 Write-Host ('eMuleBB Prowlarr Integration - {0}' -f $Action) -ForegroundColor Cyan
 do {
     try {
-        $ProwlarrUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'Prowlarr URL (example http://127.0.0.1:9696)' -Value $ProwlarrUrl) -Name 'ProwlarrUrl'
-        $ProwlarrApiKey = Read-SecretValue -Prompt 'Prowlarr API key' -Value $ProwlarrApiKey
+        $ProwlarrUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'Prowlarr URL (example http://LAN-IP:9696)' -Value $ProwlarrUrl) -Name 'ProwlarrUrl'
+        $ProwlarrApiKey = Read-RequiredSecretValue -Prompt 'Prowlarr API key' -Value $ProwlarrApiKey -Name 'ProwlarrApiKey'
         if ($Action -eq 'Unregister') {
             Remove-Indexer -BaseUrl $ProwlarrUrl -ApiKey $ProwlarrApiKey -Name $IndexerName
             exit 0
         }
-        $EmulebbBaseUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'eMuleBB base URL (example http://127.0.0.1:4711)' -Value $EmulebbBaseUrl) -Name 'EmulebbBaseUrl'
-        $EmulebbApiKey = Read-SecretValue -Prompt 'eMuleBB API key' -Value $EmulebbApiKey
+        $EmulebbBaseUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'eMuleBB base URL (example http://LAN-IP:4711)' -Value $EmulebbBaseUrl) -Name 'EmulebbBaseUrl'
+        $EmulebbApiKey = Read-RequiredSecretValue -Prompt 'eMuleBB API key' -Value $EmulebbApiKey -Name 'EmulebbApiKey'
         $appProfile = Save-AppProfile -BaseUrl $ProwlarrUrl -ApiKey $ProwlarrApiKey -Name $AppProfileName
         if ($null -eq $appProfile -or -not $appProfile.id) {
             throw 'Prowlarr did not return an id for the eMuleBB app profile.'
