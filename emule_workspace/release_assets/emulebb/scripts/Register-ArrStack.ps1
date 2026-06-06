@@ -443,6 +443,31 @@ function Remove-QbitClient {
     Write-Host ('Unregistered download client "{0}" with id {1}.' -f $Name, $existing.id) -ForegroundColor Green
 }
 
+function Get-ProwlarrCommandFailureDetail {
+    param($Status)
+    if ($null -eq $Status) {
+        return ''
+    }
+    $parts = New-Object 'System.Collections.Generic.List[string]'
+    foreach ($name in @('status', 'state', 'message', 'errorMessage', 'exception')) {
+        if ($null -eq $Status.PSObject.Properties[$name]) {
+            continue
+        }
+        $value = ([string]$Status.PSObject.Properties[$name].Value -replace '\s+', ' ').Trim()
+        if (-not [string]::IsNullOrWhiteSpace($value)) {
+            $parts.Add(('{0}: {1}' -f $name, $value))
+        }
+    }
+    if ($parts.Count -eq 0) {
+        return ''
+    }
+    $detail = $parts -join '; '
+    if ($detail.Length -gt 1200) {
+        return $detail.Substring(0, 1200) + '...'
+    }
+    return $detail
+}
+
 function Invoke-ProwlarrSync {
     param([string]$BaseUrl, [string]$ApiKey)
     $command = Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v1/command' -Method 'POST' -Body @{ name = 'ApplicationIndexerSync'; forceSync = $true }
@@ -461,7 +486,11 @@ function Invoke-ProwlarrSync {
             return
         }
         if ($state -eq 'failed') {
-            throw ('Prowlarr application sync failed: {0}' -f $commandId)
+            $detail = Get-ProwlarrCommandFailureDetail -Status $status
+            if ([string]::IsNullOrWhiteSpace($detail)) {
+                throw ('Prowlarr application sync failed: {0}' -f $commandId)
+            }
+            throw ('Prowlarr application sync failed: {0}. {1}' -f $commandId, $detail)
         }
     } while ([DateTime]::UtcNow -lt $deadline)
     throw ('Prowlarr application sync timed out: {0}' -f $commandId)
@@ -574,15 +603,13 @@ $Action = Read-ActionValue -Value $Action
 $Target = Read-TargetValue -Value $Target
 $targetKind = $Target.ToLowerInvariant()
 Write-Host ('eMuleBB {0} Integration - {1}' -f $Target, $Action) -ForegroundColor Cyan
-if ($Action -eq 'Register') {
-    $script:EmulebbBaseUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'eMuleBB base URL (example http://LAN-IP:4711)' -Value $script:EmulebbBaseUrl) -Name 'EmulebbBaseUrl'
-    $script:EmulebbApiKey = Read-RequiredSecretValue -Prompt 'eMuleBB API key' -Value $script:EmulebbApiKey -Name 'EmulebbApiKey'
+if ($Target -eq 'Radarr') {
+    $script:targetUrl = Normalize-ArgumentValue -Value $RadarrUrl
+    $script:targetApiKey = Normalize-ArgumentValue -Value $RadarrApiKey
+} else {
+    $script:targetUrl = Normalize-ArgumentValue -Value $SonarrUrl
+    $script:targetApiKey = Normalize-ArgumentValue -Value $SonarrApiKey
 }
-
-$targetUrl = if ($Target -eq 'Radarr') { $RadarrUrl } else { $SonarrUrl }
-$targetApiKey = if ($Target -eq 'Radarr') { $RadarrApiKey } else { $SonarrApiKey }
-$script:targetUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt ("$Target URL for eMuleBB download client") -Value $targetUrl) -Name ("${Target}Url")
-$script:targetApiKey = Read-RequiredSecretValue -Prompt "$Target API key" -Value $targetApiKey -Name ("${Target}ApiKey")
 
 if ($Action -eq 'Register') {
     $arrCategoryName = Get-ArrCategoryName -Kind $targetKind

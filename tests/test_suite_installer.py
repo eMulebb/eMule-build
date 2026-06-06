@@ -975,9 +975,17 @@ def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() 
     assert "$script:EmulebbBaseUrl = ''" in register_arr_stack
     assert "$script:ProwlarrUrl = ''" in register_arr_stack
     assert "$script:targetUrl = ''" in register_arr_stack
+    assert "function Get-ProwlarrCommandFailureDetail" in register_arr_stack
+    assert "Prowlarr application sync failed: {0}. {1}" in register_arr_stack
     assert "Read-RequiredSecretValue -Prompt 'Prowlarr API key' -Value $script:ProwlarrApiKey -Name 'ProwlarrApiKey'" in register_arr_stack
     assert "Read-RequiredSecretValue -Prompt 'eMuleBB API key' -Value $script:EmulebbApiKey -Name 'EmulebbApiKey'" in register_arr_stack
     assert "Read-RequiredSecretValue -Prompt \"$Target API key\" -Value $script:targetApiKey -Name (\"${Target}ApiKey\")" in register_arr_stack
+    assert "$script:EmulebbBaseUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue" in register_arr_stack
+    assert "$script:targetUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue" in register_arr_stack
+    assert "$script:targetUrl = Normalize-ArgumentValue -Value $RadarrUrl" in register_arr_stack
+    assert "$script:targetUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue" in register_arr_stack
+    assert register_arr_stack.index("Run-TargetWithRetry -Name 'eMuleBB category registration'") < register_arr_stack.index("$script:EmulebbBaseUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue")
+    assert register_arr_stack.index("Run-TargetWithRetry -Name (\"$Target download client {0}\"") < register_arr_stack.index("$script:targetUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue", register_arr_stack.index("Run-TargetWithRetry -Name (\"$Target download client {0}\""))
     assert "Set-ProviderField -Provider $payload -Name 'password' -Value $EmuleApiKey" in register_arr_stack
     assert "Set-ProviderField -Provider $payload -Name 'apiKey' -Value $ArrKey" in register_arr_stack
     assert "if ($SyncProwlarrOnly)" in register_arr_stack
