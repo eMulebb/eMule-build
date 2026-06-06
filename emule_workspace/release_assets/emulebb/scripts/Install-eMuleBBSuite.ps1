@@ -2478,19 +2478,20 @@ function Test-ArrIndexerSynced {
     param([ValidateSet('Radarr','Sonarr')][string]`$Target)
     try {
         if (`$Target -eq 'Radarr') {
-            & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -VerifyIndexerOnly -Target Radarr -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -RadarrUrl `$RadarrUrl -RadarrApiKey `$RadarrKey -DownloadClientName 'eMuleBB Suite' -NoRetry | Out-Null
+            & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -VerifyIndexerOnly -Target Radarr -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -RadarrUrl `$RadarrUrl -RadarrApiKey `$RadarrKey -DownloadClientName 'eMuleBB Suite' -NoRetry *> `$null
         } else {
-            & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -VerifyIndexerOnly -Target Sonarr -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -SonarrUrl `$SonarrUrl -SonarrApiKey `$SonarrKey -DownloadClientName 'eMuleBB Suite' -NoRetry | Out-Null
+            & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -VerifyIndexerOnly -Target Sonarr -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -SonarrUrl `$SonarrUrl -SonarrApiKey `$SonarrKey -DownloadClientName 'eMuleBB Suite' -NoRetry *> `$null
         }
         return `$true
     } catch {
-        Write-Host ("{0} indexer is not synced yet: {1}" -f `$Target, `$_.Exception.Message) -ForegroundColor Yellow
         return `$false
     }
 }
 function Wait-ArrIndexersSynced {
     `$deadline = [DateTime]::UtcNow.AddSeconds(30)
     Write-Host 'Waiting up to 30 seconds for Prowlarr to sync Radarr and Sonarr indexers automatically...'
+    Write-Host 'Giving Prowlarr 6 seconds to start syncing before the first verification probe...'
+    Start-Sleep -Seconds 6
     do {
         `$radarrSynced = Test-ArrIndexerSynced -Target 'Radarr'
         `$sonarrSynced = Test-ArrIndexerSynced -Target 'Sonarr'

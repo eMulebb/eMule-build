@@ -274,7 +274,11 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "function Wait-ArrIndexersSynced" in start_suite
     assert "function Invoke-ProwlarrSyncIfNeeded" in start_suite
     assert "AddSeconds(30)" in start_suite
+    assert "Giving Prowlarr 6 seconds to start syncing before the first verification probe" in start_suite
+    assert "Start-Sleep -Seconds 6" in start_suite
     assert "Start-Sleep -Seconds 2" in start_suite
+    assert "-NoRetry *> $null" in start_suite
+    assert "indexer is not synced yet" not in start_suite
     assert "Prowlarr application sync completed automatically." in start_suite
     assert "triggering ApplicationIndexerSync" in start_suite
     assert "Invoke-StepWithRetry -Name 'Prowlarr conditional application sync'" in start_suite
