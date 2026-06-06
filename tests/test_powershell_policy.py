@@ -1555,7 +1555,7 @@ function Invoke-JsonApi {
             fields = @(
                 [pscustomobject]@{ name = 'baseUrl'; value = 'http://prowlarr/7/' },
                 [pscustomobject]@{ name = 'apiPath'; value = '/api' },
-                [pscustomobject]@{ name = 'apiKey'; value = 'prowlarr-key' },
+                [pscustomobject]@{ name = 'apiKey'; value = '********' },
                 [pscustomobject]@{ name = 'categories'; value = @(2000) }
             )
         })
@@ -1587,6 +1587,8 @@ function Test-ApiKeyRejectedError { param($Exception) return $false }
         + _extract_powershell_function(script_text, "Get-ProwlarrIndexer")
         + "\n"
         + _extract_powershell_function(script_text, "Assert-ProviderFieldEquals")
+        + "\n"
+        + _extract_powershell_function(script_text, "Assert-ProviderFieldPresent")
         + "\n"
         + _extract_powershell_function(script_text, "Test-CategorySetEquals")
         + "\n"

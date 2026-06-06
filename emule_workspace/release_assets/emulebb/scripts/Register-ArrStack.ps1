@@ -660,6 +660,16 @@ function Assert-ProviderFieldEquals {
     }
 }
 
+function Assert-ProviderFieldPresent {
+    param($Provider, [string]$FieldName, [string]$FailureMessage)
+    foreach ($field in @($Provider.fields)) {
+        if ($field.name -eq $FieldName) {
+            return
+        }
+    }
+    throw $FailureMessage
+}
+
 function Test-CategorySetEquals {
     param($Actual, $Expected)
     $actualItems = @($Actual | ForEach-Object { [int]$_ } | Sort-Object)
@@ -702,7 +712,7 @@ function Verify-ArrProwlarrIndexer {
         throw ('Arr indexer "{0}" points at "{1}" instead of "{2}". Run Prowlarr application sync again.' -f $indexer.name, $actualBaseUrl, $expectedBaseUrl)
     }
     Assert-ProviderFieldEquals -Provider $indexer -FieldName 'apiPath' -ExpectedValue '/api' -FailureMessage ('Arr indexer "{0}" has unexpected apiPath: {{0}}' -f $indexer.name)
-    Assert-ProviderFieldEquals -Provider $indexer -FieldName 'apiKey' -ExpectedValue $ProwlarrKey -FailureMessage ('Arr indexer "{0}" has an unexpected Prowlarr API key.' -f $indexer.name)
+    Assert-ProviderFieldPresent -Provider $indexer -FieldName 'apiKey' -FailureMessage ('Arr indexer "{0}" is missing its Prowlarr API key field.' -f $indexer.name)
 
     $actualCategories = @(Get-ProviderFieldValue -Provider $indexer -Name 'categories')
     $expectedCategories = Get-ArrIndexerCategories -Kind $Kind
