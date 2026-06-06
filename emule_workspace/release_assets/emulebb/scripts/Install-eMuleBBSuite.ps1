@@ -1634,6 +1634,11 @@ function Write-CredentialsFile {
         $lines.Add('Username: emule')
         $lines.Add("Password: $($Config.services.emulebb.apiKey)")
     }
+    if ([string]$Config.bundle -eq 'Full') {
+        $lines.Add('')
+        $lines.Add('First-run setup')
+        $lines.Add('Run scripts\Start-Suite.ps1 once before adding movies or series. It starts the suite, registers aMuTorrent/Prowlarr/Radarr/Sonarr, and creates the Radarr/Sonarr root folders.')
+    }
     $lines.Add('')
     $lines.Add('Files')
     $lines.Add('Suite config: manifests\suite-config.json')
@@ -1715,7 +1720,7 @@ function Write-CredentialsFile {
   <div class="grid">
 $cardsHtml
   </div>
-  <footer>Keep this file private. API keys and passwords are shown here for first-run setup and recovery.</footer>
+  <footer>Keep this file private. API keys and passwords are shown here for first-run setup and recovery. For Full installs, run scripts\Start-Suite.ps1 once before adding movies or series so Radarr/Sonarr root folders and suite registrations are created.</footer>
 </main>
 <script>
 document.addEventListener('click', async function (event) {
@@ -1837,8 +1842,19 @@ function Invoke-SuiteJsonApi {
         throw "`$Name failed at `$Uri. `$(Get-ExceptionMessage -Exception `$_.Exception)"
     }
 }
+function Get-ServiceTroubleshootingHint {
+    param([string]`$Name)
+    switch (`$Name) {
+        'eMuleBB' { return "Check `$Root\profiles\emulebb\logs and confirm eMuleBB is not blocked by Windows Firewall or Defender." }
+        'aMuTorrent' { return "Check `$Root\data\amutorrent\logs and confirm the pinned Node runtime exists under `$Root\runtime\node." }
+        'Prowlarr' { return "Check `$Root\data\prowlarr\logs and `$Root\data\prowlarr\config.xml." }
+        'Radarr' { return "Check `$Root\data\radarr\logs and `$Root\data\radarr\config.xml." }
+        'Sonarr' { return "Check `$Root\data\sonarr\logs and `$Root\data\sonarr\config.xml." }
+        default { return "Check the service log and config files under `$Root\data." }
+    }
+}
 function Wait-Json {
-    param([string]`$Uri, [hashtable]`$Headers = @{})
+    param([string]`$Name, [string]`$Uri, [hashtable]`$Headers = @{})
     `$lastError = ''
     for (`$i = 0; `$i -lt 90; `$i++) {
         try {
@@ -1850,9 +1866,9 @@ function Wait-Json {
         }
     }
     if ([string]::IsNullOrWhiteSpace(`$lastError)) {
-        throw "Timed out waiting for `$Uri."
+        throw "Timed out waiting for `$Name at `$Uri. `$(Get-ServiceTroubleshootingHint -Name `$Name)"
     }
-    throw "Timed out waiting for `$Uri. Last error: `$lastError"
+    throw "Timed out waiting for `$Name at `$Uri. Last error: `$lastError. `$(Get-ServiceTroubleshootingHint -Name `$Name)"
 }
 function Set-ObjectProperty {
     param(`$Target, [string]`$Name, `$Value)
@@ -1957,22 +1973,22 @@ function Ensure-ArrRootFolder {
 }
 function Ensure-EmuleBBAvailable {
     & (Join-Path `$Root 'scripts\Start-eMuleBB.ps1')
-    Wait-Json -Uri "`$EmuleUrl/api/v1/app" -Headers @{ 'X-API-Key' = `$EmuleKey }
+    Wait-Json -Name 'eMuleBB' -Uri "`$EmuleUrl/api/v1/app" -Headers @{ 'X-API-Key' = `$EmuleKey }
 }
 function Ensure-SuiteServicesAvailable {
     Ensure-EmuleBBAvailable
     if (`$Bundle -ne 'Core' -and -not [string]::IsNullOrWhiteSpace(`$AmutorrentUrl)) {
-        Wait-Json -Uri "`$AmutorrentUrl/api/auth/status"
+        Wait-Json -Name 'aMuTorrent' -Uri "`$AmutorrentUrl/api/auth/status"
     }
     if (`$Bundle -eq 'Full') {
         if (-not [string]::IsNullOrWhiteSpace(`$ProwlarrUrl) -and -not [string]::IsNullOrWhiteSpace(`$ProwlarrKey)) {
-            Wait-Json -Uri "`$ProwlarrUrl/api/v1/system/status" -Headers @{ 'X-Api-Key' = `$ProwlarrKey }
+            Wait-Json -Name 'Prowlarr' -Uri "`$ProwlarrUrl/api/v1/system/status" -Headers @{ 'X-Api-Key' = `$ProwlarrKey }
         }
         if (-not [string]::IsNullOrWhiteSpace(`$RadarrUrl) -and -not [string]::IsNullOrWhiteSpace(`$RadarrKey)) {
-            Wait-Json -Uri "`$RadarrUrl/api/v3/system/status" -Headers @{ 'X-Api-Key' = `$RadarrKey }
+            Wait-Json -Name 'Radarr' -Uri "`$RadarrUrl/api/v3/system/status" -Headers @{ 'X-Api-Key' = `$RadarrKey }
         }
         if (-not [string]::IsNullOrWhiteSpace(`$SonarrUrl) -and -not [string]::IsNullOrWhiteSpace(`$SonarrKey)) {
-            Wait-Json -Uri "`$SonarrUrl/api/v3/system/status" -Headers @{ 'X-Api-Key' = `$SonarrKey }
+            Wait-Json -Name 'Sonarr' -Uri "`$SonarrUrl/api/v3/system/status" -Headers @{ 'X-Api-Key' = `$SonarrKey }
         }
     }
 }
@@ -2006,11 +2022,15 @@ function Test-ProcessRunning {
     return `$false
 }
 function Start-ProcessIfMissing {
-    param([string]`$FilePath, [string[]]`$ArgumentList = @(), [string]`$WorkingDirectory = '', [string]`$CommandLineContains = '', [switch]`$Hidden)
+    param([string]`$Name, [string]`$FilePath, [string[]]`$ArgumentList = @(), [string]`$WorkingDirectory = '', [string]`$CommandLineContains = '', [switch]`$Hidden)
+    if (-not (Test-Path -LiteralPath `$FilePath)) {
+        throw "`$Name executable is missing: `$FilePath"
+    }
     if (Test-ProcessRunning -ExecutablePath `$FilePath -CommandLineContains `$CommandLineContains) {
-        Write-Host "Already running: `$FilePath"
+        Write-Host "`$Name is already running: `$FilePath"
         return
     }
+    Write-Host "Starting `${Name}: `$FilePath"
     `$startArgs = @{
         FilePath = `$FilePath
         ArgumentList = `$ArgumentList
@@ -2018,6 +2038,10 @@ function Start-ProcessIfMissing {
     if (-not [string]::IsNullOrWhiteSpace(`$WorkingDirectory)) { `$startArgs.WorkingDirectory = `$WorkingDirectory }
     if (`$Hidden) { `$startArgs.WindowStyle = 'Hidden' }
     Start-Process @startArgs | Out-Null
+    Start-Sleep -Seconds 2
+    if (-not (Test-ProcessRunning -ExecutablePath `$FilePath -CommandLineContains `$CommandLineContains)) {
+        throw "`$Name did not stay running after launch from `$FilePath. `$(Get-ServiceTroubleshootingHint -Name `$Name)"
+    }
 }
 function Start-ArrHost {
     param([string]`$Name, [string]`$DataDir)
@@ -2027,7 +2051,7 @@ function Start-ArrHost {
     if (-not `$exe) {
         throw "Missing Windows tray host for `$Name under `$appRoot"
     }
-    Start-ProcessIfMissing -FilePath `$exe.FullName -ArgumentList @('/data=' + (Join-Path `$Root `$DataDir), '/nobrowser') -CommandLineContains (Join-Path `$Root `$DataDir)
+    Start-ProcessIfMissing -Name `$Name -FilePath `$exe.FullName -ArgumentList @('/data=' + (Join-Path `$Root `$DataDir), '/nobrowser') -CommandLineContains (Join-Path `$Root `$DataDir)
 }
 `$Bundle = [string]`$Config.bundle
 `$EmuleHost = Get-ClientHost `$Config.services.emulebb.bindAddress
@@ -2050,13 +2074,13 @@ if (`$Bundle -ne 'Core') {
     `$amutorrentServer = Join-Path `$Root 'apps\aMuTorrent\server\server.js'
     `$env:AMUTORRENT_DATA_DIR = Join-Path `$Root 'data\amutorrent'
     Initialize-AmutorrentConfig -DataDir `$env:AMUTORRENT_DATA_DIR -BindAddress ([string]`$Config.services.amutorrent.bindAddress) -Port ([int]`$Config.services.amutorrent.port) -Username ([string]`$Config.credentials.username) -Password ([string]`$Config.credentials.password)
-    Start-ProcessIfMissing -FilePath `$node -ArgumentList @(`$amutorrentServer) -WorkingDirectory (Join-Path `$Root 'apps\aMuTorrent') -CommandLineContains `$amutorrentServer -Hidden
+    Start-ProcessIfMissing -Name 'aMuTorrent' -FilePath `$node -ArgumentList @(`$amutorrentServer) -WorkingDirectory (Join-Path `$Root 'apps\aMuTorrent') -CommandLineContains `$amutorrentServer -Hidden
 }
 Ensure-EmuleBBAvailable
 if (`$Bundle -ne 'Core') {
     `$AmutorrentHost = Get-ClientHost `$Config.services.amutorrent.bindAddress
     `$AmutorrentUrl = "http://`$(`$AmutorrentHost):`$([int]`$Config.services.amutorrent.port)"
-    Wait-Json -Uri "`$AmutorrentUrl/api/auth/status"
+    Wait-Json -Name 'aMuTorrent' -Uri "`$AmutorrentUrl/api/auth/status"
     Invoke-StepWithRetry -Name 'aMuTorrent registration' -Operation {
         & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-aMuTorrent.ps1') -AmutorrentUrl `$AmutorrentUrl -AmutorrentApiKey '' -AmutorrentUsername ([string]`$Config.credentials.username) -AmutorrentPassword ([string]`$Config.credentials.password) -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -InstanceName 'eMuleBB Suite' -InstanceId 'emulebb-suite' -NoRetry
     }
@@ -2068,9 +2092,9 @@ if (`$Bundle -eq 'Full') {
     `$ProwlarrKey = [string]`$Config.services.prowlarr.apiKey
     `$RadarrKey = [string]`$Config.services.radarr.apiKey
     `$SonarrKey = [string]`$Config.services.sonarr.apiKey
-    Wait-Json -Uri "`$ProwlarrUrl/api/v1/system/status" -Headers @{ 'X-Api-Key' = `$ProwlarrKey }
-    Wait-Json -Uri "`$RadarrUrl/api/v3/system/status" -Headers @{ 'X-Api-Key' = `$RadarrKey }
-    Wait-Json -Uri "`$SonarrUrl/api/v3/system/status" -Headers @{ 'X-Api-Key' = `$SonarrKey }
+    Wait-Json -Name 'Prowlarr' -Uri "`$ProwlarrUrl/api/v1/system/status" -Headers @{ 'X-Api-Key' = `$ProwlarrKey }
+    Wait-Json -Name 'Radarr' -Uri "`$RadarrUrl/api/v3/system/status" -Headers @{ 'X-Api-Key' = `$RadarrKey }
+    Wait-Json -Name 'Sonarr' -Uri "`$SonarrUrl/api/v3/system/status" -Headers @{ 'X-Api-Key' = `$SonarrKey }
     Set-ArrHostCredentials -Name 'Prowlarr' -Url `$ProwlarrUrl -ApiPath 'api/v1' -ApiKey `$ProwlarrKey
     Set-ArrHostCredentials -Name 'Radarr' -Url `$RadarrUrl -ApiPath 'api/v3' -ApiKey `$RadarrKey
     Set-ArrHostCredentials -Name 'Sonarr' -Url `$SonarrUrl -ApiPath 'api/v3' -ApiKey `$SonarrKey
@@ -2255,6 +2279,8 @@ if (-not $KeepDownloads -and -not $DryRun) {
 }
 if (-not $NoStart -and -not $DryRun) {
     & (Join-Path $script:Root 'scripts\Start-Suite.ps1')
+} elseif ($NoStart -and -not $DryRun) {
+    Write-Step "Start skipped because -NoStart was used. Before adding movies or series, run $(Join-Path $script:Root 'scripts\Start-Suite.ps1') once to start services, register integrations, and create Radarr/Sonarr root folders."
 }
 Write-Step "Installed $($script:SuiteConfig.bundle) bundle at $script:Root"
 if (-not $DryRun -and -not $NonInteractive) {

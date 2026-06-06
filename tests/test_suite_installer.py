@@ -190,7 +190,10 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "function Get-HttpErrorDetail" in start_suite
     assert "function Get-ExceptionMessage" in start_suite
     assert "function Invoke-SuiteJsonApi" in start_suite
+    assert "function Get-ServiceTroubleshootingHint" in start_suite
     assert "Last error:" in start_suite
+    assert "Timed out waiting for $Name at $Uri" in start_suite
+    assert "Check $Root\\data\\radarr\\logs" in start_suite
     assert "Invoke-SuiteJsonApi -Name \"$Name web login update\"" in start_suite
     assert "function Ensure-ArrRootFolder" in start_suite
     assert "$rootFolderUrl = \"$Url/$ApiPath/rootfolder\"" in start_suite
@@ -208,14 +211,15 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "function Start-ArrHost" in start_suite
     assert "$trayName = $Name + '.exe'" in start_suite
     assert "Missing Windows tray host" in start_suite
-    assert "Start-ProcessIfMissing -FilePath $exe.FullName" in start_suite
-    assert "Start-ProcessIfMissing -FilePath $exe.FullName -ArgumentList @('/data='" in start_suite
+    assert "Start-ProcessIfMissing -Name $Name -FilePath $exe.FullName" in start_suite
+    assert "Start-ProcessIfMissing -Name $Name -FilePath $exe.FullName -ArgumentList @('/data='" in start_suite
+    assert "did not stay running after launch" in start_suite
     assert "function Ensure-EmuleBBAvailable" in start_suite
     assert "function Ensure-SuiteServicesAvailable" in start_suite
-    assert "Wait-Json -Uri \"$AmutorrentUrl/api/auth/status\"" in start_suite
-    assert "Wait-Json -Uri \"$ProwlarrUrl/api/v1/system/status\" -Headers @{ 'X-Api-Key' = $ProwlarrKey }" in start_suite
-    assert "Wait-Json -Uri \"$RadarrUrl/api/v3/system/status\" -Headers @{ 'X-Api-Key' = $RadarrKey }" in start_suite
-    assert "Wait-Json -Uri \"$SonarrUrl/api/v3/system/status\" -Headers @{ 'X-Api-Key' = $SonarrKey }" in start_suite
+    assert "Wait-Json -Name 'aMuTorrent' -Uri \"$AmutorrentUrl/api/auth/status\"" in start_suite
+    assert "Wait-Json -Name 'Prowlarr' -Uri \"$ProwlarrUrl/api/v1/system/status\" -Headers @{ 'X-Api-Key' = $ProwlarrKey }" in start_suite
+    assert "Wait-Json -Name 'Radarr' -Uri \"$RadarrUrl/api/v3/system/status\" -Headers @{ 'X-Api-Key' = $RadarrKey }" in start_suite
+    assert "Wait-Json -Name 'Sonarr' -Uri \"$SonarrUrl/api/v3/system/status\" -Headers @{ 'X-Api-Key' = $SonarrKey }" in start_suite
     assert "function Invoke-StepWithRetry" in start_suite
     assert "Ensure-SuiteServicesAvailable" in start_suite
     assert "Invoke-StepWithRetry -Name 'Sonarr registration'" in start_suite
@@ -228,8 +232,8 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert start_suite.index("Invoke-StepWithRetry -Name 'Radarr registration'") < start_suite.index("Invoke-StepWithRetry -Name 'Sonarr registration'")
     assert start_suite.index("Invoke-StepWithRetry -Name 'Sonarr registration'") < start_suite.index("Invoke-StepWithRetry -Name 'Prowlarr application sync'")
     assert start_suite.index("foreach ($item in @(@('Prowlarr'") < start_suite.index("Initialize-AmutorrentConfig -DataDir $env:AMUTORRENT_DATA_DIR")
-    assert start_suite.index("Initialize-AmutorrentConfig -DataDir $env:AMUTORRENT_DATA_DIR") < start_suite.index("Start-ProcessIfMissing -FilePath $node")
-    assert start_suite.index("Start-ProcessIfMissing -FilePath $node") < start_suite.index("Invoke-StepWithRetry -Name 'aMuTorrent registration'")
+    assert start_suite.index("Initialize-AmutorrentConfig -DataDir $env:AMUTORRENT_DATA_DIR") < start_suite.index("Start-ProcessIfMissing -Name 'aMuTorrent' -FilePath $node")
+    assert start_suite.index("Start-ProcessIfMissing -Name 'aMuTorrent' -FilePath $node") < start_suite.index("Invoke-StepWithRetry -Name 'aMuTorrent registration'")
 
     stop_suite = (install_root / "scripts" / "Stop-Suite.ps1").read_text(encoding="utf-8-sig")
     assert "Get-CimInstance Win32_Process" in stop_suite
@@ -634,6 +638,8 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
         assert first_keys[service_name] in credentials
     assert "Radarr/Sonarr download client" in credentials
     assert f"Password: {first_keys['emulebb']}" in credentials
+    assert "First-run setup" in credentials
+    assert "Run scripts\\Start-Suite.ps1 once before adding movies or series" in credentials
     credentials_html = (install_root / "credentials.html").read_text(encoding="utf-8-sig")
     assert "eMuleBB Suite Credentials" in credentials_html
     assert "Radarr/Sonarr Download Client" in credentials_html
@@ -641,6 +647,7 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     assert "http://127.0.0.1:" in credentials_html
     assert 'target="_blank"' in credentials_html
     assert 'rel="noopener noreferrer"' in credentials_html
+    assert "run scripts\\Start-Suite.ps1 once before adding movies or series" in credentials_html
     assert suite_password in credentials_html
     for key in first_keys.values():
         assert key in credentials_html
@@ -996,6 +1003,10 @@ def test_suite_amutorrent_registration_repairs_stale_env_owned_clients() -> None
     assert "example http://LAN-IP:4000" in register_amutorrent
     assert "example http://LAN-IP:4711" in register_amutorrent
     assert "function Read-RequiredSecretValue" in register_amutorrent
+    assert "function Get-HttpErrorDetail" in register_amutorrent
+    assert "function Get-ExceptionMessage" in register_amutorrent
+    assert "aMuTorrent request failed at $uri" in register_amutorrent
+    assert "Get-ExceptionMessage -Exception $_.Exception" in register_amutorrent
     assert "Read-RequiredSecretValue -Prompt 'eMuleBB API key' -Value $EmulebbApiKey -Name 'EmulebbApiKey'" in register_amutorrent
     assert "function Test-ClientHasActiveEnvField" in register_amutorrent
     assert "function Remove-StaleEnvOwnedEmulebbClients" in register_amutorrent
@@ -1023,7 +1034,8 @@ def test_suite_generated_update_and_start_scripts_are_refresh_safe() -> None:
     assert "function Test-ProcessRunning" in installer
     assert "function Start-ProcessIfMissing" in installer
     assert "eMuleBB is already running" in installer
-    assert "Start-ProcessIfMissing -FilePath `$node" in installer
+    assert "Start-ProcessIfMissing -Name 'aMuTorrent' -FilePath `$node" in installer
+    assert "Start skipped because -NoStart was used" in installer
     assert "credentials.html" in installer
     assert "if (-not $DryRun -and -not $NonInteractive)" in installer
     assert "Start-Process -FilePath (Join-Path $script:Root 'credentials.html')" in installer
