@@ -467,6 +467,15 @@ function ConvertTo-Hashtable {
     return $Value
 }
 
+function Read-JsonFile {
+    param([string]$Path, [string]$Description)
+    try {
+        return Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json
+    } catch {
+        throw "$Description is not valid JSON: $Path. Fix or regenerate this file, then rerun scripts\Install-eMuleBBSuite.ps1. $($_.Exception.Message)"
+    }
+}
+
 function Merge-Hashtable {
     param([System.Collections.IDictionary]$Target, [System.Collections.IDictionary]$Source)
     foreach ($key in $Source.Keys) {
@@ -571,7 +580,7 @@ function Resolve-SuiteConfig {
         if (-not (Test-Path -LiteralPath $ConfigFile)) {
             throw "ConfigFile is missing: $ConfigFile"
         }
-        $fileConfig = ConvertTo-Hashtable (Get-Content -Raw -LiteralPath $ConfigFile | ConvertFrom-Json)
+        $fileConfig = ConvertTo-Hashtable (Read-JsonFile -Path $ConfigFile -Description 'ConfigFile')
         Merge-Hashtable -Target $config -Source $fileConfig
     }
 
@@ -1141,7 +1150,7 @@ function Load-DependencyManifestPayload {
     if (-not (Test-Path -LiteralPath $ManifestPath)) {
         throw "DependencyManifest is missing: $ManifestPath"
     }
-    return Get-Content -Raw -LiteralPath $ManifestPath | ConvertFrom-Json
+    return Read-JsonFile -Path $ManifestPath -Description 'DependencyManifest'
 }
 
 function Load-DependencyManifest {
@@ -1214,7 +1223,7 @@ function Save-ReleaseZip {
     Invoke-Download -Url $ZipUrl -Destination $archivePath
     $expectedHash = ''
     if (-not $DryRun -and (Test-Path -LiteralPath $manifestPath)) {
-        $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
+        $manifest = Read-JsonFile -Path $manifestPath -Description "$Name release manifest"
         $sha256Property = @($manifest.PSObject.Properties | Where-Object { $_.Name -eq 'sha256' } | Select-Object -First 1)
         if ($sha256Property.Count -gt 0) {
             $expectedHash = [string]$sha256Property[0].Value
@@ -1265,7 +1274,7 @@ function Save-PackageZip {
             throw "$Name local package manifest is missing: $manifestPath"
         }
         if (-not $DryRun) {
-            $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
+            $manifest = Read-JsonFile -Path $manifestPath -Description "$Name local package manifest"
             $sha256Property = @($manifest.PSObject.Properties | Where-Object { $_.Name -eq 'sha256' } | Select-Object -First 1)
             $expectedHash = ''
             if ($sha256Property.Count -gt 0) {
@@ -2100,8 +2109,15 @@ function Initialize-AmutorrentConfig {
     New-Item -ItemType Directory -Force -Path `$DataDir | Out-Null
     `$configPath = Join-Path `$DataDir 'config.json'
     if (Test-Path -LiteralPath `$configPath) {
-        `$config = Get-Content -Raw -LiteralPath `$configPath | ConvertFrom-Json
-        if (`$null -eq `$config) { `$config = [pscustomobject]@{} }
+        try {
+            `$config = Get-Content -Raw -LiteralPath `$configPath | ConvertFrom-Json
+            if (`$null -eq `$config) { `$config = [pscustomobject]@{} }
+        } catch {
+            `$backupPath = "`$configPath.corrupt.`$(Get-Date -Format 'yyyyMMddHHmmss')"
+            Move-Item -Force -LiteralPath `$configPath -Destination `$backupPath
+            Write-Warning "aMuTorrent config was not valid JSON and was moved to `$backupPath. A fresh suite-managed config will be written."
+            `$config = [pscustomobject]@{}
+        }
     } else {
         `$config = [pscustomobject]@{}
     }
@@ -2366,7 +2382,7 @@ function Test-SuiteProcess {
 `$processes = @(Get-CimInstance Win32_Process | Where-Object { Test-SuiteProcess -Process `$_ })
 if (`$processes.Count -eq 0) {
     Write-Host 'No eMuleBB Suite processes are running.'
-    exit 0
+    return
 }
 foreach (`$process in `$processes) {
     `$label = if ([string]::IsNullOrWhiteSpace([string]`$process.ExecutablePath)) { [string]`$process.Name } else { [string]`$process.ExecutablePath }

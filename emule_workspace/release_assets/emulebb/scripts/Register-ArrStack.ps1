@@ -605,7 +605,7 @@ function Run-TargetWithRetry {
             }
             $answer = Read-Host ('Retry {0}? [Y/n]' -f $Name)
             if (-not ([string]::IsNullOrWhiteSpace($answer) -or $answer.Trim().ToLowerInvariant().StartsWith('y'))) {
-                exit 1
+                throw "$Name cancelled by user."
             }
             if ($null -ne $OnRetry) {
                 & $OnRetry
@@ -624,7 +624,7 @@ if ($SyncProwlarrOnly) {
         $script:ProwlarrApiKey = Read-RequiredSecretValue -Prompt 'Prowlarr API key' -Value $script:ProwlarrApiKey -Name 'ProwlarrApiKey'
         Invoke-ProwlarrSync -BaseUrl $script:ProwlarrUrl -ApiKey $script:ProwlarrApiKey
     }
-    exit 0
+    return
 }
 
 $ProwlarrUrl = Read-OptionalValue -Prompt 'Prowlarr URL for application sync (example http://LAN-IP:9696, blank to skip)' -Value $ProwlarrUrl
@@ -702,4 +702,4 @@ if ($ProwlarrUrl -and -not $SkipProwlarrSync) {
 }
 
 Write-Host ('eMuleBB {0} integration {1} finished.' -f $Target, $Action.ToLowerInvariant()) -ForegroundColor Green
-exit 0
+return

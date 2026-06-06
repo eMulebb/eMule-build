@@ -173,6 +173,8 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "Set-ObjectProperty -Target $auth -Name 'adminUsername' -Value $Username" in start_suite
     assert "Set-ObjectProperty -Target $auth -Name 'password' -Value $Password" in start_suite
     assert "Get-ObjectPropertyValue -Target $auth -Name 'password'" not in start_suite
+    assert "aMuTorrent config was not valid JSON" in start_suite
+    assert "A fresh suite-managed config will be written." in start_suite
     assert "$env:EMULEBB_" not in start_suite
     assert "$env:BIND_ADDRESS" not in start_suite
     assert "$env:WEB_AUTH_" not in start_suite
@@ -253,6 +255,8 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "$Process.Name -eq 'node.exe'" in stop_suite
     assert "StartsWith($Root" not in stop_suite
     assert "No eMuleBB Suite processes are running." in stop_suite
+    assert "return" in stop_suite
+    assert "exit 0" not in stop_suite
     assert "Stopping {0} (PID {1})" in stop_suite
     assert "eMuleBB Suite stop request completed." in stop_suite
 
@@ -963,6 +967,11 @@ def test_suite_installer_preserves_app_roots_when_extracting_multiple_packages()
 def test_suite_installer_requires_hashed_pinned_dependencies() -> None:
     installer = INSTALLER.read_text(encoding="utf-8")
 
+    assert "function Read-JsonFile" in installer
+    assert "$Description is not valid JSON: $Path" in installer
+    assert "Fix or regenerate this file, then rerun scripts\\Install-eMuleBBSuite.ps1." in installer
+    assert "Read-JsonFile -Path $ConfigFile -Description 'ConfigFile'" in installer
+    assert "Read-JsonFile -Path $ManifestPath -Description 'DependencyManifest'" in installer
     assert "9d388c476edfe579439830dc87f05fc50c86fa0dce80802726832c72088e731b" in installer
     assert "cc4fdffc4a82a3805e53aa9c016749fd17247eb21dd6764b1b53ced471695bb7" in installer
     assert "19a81e69dedd8d317b5fa8a1a9c48d63bc3b3f3ba87b84c94ff6d75b1803e419" in installer
@@ -1002,7 +1011,8 @@ def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() 
     assert "-AsSecureString" not in register_arr_stack
     assert "return Normalize-ArgumentValue -Value (Read-Host $Prompt)" in register_arr_stack
     assert "[scriptblock]$OnRetry = $null" in register_arr_stack
-    assert "exit 1" in register_arr_stack
+    assert "\nexit " not in register_arr_stack
+    assert 'throw "$Name cancelled by user."' in register_arr_stack
     assert "$script:EmulebbBaseUrl = ''" in register_arr_stack
     assert "$script:ProwlarrUrl = ''" in register_arr_stack
     assert "$script:targetUrl = ''" in register_arr_stack
@@ -1043,6 +1053,9 @@ def test_suite_prowlarr_registration_requires_and_passes_api_keys() -> None:
     assert "function Read-RequiredSecretValue" in register_prowlarr
     assert "-AsSecureString" not in register_prowlarr
     assert "return Normalize-ArgumentValue -Value (Read-Host $Prompt)" in register_prowlarr
+    assert "\nexit " not in register_prowlarr
+    assert "if ($NoRetry) {" in register_prowlarr
+    assert 'throw "$Action cancelled by user."' in register_prowlarr
     assert "Read-RequiredSecretValue -Prompt 'Prowlarr API key' -Value $ProwlarrApiKey -Name 'ProwlarrApiKey'" in register_prowlarr
     assert "Read-RequiredSecretValue -Prompt 'eMuleBB API key' -Value $EmulebbApiKey -Name 'EmulebbApiKey'" in register_prowlarr
     assert "$EmulebbBaseUrl = ''" in register_prowlarr
@@ -1066,6 +1079,8 @@ def test_suite_amutorrent_registration_repairs_stale_env_owned_clients() -> None
     assert "-AsSecureString" not in register_amutorrent
     assert "return Normalize-ArgumentValue -Value (Read-Host $Prompt)" in register_amutorrent
     assert "[switch]$PromptWhenBlank" in register_amutorrent
+    assert "\nexit " not in register_amutorrent
+    assert 'throw "$Name cancelled by user."' in register_amutorrent
     assert "$script:AmutorrentApiKeyWasProvided = $PSBoundParameters.ContainsKey('AmutorrentApiKey')" in register_amutorrent
     assert "-PromptWhenBlank:(-not $script:AmutorrentApiKeyWasProvided)" in register_amutorrent
     assert "[scriptblock]$OnRetry = $null" in register_amutorrent
@@ -1164,6 +1179,10 @@ def test_suite_bootstrapper_requires_emulebb_package_root() -> None:
     assert "[ValidateRange(0, 65535)]" in bootstrapper
     assert "[ValidateRange(1, 65535)]" not in bootstrapper
     assert "function Invoke-GitHubApi" in bootstrapper
+    assert "function Read-JsonFile" in bootstrapper
+    assert "Download or regenerate this file, then rerun the bootstrapper." in bootstrapper
+    assert 'Read-JsonFile -Path $resolvedManifest -Description "$Name local package manifest"' in bootstrapper
+    assert "Read-JsonFile -Path $manifestPath -Description 'Downloaded eMuleBB release manifest'" in bootstrapper
     assert "download the package assets in a browser from GitHub Releases" in bootstrapper
     assert "https://github.com/emulebb/emulebb/releases" in bootstrapper
     assert "https://github.com/emulebb/amutorrent/releases" in bootstrapper

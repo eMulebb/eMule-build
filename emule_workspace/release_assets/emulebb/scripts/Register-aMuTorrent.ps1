@@ -551,7 +551,7 @@ function Run-TargetWithRetry {
             }
             $answer = Read-Host ('Retry {0}? [Y/n]' -f $Name)
             if (-not ([string]::IsNullOrWhiteSpace($answer) -or $answer.Trim().ToLowerInvariant().StartsWith('y'))) {
-                exit 1
+                throw "$Name cancelled by user."
             }
             if ($null -ne $OnRetry) {
                 & $OnRetry
@@ -588,4 +588,4 @@ Run-TargetWithRetry -Name "aMuTorrent eMuleBB $Action" -NoRetry:$NoRetry -OnRetr
 }
 
 Write-Host ('eMuleBB aMuTorrent integration {0} finished.' -f $Action.ToLowerInvariant()) -ForegroundColor Green
-exit 0
+return

@@ -127,6 +127,15 @@ function Get-ExceptionMessage {
     return $Exception.Message
 }
 
+function Read-JsonFile {
+    param([string]$Path, [string]$Description)
+    try {
+        return Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json
+    } catch {
+        throw "$Description is not valid JSON: $Path. Download or regenerate this file, then rerun the bootstrapper. $($_.Exception.Message)"
+    }
+}
+
 function Invoke-GitHubApi {
     param([string]$Uri, [string]$Description)
     try {
@@ -515,7 +524,7 @@ function Assert-LocalPackage {
     if (-not (Test-Path -LiteralPath $resolvedManifest)) {
         throw "$Name local package manifest is missing: $resolvedManifest"
     }
-    $manifest = Get-Content -Raw -LiteralPath $resolvedManifest | ConvertFrom-Json
+    $manifest = Read-JsonFile -Path $resolvedManifest -Description "$Name local package manifest"
     if ($null -eq $manifest.PSObject.Properties['sha256'] -or [string]::IsNullOrWhiteSpace([string]$manifest.sha256)) {
         throw "$Name local package manifest does not contain sha256: $resolvedManifest"
     }
@@ -573,7 +582,7 @@ if ($localEmulebbPackage) {
     Invoke-Download -Url $manifestUrl -Destination $manifestPath
     Invoke-Download -Url $zipUrl -Destination $zipPath
     if (-not $DryRun) {
-        $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
+        $manifest = Read-JsonFile -Path $manifestPath -Description 'Downloaded eMuleBB release manifest'
         Assert-FileHash -Path $zipPath -ExpectedSha256 ([string]$manifest.sha256)
     }
 }

@@ -370,7 +370,7 @@ do {
         $ProwlarrApiKey = Read-RequiredSecretValue -Prompt 'Prowlarr API key' -Value $ProwlarrApiKey -Name 'ProwlarrApiKey'
         if ($Action -eq 'Unregister') {
             Remove-Indexer -BaseUrl $ProwlarrUrl -ApiKey $ProwlarrApiKey -Name $IndexerName
-            exit 0
+            return
         }
         $EmulebbBaseUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'eMuleBB base URL (example http://LAN-IP:4711)' -Value $EmulebbBaseUrl) -Name 'EmulebbBaseUrl'
         $EmulebbApiKey = Read-RequiredSecretValue -Prompt 'eMuleBB API key' -Value $EmulebbApiKey -Name 'EmulebbApiKey'
@@ -380,10 +380,15 @@ do {
         }
         $saved = Save-Indexer -BaseUrl $ProwlarrUrl -ApiKey $ProwlarrApiKey -Name $IndexerName -TorznabBaseUrl ($EmulebbBaseUrl.TrimEnd('/') + '/indexer/emulebb') -TorznabApiKey $EmulebbApiKey -AppProfileId ([int]$appProfile.id)
         Write-Host ('Registered Prowlarr indexer "{0}" with id {1}.' -f $saved.name, $saved.id) -ForegroundColor Green
-        exit 0
+        return
     } catch {
-        if (-not (Confirm-Retry -Message ('{0} failed: {1}' -f $Action, (Get-ExceptionMessage -Exception $_.Exception)) -NoRetry:$NoRetry)) {
-            exit 1
+        $message = ('{0} failed: {1}' -f $Action, (Get-ExceptionMessage -Exception $_.Exception))
+        if ($NoRetry) {
+            Write-Host $message -ForegroundColor Red
+            throw
+        }
+        if (-not (Confirm-Retry -Message $message)) {
+            throw "$Action cancelled by user."
         }
         $ProwlarrUrl = ''
         $ProwlarrApiKey = ''
