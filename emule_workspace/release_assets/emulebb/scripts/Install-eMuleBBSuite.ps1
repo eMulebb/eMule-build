@@ -32,7 +32,7 @@ param(
 
     [string]$ConfigFile,
 
-    [string]$ControlBindAddress = $env:X_LOCAL_IP,
+    [string]$ControlBindAddress,
     [string]$EmulebbBindAddress,
     [string]$AmutorrentBindAddress,
     [string]$ProwlarrBindAddress,
@@ -307,15 +307,58 @@ function Get-AutoLanBindAddress {
     return ''
 }
 
+function Test-LoopbackAddressText {
+    param([string]$Address)
+    return $Address -eq 'localhost' -or $Address -eq '::1' -or $Address -eq '127.0.0.1' -or $Address -match '^127\.'
+}
+
+function Test-WildcardBindAddress {
+    param([string]$Address)
+    return $Address -eq '0.0.0.0' -or $Address -eq '::'
+}
+
 function Get-DefaultControlBindAddress {
-    if (-not [string]::IsNullOrWhiteSpace($env:X_LOCAL_IP)) {
-        return $env:X_LOCAL_IP.Trim()
+    $envAddress = [string]$env:X_LOCAL_IP
+    if (-not [string]::IsNullOrWhiteSpace($envAddress)) {
+        $envAddress = $envAddress.Trim()
+        if (-not (Test-LoopbackAddressText -Address $envAddress) -and -not (Test-WildcardBindAddress -Address $envAddress)) {
+            return $envAddress
+        }
     }
     $lanAddress = Get-AutoLanBindAddress
     if (-not [string]::IsNullOrWhiteSpace($lanAddress)) {
         return $lanAddress
     }
-    return '127.0.0.1'
+    return ''
+}
+
+function Resolve-ServiceClientHost {
+    param([string]$ServiceName, [string]$BindAddress, [string]$ExistingClientHost)
+    $bind = ([string]$BindAddress).Trim()
+    $existing = ([string]$ExistingClientHost).Trim()
+    if (-not [string]::IsNullOrWhiteSpace($existing) -and -not (Test-WildcardBindAddress -Address $existing)) {
+        return $existing
+    }
+    if (Test-WildcardBindAddress -Address $bind) {
+        $detected = Get-AutoLanBindAddress
+        if (-not [string]::IsNullOrWhiteSpace($detected)) {
+            return $detected
+        }
+        throw "$ServiceName binds to $bind, but no LAN/VPN IPv4 address was detected for generated client URLs. Pass -ControlBindAddress or the service-specific bind parameter with a concrete LAN/VPN IP, or pass explicit 127.0.0.1 for local-only use."
+    }
+    return $bind
+}
+
+function Set-SuiteClientHosts {
+    param([hashtable]$Config)
+    foreach ($serviceName in @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr')) {
+        $service = $Config.services[$serviceName]
+        $existing = ''
+        if ($service.Contains('clientHost')) {
+            $existing = [string]$service.clientHost
+        }
+        $service.clientHost = Resolve-ServiceClientHost -ServiceName $serviceName -BindAddress ([string]$service.bindAddress) -ExistingClientHost $existing
+    }
 }
 
 function Get-EmulebbExecutableNameForFlavor {
@@ -414,11 +457,11 @@ function New-SuiteConfig {
         }
         allowRemoteServiceBind = [bool]$AllowRemoteServiceBind
         services = [ordered]@{
-            emulebb = [ordered]@{ bindAddress = (Resolve-OptionalValue -Value $EmulebbBindAddress -Default $controlBind); port = $EmulebbPort; apiKey = '' }
-            amutorrent = [ordered]@{ bindAddress = (Resolve-OptionalValue -Value $AmutorrentBindAddress -Default $controlBind); port = $AmutorrentPort }
-            prowlarr = [ordered]@{ bindAddress = (Resolve-OptionalValue -Value $ProwlarrBindAddress -Default $controlBind); port = $ProwlarrPort; apiKey = '' }
-            radarr = [ordered]@{ bindAddress = (Resolve-OptionalValue -Value $RadarrBindAddress -Default $controlBind); port = $RadarrPort; apiKey = '' }
-            sonarr = [ordered]@{ bindAddress = (Resolve-OptionalValue -Value $SonarrBindAddress -Default $controlBind); port = $SonarrPort; apiKey = '' }
+            emulebb = [ordered]@{ bindAddress = (Resolve-OptionalValue -Value $EmulebbBindAddress -Default $controlBind); clientHost = ''; port = $EmulebbPort; apiKey = '' }
+            amutorrent = [ordered]@{ bindAddress = (Resolve-OptionalValue -Value $AmutorrentBindAddress -Default $controlBind); clientHost = ''; port = $AmutorrentPort }
+            prowlarr = [ordered]@{ bindAddress = (Resolve-OptionalValue -Value $ProwlarrBindAddress -Default $controlBind); clientHost = ''; port = $ProwlarrPort; apiKey = '' }
+            radarr = [ordered]@{ bindAddress = (Resolve-OptionalValue -Value $RadarrBindAddress -Default $controlBind); clientHost = ''; port = $RadarrPort; apiKey = '' }
+            sonarr = [ordered]@{ bindAddress = (Resolve-OptionalValue -Value $SonarrBindAddress -Default $controlBind); clientHost = ''; port = $SonarrPort; apiKey = '' }
         }
         p2p = [ordered]@{
             bindInterface = (Resolve-OptionalValue -Value $P2PBindInterface -Default '')
@@ -630,6 +673,7 @@ function Resolve-SuiteConfig {
         $config.allowRemoteServiceBind = [bool]$AllowRemoteServiceBind
     }
     $config.emulebbExecutableName = Get-EmulebbExecutableNameForFlavor -PackageFlavor ([string]$config.emulebbPackageFlavor)
+    Set-SuiteClientHosts -Config $config
     return $config
 }
 
@@ -726,7 +770,13 @@ function Invoke-InstallWizard {
             }
             1 {
                 $defaultBind = Get-DefaultControlBindAddress
-                $choice = Read-WizardChoice -Prompt 'Control service bind policy' -Choices @("Default local bind ($defaultBind)", 'One custom bind address for all services', 'Per-service bind addresses') -DefaultIndex 0
+                if ([string]::IsNullOrWhiteSpace($defaultBind)) {
+                    $choices = @('One custom bind address for all services', 'Per-service bind addresses')
+                    $choice = Read-WizardChoice -Prompt 'Control service bind policy' -Choices $choices -DefaultIndex 0
+                    if ($choice -ge 0) { $choice++ }
+                } else {
+                    $choice = Read-WizardChoice -Prompt 'Control service bind policy' -Choices @("Detected LAN/VPN bind ($defaultBind)", 'One custom bind address for all services', 'Per-service bind addresses') -DefaultIndex 0
+                }
                 if ($choice -lt 0) { $step--; continue }
                 if ($choice -eq 0) {
                     foreach ($serviceName in @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr')) {
@@ -743,6 +793,7 @@ function Invoke-InstallWizard {
                     }
                 }
                 $Config.allowRemoteServiceBind = Test-HasRemoteServiceBind -Config $Config
+                Set-SuiteClientHosts -Config $Config
                 $step++
             }
             2 {
@@ -821,7 +872,8 @@ function Write-ConfigSummary {
     Write-Host "  Version/platform: $($Config.version) / $($Config.platform)"
     foreach ($serviceName in @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr')) {
         $service = $Config.services[$serviceName]
-        Write-Host ("  {0}: {1}:{2}" -f $serviceName, $service.bindAddress, $service.port)
+        $clientHostText = if ([string]::Equals([string]$service.clientHost, [string]$service.bindAddress, [StringComparison]::OrdinalIgnoreCase)) { '' } else { " (client URL host: $($service.clientHost))" }
+        Write-Host ("  {0}: {1}:{2}{3}" -f $serviceName, $service.bindAddress, $service.port, $clientHostText)
     }
     if ([string]::IsNullOrWhiteSpace($Config.p2p.bindInterface)) {
         Write-Host '  P2P bind interface: none'
@@ -855,13 +907,13 @@ function Get-LocalIPv4Addresses {
 
 function Test-LoopbackAddress {
     param([string]$Address)
-    return $Address -eq 'localhost' -or $Address -eq '::1' -or $Address -eq '127.0.0.1' -or $Address -match '^127\.'
+    return Test-LoopbackAddressText -Address $Address
 }
 
 function Assert-ServiceBindAddress {
     param([string]$ServiceName, [string]$Address, [bool]$AllowRemote)
     if ([string]::IsNullOrWhiteSpace($Address)) {
-        throw "$ServiceName bind address must not be empty."
+        throw "$ServiceName bind address must not be empty. No default LAN/VPN IPv4 address was detected. Pass -ControlBindAddress with a LAN/VPN IP, pass -ControlBindAddress 0.0.0.0 to bind all interfaces, or pass explicit -ControlBindAddress 127.0.0.1 for local-only use."
     }
     if (Test-LoopbackAddress -Address $Address) {
         return
@@ -1731,10 +1783,8 @@ function Write-SuiteConfigFile {
 
 function Get-ServiceUrl {
     param($Service)
-    $hostName = [string]$Service.bindAddress
-    if ($hostName -eq '0.0.0.0' -or $hostName -eq '::') {
-        $hostName = 'localhost'
-    }
+    $hostName = [string]$Service.clientHost
+    if ([string]::IsNullOrWhiteSpace($hostName)) { $hostName = [string]$Service.bindAddress }
     return "http://$hostName`:$([int]$Service.port)"
 }
 
@@ -1965,7 +2015,11 @@ if (`$Existing) {
     Write-Host "eMuleBB is already running: PID `$(`$Existing.Id)"
     return
 }
-Start-Process -FilePath `$Emule -ArgumentList @('-c', (Join-Path `$Root 'profiles\emulebb')) | Out-Null
+try {
+    Start-Process -FilePath `$Emule -ArgumentList @('-c', (Join-Path `$Root 'profiles\emulebb')) -ErrorAction Stop | Out-Null
+} catch {
+    throw "eMuleBB could not be started from `$Emule. Working directory: `$Root. Check `$Root\profiles\emulebb\logs and `$Root\profiles\emulebb\config\preferences.ini. `$(`$_.Exception.Message)"
+}
 Start-Sleep -Seconds 2
 if (-not (Test-EmuleRunning -Path `$Emule)) {
     throw "eMuleBB did not stay running after launch from `$Emule. Check `$Root\profiles\emulebb\logs and `$Root\profiles\emulebb\config\preferences.ini."
@@ -1992,13 +2046,20 @@ function Read-SuiteConfig {
     return `$config
 }
 `$Config = Read-SuiteConfig
-function Get-ClientHost {
-    param([string]`$BindAddress)
-    if (`$BindAddress -eq '0.0.0.0' -or `$BindAddress -eq '::') {
-        if (-not [string]::IsNullOrWhiteSpace(`$env:X_LOCAL_IP)) { return `$env:X_LOCAL_IP.Trim() }
-        return '127.0.0.1'
+function Get-ServiceClientHost {
+    param([string]`$ServiceName, `$Service)
+    `$clientHost = [string]`$Service.clientHost
+    if ([string]::IsNullOrWhiteSpace(`$clientHost)) {
+        `$bindAddress = [string]`$Service.bindAddress
+        if (`$bindAddress -eq '0.0.0.0' -or `$bindAddress -eq '::') {
+            throw "Suite config is missing clientHost for `$ServiceName wildcard bind `$bindAddress. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force, or edit manifests\suite-config.json and set services.`$ServiceName.clientHost to a LAN/VPN IP."
+        }
+        return `$bindAddress
     }
-    return `$BindAddress
+    if (`$clientHost -eq '0.0.0.0' -or `$clientHost -eq '::') {
+        throw "Suite config clientHost for `$ServiceName cannot be a wildcard address: `$clientHost. Set services.`$ServiceName.clientHost to a concrete LAN/VPN IP, or explicit 127.0.0.1 for local-only use."
+    }
+    return `$clientHost
 }
 function Get-HttpErrorDetail {
     param(`$Exception)
@@ -2250,14 +2311,23 @@ function Start-ProcessIfMissing {
         Write-Host "`$Name is already running: `$FilePath"
         return
     }
+    if (-not [string]::IsNullOrWhiteSpace(`$WorkingDirectory) -and -not (Test-Path -LiteralPath `$WorkingDirectory -PathType Container)) {
+        throw "`$Name working directory is missing: `$WorkingDirectory. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to refresh suite files."
+    }
     Write-Host "Starting `${Name}: `$FilePath"
     `$startArgs = @{
         FilePath = `$FilePath
         ArgumentList = `$ArgumentList
+        ErrorAction = 'Stop'
     }
     if (-not [string]::IsNullOrWhiteSpace(`$WorkingDirectory)) { `$startArgs.WorkingDirectory = `$WorkingDirectory }
     if (`$Hidden) { `$startArgs.WindowStyle = 'Hidden' }
-    Start-Process @startArgs | Out-Null
+    try {
+        Start-Process @startArgs | Out-Null
+    } catch {
+        `$workDirText = if ([string]::IsNullOrWhiteSpace(`$WorkingDirectory)) { '<current PowerShell directory>' } else { `$WorkingDirectory }
+        throw "`$Name could not be started from `$FilePath. Working directory: `$workDirText. `$(Get-ServiceTroubleshootingHint -Name `$Name) `$(`$_.Exception.Message)"
+    }
     Start-Sleep -Seconds 2
     if (-not (Test-ProcessRunning -ExecutablePath `$FilePath -CommandLineContains `$CommandLineContains)) {
         throw "`$Name did not stay running after launch from `$FilePath. `$(Get-ServiceTroubleshootingHint -Name `$Name)"
@@ -2274,7 +2344,7 @@ function Start-ArrHost {
     Start-ProcessIfMissing -Name `$Name -FilePath `$exe.FullName -ArgumentList @('/data=' + (Join-Path `$Root `$DataDir), '/nobrowser') -CommandLineContains (Join-Path `$Root `$DataDir)
 }
 `$Bundle = [string]`$Config.bundle
-`$EmuleHost = Get-ClientHost `$Config.services.emulebb.bindAddress
+`$EmuleHost = Get-ServiceClientHost -ServiceName 'emulebb' -Service `$Config.services.emulebb
 `$EmulePort = [int]`$Config.services.emulebb.port
 `$EmuleUrl = "http://`$(`$EmuleHost):`$EmulePort"
 `$EmuleKey = [string]`$Config.services.emulebb.apiKey
@@ -2300,7 +2370,7 @@ if (`$Bundle -ne 'Core') {
 }
 Ensure-EmuleBBAvailable
 if (`$Bundle -ne 'Core') {
-    `$AmutorrentHost = Get-ClientHost `$Config.services.amutorrent.bindAddress
+    `$AmutorrentHost = Get-ServiceClientHost -ServiceName 'amutorrent' -Service `$Config.services.amutorrent
     `$AmutorrentUrl = "http://`$(`$AmutorrentHost):`$([int]`$Config.services.amutorrent.port)"
     Wait-Json -Name 'aMuTorrent' -Uri "`$AmutorrentUrl/api/auth/status"
     Invoke-StepWithRetry -Name 'aMuTorrent registration' -Operation {
@@ -2308,9 +2378,9 @@ if (`$Bundle -ne 'Core') {
     }
 }
 if (`$Bundle -eq 'Full') {
-    `$ProwlarrUrl = "http://`$(Get-ClientHost `$Config.services.prowlarr.bindAddress):`$([int]`$Config.services.prowlarr.port)"
-    `$RadarrUrl = "http://`$(Get-ClientHost `$Config.services.radarr.bindAddress):`$([int]`$Config.services.radarr.port)"
-    `$SonarrUrl = "http://`$(Get-ClientHost `$Config.services.sonarr.bindAddress):`$([int]`$Config.services.sonarr.port)"
+    `$ProwlarrUrl = "http://`$(Get-ServiceClientHost -ServiceName 'prowlarr' -Service `$Config.services.prowlarr):`$([int]`$Config.services.prowlarr.port)"
+    `$RadarrUrl = "http://`$(Get-ServiceClientHost -ServiceName 'radarr' -Service `$Config.services.radarr):`$([int]`$Config.services.radarr.port)"
+    `$SonarrUrl = "http://`$(Get-ServiceClientHost -ServiceName 'sonarr' -Service `$Config.services.sonarr):`$([int]`$Config.services.sonarr.port)"
     `$ProwlarrKey = [string]`$Config.services.prowlarr.apiKey
     `$RadarrKey = [string]`$Config.services.radarr.apiKey
     `$SonarrKey = [string]`$Config.services.sonarr.apiKey
@@ -2360,11 +2430,18 @@ if (Test-Path -LiteralPath `$ConfigPath) {
     }
 }
 `$amutorrentServer = Join-Path `$Root 'apps\aMuTorrent\server\server.js'
+function Get-FirstSuiteExecutable {
+    param([string]`$RelativeRoot, [string]`$FileName)
+    `$appRoot = Join-Path `$Root `$RelativeRoot
+    `$match = Get-ChildItem -Path `$appRoot -Filter `$FileName -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (`$match) { return `$match.FullName }
+    return Join-Path `$appRoot `$FileName
+}
 `$serviceExecutables = @(
     (Join-Path (Join-Path `$Root 'apps\eMuleBB') `$EmuleExeName),
-    (Join-Path `$Root 'apps\Prowlarr\Prowlarr.exe'),
-    (Join-Path `$Root 'apps\Radarr\Radarr.exe'),
-    (Join-Path `$Root 'apps\Sonarr\Sonarr.exe')
+    (Get-FirstSuiteExecutable -RelativeRoot 'apps\Prowlarr' -FileName 'Prowlarr.exe'),
+    (Get-FirstSuiteExecutable -RelativeRoot 'apps\Radarr' -FileName 'Radarr.exe'),
+    (Get-FirstSuiteExecutable -RelativeRoot 'apps\Sonarr' -FileName 'Sonarr.exe')
 )
 function Test-SuiteProcess {
     param(`$Process)
@@ -2427,11 +2504,18 @@ foreach (`$name in @('emulebb','amutorrent','prowlarr','radarr','sonarr')) {
 }
 `$amutorrentServer = Join-Path `$Root 'apps\aMuTorrent\server\server.js'
 `$emuleExeName = if ([string]::IsNullOrWhiteSpace([string]`$Config.emulebbExecutableName)) { 'emulebb.exe' } else { [string]`$Config.emulebbExecutableName }
+function Get-FirstSuiteExecutable {
+    param([string]`$RelativeRoot, [string]`$FileName)
+    `$appRoot = Join-Path `$Root `$RelativeRoot
+    `$match = Get-ChildItem -Path `$appRoot -Filter `$FileName -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (`$match) { return `$match.FullName }
+    return Join-Path `$appRoot `$FileName
+}
 `$serviceExecutables = @(
     (Join-Path (Join-Path `$Root 'apps\eMuleBB') `$emuleExeName),
-    (Join-Path `$Root 'apps\Prowlarr\Prowlarr.exe'),
-    (Join-Path `$Root 'apps\Radarr\Radarr.exe'),
-    (Join-Path `$Root 'apps\Sonarr\Sonarr.exe')
+    (Get-FirstSuiteExecutable -RelativeRoot 'apps\Prowlarr' -FileName 'Prowlarr.exe'),
+    (Get-FirstSuiteExecutable -RelativeRoot 'apps\Radarr' -FileName 'Radarr.exe'),
+    (Get-FirstSuiteExecutable -RelativeRoot 'apps\Sonarr' -FileName 'Sonarr.exe')
 )
 function Test-SuiteProcess {
     param(`$Process)
@@ -2499,11 +2583,11 @@ function Write-InstallManifest {
         profileImport = $ProfileImport
         symbols = $Symbols
         services = @{
-            emulebb = @{ bindAddress = $Config.services.emulebb.bindAddress; port = $Config.services.emulebb.port; apiKeyPresent = -not [string]::IsNullOrWhiteSpace($Config.services.emulebb.apiKey) }
-            amutorrent = @{ bindAddress = $Config.services.amutorrent.bindAddress; port = $Config.services.amutorrent.port }
-            prowlarr = @{ bindAddress = $Config.services.prowlarr.bindAddress; port = $Config.services.prowlarr.port; apiKeyPresent = -not [string]::IsNullOrWhiteSpace($Config.services.prowlarr.apiKey) }
-            radarr = @{ bindAddress = $Config.services.radarr.bindAddress; port = $Config.services.radarr.port; apiKeyPresent = -not [string]::IsNullOrWhiteSpace($Config.services.radarr.apiKey) }
-            sonarr = @{ bindAddress = $Config.services.sonarr.bindAddress; port = $Config.services.sonarr.port; apiKeyPresent = -not [string]::IsNullOrWhiteSpace($Config.services.sonarr.apiKey) }
+            emulebb = @{ bindAddress = $Config.services.emulebb.bindAddress; clientHost = $Config.services.emulebb.clientHost; port = $Config.services.emulebb.port; apiKeyPresent = -not [string]::IsNullOrWhiteSpace($Config.services.emulebb.apiKey) }
+            amutorrent = @{ bindAddress = $Config.services.amutorrent.bindAddress; clientHost = $Config.services.amutorrent.clientHost; port = $Config.services.amutorrent.port }
+            prowlarr = @{ bindAddress = $Config.services.prowlarr.bindAddress; clientHost = $Config.services.prowlarr.clientHost; port = $Config.services.prowlarr.port; apiKeyPresent = -not [string]::IsNullOrWhiteSpace($Config.services.prowlarr.apiKey) }
+            radarr = @{ bindAddress = $Config.services.radarr.bindAddress; clientHost = $Config.services.radarr.clientHost; port = $Config.services.radarr.port; apiKeyPresent = -not [string]::IsNullOrWhiteSpace($Config.services.radarr.apiKey) }
+            sonarr = @{ bindAddress = $Config.services.sonarr.bindAddress; clientHost = $Config.services.sonarr.clientHost; port = $Config.services.sonarr.port; apiKeyPresent = -not [string]::IsNullOrWhiteSpace($Config.services.sonarr.apiKey) }
         }
         p2p = @{
             bindInterfacePresent = -not [string]::IsNullOrWhiteSpace($Config.p2p.bindInterface)

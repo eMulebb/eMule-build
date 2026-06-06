@@ -109,8 +109,10 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert suite_config["emulebbPackageFlavor"] == "standard"
     assert suite_config["emulebbExecutableName"] == "emulebb.exe"
     assert suite_config["services"]["emulebb"]["bindAddress"] == control_bind
+    assert suite_config["services"]["emulebb"]["clientHost"] == control_bind
     assert suite_config["services"]["emulebb"]["port"] == 14711
     assert suite_config["services"]["amutorrent"]["bindAddress"] == control_bind
+    assert suite_config["services"]["amutorrent"]["clientHost"] == control_bind
     assert suite_config["credentials"]["username"] == "admin"
     assert re.fullmatch(r"[A-Za-z0-9]{24}", suite_config["credentials"]["password"])
     assert re.fullmatch(r"[A-Za-z0-9]{24}", suite_config["services"]["emulebb"]["apiKey"])
@@ -132,6 +134,7 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert install_manifest["emulebbPackageFlavor"] == "standard"
     assert install_manifest["emulebbExecutableName"] == "emulebb.exe"
     assert install_manifest["services"]["emulebb"]["apiKeyPresent"] is True
+    assert install_manifest["services"]["emulebb"]["clientHost"] == control_bind
     assert "apiKey" not in install_manifest["services"]["emulebb"]
     assert suite_config["services"]["emulebb"]["apiKey"] not in json.dumps(install_manifest)
     assert suite_config["credentials"]["password"] not in json.dumps(install_manifest)
@@ -159,6 +162,7 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "profiles\\emulebb" in start_emulebb
     assert "function Test-EmuleRunning" in start_emulebb
     assert "eMuleBB executable is missing" in start_emulebb
+    assert "eMuleBB could not be started from" in start_emulebb
     assert "eMuleBB did not stay running after launch" in start_emulebb
 
     start_suite = (install_root / "scripts" / "Start-Suite.ps1").read_text(encoding="utf-8-sig")
@@ -199,6 +203,9 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "function Get-ExceptionMessage" in start_suite
     assert "function Invoke-SuiteJsonApi" in start_suite
     assert "function Get-ServiceTroubleshootingHint" in start_suite
+    assert "function Get-ServiceClientHost" in start_suite
+    assert "Suite config is missing clientHost" in start_suite
+    assert "clientHost for $ServiceName cannot be a wildcard address" in start_suite
     assert "Last error:" in start_suite
     assert "Timed out waiting for $Name at $Uri" in start_suite
     assert "Check $Root\\data\\radarr\\logs" in start_suite
@@ -224,6 +231,8 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "Missing Windows tray host" in start_suite
     assert "Start-ProcessIfMissing -Name $Name -FilePath $exe.FullName" in start_suite
     assert "Start-ProcessIfMissing -Name $Name -FilePath $exe.FullName -ArgumentList @('/data='" in start_suite
+    assert "working directory is missing" in start_suite
+    assert "could not be started from $FilePath" in start_suite
     assert "did not stay running after launch" in start_suite
     assert "function Ensure-EmuleBBAvailable" in start_suite
     assert "function Ensure-SuiteServicesAvailable" in start_suite
@@ -253,6 +262,9 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "Get-CimInstance Win32_Process" in stop_suite
     assert "apps\\aMuTorrent\\server\\server.js" in stop_suite
     assert "$Process.Name -eq 'node.exe'" in stop_suite
+    assert "function Get-FirstSuiteExecutable" in stop_suite
+    assert "Get-ChildItem -Path $appRoot -Filter $FileName -Recurse -File" in stop_suite
+    assert "Get-FirstSuiteExecutable -RelativeRoot 'apps\\Prowlarr' -FileName 'Prowlarr.exe'" in stop_suite
     assert "StartsWith($Root" not in stop_suite
     assert "No eMuleBB Suite processes are running." in stop_suite
     assert "return" in stop_suite
@@ -598,6 +610,7 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
 
     suite_config_path = install_root / "manifests" / "suite-config.json"
     suite_config = json.loads(suite_config_path.read_text(encoding="utf-8-sig"))
+    assert suite_config["services"]["emulebb"]["clientHost"] == "127.0.0.1"
     first_keys = {
         name: suite_config["services"][name]["apiKey"]
         for name in ("emulebb", "prowlarr", "radarr", "sonarr")
@@ -664,7 +677,7 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     assert "eMuleBB Suite Credentials" in credentials_html
     assert "Radarr/Sonarr Download Client" in credentials_html
     assert "data-copy=" in credentials_html
-    assert "http://127.0.0.1:" in credentials_html
+    assert f"http://{suite_config['services']['emulebb']['clientHost']}:" in credentials_html
     assert 'target="_blank"' in credentials_html
     assert 'rel="noopener noreferrer"' in credentials_html
     assert "run scripts\\Start-Suite.ps1 once before adding movies or series" in credentials_html
@@ -929,9 +942,13 @@ def test_suite_installer_keeps_full_suite_service_binds_config_driven() -> None:
 
     assert '"  <BindAddress>$BindAddress</BindAddress>"' in installer
     assert "Initialize-AmutorrentConfig -DataDir `$env:AMUTORRENT_DATA_DIR -BindAddress ([string]`$Config.services.amutorrent.bindAddress)" in installer
-    assert "Get-ClientHost `$Config.services.prowlarr.bindAddress" in installer
-    assert "Get-ClientHost `$Config.services.radarr.bindAddress" in installer
-    assert "Get-ClientHost `$Config.services.sonarr.bindAddress" in installer
+    assert "Get-ServiceClientHost -ServiceName 'prowlarr' -Service `$Config.services.prowlarr" in installer
+    assert "Get-ServiceClientHost -ServiceName 'radarr' -Service `$Config.services.radarr" in installer
+    assert "Get-ServiceClientHost -ServiceName 'sonarr' -Service `$Config.services.sonarr" in installer
+    assert "clientHost = ''" in installer
+    assert "Resolve-ServiceClientHost" in installer
+    assert "Set-SuiteClientHosts -Config $config" in installer
+    assert "return '127.0.0.1'" not in installer
     assert "BlockNetworkWhenBindUnavailableAtStartup=0" in installer
     assert "NetworkGuardMode=Off" in installer
     assert "NetworkGuardAllowedCIDRs=" in installer
@@ -948,6 +965,8 @@ def test_suite_installer_keeps_full_suite_service_binds_config_driven() -> None:
     assert "Label = ('{0} - {1}{2}{3}{4}'" in installer
     assert "'hide.me'" in installer
     assert "X_LOCAL_IP" in installer
+    assert "Default local bind" not in installer
+    assert "Detected LAN/VPN bind" in installer
     assert "Non-loopback control-service bind detected" not in installer
     assert "Allow remote control-service bind" not in installer
     assert "Back to service binds" not in installer
@@ -1115,13 +1134,18 @@ def test_suite_generated_update_and_start_scripts_are_refresh_safe() -> None:
     assert "Copy-Item -Force -LiteralPath $PSCommandPath -Destination (Join-Path $scriptsDir 'Install-eMuleBBSuite.ps1')" not in installer
     assert "function Test-ProcessRunning" in installer
     assert "function Start-ProcessIfMissing" in installer
+    assert "function Get-ServiceClientHost" in installer
     assert "function Read-WizardPortValue" in installer
     assert "Enter a number from 0 to 65535. Use 0 to auto-select a free suite port." in installer
     assert "eMuleBB is already running" in installer
     assert "function Test-EmuleRunning" in installer
     assert "eMuleBB executable is missing" in installer
+    assert "eMuleBB could not be started from" in installer
     assert "eMuleBB did not stay running after launch" in installer
     assert "Start-ProcessIfMissing -Name 'aMuTorrent' -FilePath `$node" in installer
+    assert "working directory is missing" in installer
+    assert "could not be started from `$FilePath" in installer
+    assert "function Get-FirstSuiteExecutable" in installer
     assert installer.index("`$nodeMatch = Get-ChildItem -Path (Join-Path `$Root 'runtime\\node')") < installer.index("`$node = (Get-Command node.exe -ErrorAction SilentlyContinue).Source")
     assert "Start skipped because -NoStart was used" in installer
     assert "credentials.html" in installer
