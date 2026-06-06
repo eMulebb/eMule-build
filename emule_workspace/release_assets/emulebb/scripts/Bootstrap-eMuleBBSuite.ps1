@@ -58,6 +58,71 @@ function Write-Step {
     Write-Host "[eMuleBB bootstrap] $Message"
 }
 
+function Get-LocalPackageRecoveryMessage {
+    return @(
+        'If GitHub is blocked, offline, or rate limited, download the package assets in a browser from GitHub Releases.',
+        'For eMuleBB, open https://github.com/emulebb/emulebb/releases and download the matching emulebb-<version>-<arch>.zip plus emulebb-<version>-<arch>.manifest.json.',
+        'Then rerun this bootstrapper with -EmulebbPackageZip C:\Path\emulebb-<version>-<arch>.zip -EmulebbPackageManifest C:\Path\emulebb-<version>-<arch>.manifest.json.',
+        'For a Full or Controller install, also open https://github.com/emulebb/amutorrent/releases and download emulebb-<version>-amutorrent-x64.zip plus its manifest, then pass -AmutorrentPackageZip and -AmutorrentPackageManifest.'
+    ) -join ' '
+}
+
+function Get-HttpErrorDetail {
+    param($Exception)
+    if ($null -eq $Exception -or $null -eq $Exception.Response) {
+        return ''
+    }
+    $response = $Exception.Response
+    $status = 0
+    try { $status = [int]$response.StatusCode } catch { $status = 0 }
+    $statusText = if ($status -gt 0) { "HTTP $status" } else { 'HTTP request failed' }
+    try {
+        if (-not [string]::IsNullOrWhiteSpace([string]$response.StatusDescription)) {
+            $statusText = "$statusText $($response.StatusDescription)"
+        }
+    } catch {
+    }
+    $detail = ''
+    try {
+        $stream = $response.GetResponseStream()
+        if ($null -ne $stream) {
+            $reader = New-Object IO.StreamReader($stream)
+            try {
+                $detail = $reader.ReadToEnd()
+            } finally {
+                $reader.Dispose()
+            }
+        }
+    } catch {
+    }
+    $detail = ([string]$detail -replace '\s+', ' ').Trim()
+    if ($detail.Length -gt 1200) {
+        $detail = $detail.Substring(0, 1200) + '...'
+    }
+    if ([string]::IsNullOrWhiteSpace($detail)) {
+        return $statusText
+    }
+    return "$statusText`: $detail"
+}
+
+function Get-ExceptionMessage {
+    param($Exception)
+    $detail = Get-HttpErrorDetail -Exception $Exception
+    if (-not [string]::IsNullOrWhiteSpace($detail)) {
+        return $detail
+    }
+    return $Exception.Message
+}
+
+function Invoke-GitHubApi {
+    param([string]$Uri, [string]$Description)
+    try {
+        return Invoke-RestMethod -Uri $Uri -Headers @{ 'User-Agent' = $UserAgent } -ErrorAction Stop
+    } catch {
+        throw "Could not read $Description from GitHub: $(Get-ExceptionMessage -Exception $_.Exception) $(Get-LocalPackageRecoveryMessage)"
+    }
+}
+
 function Get-DefaultPlatform {
     if ([string]::IsNullOrWhiteSpace($Platform)) {
         if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64' -or $env:PROCESSOR_ARCHITEW6432 -eq 'ARM64') {
@@ -94,9 +159,9 @@ function Test-SupportedAmutorrentReleaseTag {
 function Get-Release {
     if (-not [string]::IsNullOrWhiteSpace($Version)) {
         $tag = Get-ReleaseTag
-        return Invoke-RestMethod -Uri "$ApiBase/repos/$Repository/releases/tags/$tag" -Headers @{ 'User-Agent' = $UserAgent }
+        return Invoke-GitHubApi -Uri "$ApiBase/repos/$Repository/releases/tags/$tag" -Description "eMuleBB release $tag"
     }
-    $releases = Invoke-RestMethod -Uri "$ApiBase/repos/$Repository/releases" -Headers @{ 'User-Agent' = $UserAgent }
+    $releases = Invoke-GitHubApi -Uri "$ApiBase/repos/$Repository/releases" -Description 'eMuleBB releases'
     $nightlyFallback = $null
     foreach ($release in @($releases)) {
         if ($release.draft) {
@@ -121,7 +186,7 @@ function Get-Release {
 }
 
 function Get-AmutorrentRelease {
-    $releases = Invoke-RestMethod -Uri "$ApiBase/repos/$AmutorrentRepository/releases" -Headers @{ 'User-Agent' = $UserAgent }
+    $releases = Invoke-GitHubApi -Uri "$ApiBase/repos/$AmutorrentRepository/releases" -Description 'aMuTorrent releases'
     $nightlyFallback = $null
     foreach ($release in @($releases)) {
         if ($release.draft) {
@@ -301,8 +366,10 @@ function Invoke-Download {
     $previousProgressPreference = $ProgressPreference
     try {
         $ProgressPreference = 'SilentlyContinue'
-        Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $tmp -Headers @{ 'User-Agent' = $UserAgent }
+        Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $tmp -Headers @{ 'User-Agent' = $UserAgent } -ErrorAction Stop
         Move-Item -Force -LiteralPath $tmp -Destination $Destination
+    } catch {
+        throw "Failed to download $Url -> $Destination. $(Get-ExceptionMessage -Exception $_.Exception) $(Get-LocalPackageRecoveryMessage)"
     } finally {
         $ProgressPreference = $previousProgressPreference
         Remove-Item -Force -LiteralPath $tmp -ErrorAction SilentlyContinue

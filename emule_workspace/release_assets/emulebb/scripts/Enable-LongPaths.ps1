@@ -19,8 +19,17 @@ function Write-Result {
     exit $ExitCode
 }
 
+function Assert-Administrator {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        throw 'Windows long-path enable requires an elevated PowerShell window. Right-click Windows PowerShell and choose Run as administrator, then rerun this script.'
+    }
+}
+
 try {
     Write-Host 'eMuleBB Windows Long Paths' -ForegroundColor Cyan
+    Assert-Administrator
     $key = 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem'
     $current = Get-ItemProperty -LiteralPath $key -Name LongPathsEnabled -ErrorAction SilentlyContinue
     $oldValue = if ($null -ne $current) { [int]$current.LongPathsEnabled } else { 0 }

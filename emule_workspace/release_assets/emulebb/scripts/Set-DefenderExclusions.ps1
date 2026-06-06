@@ -20,8 +20,17 @@ function Write-Result {
     exit $ExitCode
 }
 
+function Assert-Administrator {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        throw 'Microsoft Defender exclusion updates require an elevated PowerShell window. Right-click Windows PowerShell and choose Run as administrator, then rerun this script.'
+    }
+}
+
 try {
     Write-Host 'eMuleBB Microsoft Defender Exclusions' -ForegroundColor Cyan
+    Assert-Administrator
     $uniquePaths = @($Path | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
     if ($uniquePaths.Count -eq 0) {
         throw 'No folder paths were supplied.'

@@ -174,13 +174,13 @@ function Resolve-Secret {
 }
 
 function Resolve-ApiKey {
-    param([string]$Value)
+    param([string]$Value, [string]$Name)
     if ([string]::IsNullOrWhiteSpace($Value)) {
         return New-ApiKey
     }
     $trimmed = $Value.Trim()
     if ($trimmed -notmatch '^[A-Za-z0-9]{24}$') {
-        return New-ApiKey
+        throw "$Name must be exactly 24 alphanumeric characters, or blank to generate a new key."
     }
     return $trimmed
 }
@@ -1781,17 +1781,78 @@ function Get-ClientHost {
     }
     return `$BindAddress
 }
+function Get-HttpErrorDetail {
+    param(`$Exception)
+    if (`$null -eq `$Exception -or `$null -eq `$Exception.Response) {
+        return ''
+    }
+    `$response = `$Exception.Response
+    `$status = 0
+    try { `$status = [int]`$response.StatusCode } catch { `$status = 0 }
+    `$statusText = if (`$status -gt 0) { "HTTP `$status" } else { 'HTTP request failed' }
+    try {
+        if (-not [string]::IsNullOrWhiteSpace([string]`$response.StatusDescription)) {
+            `$statusText = "`$statusText `$(`$response.StatusDescription)"
+        }
+    } catch {
+    }
+    `$detail = ''
+    try {
+        `$stream = `$response.GetResponseStream()
+        if (`$null -ne `$stream) {
+            `$reader = New-Object IO.StreamReader(`$stream)
+            try {
+                `$detail = `$reader.ReadToEnd()
+            } finally {
+                `$reader.Dispose()
+            }
+        }
+    } catch {
+    }
+    `$detail = ([string]`$detail -replace '\s+', ' ').Trim()
+    if (`$detail.Length -gt 1200) {
+        `$detail = `$detail.Substring(0, 1200) + '...'
+    }
+    if ([string]::IsNullOrWhiteSpace(`$detail)) {
+        return `$statusText
+    }
+    return "`${statusText}: `$detail"
+}
+function Get-ExceptionMessage {
+    param(`$Exception)
+    `$detail = Get-HttpErrorDetail -Exception `$Exception
+    if (-not [string]::IsNullOrWhiteSpace(`$detail)) {
+        return `$detail
+    }
+    return `$Exception.Message
+}
+function Invoke-SuiteJsonApi {
+    param([string]`$Name, [string]`$Uri, [string]`$Method = 'GET', [hashtable]`$Headers = @{}, `$Body = `$null)
+    try {
+        if (`$null -eq `$Body) {
+            return Invoke-RestMethod -Uri `$Uri -Method `$Method -Headers `$Headers -TimeoutSec 20 -ErrorAction Stop
+        }
+        return Invoke-RestMethod -Uri `$Uri -Method `$Method -Headers `$Headers -Body (`$Body | ConvertTo-Json -Depth 20) -ContentType 'application/json' -TimeoutSec 20 -ErrorAction Stop
+    } catch {
+        throw "`$Name failed at `$Uri. `$(Get-ExceptionMessage -Exception `$_.Exception)"
+    }
+}
 function Wait-Json {
     param([string]`$Uri, [hashtable]`$Headers = @{})
+    `$lastError = ''
     for (`$i = 0; `$i -lt 90; `$i++) {
         try {
-            Invoke-RestMethod -Uri `$Uri -Headers `$Headers -TimeoutSec 2 | Out-Null
+            Invoke-RestMethod -Uri `$Uri -Headers `$Headers -TimeoutSec 2 -ErrorAction Stop | Out-Null
             return
         } catch {
+            `$lastError = Get-ExceptionMessage -Exception `$_.Exception
             Start-Sleep -Seconds 1
         }
     }
-    throw "Timed out waiting for `$Uri"
+    if ([string]::IsNullOrWhiteSpace(`$lastError)) {
+        throw "Timed out waiting for `$Uri."
+    }
+    throw "Timed out waiting for `$Uri. Last error: `$lastError"
 }
 function Set-ObjectProperty {
     param(`$Target, [string]`$Name, `$Value)
@@ -1856,13 +1917,13 @@ function Set-ArrHostCredentials {
     param([string]`$Name, [string]`$Url, [string]`$ApiPath, [string]`$ApiKey)
     `$hostConfigUrl = "`$Url/`$ApiPath/config/host"
     `$headers = @{ 'X-Api-Key' = `$ApiKey }
-    `$hostConfig = Invoke-RestMethod -Uri `$hostConfigUrl -Headers `$headers -TimeoutSec 20
+    `$hostConfig = Invoke-SuiteJsonApi -Name "`$Name host config read" -Uri `$hostConfigUrl -Headers `$headers
     `$hostConfig.authenticationMethod = 'forms'
     `$hostConfig.authenticationRequired = 'enabled'
     `$hostConfig.username = [string]`$Config.credentials.username
     `$hostConfig.password = [string]`$Config.credentials.password
     `$hostConfig.passwordConfirmation = [string]`$Config.credentials.password
-    Invoke-RestMethod -Method Put -Uri `$hostConfigUrl -Headers `$headers -ContentType 'application/json' -Body (`$hostConfig | ConvertTo-Json -Depth 20) -TimeoutSec 20 | Out-Null
+    [void](Invoke-SuiteJsonApi -Name "`$Name web login update" -Uri `$hostConfigUrl -Method 'PUT' -Headers `$headers -Body `$hostConfig)
     Write-Host "`$Name web login configured."
 }
 function Ensure-ArrRootFolder {
@@ -1871,7 +1932,8 @@ function Ensure-ArrRootFolder {
     `$rootFolderUrl = "`$Url/`$ApiPath/rootfolder"
     `$headers = @{ 'X-Api-Key' = `$ApiKey }
     `$normalizedPath = [IO.Path]::GetFullPath(`$Path).TrimEnd('\')
-    foreach (`$rootFolder in @(Invoke-RestMethod -Uri `$rootFolderUrl -Headers `$headers -TimeoutSec 20)) {
+    `$rootFolders = @(Invoke-SuiteJsonApi -Name "`$Name root folder list" -Uri `$rootFolderUrl -Headers `$headers)
+    foreach (`$rootFolder in `$rootFolders) {
         if (`$null -eq `$rootFolder -or `$null -eq `$rootFolder.PSObject.Properties['path']) {
             continue
         }
@@ -1880,8 +1942,18 @@ function Ensure-ArrRootFolder {
             return
         }
     }
-    Invoke-RestMethod -Method Post -Uri `$rootFolderUrl -Headers `$headers -ContentType 'application/json' -Body (@{ path = `$normalizedPath } | ConvertTo-Json -Depth 5) -TimeoutSec 20 | Out-Null
-    Write-Host "`$Name root folder configured: `$normalizedPath"
+    [void](Invoke-SuiteJsonApi -Name "`$Name root folder create" -Uri `$rootFolderUrl -Method 'POST' -Headers `$headers -Body @{ path = `$normalizedPath })
+    `$rootFolders = @(Invoke-SuiteJsonApi -Name "`$Name root folder verify" -Uri `$rootFolderUrl -Headers `$headers)
+    foreach (`$rootFolder in `$rootFolders) {
+        if (`$null -eq `$rootFolder -or `$null -eq `$rootFolder.PSObject.Properties['path']) {
+            continue
+        }
+        if ([string]::Equals(([IO.Path]::GetFullPath([string]`$rootFolder.path).TrimEnd('\')), `$normalizedPath, [StringComparison]::OrdinalIgnoreCase)) {
+            Write-Host "`$Name root folder configured: `$normalizedPath"
+            return
+        }
+    }
+    throw "`$Name did not persist root folder `$normalizedPath. Open `$Name, go to Settings > Media Management > Root Folders, and add that folder manually before adding movies or series."
 }
 function Ensure-EmuleBBAvailable {
     & (Join-Path `$Root 'scripts\Start-eMuleBB.ps1')
@@ -2117,16 +2189,16 @@ Assert-SuiteConfig -Config $script:SuiteConfig
 Write-ConfigSummary -Config $script:SuiteConfig
 
 if ((Test-Path -LiteralPath $script:Root) -and -not $Force -and -not $DryRun) {
-    throw "InstallRoot already exists. Use -Force to refresh: $script:Root"
+    throw "InstallRoot already exists: $script:Root. Choose a different -InstallRoot, or rerun with -Force to refresh the suite files in this folder. Back up the folder first if you manually edited configuration."
 }
 if (-not $DryRun) {
     New-Item -ItemType Directory -Force -Path $script:Root | Out-Null
 }
 
-$script:SuiteConfig.services.emulebb.apiKey = Resolve-ApiKey -Value $script:SuiteConfig.services.emulebb.apiKey
-$script:SuiteConfig.services.prowlarr.apiKey = Resolve-ApiKey -Value $script:SuiteConfig.services.prowlarr.apiKey
-$script:SuiteConfig.services.radarr.apiKey = Resolve-ApiKey -Value $script:SuiteConfig.services.radarr.apiKey
-$script:SuiteConfig.services.sonarr.apiKey = Resolve-ApiKey -Value $script:SuiteConfig.services.sonarr.apiKey
+$script:SuiteConfig.services.emulebb.apiKey = Resolve-ApiKey -Value $script:SuiteConfig.services.emulebb.apiKey -Name 'eMuleBB API key'
+$script:SuiteConfig.services.prowlarr.apiKey = Resolve-ApiKey -Value $script:SuiteConfig.services.prowlarr.apiKey -Name 'Prowlarr API key'
+$script:SuiteConfig.services.radarr.apiKey = Resolve-ApiKey -Value $script:SuiteConfig.services.radarr.apiKey -Name 'Radarr API key'
+$script:SuiteConfig.services.sonarr.apiKey = Resolve-ApiKey -Value $script:SuiteConfig.services.sonarr.apiKey -Name 'Sonarr API key'
 $script:SuiteConfig.credentials.password = Resolve-Secret -Value $script:SuiteConfig.credentials.password -Name 'Suite password'
 
 $releaseBase = Resolve-OptionalValue -Value $script:SuiteConfig.releaseBaseUrl -Default "https://github.com/emulebb/emulebb/releases/download/emulebb-v$($script:SuiteConfig.version)"

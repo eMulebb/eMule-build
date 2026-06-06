@@ -187,9 +187,17 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "Set-ArrHostCredentials -Name 'Prowlarr'" in start_suite
     assert "Set-ArrHostCredentials -Name 'Radarr'" in start_suite
     assert "Set-ArrHostCredentials -Name 'Sonarr'" in start_suite
+    assert "function Get-HttpErrorDetail" in start_suite
+    assert "function Get-ExceptionMessage" in start_suite
+    assert "function Invoke-SuiteJsonApi" in start_suite
+    assert "Last error:" in start_suite
+    assert "Invoke-SuiteJsonApi -Name \"$Name web login update\"" in start_suite
     assert "function Ensure-ArrRootFolder" in start_suite
     assert "$rootFolderUrl = \"$Url/$ApiPath/rootfolder\"" in start_suite
     assert "New-Item -ItemType Directory -Force -Path $Path" in start_suite
+    assert "Invoke-SuiteJsonApi -Name \"$Name root folder verify\"" in start_suite
+    assert "did not persist root folder" in start_suite
+    assert "Settings > Media Management > Root Folders" in start_suite
     assert "$rootFolder.PSObject.Properties['path']" in start_suite
     assert "Ensure-ArrRootFolder -Name 'Radarr'" in start_suite
     assert "Join-Path $Root 'media\\movies'" in start_suite
@@ -1019,6 +1027,24 @@ def test_suite_generated_update_and_start_scripts_are_refresh_safe() -> None:
     assert "credentials.html" in installer
     assert "if (-not $DryRun -and -not $NonInteractive)" in installer
     assert "Start-Process -FilePath (Join-Path $script:Root 'credentials.html')" in installer
+    assert "must be exactly 24 alphanumeric characters, or blank to generate a new key." in installer
+    assert "InstallRoot already exists:" in installer
+    assert "Choose a different -InstallRoot" in installer
+
+
+def test_suite_windows_system_helpers_explain_admin_requirement() -> None:
+    for script_name, expected in {
+        "Enable-LongPaths.ps1": "Windows long-path enable requires an elevated PowerShell window.",
+        "Repair-Firewall.ps1": "Windows Firewall repair requires an elevated PowerShell window.",
+        "Set-DefenderExclusions.ps1": "Microsoft Defender exclusion updates require an elevated PowerShell window.",
+    }.items():
+        script_path = Path("emule_workspace/release_assets/emulebb/scripts") / script_name
+        _assert_powershell_parse(Path.cwd() / script_path, cwd=Path.cwd())
+        script = script_path.read_text(encoding="utf-8")
+        assert "function Assert-Administrator" in script
+        assert "WindowsBuiltInRole]::Administrator" in script
+        assert "Run as administrator" in script
+        assert expected in script
 
 
 def test_suite_bootstrapper_requires_emulebb_package_root() -> None:
@@ -1038,6 +1064,12 @@ def test_suite_bootstrapper_requires_emulebb_package_root() -> None:
     assert "EmulebbPackageZip" in bootstrapper
     assert "AmutorrentPackageZip" in bootstrapper
     assert "DependencyManifest" in bootstrapper
+    assert "function Invoke-GitHubApi" in bootstrapper
+    assert "download the package assets in a browser from GitHub Releases" in bootstrapper
+    assert "https://github.com/emulebb/emulebb/releases" in bootstrapper
+    assert "https://github.com/emulebb/amutorrent/releases" in bootstrapper
+    assert "-EmulebbPackageZip" in bootstrapper
+    assert "-AmutorrentPackageZip" in bootstrapper
     assert "emulebb/amutorrent" in bootstrapper
     assert "emulebb-nightly-" in bootstrapper
     assert "Test-SupportedReleaseTag" in bootstrapper

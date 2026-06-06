@@ -23,6 +23,14 @@ function Write-Result {
     exit $ExitCode
 }
 
+function Assert-Administrator {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        throw 'Windows Firewall repair requires an elevated PowerShell window. Right-click Windows PowerShell and choose Run as administrator, then rerun this script.'
+    }
+}
+
 function Repair-Rule {
     param(
         [string]$Name,
@@ -48,6 +56,7 @@ function Repair-Rule {
 
 try {
     Write-Host 'eMuleBB Windows Firewall Repair' -ForegroundColor Cyan
+    Assert-Administrator
     if (-not (Test-Path -LiteralPath $ProgramPath -PathType Leaf)) {
         throw "Program path does not exist: $ProgramPath"
     }
