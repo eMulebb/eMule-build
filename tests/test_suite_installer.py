@@ -201,10 +201,14 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "$env:SKIP_SETUP_WIZARD" not in start_suite
     assert "/api/auth/status" in start_suite
     assert "Register-aMuTorrent.ps1" in start_suite
+    assert "Register-aMuTorrent.ps1') -Action Register" in start_suite
     assert "-EmulebbApiKey $EmuleKey" in start_suite
     assert "-AmutorrentUsername ([string]$Config.credentials.username)" in start_suite
     assert "-AmutorrentPassword ([string]$Config.credentials.password)" in start_suite
     assert "-AppProfileName 'eMuleBB Suite'" in start_suite
+    assert "Register-Prowlarr.ps1') -Action Register" in start_suite
+    assert "Register-ArrStack.ps1') -Action Register -Target Radarr" in start_suite
+    assert "Register-ArrStack.ps1') -Action Register -Target Sonarr" in start_suite
     assert "function Set-ArrHostCredentials" in start_suite
     assert "Set-ObjectProperty -Target $hostConfig -Name 'authenticationMethod' -Value 'forms'" in start_suite
     assert "Set-ObjectProperty -Target $hostConfig -Name 'authenticationRequired' -Value 'enabled'" in start_suite
@@ -1321,6 +1325,10 @@ def test_suite_generated_update_and_start_scripts_are_refresh_safe() -> None:
     assert "Start skipped because -NoStart was used" in installer
     assert "credentials.html" in installer
     assert "if (-not $DryRun -and -not $NonInteractive)" in installer
+    assert "The HTML install summary will open now" in installer
+    assert "Continuing in 6 seconds..." in installer
+    assert "Start-Sleep -Seconds 6" in installer
+    assert installer.index("The HTML install summary will open now") < installer.index("Start-Process -FilePath (Join-Path $script:Root 'credentials.html')")
     assert "Start-Process -FilePath (Join-Path $script:Root 'credentials.html')" in installer
     assert "must be exactly 24 alphanumeric characters, or blank to generate a new key." in installer
     assert "function Assert-InstallRootValue" in installer

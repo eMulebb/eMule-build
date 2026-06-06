@@ -2507,7 +2507,7 @@ if (`$Bundle -ne 'Core') {
     `$AmutorrentUrl = "http://`$(`$AmutorrentHost):`$([int]`$Config.services.amutorrent.port)"
     Wait-Json -Name 'aMuTorrent' -Uri "`$AmutorrentUrl/api/auth/status"
     Invoke-StepWithRetry -Name 'aMuTorrent registration' -Operation {
-        & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-aMuTorrent.ps1') -AmutorrentUrl `$AmutorrentUrl -AmutorrentApiKey '' -AmutorrentUsername ([string]`$Config.credentials.username) -AmutorrentPassword ([string]`$Config.credentials.password) -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -InstanceName 'eMuleBB Suite' -InstanceId 'emulebb-suite' -NoRetry
+        & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-aMuTorrent.ps1') -Action Register -AmutorrentUrl `$AmutorrentUrl -AmutorrentApiKey '' -AmutorrentUsername ([string]`$Config.credentials.username) -AmutorrentPassword ([string]`$Config.credentials.password) -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -InstanceName 'eMuleBB Suite' -InstanceId 'emulebb-suite' -NoRetry
     }
 }
 if (`$Bundle -eq 'Full') {
@@ -2532,13 +2532,13 @@ if (`$Bundle -eq 'Full') {
         Ensure-ArrRootFolder -Name 'Sonarr' -Url `$SonarrUrl -ApiPath 'api/v3' -ApiKey `$SonarrKey -Path (Join-Path `$Root 'media\series')
     }
     Invoke-StepWithRetry -Name 'Prowlarr registration' -Operation {
-        & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-Prowlarr.ps1') -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -IndexerName 'eMuleBB Suite' -AppProfileName 'eMuleBB Suite' -NoRetry
+        & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-Prowlarr.ps1') -Action Register -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -IndexerName 'eMuleBB Suite' -AppProfileName 'eMuleBB Suite' -NoRetry
     }
     Invoke-StepWithRetry -Name 'Radarr registration' -Operation {
-        & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -Target Radarr -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -EmulebbCategoryPath (Join-Path `$Root 'downloads\radarr') -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -RadarrUrl `$RadarrUrl -RadarrApiKey `$RadarrKey -DownloadClientName 'eMuleBB Suite' -SkipProwlarrSync -NoRetry
+        & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -Action Register -Target Radarr -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -EmulebbCategoryPath (Join-Path `$Root 'downloads\radarr') -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -RadarrUrl `$RadarrUrl -RadarrApiKey `$RadarrKey -DownloadClientName 'eMuleBB Suite' -SkipProwlarrSync -NoRetry
     }
     Invoke-StepWithRetry -Name 'Sonarr registration' -Operation {
-        & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -Target Sonarr -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -EmulebbCategoryPath (Join-Path `$Root 'downloads\sonarr') -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -SonarrUrl `$SonarrUrl -SonarrApiKey `$SonarrKey -DownloadClientName 'eMuleBB Suite' -SkipProwlarrSync -NoRetry
+        & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -Action Register -Target Sonarr -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -EmulebbCategoryPath (Join-Path `$Root 'downloads\sonarr') -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -SonarrUrl `$SonarrUrl -SonarrApiKey `$SonarrKey -DownloadClientName 'eMuleBB Suite' -SkipProwlarrSync -NoRetry
     }
     Invoke-StepWithRetry -Name 'Prowlarr application sync' -Operation {
         & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -SyncProwlarrOnly -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -NoRetry
@@ -2826,5 +2826,8 @@ if (-not $NoStart -and -not $DryRun) {
 }
 Write-Step "Installed $($script:SuiteConfig.bundle) bundle at $script:Root"
 if (-not $DryRun -and -not $NonInteractive) {
+    Write-Host 'The HTML install summary will open now. It contains suite URLs, credentials, and API keys.' -ForegroundColor Cyan
+    Write-Host 'Continuing in 6 seconds...'
+    Start-Sleep -Seconds 6
     Start-Process -FilePath (Join-Path $script:Root 'credentials.html') | Out-Null
 }
