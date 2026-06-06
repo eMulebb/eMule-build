@@ -91,13 +91,7 @@ function Read-SecretValue {
         # instead of falling through to an interactive secret prompt.
         return ''
     }
-    $secure = Read-Host $Prompt -AsSecureString
-    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-    try {
-        return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
-    } finally {
-        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
-    }
+    return Normalize-ArgumentValue -Value (Read-Host $Prompt)
 }
 
 function Read-RequiredSecretValue {
@@ -542,7 +536,7 @@ function Unregister-EmulebbClient {
 }
 
 function Run-TargetWithRetry {
-    param([string]$Name, [scriptblock]$Operation, [switch]$NoRetry)
+    param([string]$Name, [scriptblock]$Operation, [scriptblock]$OnRetry = $null, [switch]$NoRetry)
     do {
         try {
             & $Operation
@@ -556,27 +550,35 @@ function Run-TargetWithRetry {
             if (-not ([string]::IsNullOrWhiteSpace($answer) -or $answer.Trim().ToLowerInvariant().StartsWith('y'))) {
                 exit 1
             }
+            if ($null -ne $OnRetry) {
+                & $OnRetry
+            }
         }
     } while ($true)
 }
 
 $Action = Read-ActionValue -Value $Action
 Write-Host ('eMuleBB aMuTorrent Integration - {0}' -f $Action) -ForegroundColor Cyan
-$AmutorrentUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'aMuTorrent URL (example http://LAN-IP:4000)' -Value $AmutorrentUrl) -Name 'AmutorrentUrl'
-$AmutorrentApiKey = Read-SecretValue -Prompt 'aMuTorrent admin API key (blank only when auth is disabled)' -Value $AmutorrentApiKey -Optional
-$InstanceName = Read-RequiredValue -Prompt 'aMuTorrent eMuleBB instance name' -Value $InstanceName
-$InstanceId = Normalize-ArgumentValue -Value $InstanceId
 
-if ($Action -eq 'Register') {
-    $EmulebbBaseUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'eMuleBB base URL (example http://LAN-IP:4711)' -Value $EmulebbBaseUrl) -Name 'EmulebbBaseUrl'
-    $EmulebbApiKey = Read-RequiredSecretValue -Prompt 'eMuleBB API key' -Value $EmulebbApiKey -Name 'EmulebbApiKey'
-}
-
-Run-TargetWithRetry -Name "aMuTorrent eMuleBB $Action" -NoRetry:$NoRetry -Operation {
+Run-TargetWithRetry -Name "aMuTorrent eMuleBB $Action" -NoRetry:$NoRetry -OnRetry {
+    $script:AmutorrentUrl = ''
+    $script:AmutorrentApiKey = ''
+    $script:AmutorrentWebSession = $null
+    if ($script:Action -eq 'Register') {
+        $script:EmulebbBaseUrl = ''
+        $script:EmulebbApiKey = ''
+    }
+} -Operation {
+    $script:AmutorrentUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'aMuTorrent URL (example http://LAN-IP:4000)' -Value $script:AmutorrentUrl) -Name 'AmutorrentUrl'
+    $script:AmutorrentApiKey = Read-SecretValue -Prompt 'aMuTorrent admin API key (blank only when auth is disabled)' -Value $script:AmutorrentApiKey -Optional
+    $script:InstanceName = Read-RequiredValue -Prompt 'aMuTorrent eMuleBB instance name' -Value $script:InstanceName
+    $script:InstanceId = Normalize-ArgumentValue -Value $script:InstanceId
     if ($Action -eq 'Unregister') {
-        Unregister-EmulebbClient -BaseUrl $AmutorrentUrl -ApiKey $AmutorrentApiKey -Name $InstanceName -Id $InstanceId
+        Unregister-EmulebbClient -BaseUrl $script:AmutorrentUrl -ApiKey $script:AmutorrentApiKey -Name $script:InstanceName -Id $script:InstanceId
     } else {
-        Register-EmulebbClient -BaseUrl $AmutorrentUrl -ApiKey $AmutorrentApiKey -EmuleBaseUrl $EmulebbBaseUrl -EmuleKey $EmulebbApiKey -Name $InstanceName -Id $InstanceId
+        $script:EmulebbBaseUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'eMuleBB base URL (example http://LAN-IP:4711)' -Value $script:EmulebbBaseUrl) -Name 'EmulebbBaseUrl'
+        $script:EmulebbApiKey = Read-RequiredSecretValue -Prompt 'eMuleBB API key' -Value $script:EmulebbApiKey -Name 'EmulebbApiKey'
+        Register-EmulebbClient -BaseUrl $script:AmutorrentUrl -ApiKey $script:AmutorrentApiKey -EmuleBaseUrl $script:EmulebbBaseUrl -EmuleKey $script:EmulebbApiKey -Name $script:InstanceName -Id $script:InstanceId
     }
 }
 

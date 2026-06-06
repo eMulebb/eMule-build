@@ -157,6 +157,9 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "emulebbExecutableName" in start_emulebb
     assert "'emulebb.exe'" in start_emulebb
     assert "profiles\\emulebb" in start_emulebb
+    assert "function Test-EmuleRunning" in start_emulebb
+    assert "eMuleBB executable is missing" in start_emulebb
+    assert "eMuleBB did not stay running after launch" in start_emulebb
 
     start_suite = (install_root / "scripts" / "Start-Suite.ps1").read_text(encoding="utf-8-sig")
     assert "suite-config.json" in start_suite
@@ -965,9 +968,16 @@ def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() 
     assert "function Get-ExceptionMessage" in register_arr_stack
     assert "Get-ExceptionMessage -Exception $_.Exception" in register_arr_stack
     assert "function Read-RequiredSecretValue" in register_arr_stack
-    assert "Read-RequiredSecretValue -Prompt 'Prowlarr API key' -Value $ProwlarrApiKey -Name 'ProwlarrApiKey'" in register_arr_stack
-    assert "Read-RequiredSecretValue -Prompt 'eMuleBB API key' -Value $EmulebbApiKey -Name 'EmulebbApiKey'" in register_arr_stack
-    assert "Read-RequiredSecretValue -Prompt \"$Target API key\" -Value $targetApiKey -Name (\"${Target}ApiKey\")" in register_arr_stack
+    assert "-AsSecureString" not in register_arr_stack
+    assert "return Normalize-ArgumentValue -Value (Read-Host $Prompt)" in register_arr_stack
+    assert "[scriptblock]$OnRetry = $null" in register_arr_stack
+    assert "exit 1" in register_arr_stack
+    assert "$script:EmulebbBaseUrl = ''" in register_arr_stack
+    assert "$script:ProwlarrUrl = ''" in register_arr_stack
+    assert "$script:targetUrl = ''" in register_arr_stack
+    assert "Read-RequiredSecretValue -Prompt 'Prowlarr API key' -Value $script:ProwlarrApiKey -Name 'ProwlarrApiKey'" in register_arr_stack
+    assert "Read-RequiredSecretValue -Prompt 'eMuleBB API key' -Value $script:EmulebbApiKey -Name 'EmulebbApiKey'" in register_arr_stack
+    assert "Read-RequiredSecretValue -Prompt \"$Target API key\" -Value $script:targetApiKey -Name (\"${Target}ApiKey\")" in register_arr_stack
     assert "Set-ProviderField -Provider $payload -Name 'password' -Value $EmuleApiKey" in register_arr_stack
     assert "Set-ProviderField -Provider $payload -Name 'apiKey' -Value $ArrKey" in register_arr_stack
     assert "if ($SyncProwlarrOnly)" in register_arr_stack
@@ -975,6 +985,7 @@ def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() 
     assert "throw 'ProwlarrUrl is required for -SyncProwlarrOnly.'" not in register_arr_stack
     assert register_arr_stack.index("if ($SyncProwlarrOnly)") < register_arr_stack.index("$ProwlarrUrl = Read-OptionalValue")
     assert "if ($ProwlarrUrl -and -not $SkipProwlarrSync)" in register_arr_stack
+    assert "$ProwlarrUrl = Normalize-HttpBaseUrl -Value $ProwlarrUrl" not in register_arr_stack
 
 
 def test_suite_prowlarr_registration_requires_and_passes_api_keys() -> None:
@@ -989,8 +1000,12 @@ def test_suite_prowlarr_registration_requires_and_passes_api_keys() -> None:
     assert "function Get-ExceptionMessage" in register_prowlarr
     assert "Get-ExceptionMessage -Exception $_.Exception" in register_prowlarr
     assert "function Read-RequiredSecretValue" in register_prowlarr
+    assert "-AsSecureString" not in register_prowlarr
+    assert "return Normalize-ArgumentValue -Value (Read-Host $Prompt)" in register_prowlarr
     assert "Read-RequiredSecretValue -Prompt 'Prowlarr API key' -Value $ProwlarrApiKey -Name 'ProwlarrApiKey'" in register_prowlarr
     assert "Read-RequiredSecretValue -Prompt 'eMuleBB API key' -Value $EmulebbApiKey -Name 'EmulebbApiKey'" in register_prowlarr
+    assert "$EmulebbBaseUrl = ''" in register_prowlarr
+    assert "$EmulebbApiKey = ''" in register_prowlarr
     assert "Set-ProviderField -Provider $payload -Name 'apiKey' -Value $TorznabApiKey" in register_prowlarr
 
 
@@ -1007,7 +1022,12 @@ def test_suite_amutorrent_registration_repairs_stale_env_owned_clients() -> None
     assert "function Get-ExceptionMessage" in register_amutorrent
     assert "aMuTorrent request failed at $uri" in register_amutorrent
     assert "Get-ExceptionMessage -Exception $_.Exception" in register_amutorrent
-    assert "Read-RequiredSecretValue -Prompt 'eMuleBB API key' -Value $EmulebbApiKey -Name 'EmulebbApiKey'" in register_amutorrent
+    assert "-AsSecureString" not in register_amutorrent
+    assert "return Normalize-ArgumentValue -Value (Read-Host $Prompt)" in register_amutorrent
+    assert "[scriptblock]$OnRetry = $null" in register_amutorrent
+    assert "$script:AmutorrentUrl = ''" in register_amutorrent
+    assert "$script:AmutorrentWebSession = $null" in register_amutorrent
+    assert "Read-RequiredSecretValue -Prompt 'eMuleBB API key' -Value $script:EmulebbApiKey -Name 'EmulebbApiKey'" in register_amutorrent
     assert "function Test-ClientHasActiveEnvField" in register_amutorrent
     assert "function Remove-StaleEnvOwnedEmulebbClients" in register_amutorrent
     assert "$clients = Remove-StaleEnvOwnedEmulebbClients -Clients $clients" in register_amutorrent
@@ -1034,6 +1054,9 @@ def test_suite_generated_update_and_start_scripts_are_refresh_safe() -> None:
     assert "function Test-ProcessRunning" in installer
     assert "function Start-ProcessIfMissing" in installer
     assert "eMuleBB is already running" in installer
+    assert "function Test-EmuleRunning" in installer
+    assert "eMuleBB executable is missing" in installer
+    assert "eMuleBB did not stay running after launch" in installer
     assert "Start-ProcessIfMissing -Name 'aMuTorrent' -FilePath `$node" in installer
     assert "Start skipped because -NoStart was used" in installer
     assert "credentials.html" in installer

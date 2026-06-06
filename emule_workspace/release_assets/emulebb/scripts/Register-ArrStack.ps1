@@ -114,13 +114,7 @@ function Read-SecretValue {
     if (-not [string]::IsNullOrWhiteSpace($Value)) {
         return Normalize-ArgumentValue -Value $Value
     }
-    $secure = Read-Host $Prompt -AsSecureString
-    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-    try {
-        return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
-    } finally {
-        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
-    }
+    return Normalize-ArgumentValue -Value (Read-Host $Prompt)
 }
 
 function Read-RequiredSecretValue {
@@ -540,7 +534,7 @@ function Save-ProwlarrApplication {
 }
 
 function Run-TargetWithRetry {
-    param([string]$Name, [scriptblock]$Operation, [switch]$NoRetry)
+    param([string]$Name, [scriptblock]$Operation, [scriptblock]$OnRetry = $null, [switch]$NoRetry)
     do {
         try {
             & $Operation
@@ -552,69 +546,101 @@ function Run-TargetWithRetry {
             }
             $answer = Read-Host ('Retry {0}? [Y/n]' -f $Name)
             if (-not ([string]::IsNullOrWhiteSpace($answer) -or $answer.Trim().ToLowerInvariant().StartsWith('y'))) {
-                return
+                exit 1
+            }
+            if ($null -ne $OnRetry) {
+                & $OnRetry
             }
         }
     } while ($true)
 }
 
 if ($SyncProwlarrOnly) {
-    $ProwlarrUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'Prowlarr URL for application sync' -Value $ProwlarrUrl) -Name 'ProwlarrUrl'
-    $ProwlarrApiKey = Read-RequiredSecretValue -Prompt 'Prowlarr API key' -Value $ProwlarrApiKey -Name 'ProwlarrApiKey'
     Write-Host 'eMuleBB Prowlarr Application Sync' -ForegroundColor Cyan
-    Run-TargetWithRetry -Name 'Prowlarr application sync' -NoRetry:$NoRetry -Operation {
-        Invoke-ProwlarrSync -BaseUrl $ProwlarrUrl -ApiKey $ProwlarrApiKey
+    Run-TargetWithRetry -Name 'Prowlarr application sync' -NoRetry:$NoRetry -OnRetry {
+        $script:ProwlarrUrl = ''
+        $script:ProwlarrApiKey = ''
+    } -Operation {
+        $script:ProwlarrUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'Prowlarr URL for application sync' -Value $script:ProwlarrUrl) -Name 'ProwlarrUrl'
+        $script:ProwlarrApiKey = Read-RequiredSecretValue -Prompt 'Prowlarr API key' -Value $script:ProwlarrApiKey -Name 'ProwlarrApiKey'
+        Invoke-ProwlarrSync -BaseUrl $script:ProwlarrUrl -ApiKey $script:ProwlarrApiKey
     }
     exit 0
 }
 
 $ProwlarrUrl = Read-OptionalValue -Prompt 'Prowlarr URL for application sync (blank to skip)' -Value $ProwlarrUrl
-if ($ProwlarrUrl) {
-    $ProwlarrUrl = Normalize-HttpBaseUrl -Value $ProwlarrUrl -Name 'ProwlarrUrl'
-    $ProwlarrApiKey = Read-RequiredSecretValue -Prompt 'Prowlarr API key' -Value $ProwlarrApiKey -Name 'ProwlarrApiKey'
-}
 
 $Action = Read-ActionValue -Value $Action
 $Target = Read-TargetValue -Value $Target
 $targetKind = $Target.ToLowerInvariant()
 Write-Host ('eMuleBB {0} Integration - {1}' -f $Target, $Action) -ForegroundColor Cyan
 if ($Action -eq 'Register') {
-    $EmulebbBaseUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'eMuleBB base URL (example http://LAN-IP:4711)' -Value $EmulebbBaseUrl) -Name 'EmulebbBaseUrl'
-    $EmulebbApiKey = Read-RequiredSecretValue -Prompt 'eMuleBB API key' -Value $EmulebbApiKey -Name 'EmulebbApiKey'
+    $script:EmulebbBaseUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'eMuleBB base URL (example http://LAN-IP:4711)' -Value $script:EmulebbBaseUrl) -Name 'EmulebbBaseUrl'
+    $script:EmulebbApiKey = Read-RequiredSecretValue -Prompt 'eMuleBB API key' -Value $script:EmulebbApiKey -Name 'EmulebbApiKey'
 }
 
 $targetUrl = if ($Target -eq 'Radarr') { $RadarrUrl } else { $SonarrUrl }
 $targetApiKey = if ($Target -eq 'Radarr') { $RadarrApiKey } else { $SonarrApiKey }
-$targetUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt ("$Target URL for eMuleBB download client") -Value $targetUrl) -Name ("${Target}Url")
-$targetApiKey = Read-RequiredSecretValue -Prompt "$Target API key" -Value $targetApiKey -Name ("${Target}ApiKey")
+$script:targetUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt ("$Target URL for eMuleBB download client") -Value $targetUrl) -Name ("${Target}Url")
+$script:targetApiKey = Read-RequiredSecretValue -Prompt "$Target API key" -Value $targetApiKey -Name ("${Target}ApiKey")
 
 if ($Action -eq 'Register') {
     $arrCategoryName = Get-ArrCategoryName -Kind $targetKind
     $EmulebbCategoryPath = Normalize-OptionalCategoryPath -Path $EmulebbCategoryPath
-    Run-TargetWithRetry -Name 'eMuleBB category registration' -NoRetry:$NoRetry -Operation {
-        Ensure-EmuleCategory -BaseUrl $EmulebbBaseUrl -ApiKey $EmulebbApiKey -Name $arrCategoryName -Path $EmulebbCategoryPath
+    Run-TargetWithRetry -Name 'eMuleBB category registration' -NoRetry:$NoRetry -OnRetry {
+        $script:EmulebbBaseUrl = ''
+        $script:EmulebbApiKey = ''
+    } -Operation {
+        $script:EmulebbBaseUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'eMuleBB base URL (example http://LAN-IP:4711)' -Value $script:EmulebbBaseUrl) -Name 'EmulebbBaseUrl'
+        $script:EmulebbApiKey = Read-RequiredSecretValue -Prompt 'eMuleBB API key' -Value $script:EmulebbApiKey -Name 'EmulebbApiKey'
+        Ensure-EmuleCategory -BaseUrl $script:EmulebbBaseUrl -ApiKey $script:EmulebbApiKey -Name $arrCategoryName -Path $EmulebbCategoryPath
     }
 }
 
 if ($Action -eq 'Register' -and $ProwlarrUrl) {
-    Run-TargetWithRetry -Name "Prowlarr $Target application registration" -NoRetry:$NoRetry -Operation {
-        $saved = Save-ProwlarrApplication -ProwlarrBaseUrl $ProwlarrUrl -ProwlarrKey $ProwlarrApiKey -Kind $targetKind -ArrUrl $targetUrl -ArrKey $targetApiKey
+    Run-TargetWithRetry -Name "Prowlarr $Target application registration" -NoRetry:$NoRetry -OnRetry {
+        $script:ProwlarrUrl = ''
+        $script:ProwlarrApiKey = ''
+        $script:targetUrl = ''
+        $script:targetApiKey = ''
+    } -Operation {
+        $script:ProwlarrUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'Prowlarr URL for application sync' -Value $script:ProwlarrUrl) -Name 'ProwlarrUrl'
+        $script:ProwlarrApiKey = Read-RequiredSecretValue -Prompt 'Prowlarr API key' -Value $script:ProwlarrApiKey -Name 'ProwlarrApiKey'
+        $script:targetUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt ("$Target URL for eMuleBB download client") -Value $script:targetUrl) -Name ("${Target}Url")
+        $script:targetApiKey = Read-RequiredSecretValue -Prompt "$Target API key" -Value $script:targetApiKey -Name ("${Target}ApiKey")
+        $saved = Save-ProwlarrApplication -ProwlarrBaseUrl $script:ProwlarrUrl -ProwlarrKey $script:ProwlarrApiKey -Kind $targetKind -ArrUrl $script:targetUrl -ArrKey $script:targetApiKey
         Write-Host ('Prowlarr {0} application saved with id {1}.' -f $Target, $saved.id) -ForegroundColor Green
     }
 }
 
-Run-TargetWithRetry -Name ("$Target download client {0}" -f $Action.ToLowerInvariant()) -NoRetry:$NoRetry -Operation {
+Run-TargetWithRetry -Name ("$Target download client {0}" -f $Action.ToLowerInvariant()) -NoRetry:$NoRetry -OnRetry {
+    $script:targetUrl = ''
+    $script:targetApiKey = ''
+    if ($script:Action -eq 'Register') {
+        $script:EmulebbBaseUrl = ''
+        $script:EmulebbApiKey = ''
+    }
+} -Operation {
+    $script:targetUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt ("$Target URL for eMuleBB download client") -Value $script:targetUrl) -Name ("${Target}Url")
+    $script:targetApiKey = Read-RequiredSecretValue -Prompt "$Target API key" -Value $script:targetApiKey -Name ("${Target}ApiKey")
     if ($Action -eq 'Unregister') {
-        Remove-QbitClient -BaseUrl $targetUrl -ApiKey $targetApiKey -Name $DownloadClientName
+        Remove-QbitClient -BaseUrl $script:targetUrl -ApiKey $script:targetApiKey -Name $DownloadClientName
     } else {
-        $saved = Save-QbitClient -Kind $targetKind -BaseUrl $targetUrl -ApiKey $targetApiKey -EmuleBaseUrl $EmulebbBaseUrl -EmuleApiKey $EmulebbApiKey -Name $DownloadClientName
+        $script:EmulebbBaseUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'eMuleBB base URL (example http://LAN-IP:4711)' -Value $script:EmulebbBaseUrl) -Name 'EmulebbBaseUrl'
+        $script:EmulebbApiKey = Read-RequiredSecretValue -Prompt 'eMuleBB API key' -Value $script:EmulebbApiKey -Name 'EmulebbApiKey'
+        $saved = Save-QbitClient -Kind $targetKind -BaseUrl $script:targetUrl -ApiKey $script:targetApiKey -EmuleBaseUrl $script:EmulebbBaseUrl -EmuleApiKey $script:EmulebbApiKey -Name $DownloadClientName
         Write-Host ('{0} download client saved with id {1}.' -f $Target, $saved.id) -ForegroundColor Green
     }
 }
 
 if ($ProwlarrUrl -and -not $SkipProwlarrSync) {
-    Run-TargetWithRetry -Name 'Prowlarr application sync' -NoRetry:$NoRetry -Operation {
-        Invoke-ProwlarrSync -BaseUrl $ProwlarrUrl -ApiKey $ProwlarrApiKey
+    Run-TargetWithRetry -Name 'Prowlarr application sync' -NoRetry:$NoRetry -OnRetry {
+        $script:ProwlarrUrl = ''
+        $script:ProwlarrApiKey = ''
+    } -Operation {
+        $script:ProwlarrUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'Prowlarr URL for application sync' -Value $script:ProwlarrUrl) -Name 'ProwlarrUrl'
+        $script:ProwlarrApiKey = Read-RequiredSecretValue -Prompt 'Prowlarr API key' -Value $script:ProwlarrApiKey -Name 'ProwlarrApiKey'
+        Invoke-ProwlarrSync -BaseUrl $script:ProwlarrUrl -ApiKey $script:ProwlarrApiKey
     }
 }
 

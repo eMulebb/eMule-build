@@ -1765,12 +1765,23 @@ $startEmuleBB = @"
 `$Config = Get-Content -Raw -LiteralPath (Join-Path `$Root 'manifests\suite-config.json') | ConvertFrom-Json
 `$EmuleExe = if ([string]::IsNullOrWhiteSpace([string]`$Config.emulebbExecutableName)) { 'emulebb.exe' } else { [string]`$Config.emulebbExecutableName }
 `$Emule = Join-Path (Join-Path `$Root 'apps\eMuleBB') `$EmuleExe
+function Test-EmuleRunning {
+    param([string]`$Path)
+    return [bool](Get-Process | Where-Object { `$_.Path -and [string]::Equals(`$_.Path, `$Path, [StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1)
+}
+if (-not (Test-Path -LiteralPath `$Emule)) {
+    throw "eMuleBB executable is missing: `$Emule. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to refresh suite files."
+}
 `$Existing = Get-Process | Where-Object { `$_.Path -and [string]::Equals(`$_.Path, `$Emule, [StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1
 if (`$Existing) {
     Write-Host "eMuleBB is already running: PID `$(`$Existing.Id)"
     return
 }
 Start-Process -FilePath `$Emule -ArgumentList @('-c', (Join-Path `$Root 'profiles\emulebb')) | Out-Null
+Start-Sleep -Seconds 2
+if (-not (Test-EmuleRunning -Path `$Emule)) {
+    throw "eMuleBB did not stay running after launch from `$Emule. Check `$Root\profiles\emulebb\logs and `$Root\profiles\emulebb\config\preferences.ini."
+}
 "@
     $startEmuleBB | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $scriptsDir 'Start-eMuleBB.ps1')
 $startSuite = @"

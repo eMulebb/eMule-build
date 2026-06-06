@@ -82,13 +82,7 @@ function Read-SecretValue {
     if (-not [string]::IsNullOrWhiteSpace($Value)) {
         return Normalize-ArgumentValue -Value $Value
     }
-    $secure = Read-Host $Prompt -AsSecureString
-    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-    try {
-        return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
-    } finally {
-        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
-    }
+    return Normalize-ArgumentValue -Value (Read-Host $Prompt)
 }
 
 function Read-RequiredSecretValue {
@@ -384,5 +378,7 @@ do {
         }
         $ProwlarrUrl = ''
         $ProwlarrApiKey = ''
+        $EmulebbBaseUrl = ''
+        $EmulebbApiKey = ''
     }
 } while ($true)
