@@ -607,6 +607,55 @@ function Get-SuiteServiceNames {
     return @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr')
 }
 
+function Get-BundleServiceNames {
+    param([string]$BundleName)
+    if ($BundleName -eq 'Core') {
+        return @('emulebb')
+    }
+    if ($BundleName -eq 'Controller') {
+        return @('emulebb', 'amutorrent')
+    }
+    return @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr')
+}
+
+function Get-ServiceDisplayName {
+    param([string]$ServiceName)
+    switch ($ServiceName) {
+        'emulebb' { return 'eMuleBB' }
+        'amutorrent' { return 'aMuTorrent' }
+        'prowlarr' { return 'Prowlarr' }
+        'radarr' { return 'Radarr' }
+        'sonarr' { return 'Sonarr' }
+        default { return $ServiceName }
+    }
+}
+
+function Get-BundleInstallDescription {
+    param([string]$BundleName)
+    return ((Get-BundleServiceNames -BundleName $BundleName | ForEach-Object { Get-ServiceDisplayName -ServiceName $_ }) -join ', ')
+}
+
+function Get-ServicePortDisplayValue {
+    param([int]$Port)
+    if ($Port -le 0) {
+        return "auto (free port from $AutoPortRangeStart-$AutoPortRangeEnd)"
+    }
+    return [string]$Port
+}
+
+function Write-BundlePortPreview {
+    param([hashtable]$Config)
+    $serviceNames = @(Get-BundleServiceNames -BundleName ([string]$Config.bundle))
+    Write-Host ''
+    Write-Host ('Selected bundle: {0}' -f $Config.bundle) -ForegroundColor Cyan
+    Write-Host ('  Installs: {0}' -f (Get-BundleInstallDescription -BundleName ([string]$Config.bundle)))
+    Write-Host '  Service ports:'
+    foreach ($serviceName in $serviceNames) {
+        $service = $Config.services[$serviceName]
+        Write-Host ('    {0}: {1}' -f (Get-ServiceDisplayName -ServiceName $serviceName), (Get-ServicePortDisplayValue -Port ([int]$service.port)))
+    }
+}
+
 function ConvertTo-BindIPAddress {
     param([string]$BindAddress)
     if ([string]::IsNullOrWhiteSpace($BindAddress) -or $BindAddress -eq '0.0.0.0') {
@@ -835,9 +884,15 @@ function Invoke-InstallWizard {
     while ($step -lt 6) {
         switch ($step) {
             0 {
-                $choice = Read-WizardChoice -Prompt 'Bundle' -Choices @('Full suite', 'Controller only', 'Core app only') -DefaultIndex (@('Full', 'Controller', 'Core').IndexOf([string]$Config.bundle))
+                $bundleChoices = @(
+                    ('Full suite - installs {0}' -f (Get-BundleInstallDescription -BundleName 'Full')),
+                    ('Controller only - installs {0}' -f (Get-BundleInstallDescription -BundleName 'Controller')),
+                    ('Core app only - installs {0}' -f (Get-BundleInstallDescription -BundleName 'Core'))
+                )
+                $choice = Read-WizardChoice -Prompt 'Bundle' -Choices $bundleChoices -DefaultIndex (@('Full', 'Controller', 'Core').IndexOf([string]$Config.bundle))
                 if ($choice -lt 0) { $step = [Math]::Max(0, $step - 1); continue }
                 $Config.bundle = @('Full', 'Controller', 'Core')[$choice]
+                Write-BundlePortPreview -Config $Config
                 $Config.installRoot = Read-WizardValue -Prompt 'Install root' -Default $Config.installRoot
                 $step++
             }
@@ -889,10 +944,11 @@ function Invoke-InstallWizard {
                 $step++
             }
             3 {
+                Write-BundlePortPreview -Config $Config
                 $choice = Read-WizardChoice -Prompt 'Ports' -Choices @('Use defaults/current values', 'Edit service ports') -DefaultIndex 0
                 if ($choice -lt 0) { $step--; continue }
                 if ($choice -eq 1) {
-                    foreach ($serviceName in @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr')) {
+                    foreach ($serviceName in @(Get-BundleServiceNames -BundleName ([string]$Config.bundle))) {
                         $Config.services[$serviceName].port = Read-WizardPortValue -Prompt "$serviceName port" -Default ([int]$Config.services[$serviceName].port)
                     }
                 }
@@ -941,9 +997,10 @@ function Write-ConfigSummary {
     Write-Host ''
     Write-Host 'Install summary'
     Write-Host "  Bundle: $($Config.bundle)"
+    Write-Host ('  Installs: {0}' -f (Get-BundleInstallDescription -BundleName ([string]$Config.bundle)))
     Write-Host "  Root: $($Config.installRoot)"
     Write-Host "  Version/platform: $($Config.version) / $($Config.platform)"
-    foreach ($serviceName in @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr')) {
+    foreach ($serviceName in @(Get-BundleServiceNames -BundleName ([string]$Config.bundle))) {
         $service = $Config.services[$serviceName]
         $clientHostText = if ([string]::Equals([string]$service.clientHost, [string]$service.bindAddress, [StringComparison]::OrdinalIgnoreCase)) { '' } else { " (client URL host: $($service.clientHost))" }
         Write-Host ("  {0}: {1}:{2}{3}" -f $serviceName, $service.bindAddress, $service.port, $clientHostText)

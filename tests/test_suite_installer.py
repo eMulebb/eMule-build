@@ -1307,6 +1307,15 @@ def test_suite_generated_update_and_start_scripts_are_refresh_safe() -> None:
     assert "function Test-ProcessRunning" in installer
     assert "function Start-ProcessIfMissing" in installer
     assert "function Get-ServiceClientHost" in installer
+    assert "function Get-BundleServiceNames" in installer
+    assert "function Get-BundleInstallDescription" in installer
+    assert "function Write-BundlePortPreview" in installer
+    assert "Full suite - installs {0}" in installer
+    assert "Controller only - installs {0}" in installer
+    assert "Core app only - installs {0}" in installer
+    assert "Installs: {0}" in installer
+    assert "Service ports:" in installer
+    assert "auto (free port from $AutoPortRangeStart-$AutoPortRangeEnd)" in installer
     assert "function Read-WizardPortValue" in installer
     assert "Enter a number from 0 to 65535. Use 0 to auto-select a free suite port." in installer
     assert "eMuleBB is already running" in installer
