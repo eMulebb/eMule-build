@@ -112,8 +112,8 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert suite_config["services"]["emulebb"]["port"] == 14711
     assert suite_config["services"]["amutorrent"]["bindAddress"] == control_bind
     assert suite_config["credentials"]["username"] == "admin"
-    assert re.fullmatch(r"[A-Za-z0-9]{16}", suite_config["credentials"]["password"])
-    assert re.fullmatch(r"[A-Za-z0-9]{16}", suite_config["services"]["emulebb"]["apiKey"])
+    assert re.fullmatch(r"[A-Za-z0-9]{24}", suite_config["credentials"]["password"])
+    assert re.fullmatch(r"[A-Za-z0-9]{24}", suite_config["services"]["emulebb"]["apiKey"])
     assert suite_config["p2p"] == {
         "bindInterface": "hide.me",
         "blockNetworkWhenBindUnavailableAtStartup": False,
@@ -146,6 +146,8 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     credentials_html = (install_root / "credentials.html").read_text(encoding="utf-8-sig")
     assert "eMuleBB Suite Credentials" in credentials_html
     assert f"http://{control_bind}:14711" in credentials_html
+    assert 'target="_blank"' in credentials_html
+    assert 'rel="noopener noreferrer"' in credentials_html
     assert 'data-copy="' in credentials_html
     assert suite_config["credentials"]["password"] in credentials_html
     assert suite_config["services"]["emulebb"]["apiKey"] in credentials_html
@@ -194,6 +196,11 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "function Ensure-EmuleBBAvailable" in start_suite
     assert "function Invoke-StepWithRetry" in start_suite
     assert "Invoke-StepWithRetry -Name 'Sonarr registration'" in start_suite
+    assert "-SkipProwlarrSync" in start_suite
+    assert "Invoke-StepWithRetry -Name 'Prowlarr application sync'" in start_suite
+    assert "-SyncProwlarrOnly" in start_suite
+    assert start_suite.index("Invoke-StepWithRetry -Name 'Radarr registration'") < start_suite.index("Invoke-StepWithRetry -Name 'Sonarr registration'")
+    assert start_suite.index("Invoke-StepWithRetry -Name 'Sonarr registration'") < start_suite.index("Invoke-StepWithRetry -Name 'Prowlarr application sync'")
     assert start_suite.index("foreach ($item in @(@('Prowlarr'") < start_suite.index("$env:PORT = [string]$Config.services.amutorrent.port")
     assert start_suite.index("$env:PORT = [string]$Config.services.amutorrent.port") < start_suite.index("Start-ProcessIfMissing -FilePath $node")
 
@@ -545,9 +552,9 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
         for name in ("emulebb", "prowlarr", "radarr", "sonarr")
     }
     suite_password = suite_config["credentials"]["password"]
-    assert re.fullmatch(r"[A-Za-z0-9]{16}", suite_password)
+    assert re.fullmatch(r"[A-Za-z0-9]{24}", suite_password)
     for key in first_keys.values():
-        assert re.fullmatch(r"[A-Za-z0-9]{16}", key)
+        assert re.fullmatch(r"[A-Za-z0-9]{24}", key)
     service_order = ("emulebb", "amutorrent", "prowlarr", "radarr", "sonarr")
     service_ports = [suite_config["services"][name]["port"] for name in service_order]
     assert service_ports == list(range(service_ports[0], service_ports[0] + len(service_ports)))
@@ -605,6 +612,8 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     assert "Radarr/Sonarr Download Client" in credentials_html
     assert "data-copy=" in credentials_html
     assert "http://127.0.0.1:" in credentials_html
+    assert 'target="_blank"' in credentials_html
+    assert 'rel="noopener noreferrer"' in credentials_html
     assert suite_password in credentials_html
     for key in first_keys.values():
         assert key in credentials_html
@@ -877,6 +886,11 @@ def test_suite_installer_keeps_full_suite_service_binds_config_driven() -> None:
     assert "Test-AutoLanIPv4Address" in installer
     assert "'hide.me'" in installer
     assert "X_LOCAL_IP" in installer
+    assert "Non-loopback control-service bind detected" not in installer
+    assert "Allow remote control-service bind" not in installer
+    assert "Back to service binds" not in installer
+    assert "bind address $Address is not loopback" not in installer
+    assert "will bind to non-loopback address $Address" not in installer
 
 
 def test_suite_installer_preserves_app_roots_when_extracting_multiple_packages() -> None:
@@ -896,6 +910,23 @@ def test_suite_installer_requires_hashed_pinned_dependencies() -> None:
     assert "19a81e69dedd8d317b5fa8a1a9c48d63bc3b3f3ba87b84c94ff6d75b1803e419" in installer
     assert "Latest dependency resolution requires -DependencyManifest entries with exact URLs and SHA256 hashes." in installer
     assert "$Name dependency download requires a SHA256 hash." in installer
+    assert "Downloading $Name dependency $assetName" in installer
+    assert "Verifying $Name dependency" in installer
+    assert "Extracting $Name dependency" in installer
+    assert "Downloading Node runtime $($nodeSpec.FileName)" in installer
+    assert "Verifying Node runtime" in installer
+    assert "Extracting Node runtime" in installer
+
+
+def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() -> None:
+    script_path = Path("emule_workspace/release_assets/emulebb/scripts/Register-ArrStack.ps1")
+    _assert_powershell_parse(Path.cwd() / script_path, cwd=Path.cwd())
+    register_arr_stack = script_path.read_text(encoding="utf-8")
+
+    assert "[switch]$SkipProwlarrSync" in register_arr_stack
+    assert "[switch]$SyncProwlarrOnly" in register_arr_stack
+    assert "if ($SyncProwlarrOnly)" in register_arr_stack
+    assert "if ($ProwlarrUrl -and -not $SkipProwlarrSync)" in register_arr_stack
 
 
 def test_suite_installer_global_bind_is_default_not_override() -> None:
@@ -1143,6 +1174,60 @@ function Invoke-WebRequest {{
     assert "Resolved release emulebb-nightly-20260604-5169162 for x64" in completed.stdout
     assert "Resolved aMuTorrent release amutorrent-nightly-20260604-9eff539e for Full suite" in completed.stdout
     assert captured_bundle.read_text(encoding="utf-8-sig").strip() == "Full"
+
+
+@pytest.mark.parametrize("pass_install_root", [False, True])
+def test_suite_bootstrapper_only_hands_explicit_install_root_to_installer(tmp_path: Path, pass_install_root: bool) -> None:
+    repo_root = Path.cwd()
+    release_root = tmp_path / "release"
+    captured = tmp_path / "captured-install-root.json"
+    installer_payload = f"""#Requires -Version 5.1
+param(
+    [string]$Bundle,
+    [string]$InstallRoot,
+    [string]$Version,
+    [string]$Platform,
+    [string]$EmulebbPackageZip,
+    [string]$EmulebbPackageManifest,
+    [switch]$NoStart
+)
+@{{
+    hasInstallRoot = $PSBoundParameters.ContainsKey('InstallRoot')
+    installRoot = $InstallRoot
+}} | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 -LiteralPath '{captured.as_posix()}'
+""".encode("utf-8")
+    package_zip = release_root / "emulebb-0.7.3-local.20260604-x64.zip"
+    package_manifest = release_root / "emulebb-0.7.3-local.20260604-x64.manifest.json"
+    suite_install_fixtures.write_zip(
+        package_zip,
+        {
+            "eMuleBB/emulebb.exe": b"exe\n",
+            "eMuleBB/scripts/Install-eMuleBBSuite.ps1": installer_payload,
+        },
+    )
+    suite_install_fixtures.write_manifest(package_manifest, package_zip)
+
+    bootstrapper_path = (repo_root / BOOTSTRAPPER).resolve()
+    command = [
+        "-File",
+        str(bootstrapper_path),
+        "-Bundle",
+        "Core",
+        "-NoStart",
+        "-EmulebbPackageZip",
+        str(package_zip),
+        "-EmulebbPackageManifest",
+        str(package_manifest),
+    ]
+    if pass_install_root:
+        command.extend(["-InstallRoot", r"c:\jesus"])
+
+    _run_powershell(command, cwd=repo_root)
+    captured_payload = json.loads(captured.read_text(encoding="utf-8-sig"))
+
+    assert captured_payload["hasInstallRoot"] is pass_install_root
+    if pass_install_root:
+        assert captured_payload["installRoot"] == r"c:\jesus"
 
 
 def test_suite_bootstrapper_accepts_local_package_zip_overrides(tmp_path: Path) -> None:

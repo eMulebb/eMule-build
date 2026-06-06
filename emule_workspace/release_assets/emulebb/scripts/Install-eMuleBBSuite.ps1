@@ -124,19 +124,20 @@ function Assert-NoSpaces {
 }
 
 function New-Secret {
+    param([int]$Length = 24)
     $alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
     $result = New-Object System.Text.StringBuilder
     $buffer = New-Object byte[] 32
     $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
     try {
-        while ($result.Length -lt 16) {
+        while ($result.Length -lt $Length) {
             $rng.GetBytes($buffer)
             foreach ($byte in $buffer) {
                 if ($byte -ge 248) {
                     continue
                 }
                 [void]$result.Append($alphabet[$byte % $alphabet.Length])
-                if ($result.Length -eq 16) {
+                if ($result.Length -eq $Length) {
                     break
                 }
             }
@@ -149,13 +150,17 @@ function New-Secret {
 
 function Assert-FixedSecret {
     param([string]$Name, [string]$Value)
-    if ($Value -notmatch '^[A-Za-z0-9]{16}$') {
-        throw "$Name must be exactly 16 alphanumeric characters."
+    if ($Value -notmatch '^[A-Za-z0-9]{24}$') {
+        throw "$Name must be exactly 24 alphanumeric characters."
     }
 }
 
 function New-SuitePassword {
     return New-Secret
+}
+
+function New-ApiKey {
+    return New-Secret -Length 24
 }
 
 function Resolve-Secret {
@@ -165,6 +170,18 @@ function Resolve-Secret {
     }
     $trimmed = $Value.Trim()
     Assert-FixedSecret -Name $Name -Value $trimmed
+    return $trimmed
+}
+
+function Resolve-ApiKey {
+    param([string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return New-ApiKey
+    }
+    $trimmed = $Value.Trim()
+    if ($trimmed -notmatch '^[A-Za-z0-9]{24}$') {
+        return New-ApiKey
+    }
     return $trimmed
 }
 
@@ -638,13 +655,7 @@ function Invoke-InstallWizard {
                         $Config.services[$serviceName].bindAddress = Read-WizardValue -Prompt "$serviceName bind address" -Default $Config.services[$serviceName].bindAddress
                     }
                 }
-                if (Test-HasRemoteServiceBind -Config $Config) {
-                    $confirm = Read-WizardChoice -Prompt 'Non-loopback control-service bind detected' -Choices @('Allow remote control-service bind', 'Back to service binds') -DefaultIndex 1
-                    if ($confirm -lt 0 -or $confirm -eq 1) { continue }
-                    $Config.allowRemoteServiceBind = $true
-                } else {
-                    $Config.allowRemoteServiceBind = $false
-                }
+                $Config.allowRemoteServiceBind = Test-HasRemoteServiceBind -Config $Config
                 $step++
             }
             2 {
@@ -770,11 +781,7 @@ function Assert-ServiceBindAddress {
     if ($localAddresses -notcontains $Address) {
         throw "$ServiceName bind address $Address is not a local IPv4 address. Local addresses: $($localAddresses -join ', ')"
     }
-    if (-not $AllowRemote) {
-        Write-Warning "$ServiceName bind address $Address is not loopback."
-        return
-    }
-    Write-Warning "$ServiceName will bind to non-loopback address $Address."
+    return
 }
 
 function Assert-Port {
@@ -1041,7 +1048,9 @@ function Save-ReleaseZip {
     $downloadRoot = Join-Path $script:Root 'downloads-cache'
     $archivePath = Join-Path $downloadRoot ([IO.Path]::GetFileName($ZipUrl))
     $manifestPath = Join-Path $downloadRoot ([IO.Path]::GetFileName($ManifestUrl))
+    Write-Step "Downloading $Name manifest"
     Invoke-Download -Url $ManifestUrl -Destination $manifestPath
+    Write-Step "Downloading $Name package"
     Invoke-Download -Url $ZipUrl -Destination $archivePath
     $expectedHash = ''
     if (-not $DryRun -and (Test-Path -LiteralPath $manifestPath)) {
@@ -1052,6 +1061,7 @@ function Save-ReleaseZip {
         }
         Assert-RequiredSha256 -Value $expectedHash -Description "$Name release manifest"
     }
+    Write-Step "Verifying $Name package"
     Assert-FileHash -Path $archivePath -ExpectedSha256 $expectedHash
     return [ordered]@{
         Name = $Name
@@ -1102,6 +1112,7 @@ function Save-PackageZip {
                 $expectedHash = [string]$sha256Property[0].Value
             }
             Assert-RequiredSha256 -Value $expectedHash -Description "$Name local package manifest"
+            Write-Step "Verifying local $Name package"
             Assert-FileHash -Path $archivePath -ExpectedSha256 $expectedHash
         }
         Write-Step "Using local $Name package $archivePath with manifest $manifestPath"
@@ -1118,6 +1129,7 @@ function Install-VerifiedReleaseZip {
     param([string]$Name, [string]$ArchivePath, [string]$Destination)
     $downloadRoot = Join-Path $script:Root 'downloads-cache'
     $extractRoot = Join-Path $downloadRoot ("extract-$Name")
+    Write-Step "Extracting $Name package"
     Expand-ZipSafe -Archive $archivePath -Destination $extractRoot
     if (-not $DryRun) {
         $extractedPackageRoot = Join-Path $extractRoot $Name
@@ -1162,11 +1174,14 @@ function Install-ArrDependency {
     }
     $archivePath = Join-Path (Join-Path $script:Root 'downloads-cache') $assetName
     $extractRoot = Join-Path (Join-Path $script:Root 'apps') $Name
+    Write-Step "Downloading $Name dependency $assetName"
     Invoke-Download -Url $assetUrl -Destination $archivePath
     if ([string]::IsNullOrWhiteSpace($Spec.Sha256)) {
         throw "$Name dependency download requires a SHA256 hash. Use pinned dependencies or provide -DependencyManifest with sha256."
     }
+    Write-Step "Verifying $Name dependency"
     Assert-FileHash -Path $archivePath -ExpectedSha256 $Spec.Sha256
+    Write-Step "Extracting $Name dependency"
     Expand-ZipSafe -Archive $archivePath -Destination $extractRoot
     Write-Step "$Name installed"
 }
@@ -1571,9 +1586,9 @@ function New-ServiceCardHtml {
 <section class="card">
   <div class="card-head">
     <h2>$safeName</h2>
-    <a class="open" href="$safeUrl">Open</a>
+    <a class="open" href="$safeUrl" target="_blank" rel="noopener noreferrer">Open</a>
   </div>
-  <div class="url"><a href="$safeUrl">$safeUrl</a></div>
+  <div class="url"><a href="$safeUrl" target="_blank" rel="noopener noreferrer">$safeUrl</a></div>
   <div class="fields">
 $fieldHtml
   </div>
@@ -1927,10 +1942,13 @@ if (`$Bundle -eq 'Full') {
         & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-Prowlarr.ps1') -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -IndexerName 'eMuleBB Suite' -AppProfileName 'eMuleBB Suite' -NoRetry
     }
     Invoke-StepWithRetry -Name 'Radarr registration' -Operation {
-        & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -Target Radarr -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -EmulebbCategoryPath (Join-Path `$Root 'downloads\radarr') -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -RadarrUrl `$RadarrUrl -RadarrApiKey `$RadarrKey -DownloadClientName 'eMuleBB Suite' -NoRetry
+        & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -Target Radarr -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -EmulebbCategoryPath (Join-Path `$Root 'downloads\radarr') -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -RadarrUrl `$RadarrUrl -RadarrApiKey `$RadarrKey -DownloadClientName 'eMuleBB Suite' -SkipProwlarrSync -NoRetry
     }
     Invoke-StepWithRetry -Name 'Sonarr registration' -Operation {
-        & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -Target Sonarr -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -EmulebbCategoryPath (Join-Path `$Root 'downloads\sonarr') -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -SonarrUrl `$SonarrUrl -SonarrApiKey `$SonarrKey -DownloadClientName 'eMuleBB Suite' -NoRetry
+        & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -Target Sonarr -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -EmulebbCategoryPath (Join-Path `$Root 'downloads\sonarr') -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -SonarrUrl `$SonarrUrl -SonarrApiKey `$SonarrKey -DownloadClientName 'eMuleBB Suite' -SkipProwlarrSync -NoRetry
+    }
+    Invoke-StepWithRetry -Name 'Prowlarr application sync' -Operation {
+        & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -SyncProwlarrOnly -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -NoRetry
     }
 }
 "@
@@ -2039,10 +2057,10 @@ if (-not $DryRun) {
     New-Item -ItemType Directory -Force -Path $script:Root | Out-Null
 }
 
-$script:SuiteConfig.services.emulebb.apiKey = Resolve-Secret -Value $script:SuiteConfig.services.emulebb.apiKey -Name 'eMuleBB API key'
-$script:SuiteConfig.services.prowlarr.apiKey = Resolve-Secret -Value $script:SuiteConfig.services.prowlarr.apiKey -Name 'Prowlarr API key'
-$script:SuiteConfig.services.radarr.apiKey = Resolve-Secret -Value $script:SuiteConfig.services.radarr.apiKey -Name 'Radarr API key'
-$script:SuiteConfig.services.sonarr.apiKey = Resolve-Secret -Value $script:SuiteConfig.services.sonarr.apiKey -Name 'Sonarr API key'
+$script:SuiteConfig.services.emulebb.apiKey = Resolve-ApiKey -Value $script:SuiteConfig.services.emulebb.apiKey
+$script:SuiteConfig.services.prowlarr.apiKey = Resolve-ApiKey -Value $script:SuiteConfig.services.prowlarr.apiKey
+$script:SuiteConfig.services.radarr.apiKey = Resolve-ApiKey -Value $script:SuiteConfig.services.radarr.apiKey
+$script:SuiteConfig.services.sonarr.apiKey = Resolve-ApiKey -Value $script:SuiteConfig.services.sonarr.apiKey
 $script:SuiteConfig.credentials.password = Resolve-Secret -Value $script:SuiteConfig.credentials.password -Name 'Suite password'
 
 $releaseBase = Resolve-OptionalValue -Value $script:SuiteConfig.releaseBaseUrl -Default "https://github.com/emulebb/emulebb/releases/download/emulebb-v$($script:SuiteConfig.version)"
@@ -2067,8 +2085,11 @@ if ($script:SuiteConfig.bundle -ne 'Core') {
     $nodeSpec = Load-NodeSpec -Payload $dependencyManifestPayload -Platform $script:SuiteConfig.platform
     $nodeArchive = Join-Path (Join-Path $script:Root 'downloads-cache') $nodeSpec.FileName
     $nodeUrl = if ([string]::IsNullOrWhiteSpace($nodeSpec.Url)) { "$nodeBase/$($nodeSpec.FileName)" } else { [string]$nodeSpec.Url }
+    Write-Step "Downloading Node runtime $($nodeSpec.FileName)"
     Invoke-Download -Url $nodeUrl -Destination $nodeArchive
+    Write-Step "Verifying Node runtime"
     Assert-FileHash -Path $nodeArchive -ExpectedSha256 $nodeSpec.Sha256
+    Write-Step "Extracting Node runtime"
     Expand-ZipSafe -Archive $nodeArchive -Destination (Join-Path $script:Root 'runtime\node')
 }
 

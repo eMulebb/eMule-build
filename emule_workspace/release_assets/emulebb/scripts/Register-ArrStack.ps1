@@ -13,6 +13,8 @@ param(
     [string]$SonarrUrl,
     [string]$SonarrApiKey,
     [string]$DownloadClientName = 'eMuleBB',
+    [switch]$SkipProwlarrSync,
+    [switch]$SyncProwlarrOnly,
     [switch]$NoRetry
 )
 
@@ -500,6 +502,23 @@ function Run-TargetWithRetry {
     } while ($true)
 }
 
+$ProwlarrUrl = Read-OptionalValue -Prompt 'Prowlarr URL for application sync (blank to skip)' -Value $ProwlarrUrl
+if ($ProwlarrUrl) {
+    $ProwlarrUrl = Normalize-HttpBaseUrl -Value $ProwlarrUrl -Name 'ProwlarrUrl'
+    $ProwlarrApiKey = Read-SecretValue -Prompt 'Prowlarr API key' -Value $ProwlarrApiKey
+}
+
+if ($SyncProwlarrOnly) {
+    if (-not $ProwlarrUrl) {
+        throw 'ProwlarrUrl is required for -SyncProwlarrOnly.'
+    }
+    Write-Host 'eMuleBB Prowlarr Application Sync' -ForegroundColor Cyan
+    Run-TargetWithRetry -Name 'Prowlarr application sync' -NoRetry:$NoRetry -Operation {
+        Invoke-ProwlarrSync -BaseUrl $ProwlarrUrl -ApiKey $ProwlarrApiKey
+    }
+    exit 0
+}
+
 $Action = Read-ActionValue -Value $Action
 $Target = Read-TargetValue -Value $Target
 $targetKind = $Target.ToLowerInvariant()
@@ -507,11 +526,6 @@ Write-Host ('eMuleBB {0} Integration - {1}' -f $Target, $Action) -ForegroundColo
 if ($Action -eq 'Register') {
     $EmulebbBaseUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'eMuleBB base URL (example http://127.0.0.1:4711)' -Value $EmulebbBaseUrl) -Name 'EmulebbBaseUrl'
     $EmulebbApiKey = Read-SecretValue -Prompt 'eMuleBB API key' -Value $EmulebbApiKey
-}
-$ProwlarrUrl = Read-OptionalValue -Prompt 'Prowlarr URL for application sync (blank to skip)' -Value $ProwlarrUrl
-if ($ProwlarrUrl) {
-    $ProwlarrUrl = Normalize-HttpBaseUrl -Value $ProwlarrUrl -Name 'ProwlarrUrl'
-    $ProwlarrApiKey = Read-SecretValue -Prompt 'Prowlarr API key' -Value $ProwlarrApiKey
 }
 
 $targetUrl = if ($Target -eq 'Radarr') { $RadarrUrl } else { $SonarrUrl }
@@ -543,7 +557,7 @@ Run-TargetWithRetry -Name ("$Target download client {0}" -f $Action.ToLowerInvar
     }
 }
 
-if ($ProwlarrUrl) {
+if ($ProwlarrUrl -and -not $SkipProwlarrSync) {
     Run-TargetWithRetry -Name 'Prowlarr application sync' -NoRetry:$NoRetry -Operation {
         Invoke-ProwlarrSync -BaseUrl $ProwlarrUrl -ApiKey $ProwlarrApiKey
     }
