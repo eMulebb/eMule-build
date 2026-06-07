@@ -726,9 +726,16 @@ function Invoke-JsonApi {
             [pscustomobject]@{ name = 'eMuleBB'; id = 77 }
         )
     }
+    if ($Path -eq '/api/v1/downloadclient') {
+        return @(
+            [pscustomobject]@{ name = 'eMuleBB'; id = 88 }
+        )
+    }
     return $null
 }
 """
+        + _extract_powershell_function(script_text, "Get-ArrApiBasePath")
+        + "\n"
         + _extract_powershell_function(script_text, "Get-ExistingDownloadClient")
         + "\n"
         + _extract_powershell_function(script_text, "Get-HttpStatusCode")
@@ -739,10 +746,13 @@ function Invoke-JsonApi {
         + "\n"
         + _extract_powershell_function(script_text, "Remove-QbitClient")
         + """
-Remove-QbitClient -BaseUrl 'http://radarr' -ApiKey 'secret' -Name 'eMuleBB'
-if ($script:Calls.Count -ne 2) { throw ('expected 2 API calls, got {0}' -f $script:Calls.Count) }
+Remove-QbitClient -Kind 'radarr' -BaseUrl 'http://radarr' -ApiKey 'secret' -Name 'eMuleBB'
+Remove-QbitClient -Kind 'lidarr' -BaseUrl 'http://lidarr' -ApiKey 'secret' -Name 'eMuleBB'
+if ($script:Calls.Count -ne 4) { throw ('expected 4 API calls, got {0}' -f $script:Calls.Count) }
 if ($script:Calls[1].Path -ne '/api/v3/downloadclient/77') { throw ('unexpected delete path: {0}' -f $script:Calls[1].Path) }
 if ($script:Calls[1].Method -ne 'DELETE') { throw ('unexpected delete method: {0}' -f $script:Calls[1].Method) }
+if ($script:Calls[3].Path -ne '/api/v1/downloadclient/88') { throw ('unexpected v1 delete path: {0}' -f $script:Calls[3].Path) }
+if ($script:Calls[3].Method -ne 'DELETE') { throw ('unexpected v1 delete method: {0}' -f $script:Calls[3].Method) }
 """,
         encoding="utf-8",
     )
@@ -838,6 +848,7 @@ def test_register_arr_stack_save_client_returns_only_saved_provider(
 function Invoke-JsonApi {
     param([string]$BaseUrl, [string]$ApiKey, [string]$Path, [string]$Method = 'GET', $Body = $null)
     if ($Path -eq '/api/v3/downloadclient') { return @() }
+    if ($Path -eq '/api/v1/downloadclient') { return @() }
     if ($Path -eq '/api/v3/downloadclient/schema') {
         return @([pscustomobject]@{
             implementation = 'QBittorrent'
@@ -853,6 +864,21 @@ function Invoke-JsonApi {
             )
         })
     }
+    if ($Path -eq '/api/v1/downloadclient/schema') {
+        return @([pscustomobject]@{
+            implementation = 'QBittorrent'
+            fields = @(
+                [pscustomobject]@{ name = 'host' },
+                [pscustomobject]@{ name = 'port' },
+                [pscustomobject]@{ name = 'useSsl' },
+                [pscustomobject]@{ name = 'urlBase' },
+                [pscustomobject]@{ name = 'username' },
+                [pscustomobject]@{ name = 'password' },
+                [pscustomobject]@{ name = 'musicCategory' },
+                [pscustomobject]@{ name = 'initialState' }
+            )
+        })
+    }
     if ($Path -eq '/api/v3/downloadclient?forceSave=true' -and $Method -eq 'POST') {
         $hostName = ($Body.fields | Where-Object { $_.name -eq 'host' }).value
         $urlBase = ($Body.fields | Where-Object { $_.name -eq 'urlBase' }).value
@@ -861,6 +887,11 @@ function Invoke-JsonApi {
         if ($urlBase -ne '/proxy') { throw ('unexpected urlBase: {0}' -f $urlBase) }
         if ($category -ne 'emulebb-radarr') { throw ('unexpected category: {0}' -f $category) }
         return [pscustomobject]@{ id = 88; name = $Body.name }
+    }
+    if ($Path -eq '/api/v1/downloadclient?forceSave=true' -and $Method -eq 'POST') {
+        $category = ($Body.fields | Where-Object { $_.name -eq 'musicCategory' }).value
+        if ($category -ne 'emulebb-lidarr') { throw ('unexpected lidarr category: {0}' -f $category) }
+        return [pscustomobject]@{ id = 89; name = $Body.name }
     }
     throw ('unexpected call: {0} {1}' -f $Method, $Path)
 }
@@ -877,6 +908,8 @@ function Invoke-JsonApi {
         + "\n"
         + _extract_powershell_function(script_text, "Invoke-JsonApiWithRetry")
         + "\n"
+        + _extract_powershell_function(script_text, "Get-ArrApiBasePath")
+        + "\n"
         + _extract_powershell_function(script_text, "Get-QbitSchema")
         + "\n"
         + _extract_powershell_function(script_text, "Get-ExistingDownloadClient")
@@ -890,6 +923,8 @@ function Invoke-JsonApi {
 $saved = Save-QbitClient -Kind 'radarr' -BaseUrl 'http://radarr' -ApiKey 'secret' -EmuleBaseUrl "'http://emule:4711/proxy/'" -EmuleApiKey 'emule-key' -Name 'eMuleBB'
 if ($saved -is [array]) { throw ('Save-QbitClient emitted an array with {0} items' -f $saved.Count) }
 if ($saved.id -ne 88) { throw ('unexpected saved id: {0}' -f $saved.id) }
+$v1Saved = Save-QbitClient -Kind 'lidarr' -BaseUrl 'http://lidarr' -ApiKey 'secret' -EmuleBaseUrl "'http://emule:4711/proxy/'" -EmuleApiKey 'emule-key' -Name 'eMuleBB'
+if ($v1Saved.id -ne 89) { throw ('unexpected v1 saved id: {0}' -f $v1Saved.id) }
 """,
         encoding="utf-8",
     )
@@ -1182,9 +1217,11 @@ function Invoke-JsonApi {
         """
         + _extract_powershell_function(script_text, "Set-ObjectProperty")
         + "\n"
+        + _extract_powershell_function(script_text, "Get-ArrApiBasePath")
+        + "\n"
         + _extract_powershell_function(script_text, "Set-LocalCertificateValidation")
         + """
-$saved = Set-LocalCertificateValidation -BaseUrl 'http://radarr' -ApiKey 'secret'
+$saved = Set-LocalCertificateValidation -Kind 'radarr' -BaseUrl 'http://radarr' -ApiKey 'secret'
 if ($saved.certificateValidation -ne 'disabledForLocalAddresses') { throw 'host config was not relaxed for local HTTPS' }
 if ($script:Calls.Count -ne 2) { throw ('expected 2 API calls, got {0}' -f $script:Calls.Count) }
 """,
@@ -1402,6 +1439,8 @@ function Test-ApiKeyRejectedError { param($Exception) return $false }
         + _extract_powershell_function(script_text, "Get-ArrProwlarrIndexerName")
         + "\n"
         + _extract_powershell_function(script_text, "Test-ArrProwlarrIndexerName")
+        + "\n"
+        + _extract_powershell_function(script_text, "Get-ArrApiBasePath")
         + "\n"
         + _extract_powershell_function(script_text, "Get-ExistingArrIndexers")
         + "\n"

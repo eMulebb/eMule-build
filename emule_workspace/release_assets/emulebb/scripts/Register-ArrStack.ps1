@@ -399,9 +399,19 @@ function Set-ProviderField {
     throw "Provider payload is missing field: $Name"
 }
 
+function Get-ArrApiBasePath {
+    param([string]$Kind)
+    switch ($Kind.ToLowerInvariant()) {
+        'lidarr' { return '/api/v1' }
+        'readarr' { return '/api/v1' }
+        default { return '/api/v3' }
+    }
+}
+
 function Set-LocalCertificateValidation {
-    param([string]$BaseUrl, [string]$ApiKey)
-    $hostConfig = Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v3/config/host'
+    param([string]$Kind, [string]$BaseUrl, [string]$ApiKey)
+    $apiBasePath = Get-ArrApiBasePath -Kind $Kind
+    $hostConfig = Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path "$apiBasePath/config/host"
     if ($null -eq $hostConfig) {
         throw 'Arr host config did not return a response.'
     }
@@ -409,12 +419,13 @@ function Set-LocalCertificateValidation {
         return $hostConfig
     }
     Set-ObjectProperty -Target $hostConfig -Name 'certificateValidation' -Value 'disabledForLocalAddresses'
-    return Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v3/config/host' -Method 'PUT' -Body $hostConfig
+    return Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path "$apiBasePath/config/host" -Method 'PUT' -Body $hostConfig
 }
 
 function Get-QbitSchema {
-    param([string]$BaseUrl, [string]$ApiKey)
-    $schemas = Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v3/downloadclient/schema'
+    param([string]$Kind, [string]$BaseUrl, [string]$ApiKey)
+    $apiBasePath = Get-ArrApiBasePath -Kind $Kind
+    $schemas = Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path "$apiBasePath/downloadclient/schema"
     foreach ($schema in @($schemas)) {
         if ($schema.implementation -eq 'QBittorrent') {
             return $schema
@@ -435,8 +446,9 @@ function Get-ProwlarrQbitSchema {
 }
 
 function Get-ExistingDownloadClient {
-    param([string]$BaseUrl, [string]$ApiKey, [string]$Name)
-    $clients = Invoke-JsonApiWithRetry -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v3/downloadclient'
+    param([string]$Kind, [string]$BaseUrl, [string]$ApiKey, [string]$Name)
+    $apiBasePath = Get-ArrApiBasePath -Kind $Kind
+    $clients = Invoke-JsonApiWithRetry -BaseUrl $BaseUrl -ApiKey $ApiKey -Path "$apiBasePath/downloadclient"
     foreach ($client in @($clients)) {
         if ($client.name -eq $Name) {
             return $client
@@ -470,9 +482,10 @@ function Test-ArrProwlarrIndexerName {
 }
 
 function Get-ExistingArrIndexers {
-    param([string]$BaseUrl, [string]$ApiKey, [string]$Name)
+    param([string]$Kind, [string]$BaseUrl, [string]$ApiKey, [string]$Name)
     $matches = @()
-    $indexers = Invoke-JsonApiWithRetry -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v3/indexer'
+    $apiBasePath = Get-ArrApiBasePath -Kind $Kind
+    $indexers = Invoke-JsonApiWithRetry -BaseUrl $BaseUrl -ApiKey $ApiKey -Path "$apiBasePath/indexer"
     foreach ($indexerGroup in @($indexers)) {
         foreach ($indexer in @($indexerGroup)) {
             if (Test-ArrProwlarrIndexerName -ActualName ([string]$indexer.name) -Name $Name) {
@@ -512,11 +525,12 @@ function Save-QbitClient {
     )
     $normalizedEmuleBaseUrl = Normalize-HttpBaseUrl -Value $EmuleBaseUrl -Name 'EmuleBaseUrl'
     $uri = [Uri]$normalizedEmuleBaseUrl
-    $existing = Get-ExistingDownloadClient -BaseUrl $BaseUrl -ApiKey $ApiKey -Name $Name
+    $apiBasePath = Get-ArrApiBasePath -Kind $Kind
+    $existing = Get-ExistingDownloadClient -Kind $Kind -BaseUrl $BaseUrl -ApiKey $ApiKey -Name $Name
     if ($null -ne $existing) {
         $payload = $existing
     } else {
-        $payload = Get-QbitSchema -BaseUrl $BaseUrl -ApiKey $ApiKey
+        $payload = Get-QbitSchema -Kind $Kind -BaseUrl $BaseUrl -ApiKey $ApiKey
     }
     Set-ObjectProperty -Target $payload -Name 'name' -Value $Name
     Set-ObjectProperty -Target $payload -Name 'enable' -Value $true
@@ -547,13 +561,13 @@ function Save-QbitClient {
     }
     [void](Set-ProviderField -Provider $payload -Name 'initialState' -Value 0)
     if ($uri.Scheme -eq 'https') {
-        [void](Set-LocalCertificateValidation -BaseUrl $BaseUrl -ApiKey $ApiKey)
+        [void](Set-LocalCertificateValidation -Kind $Kind -BaseUrl $BaseUrl -ApiKey $ApiKey)
         [void](Set-ProviderField -Provider $payload -Name 'certificateValidation' -Value 1 -Optional)
     }
     if ($null -ne $existing -and $existing.id) {
-        return Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path (('/api/v3/downloadclient/{0}?forceSave=true' -f [int]$existing.id)) -Method 'PUT' -Body $payload
+        return Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path (('{0}/downloadclient/{1}?forceSave=true' -f $apiBasePath, [int]$existing.id)) -Method 'PUT' -Body $payload
     }
-    return Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v3/downloadclient?forceSave=true' -Method 'POST' -Body $payload
+    return Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path "$apiBasePath/downloadclient?forceSave=true" -Method 'POST' -Body $payload
 }
 
 function Save-ProwlarrQbitClient {
@@ -735,7 +749,7 @@ function Verify-ArrProwlarrIndexer {
         throw "Prowlarr indexer '$Name' did not return an id."
     }
 
-    $indexers = @(Get-ExistingArrIndexers -BaseUrl $BaseUrl -ApiKey $ApiKey -Name $Name)
+    $indexers = @(Get-ExistingArrIndexers -Kind $Kind -BaseUrl $BaseUrl -ApiKey $ApiKey -Name $Name)
     $indexer = Get-PreferredArrIndexer -Indexers $indexers -Name $Name
     if ($null -eq $indexer) {
         throw "Arr indexer '$managedName' was not found after Prowlarr application sync."
@@ -789,16 +803,18 @@ function Ensure-EmuleCategory {
 
 function Remove-QbitClient {
     param(
+        [string]$Kind,
         [string]$BaseUrl,
         [string]$ApiKey,
         [string]$Name
     )
-    $existing = Get-ExistingDownloadClient -BaseUrl $BaseUrl -ApiKey $ApiKey -Name $Name
+    $apiBasePath = Get-ArrApiBasePath -Kind $Kind
+    $existing = Get-ExistingDownloadClient -Kind $Kind -BaseUrl $BaseUrl -ApiKey $ApiKey -Name $Name
     if ($null -eq $existing -or -not $existing.id) {
         Write-Host ('Download client "{0}" is not registered.' -f $Name) -ForegroundColor Yellow
         return
     }
-    Invoke-DeleteJsonApiWithRetry -BaseUrl $BaseUrl -ApiKey $ApiKey -Path (('/api/v3/downloadclient/{0}' -f [int]$existing.id))
+    Invoke-DeleteJsonApiWithRetry -BaseUrl $BaseUrl -ApiKey $ApiKey -Path (('{0}/downloadclient/{1}' -f $apiBasePath, [int]$existing.id))
     Write-Host ('Unregistered download client "{0}" with id {1}.' -f $Name, $existing.id) -ForegroundColor Green
 }
 
@@ -1052,7 +1068,7 @@ Run-TargetWithRetry -Name ("$Target download client {0}" -f $Action.ToLowerInvar
     $script:targetUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt (Get-ArrUrlPrompt -Target $Target) -Value $script:targetUrl) -Name ("${Target}Url")
     $script:targetApiKey = Read-RequiredSecretValue -Prompt "$Target API key" -Value $script:targetApiKey -Name ("${Target}ApiKey")
     if ($Action -eq 'Unregister') {
-        Remove-QbitClient -BaseUrl $script:targetUrl -ApiKey $script:targetApiKey -Name $DownloadClientName
+        Remove-QbitClient -Kind $targetKind -BaseUrl $script:targetUrl -ApiKey $script:targetApiKey -Name $DownloadClientName
     } else {
         $script:EmulebbBaseUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue -Prompt 'eMuleBB base URL (example http://LAN-IP:4711)' -Value $script:EmulebbBaseUrl) -Name 'EmulebbBaseUrl'
         $script:EmulebbApiKey = Read-RequiredSecretValue -Prompt 'eMuleBB API key' -Value $script:EmulebbApiKey -Name 'EmulebbApiKey'
