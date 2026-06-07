@@ -60,6 +60,7 @@ param(
     [switch]$NonInteractive,
     [switch]$NoStart,
     [switch]$NoSuiteScriptsBundle,
+    [switch]$AllowSuiteScriptsVersionMismatch,
     [switch]$Force,
     [switch]$DryRun,
     [switch]$KeepDownloads
@@ -354,6 +355,39 @@ function Find-AssetUrl {
         }
     }
     return ''
+}
+
+function Get-SuiteScriptsBundleVersion {
+    param([string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return ''
+    }
+    $uri = $null
+    if ([Uri]::TryCreate($Value, [UriKind]::Absolute, [ref]$uri) -and -not [string]::IsNullOrWhiteSpace($uri.AbsolutePath)) {
+        $leaf = [IO.Path]::GetFileName($uri.AbsolutePath)
+    } else {
+        $leaf = [IO.Path]::GetFileName($Value)
+    }
+    if ($leaf -match '^suite-scripts-(.+?)(?:\.manifest\.json|\.zip)$') {
+        return $Matches[1]
+    }
+    return ''
+}
+
+function Assert-SuiteScriptsBundleVersion {
+    param([string]$Zip, [string]$Manifest, [string]$ExpectedVersion)
+    $zipVersion = Get-SuiteScriptsBundleVersion -Value $Zip
+    $manifestVersion = Get-SuiteScriptsBundleVersion -Value $Manifest
+    if (-not [string]::IsNullOrWhiteSpace($zipVersion) -and -not [string]::IsNullOrWhiteSpace($manifestVersion) -and $zipVersion -ne $manifestVersion) {
+        throw "Suite scripts bundle ZIP version $zipVersion does not match manifest version $manifestVersion."
+    }
+    $bundleVersion = if (-not [string]::IsNullOrWhiteSpace($zipVersion)) { $zipVersion } else { $manifestVersion }
+    if ([string]::IsNullOrWhiteSpace($bundleVersion)) {
+        return
+    }
+    if ($bundleVersion -ne $ExpectedVersion) {
+        throw "Suite scripts bundle version $bundleVersion does not match eMuleBB package version $ExpectedVersion. Pass -AllowSuiteScriptsVersionMismatch only when testing a manually assembled local bundle."
+    }
 }
 
 function Resolve-ReleaseSuiteScriptsBundle {
@@ -700,6 +734,9 @@ if ($effectiveBundle -ne 'Core') {
 }
 $suiteScriptsBundle = $null
 $explicitSuiteScriptsBundle = -not [string]::IsNullOrWhiteSpace($SuiteScriptsZip) -or -not [string]::IsNullOrWhiteSpace($SuiteScriptsManifest)
+if ($explicitSuiteScriptsBundle -and -not $AllowSuiteScriptsVersionMismatch) {
+    Assert-SuiteScriptsBundleVersion -Zip $SuiteScriptsZip -Manifest $SuiteScriptsManifest -ExpectedVersion $resolvedVersion
+}
 if (-not $NoSuiteScriptsBundle -and -not $explicitSuiteScriptsBundle) {
     if ($localEmulebbPackage) {
         $suiteScriptsBundle = Resolve-AdjacentSuiteScriptsBundle -PackageZip $zipPath -ResolvedVersion $resolvedVersion

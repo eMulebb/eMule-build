@@ -1765,6 +1765,10 @@ def test_suite_bootstrapper_requires_emulebb_package_root() -> None:
     assert "SuiteScriptsZip" in bootstrapper
     assert "SuiteScriptsManifest" in bootstrapper
     assert "NoSuiteScriptsBundle" in bootstrapper
+    assert "AllowSuiteScriptsVersionMismatch" in bootstrapper
+    assert "function Get-SuiteScriptsBundleVersion" in bootstrapper
+    assert "function Assert-SuiteScriptsBundleVersion" in bootstrapper
+    assert "Suite scripts bundle version $bundleVersion does not match eMuleBB package version $ExpectedVersion" in bootstrapper
     assert "Resolve-ReleaseSuiteScriptsBundle" in bootstrapper
     assert "Resolve-AdjacentSuiteScriptsBundle" in bootstrapper
     assert "function Enable-Tls12" in bootstrapper
@@ -1791,6 +1795,56 @@ def test_suite_bootstrapper_requires_emulebb_package_root() -> None:
     assert "Write-Progress -Activity $activity -Status $status -PercentComplete $percent" in bootstrapper
     assert "Downloaded {0}" in bootstrapper
     assert "$ProgressPreference = 'SilentlyContinue'" not in bootstrapper
+
+
+@pytest.mark.parametrize("allow_mismatch", [False, True])
+def test_suite_bootstrapper_validates_explicit_suite_scripts_bundle_version(allow_mismatch: bool) -> None:
+    repo_root = Path.cwd()
+    bootstrapper_path = (repo_root / BOOTSTRAPPER).resolve()
+    override_arg = "-AllowSuiteScriptsVersionMismatch" if allow_mismatch else ""
+    command = rf"""
+function Invoke-RestMethod {{
+    param([string]$Uri, [hashtable]$Headers)
+    if ($Uri -ne 'https://api.github.com/repos/emulebb/emulebb/releases/tags/emulebb-v0.7.3-rc.2') {{
+        throw "Unexpected release URI: $Uri"
+    }}
+    return [pscustomobject]@{{
+        tag_name = 'emulebb-v0.7.3-rc.2'
+        draft = $false
+        prerelease = $true
+        assets = @(
+            [pscustomobject]@{{
+                name = 'emulebb-0.7.3-rc.2-x64.zip'
+                browser_download_url = 'https://example.invalid/emulebb-0.7.3-rc.2-x64.zip'
+            }},
+            [pscustomobject]@{{
+                name = 'emulebb-0.7.3-rc.2-x64.manifest.json'
+                browser_download_url = 'https://example.invalid/emulebb-0.7.3-rc.2-x64.manifest.json'
+            }}
+        )
+    }}
+}}
+& '{bootstrapper_path}' -Version 0.7.3-rc.2 -Platform x64 -Bundle Core -DryRun -NoStart -SuiteScriptsZip https://example.invalid/suite-scripts-0.7.3-rc.1.zip -SuiteScriptsManifest https://example.invalid/suite-scripts-0.7.3-rc.1.manifest.json {override_arg}
+"""
+
+    powershell = shutil.which("powershell")
+    assert powershell is not None
+    completed = subprocess.run(
+        [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
+        cwd=repo_root,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+
+    if allow_mismatch:
+        assert completed.returncode == 0
+        assert "-SuiteScriptsZip https://example.invalid/suite-scripts-0.7.3-rc.1.zip" in completed.stdout
+    else:
+        assert completed.returncode != 0
+        assert "Suite scripts bundle version 0.7.3-rc.1 does not match" in completed.stdout
+        assert "eMuleBB package version 0.7.3-rc.2" in completed.stdout
 
 
 @pytest.mark.parametrize(
