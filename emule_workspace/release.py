@@ -38,6 +38,14 @@ PACKET_DIAGNOSTICS_BINARY_MARKERS = (
     b"emulebb-packet-diagnostics.log",
     "emulebb-packet-diagnostics.log".encode("utf-16le"),
 )
+UPLOAD_SLOT_INSTRUMENTATION_BINARY_MARKERS = (
+    b"UploadSlotInstrumentation:",
+    "UploadSlotInstrumentation:".encode("utf-16le"),
+)
+DOWNLOAD_SLOT_INSTRUMENTATION_BINARY_MARKERS = (
+    b"DownloadSlotInstrumentation:",
+    "DownloadSlotInstrumentation:".encode("utf-16le"),
+)
 AMUTORRENT_NODE_VERSION = "v24.15.0"
 AMUTORRENT_NODE_ARCHIVES = {
     "x64": (
@@ -108,6 +116,8 @@ class ReleasePackageFlavorSpec:
     asset_suffix: str
     enable_startup_profiling: bool
     enable_packet_diagnostics: bool
+    enable_upload_slot_instrumentation: bool
+    enable_download_slot_instrumentation: bool
     executable_name: str
     diagnostic_features: tuple[str, ...] = ()
 
@@ -118,6 +128,8 @@ RELEASE_PACKAGE_FLAVORS = (
         asset_suffix="",
         enable_startup_profiling=False,
         enable_packet_diagnostics=False,
+        enable_upload_slot_instrumentation=False,
+        enable_download_slot_instrumentation=False,
         executable_name=APP_EXE_NAME,
     ),
     ReleasePackageFlavorSpec(
@@ -125,8 +137,15 @@ RELEASE_PACKAGE_FLAVORS = (
         asset_suffix="-diagnostics",
         enable_startup_profiling=True,
         enable_packet_diagnostics=True,
+        enable_upload_slot_instrumentation=True,
+        enable_download_slot_instrumentation=True,
         executable_name=DIAGNOSTICS_APP_EXE_NAME,
-        diagnostic_features=("packet-diagnostics", "startup-profiling"),
+        diagnostic_features=(
+            "download-slot-instrumentation",
+            "packet-diagnostics",
+            "startup-profiling",
+            "upload-slot-instrumentation",
+        ),
     ),
 )
 EMULEBB_PACKAGE_ROOT_NAME = "eMuleBB"
@@ -883,6 +902,12 @@ def _build_package_app(
     extra_properties = [*app_property_overrides(session.layout, session.options.platform)]
     extra_properties.append(f"/p:EnableStartupProfiling={'true' if flavor.enable_startup_profiling else 'false'}")
     extra_properties.append(f"/p:EnablePacketDiagnostics={'true' if flavor.enable_packet_diagnostics else 'false'}")
+    extra_properties.append(
+        f"/p:EnableUploadSlotInstrumentation={'true' if flavor.enable_upload_slot_instrumentation else 'false'}"
+    )
+    extra_properties.append(
+        f"/p:EnableDownloadSlotInstrumentation={'true' if flavor.enable_download_slot_instrumentation else 'false'}"
+    )
     if flavor.executable_name != APP_EXE_NAME:
         extra_properties.append(f"/p:TargetName={Path(flavor.executable_name).stem}")
     extra_properties.append(f"/p:OutDir={with_trailing_separator(package_app_output_root)}")
@@ -1530,6 +1555,22 @@ def _assert_release_binary_diagnostics(path: Path, flavor: ReleasePackageFlavorS
         description="packet diagnostics support",
         enable_property="/p:EnablePacketDiagnostics=true",
         disable_property="/p:EnablePacketDiagnostics=false",
+    )
+    _assert_binary_marker_state(
+        path,
+        markers=UPLOAD_SLOT_INSTRUMENTATION_BINARY_MARKERS,
+        expected=flavor.enable_upload_slot_instrumentation,
+        description="upload slot instrumentation support",
+        enable_property="/p:EnableUploadSlotInstrumentation=true",
+        disable_property="/p:EnableUploadSlotInstrumentation=false",
+    )
+    _assert_binary_marker_state(
+        path,
+        markers=DOWNLOAD_SLOT_INSTRUMENTATION_BINARY_MARKERS,
+        expected=flavor.enable_download_slot_instrumentation,
+        description="download slot instrumentation support",
+        enable_property="/p:EnableDownloadSlotInstrumentation=true",
+        disable_property="/p:EnableDownloadSlotInstrumentation=false",
     )
 
 
