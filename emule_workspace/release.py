@@ -94,6 +94,9 @@ EMULEBB_RUNTIME_SCRIPT_PATHS = (
     "scripts/Test-Suite.ps1",
     "scripts/Update-Suite.ps1",
 )
+EMULEBB_CONFIG_ASSET_PATHS = (
+    "config/suite-languages.json",
+)
 EMULEBB_SKIN_ASSET_PATHS = (
     "skins/emulebb-slate.eMuleSkin.ini",
     "skins/emulebb-graphite.eMuleSkin.ini",
@@ -112,7 +115,7 @@ EMULEBB_SKIN_ASSET_PATHS = (
     "skins/emulebb-retro-teal.eMuleToolbar.kad02.bmp",
     "skins/emulebb-phosphor-green.eMuleToolbar.kad02.bmp",
 )
-EMULEBB_RUNTIME_ASSET_PATHS = (*EMULEBB_RUNTIME_SCRIPT_PATHS, *EMULEBB_SKIN_ASSET_PATHS)
+EMULEBB_RUNTIME_ASSET_PATHS = (*EMULEBB_RUNTIME_SCRIPT_PATHS, *EMULEBB_CONFIG_ASSET_PATHS, *EMULEBB_SKIN_ASSET_PATHS)
 
 
 @dataclass(frozen=True)

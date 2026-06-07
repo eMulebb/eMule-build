@@ -112,7 +112,7 @@ $ControllerServiceNames = @('emulebb', 'amutorrent')
 $DefaultArrAppNames = @('prowlarr', 'radarr', 'sonarr')
 $AllArrAppNames = @('prowlarr', 'radarr', 'sonarr', 'lidarr', 'readarr', 'whisparr')
 $SuiteServiceOrder = @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr', 'lidarr', 'readarr', 'whisparr')
-$LanguageOptions = @{
+$FallbackLanguageOptions = @{
     english = @{
         DisplayName = 'English'
         EmuleLanguageId = 9
@@ -142,6 +142,7 @@ $LanguageOptions = @{
         ArrContentLanguage = 'Portuguese'
     }
 }
+$script:LanguageOptionsCache = $null
 $ArrAppMetadata = @{
     prowlarr = @{
         DisplayName = 'Prowlarr'
@@ -753,13 +754,52 @@ function Normalize-AppName {
     throw "Unknown suite app '$Name'. Valid apps are: emulebb, amutorrent, $($AllArrAppNames -join ', '), or presets all, controller, default-arr, all-arr, none-arr."
 }
 
+function ConvertTo-LanguageOptions {
+    param($Payload)
+    $options = @{}
+    if ($null -eq $Payload -or $null -eq $Payload.PSObject.Properties['languages']) {
+        return $options
+    }
+    foreach ($entry in @($Payload.languages)) {
+        $key = (Resolve-OptionalValue -Value ([string]$entry.key) -Default '').ToLowerInvariant()
+        if ([string]::IsNullOrWhiteSpace($key)) {
+            continue
+        }
+        $options[$key] = @{
+            DisplayName = [string]$entry.displayName
+            EmuleLanguageId = [int]$entry.emuleLanguageId
+            EmuleLocale = [string]$entry.emuleLocale
+            ArrUiLanguage = [string]$entry.arrUiLanguage
+            ArrContentLanguage = [string]$entry.arrContentLanguage
+        }
+    }
+    return $options
+}
+
+function Get-LanguageOptions {
+    if ($null -ne $script:LanguageOptionsCache) {
+        return $script:LanguageOptionsCache
+    }
+    $manifestPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'config\suite-languages.json'
+    if (Test-Path -LiteralPath $manifestPath) {
+        $options = ConvertTo-LanguageOptions -Payload (Read-JsonFile -Path $manifestPath -Description 'suite language manifest')
+        if ($options.Count -gt 0) {
+            $script:LanguageOptionsCache = $options
+            return $script:LanguageOptionsCache
+        }
+    }
+    $script:LanguageOptionsCache = $FallbackLanguageOptions
+    return $script:LanguageOptionsCache
+}
+
 function Resolve-LanguagePreference {
     param([string]$Value)
     $key = (Resolve-OptionalValue -Value $Value -Default 'English').ToLowerInvariant()
-    if (-not $LanguageOptions.ContainsKey($key)) {
+    $languageOptions = Get-LanguageOptions
+    if (-not $languageOptions.ContainsKey($key)) {
         throw "Language must be English, Spanish, Italian, or Portuguese, not '$Value'."
     }
-    return $LanguageOptions[$key]
+    return $languageOptions[$key]
 }
 
 function Get-BundleServiceNames {

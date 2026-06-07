@@ -1358,6 +1358,18 @@ def test_suite_installer_requires_hashed_pinned_dependencies() -> None:
     assert "Extracting Node runtime" in installer
 
 
+def test_suite_installer_uses_packaged_language_manifest() -> None:
+    installer = INSTALLER.read_text(encoding="utf-8")
+    language_manifest = Path("emule_workspace/release_assets/emulebb/config/suite-languages.json")
+    payload = json.loads(language_manifest.read_text(encoding="utf-8"))
+
+    assert payload["schema"] == "emulebb.suite-languages.v1"
+    assert {entry["key"] for entry in payload["languages"]} == {"english", "spanish", "italian", "portuguese"}
+    assert "config\\suite-languages.json" in installer
+    assert "function Get-LanguageOptions" in installer
+    assert "$FallbackLanguageOptions" in installer
+
+
 def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() -> None:
     script_path = Path("emule_workspace/release_assets/emulebb/scripts/Register-ArrStack.ps1")
     _assert_powershell_parse(Path.cwd() / script_path, cwd=Path.cwd())

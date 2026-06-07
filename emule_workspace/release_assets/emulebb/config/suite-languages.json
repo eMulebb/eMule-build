@@ -1,0 +1,37 @@
+{
+  "schema": "emulebb.suite-languages.v1",
+  "languages": [
+    {
+      "key": "english",
+      "displayName": "English",
+      "emuleLanguageId": 9,
+      "emuleLocale": "en_US",
+      "arrUiLanguage": "English",
+      "arrContentLanguage": "English"
+    },
+    {
+      "key": "spanish",
+      "displayName": "Spanish",
+      "emuleLanguageId": 1034,
+      "emuleLocale": "es_ES_T",
+      "arrUiLanguage": "Spanish",
+      "arrContentLanguage": "Spanish"
+    },
+    {
+      "key": "italian",
+      "displayName": "Italian",
+      "emuleLanguageId": 16,
+      "emuleLocale": "it_IT",
+      "arrUiLanguage": "Italian",
+      "arrContentLanguage": "Italian"
+    },
+    {
+      "key": "portuguese",
+      "displayName": "Portuguese",
+      "emuleLanguageId": 2070,
+      "emuleLocale": "pt_PT",
+      "arrUiLanguage": "Portuguese",
+      "arrContentLanguage": "Portuguese"
+    }
+  ]
+}

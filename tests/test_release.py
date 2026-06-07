@@ -100,6 +100,8 @@ def _write_release_zip(
     }
     for relative_path in release.EMULEBB_RUNTIME_SCRIPT_PATHS:
         entries[f"eMuleBB/{relative_path}"] = b"#Requires -Version 5.1\n"
+    for relative_path in release.EMULEBB_CONFIG_ASSET_PATHS:
+        entries[f"eMuleBB/{relative_path}"] = b'{"schema":"test"}\n'
     if include_skin_assets:
         for relative_path in release.EMULEBB_SKIN_ASSET_PATHS:
             entries[f"eMuleBB/{relative_path}"] = b"skin-or-toolbar-asset\n"
