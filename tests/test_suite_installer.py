@@ -299,6 +299,11 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "$rootFolderUrl = \"$Url/$ApiPath/rootfolder\"" in start_suite
     assert "New-Item -ItemType Directory -Force -Path $Path" in start_suite
     assert "Invoke-SuiteJsonApi -Name \"$Name root folder create\"" in start_suite
+    assert "$Name metadata profile list" in start_suite
+    assert "$Url/$ApiPath/metadataprofile" in start_suite
+    assert "name = 'eMuleBB Music'" in start_suite
+    assert "defaultQualityProfileId = [int]$qualityProfile[0].id" in start_suite
+    assert "defaultMetadataProfileId = [int]$metadataProfile[0].id" in start_suite
     assert "already configured as a root folder" in start_suite
     assert "$rootFolder.PSObject.Properties['path']" in start_suite
     assert "'radarr' { return 'media\\movies' }" in start_suite

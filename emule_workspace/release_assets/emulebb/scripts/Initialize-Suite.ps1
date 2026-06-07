@@ -274,7 +274,23 @@ function Ensure-ArrRootFolder {
         }
     }
     try {
-        [void](Invoke-SuiteJsonApi -Name "$Name root folder create" -Uri $rootFolderUrl -Method 'POST' -Headers $headers -Body @{ path = $normalizedPath })
+        $body = @{ path = $normalizedPath }
+        if ([string]::Equals($Name, 'Lidarr', [StringComparison]::OrdinalIgnoreCase)) {
+            $qualityProfiles = @(Invoke-SuiteJsonApi -Name "$Name quality profile list" -Uri "$Url/$ApiPath/qualityprofile" -Headers $headers)
+            $metadataProfiles = @(Invoke-SuiteJsonApi -Name "$Name metadata profile list" -Uri "$Url/$ApiPath/metadataprofile" -Headers $headers)
+            $qualityProfile = @($qualityProfiles | Where-Object { $_.PSObject.Properties['id'] } | Select-Object -First 1)
+            $metadataProfile = @($metadataProfiles | Where-Object { $_.PSObject.Properties['id'] } | Select-Object -First 1)
+            if ($qualityProfile.Count -eq 0 -or $metadataProfile.Count -eq 0) {
+                throw "$Name did not expose the default profiles required to create a root folder."
+            }
+            $body = @{
+                path = $normalizedPath
+                name = 'eMuleBB Music'
+                defaultQualityProfileId = [int]$qualityProfile[0].id
+                defaultMetadataProfileId = [int]$metadataProfile[0].id
+            }
+        }
+        [void](Invoke-SuiteJsonApi -Name "$Name root folder create" -Uri $rootFolderUrl -Method 'POST' -Headers $headers -Body $body)
         Write-Host "$Name root folder configured: $normalizedPath"
     } catch {
         $message = Get-ExceptionMessage -Exception $_.Exception
