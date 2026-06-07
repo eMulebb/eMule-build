@@ -95,6 +95,7 @@ EMULEBB_RUNTIME_SCRIPT_PATHS = (
     "scripts/Update-Suite.ps1",
 )
 EMULEBB_CONFIG_ASSET_PATHS = (
+    "config/suite-apps.json",
     "config/suite-languages.json",
 )
 EMULEBB_SKIN_ASSET_PATHS = (

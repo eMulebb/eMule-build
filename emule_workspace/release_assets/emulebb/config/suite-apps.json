@@ -1,0 +1,153 @@
+{
+  "schema": "emulebb.suite-apps.v1",
+  "node": {
+    "version": "v24.15.0",
+    "minimumMajor": 24,
+    "archives": {
+      "x64": {
+        "fileName": "node-v24.15.0-win-x64.zip",
+        "sha256": "cc5149eabd53779ce1e7bdc5401643622d0c7e6800ade18928a767e940bb0e62"
+      },
+      "ARM64": {
+        "fileName": "node-v24.15.0-win-arm64.zip",
+        "sha256": "c9eb7402eda26e2ba7e44b6727fc85a8de56c5095b1f71ebd3062892211aa116"
+      }
+    }
+  },
+  "coreServiceNames": [
+    "emulebb"
+  ],
+  "controllerServiceNames": [
+    "emulebb",
+    "amutorrent"
+  ],
+  "defaultArrAppNames": [
+    "prowlarr",
+    "radarr",
+    "sonarr"
+  ],
+  "suiteServiceOrder": [
+    "emulebb",
+    "amutorrent",
+    "prowlarr",
+    "radarr",
+    "sonarr",
+    "lidarr",
+    "readarr",
+    "whisparr"
+  ],
+  "arrApps": [
+    {
+      "key": "prowlarr",
+      "displayName": "Prowlarr",
+      "exe": "Prowlarr.exe",
+      "apiPath": "api/v1",
+      "dataDir": "data\\prowlarr",
+      "mediaRoot": "",
+      "indexerCategories": [],
+      "dependency": {
+        "repo": "Prowlarr/Prowlarr",
+        "tag": "v2.3.5.5327",
+        "assetPattern": "windows(?:-core)?-x64\\.zip$",
+        "exe": "Prowlarr.exe",
+        "url": "https://github.com/Prowlarr/Prowlarr/releases/download/v2.3.5.5327/Prowlarr.master.2.3.5.5327.windows-core-x64.zip",
+        "sha256": "9d388c476edfe579439830dc87f05fc50c86fa0dce80802726832c72088e731b"
+      }
+    },
+    {
+      "key": "radarr",
+      "displayName": "Radarr",
+      "exe": "Radarr.exe",
+      "apiPath": "api/v3",
+      "dataDir": "data\\radarr",
+      "mediaRoot": "media\\movies",
+      "indexerCategories": [
+        2000
+      ],
+      "dependency": {
+        "repo": "Radarr/Radarr",
+        "tag": "v6.1.1.10360",
+        "assetPattern": "windows(?:-core)?-x64\\.zip$",
+        "exe": "Radarr.exe",
+        "url": "https://github.com/Radarr/Radarr/releases/download/v6.1.1.10360/Radarr.master.6.1.1.10360.windows-core-x64.zip",
+        "sha256": "cc4fdffc4a82a3805e53aa9c016749fd17247eb21dd6764b1b53ced471695bb7"
+      }
+    },
+    {
+      "key": "sonarr",
+      "displayName": "Sonarr",
+      "exe": "Sonarr.exe",
+      "apiPath": "api/v3",
+      "dataDir": "data\\sonarr",
+      "mediaRoot": "media\\series",
+      "indexerCategories": [
+        5000
+      ],
+      "dependency": {
+        "repo": "Sonarr/Sonarr",
+        "tag": "v4.0.17.2952",
+        "assetPattern": "win(?:dows)?(?:-core)?-x64\\.zip$",
+        "exe": "Sonarr.exe",
+        "url": "https://github.com/Sonarr/Sonarr/releases/download/v4.0.17.2952/Sonarr.main.4.0.17.2952.win-x64.zip",
+        "sha256": "19a81e69dedd8d317b5fa8a1a9c48d63bc3b3f3ba87b84c94ff6d75b1803e419"
+      }
+    },
+    {
+      "key": "lidarr",
+      "displayName": "Lidarr",
+      "exe": "Lidarr.exe",
+      "apiPath": "api/v1",
+      "dataDir": "data\\lidarr",
+      "mediaRoot": "media\\music",
+      "indexerCategories": [
+        3000
+      ],
+      "dependency": {
+        "repo": "Lidarr/Lidarr",
+        "tag": "v3.1.0.4875",
+        "assetPattern": "windows(?:-core)?-x64\\.zip$",
+        "exe": "Lidarr.exe",
+        "url": "https://github.com/Lidarr/Lidarr/releases/download/v3.1.0.4875/Lidarr.master.3.1.0.4875.windows-core-x64.zip",
+        "sha256": "26f6da02a579aa84f49f2ececc27ad0d3a82760d3cd3b13fa4d99df7c6c12443"
+      }
+    },
+    {
+      "key": "readarr",
+      "displayName": "Readarr",
+      "exe": "Readarr.exe",
+      "apiPath": "api/v1",
+      "dataDir": "data\\readarr",
+      "mediaRoot": "media\\books",
+      "indexerCategories": [
+        7000
+      ],
+      "dependency": {
+        "repo": "Readarr/Readarr",
+        "tag": "v0.4.18.2805",
+        "assetPattern": "windows(?:-core)?-x64\\.zip$",
+        "exe": "Readarr.exe",
+        "url": "https://github.com/Readarr/Readarr/releases/download/v0.4.18.2805/Readarr.develop.0.4.18.2805.windows-core-x64.zip",
+        "sha256": "a0062093de475a588d1fc253488739be2d518b78f02849325a1392edb8e36eab"
+      }
+    },
+    {
+      "key": "whisparr",
+      "displayName": "Whisparr",
+      "exe": "Whisparr.exe",
+      "apiPath": "api/v3",
+      "dataDir": "data\\whisparr",
+      "mediaRoot": "media\\whisparr",
+      "indexerCategories": [
+        6000
+      ],
+      "dependency": {
+        "repo": "Whisparr/Whisparr",
+        "tag": "v2.2.0-release.108",
+        "assetPattern": "win(?:dows)?(?:-core)?-x64\\.zip$",
+        "exe": "Whisparr.exe",
+        "url": "https://github.com/Whisparr/Whisparr/releases/download/v2.2.0-release.108/Whisparr.2.2.0-release.108.win-x64.zip",
+        "sha256": "7e90caa524c18bb6e8d63be2e1e3c79e1e06fa023e9db1568d6096deae83d9c7"
+      }
+    }
+  ]
+}

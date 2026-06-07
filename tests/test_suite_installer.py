@@ -1481,6 +1481,32 @@ def test_suite_installer_uses_packaged_language_manifest() -> None:
     assert "$FallbackLanguageOptions" in installer
 
 
+def test_suite_installer_uses_packaged_suite_apps_manifest() -> None:
+    installer = INSTALLER.read_text(encoding="utf-8")
+    app_manifest = Path("emule_workspace/release_assets/emulebb/config/suite-apps.json")
+    payload = json.loads(app_manifest.read_text(encoding="utf-8"))
+    arr_apps = {entry["key"]: entry for entry in payload["arrApps"]}
+
+    assert payload["schema"] == "emulebb.suite-apps.v1"
+    assert set(arr_apps) == {"prowlarr", "radarr", "sonarr", "lidarr", "readarr", "whisparr"}
+    assert payload["defaultArrAppNames"] == ["prowlarr", "radarr", "sonarr"]
+    assert payload["suiteServiceOrder"] == [
+        "emulebb",
+        "amutorrent",
+        "prowlarr",
+        "radarr",
+        "sonarr",
+        "lidarr",
+        "readarr",
+        "whisparr",
+    ]
+    for app in arr_apps.values():
+        assert len(app["dependency"]["sha256"]) == 64
+    assert "config\\suite-apps.json" in installer
+    assert "function Initialize-SuiteAppMetadata" in installer
+    assert "'suite-apps.json'" in installer
+
+
 def test_suite_initializer_applies_arr_content_language_profiles() -> None:
     script_path = Path("emule_workspace/release_assets/emulebb/scripts/Initialize-Suite.ps1")
     _assert_powershell_parse(Path.cwd() / script_path, cwd=Path.cwd())
