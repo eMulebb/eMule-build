@@ -419,6 +419,7 @@ def test_release_manifest_records_explicit_source_provenance(
         suite_scripts_asset_path=release_root / "suite-scripts-0.7.3-rc.1.zip",
         suite_scripts_manifest_path=release_root / "suite-scripts-0.7.3-rc.1.manifest.json",
         suite_scripts_hash="suite-scripts-sha",
+        suite_scripts_manifest_hash="suite-scripts-manifest-sha",
         signature_policy={"mode": "unsigned", "required": False, "signedFiles": []},
     )
 
@@ -447,6 +448,7 @@ def test_release_manifest_records_explicit_source_provenance(
     assert manifest["suiteScriptsAsset"] == "suite-scripts-0.7.3-rc.1.zip"
     assert manifest["suiteScriptsManifest"] == "suite-scripts-0.7.3-rc.1.manifest.json"
     assert manifest["suiteScriptsSha256"] == "suite-scripts-sha"
+    assert manifest["suiteScriptsManifestSha256"] == "suite-scripts-manifest-sha"
     assert manifest["signaturePolicy"] == {"mode": "unsigned", "required": False, "signedFiles": []}
     assert "eMuleBB/SBOM.spdx.json" in manifest["includedPaths"]
     assert "eMuleBB/scripts" in manifest["includedPaths"]

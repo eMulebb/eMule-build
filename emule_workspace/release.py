@@ -391,6 +391,7 @@ def create_release_package(
             suite_scripts_asset_path=suite_scripts_asset_path,
             suite_scripts_manifest_path=suite_scripts_manifest_path,
             suite_scripts_hash=suite_scripts_hash,
+            suite_scripts_manifest_hash=_sha256(suite_scripts_manifest_path),
             signature_policy=signature_policy,
             flavor=flavor,
         )
@@ -422,6 +423,7 @@ def _build_release_manifest(
     suite_scripts_asset_path: Path,
     suite_scripts_manifest_path: Path,
     suite_scripts_hash: str,
+    suite_scripts_manifest_hash: str,
     signature_policy: dict[str, object],
     flavor: ReleasePackageFlavorSpec = RELEASE_PACKAGE_FLAVORS[0],
 ) -> dict[str, object]:
@@ -450,6 +452,7 @@ def _build_release_manifest(
         "suiteScriptsAsset": suite_scripts_asset_path.relative_to(release_root).as_posix(),
         "suiteScriptsSha256": suite_scripts_hash,
         "suiteScriptsManifest": suite_scripts_manifest_path.relative_to(release_root).as_posix(),
+        "suiteScriptsManifestSha256": suite_scripts_manifest_hash,
         "signaturePolicy": signature_policy,
         "emulebbExeSha256": exe_hash,
         "languageDllCount": len(expected_language_dlls),
