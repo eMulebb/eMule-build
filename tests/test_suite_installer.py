@@ -83,10 +83,23 @@ def _read_ini_sections(path: Path, *, encoding: str = "utf-16") -> dict[str, dic
     return sections
 
 
+def _find_free_loopback_port(start: int = 49152, end: int = 65535) -> int:
+    for port in range(start, end + 1):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                probe.bind(("127.0.0.1", port))
+            except OSError:
+                continue
+            return port
+    raise RuntimeError(f"No free loopback port found in {start}-{end}.")
+
+
 def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_path: Path) -> None:
     release_root = tmp_path / "release"
     install_root = tmp_path / "suite"
     control_bind = "127.0.0.1"
+    emulebb_port = _find_free_loopback_port()
     suite_install_fixtures.write_core_release(release_root)
 
     repo_root = Path.cwd()
@@ -108,7 +121,7 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
             "-P2PBindInterface",
             "hide.me",
             "-EmulebbPort",
-            "49152",
+            str(emulebb_port),
         ],
         cwd=repo_root,
     )
@@ -122,7 +135,7 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "NetworkGuardAllowedCIDRs=" in preferences
     assert "[WebServer]" in preferences
     assert f"BindAddr={control_bind}" in preferences
-    assert "Port=49152" in preferences
+    assert f"Port={emulebb_port}" in preferences
 
     suite_config = json.loads((install_root / "manifests" / "suite-config.json").read_text(encoding="utf-8-sig"))
     assert suite_config["schema"] == "emulebb.suite-config.v1"
@@ -131,7 +144,7 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert suite_config["emulebbExecutableName"] == "emulebb.exe"
     assert suite_config["services"]["emulebb"]["bindAddress"] == control_bind
     assert suite_config["services"]["emulebb"]["clientHost"] == control_bind
-    assert suite_config["services"]["emulebb"]["port"] == 49152
+    assert suite_config["services"]["emulebb"]["port"] == emulebb_port
     assert suite_config["selectedApps"] == ["emulebb"]
     assert suite_config["services"]["amutorrent"]["bindAddress"] == control_bind
     assert suite_config["services"]["amutorrent"]["clientHost"] == ""
@@ -166,11 +179,11 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "Suite web login" in credentials
     assert "Username: admin" in credentials
     assert f"Password: {suite_config['credentials']['password']}" in credentials
-    assert f"eMuleBB URL: http://{control_bind}:49152" in credentials
+    assert f"eMuleBB URL: http://{control_bind}:{emulebb_port}" in credentials
     assert f"eMuleBB API key: {suite_config['services']['emulebb']['apiKey']}" in credentials
     credentials_html = (install_root / "credentials.html").read_text(encoding="utf-8-sig")
     assert "eMuleBB Suite Credentials" in credentials_html
-    assert f"http://{control_bind}:49152" in credentials_html
+    assert f"http://{control_bind}:{emulebb_port}" in credentials_html
     assert 'target="_blank"' in credentials_html
     assert 'rel="noopener noreferrer"' in credentials_html
     assert 'data-copy="' in credentials_html
@@ -211,6 +224,16 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "suite-config.json" in start_suite
     assert "Start-Suite.ps1" in start_suite
     assert "& (Join-Path $Root 'scripts\\Start-Suite.ps1')" in start_suite
+    assert start_suite.index("Ensure-EmuleBootstrapFiles") < start_suite.index("& (Join-Path $Root 'scripts\\Start-Suite.ps1')")
+    assert "$EmuleBootstrapFiles" in start_suite
+    assert "server.met" in start_suite
+    assert "http://upd.emule-security.org/server.met" in start_suite
+    assert "nodes.dat" in start_suite
+    assert "https://upd.emule-security.org/nodes.dat" in start_suite
+    assert "function Invoke-EmuleBootstrapFileDownload" in start_suite
+    assert "function Ensure-EmuleBootstrapFiles" in start_suite
+    assert "profiles\\emulebb" in start_suite
+    assert "Downloaded $Name was empty." in start_suite
     assert "function Initialize-AmutorrentConfig" in start_suite
     assert "Initialize-AmutorrentConfig -DataDir (Join-Path $Root 'data\\amutorrent')" in start_suite
     assert "function Set-AmutorrentSuiteClient" in start_suite

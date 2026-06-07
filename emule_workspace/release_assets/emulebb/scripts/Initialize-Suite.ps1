@@ -1,6 +1,10 @@
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
+$EmuleBootstrapFiles = @(
+    @{ Name = 'server.met'; Url = 'http://upd.emule-security.org/server.met' },
+    @{ Name = 'nodes.dat'; Url = 'https://upd.emule-security.org/nodes.dat' }
+)
 
 function Read-SuiteConfig {
     $configPath = Join-Path $Root 'manifests\suite-config.json'
@@ -63,6 +67,50 @@ function Invoke-SuiteJsonApi {
         return Invoke-RestMethod -Uri $Uri -Method $Method -Headers $Headers -Body ($Body | ConvertTo-Json -Depth 20) -ContentType 'application/json' -TimeoutSec 20 -ErrorAction Stop
     } catch {
         throw "$Name failed at $Uri. $(Get-ExceptionMessage -Exception $_.Exception)"
+    }
+}
+
+function Invoke-EmuleBootstrapFileDownload {
+    param([string]$Name, [string]$Url, [string]$Destination)
+    $parent = Split-Path -Parent $Destination
+    if (-not (Test-Path -LiteralPath $parent)) {
+        New-Item -ItemType Directory -Force -Path $parent | Out-Null
+    }
+    if ((Test-Path -LiteralPath $Destination) -and ([IO.FileInfo]$Destination).Length -gt 0) {
+        Write-Host "eMuleBB bootstrap file already present: $Name"
+        return
+    }
+    $tmp = "$Destination.tmp"
+    $maxAttempts = 4
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        Remove-Item -Force -LiteralPath $tmp -ErrorAction SilentlyContinue
+        try {
+            Write-Host "Downloading eMuleBB bootstrap file $Name"
+            Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $tmp -ErrorAction Stop
+            if (-not (Test-Path -LiteralPath $tmp) -or ([IO.FileInfo]$tmp).Length -le 0) {
+                throw "Downloaded $Name was empty."
+            }
+            Move-Item -Force -LiteralPath $tmp -Destination $Destination
+            Write-Host "eMuleBB bootstrap file ready: $Name"
+            return
+        } catch {
+            $message = Get-ExceptionMessage -Exception $_.Exception
+            if ($attempt -ge $maxAttempts) {
+                throw "Failed to download eMuleBB bootstrap file $Name from $Url after $maxAttempts attempts. $message"
+            }
+            $delaySeconds = [Math]::Min(30, 5 * $attempt)
+            Write-Warning "Download attempt $attempt of $maxAttempts failed for eMuleBB bootstrap file $Name. $message Retrying in $delaySeconds seconds..."
+            Start-Sleep -Seconds $delaySeconds
+        } finally {
+            Remove-Item -Force -LiteralPath $tmp -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Ensure-EmuleBootstrapFiles {
+    $configDir = Join-Path (Join-Path $Root 'profiles\emulebb') 'config'
+    foreach ($file in $EmuleBootstrapFiles) {
+        Invoke-EmuleBootstrapFileDownload -Name ([string]$file.Name) -Url ([string]$file.Url) -Destination (Join-Path $configDir ([string]$file.Name))
     }
 }
 
@@ -315,6 +363,7 @@ $EmuleKey = [string]$Config.services.emulebb.apiKey
 if (Test-SelectedApp -Config $Config -Name 'amutorrent') {
     Initialize-AmutorrentConfig -DataDir (Join-Path $Root 'data\amutorrent') -BindAddress ([string]$Config.services.amutorrent.bindAddress) -Port ([int]$Config.services.amutorrent.port) -Username ([string]$Config.credentials.username) -Password ([string]$Config.credentials.password) -EmulebbHost (Get-ServiceClientHost -ServiceName 'emulebb' -Service $Config.services.emulebb) -EmulebbPort ([int]$Config.services.emulebb.port) -EmulebbApiKey $EmuleKey
 }
+Ensure-EmuleBootstrapFiles
 & (Join-Path $Root 'scripts\Start-Suite.ps1')
 Wait-Json -Name 'eMuleBB' -Uri "$EmuleUrl/api/v1/app" -Headers @{ 'X-API-Key' = $EmuleKey }
 
