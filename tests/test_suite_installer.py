@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+from emule_workspace import release
+
 import suite_install_fixtures
 
 
@@ -2177,6 +2179,110 @@ function Invoke-WebRequest {{
             captured_payload["suiteScriptsManifest"]
             == f"https://example.invalid/suite-scripts-{version}.manifest.json"
         )
+
+
+def test_suite_bootstrapper_smokes_release_package_and_suite_scripts_assets(tmp_path: Path) -> None:
+    repo_root = Path.cwd()
+    release_root = tmp_path / "release"
+    package_root = tmp_path / "staging" / "eMuleBB"
+    captured = tmp_path / "captured-release-assets.json"
+    installer_payload = f"""#Requires -Version 5.1
+param(
+    [string]$Bundle,
+    [string]$Version,
+    [string]$Platform,
+    [string]$ReleaseBaseUrl,
+    [string]$SuiteScriptsZip,
+    [string]$SuiteScriptsManifest,
+    [switch]$NoStart
+)
+@{{
+    bundle = $Bundle
+    version = $Version
+    platform = $Platform
+    releaseBaseUrl = $ReleaseBaseUrl
+    suiteScriptsZip = $SuiteScriptsZip
+    suiteScriptsManifest = $SuiteScriptsManifest
+}} | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 -LiteralPath '{captured.as_posix()}'
+""".encode("utf-8")
+    package_entries = {
+        "eMuleBB/emulebb.exe": b"exe\n",
+        **suite_install_fixtures.runtime_script_entries(installer_payload=installer_payload),
+    }
+    for entry_name, payload in package_entries.items():
+        if not entry_name.startswith("eMuleBB/"):
+            continue
+        target = package_root / entry_name.removeprefix("eMuleBB/")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(payload)
+
+    version = "0.7.3-nightly.20260604.5169162"
+    package_zip = release_root / f"emulebb-{version}-x64.zip"
+    manifest = release_root / f"emulebb-{version}-x64.manifest.json"
+    suite_install_fixtures.write_zip(package_zip, package_entries)
+    suite_install_fixtures.write_manifest(manifest, package_zip)
+    suite_asset, suite_manifest, suite_digest = release._write_suite_scripts_bundle_asset(
+        package_root=package_root,
+        release_root=release_root,
+        release_version=version,
+    )
+    suite_manifest_payload = json.loads(suite_manifest.read_text(encoding="utf-8"))
+
+    bootstrapper_path = (repo_root / BOOTSTRAPPER).resolve()
+    command = rf"""
+function Invoke-RestMethod {{
+    param([string]$Uri, [hashtable]$Headers)
+    if ($Uri -ne 'https://api.github.com/repos/emulebb/emulebb/releases/tags/emulebb-nightly-20260604-5169162') {{
+        throw "Unexpected release URI: $Uri"
+    }}
+    return [pscustomobject]@{{
+        tag_name = 'emulebb-nightly-20260604-5169162'
+        draft = $false
+        prerelease = $true
+        assets = @(
+            [pscustomobject]@{{
+                name = '{package_zip.name}'
+                browser_download_url = 'https://example.invalid/{package_zip.name}'
+            }},
+            [pscustomobject]@{{
+                name = '{manifest.name}'
+                browser_download_url = 'https://example.invalid/{manifest.name}'
+            }},
+            [pscustomobject]@{{
+                name = '{suite_asset.name}'
+                browser_download_url = 'https://example.invalid/{suite_asset.name}'
+            }},
+            [pscustomobject]@{{
+                name = '{suite_manifest.name}'
+                browser_download_url = 'https://example.invalid/{suite_manifest.name}'
+            }}
+        )
+    }}
+}}
+function Invoke-WebRequest {{
+    param([switch]$UseBasicParsing, [string]$Uri, [string]$OutFile, [hashtable]$Headers)
+    if ($Uri.EndsWith('{manifest.name}')) {{
+        Copy-Item -Force -LiteralPath '{manifest.as_posix()}' -Destination $OutFile
+        return
+    }}
+    if ($Uri.EndsWith('{package_zip.name}')) {{
+        Copy-Item -Force -LiteralPath '{package_zip.as_posix()}' -Destination $OutFile
+        return
+    }}
+    throw "Unexpected download URI: $Uri"
+}}
+& '{bootstrapper_path}' -Version 'emulebb-nightly-20260604-5169162' -Platform x64 -Bundle Core -NoStart
+"""
+
+    completed = _run_powershell(["-Command", command], cwd=repo_root)
+    captured_payload = json.loads(captured.read_text(encoding="utf-8-sig"))
+
+    assert "Resolved suite scripts bundle https://example.invalid/suite-scripts-" in completed.stdout
+    assert suite_manifest_payload["schema"] == "emulebb.suite-scripts-manifest.v1"
+    assert suite_manifest_payload["sha256"] == suite_digest
+    assert captured_payload["version"] == version
+    assert captured_payload["suiteScriptsZip"] == f"https://example.invalid/{suite_asset.name}"
+    assert captured_payload["suiteScriptsManifest"] == f"https://example.invalid/{suite_manifest.name}"
 
 
 @pytest.mark.parametrize("missing_asset", ["zip", "manifest"])
