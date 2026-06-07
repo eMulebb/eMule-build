@@ -99,6 +99,31 @@ python -m emule_workspace package-release
 python -m emule_workspace vm-lab prepare
 ```
 
+## Suite Installer Examples
+
+The packaged suite installer supports non-interactive app and language selection:
+
+```powershell
+.\Bootstrap-eMuleBBSuite.ps1 -Apps none-arr -Language English
+.\Bootstrap-eMuleBBSuite.ps1 -Apps all-arr -Language Italian
+.\Bootstrap-eMuleBBSuite.ps1 -Apps lidarr,readarr -Language Portuguese
+```
+
+`-Apps` also accepts individual apps (`radarr`, `sonarr`, `lidarr`, `readarr`,
+`whisparr`) and presets (`default-arr`, `all-arr`, `none-arr`, `controller`,
+`all`). If a media Arr app is selected, Prowlarr and aMuTorrent are included
+automatically.
+
+Release assets can publish a script-only bundle beside the normal package ZIPs.
+Use it when refreshing installer/runtime PowerShell without relying on scripts
+inside the app package:
+
+```powershell
+.\Bootstrap-eMuleBBSuite.ps1 `
+  -SuiteScriptsZip https://github.com/emulebb/emulebb/releases/download/emulebb-v0.7.3-rc.1/suite-scripts-0.7.3-rc.1.zip `
+  -SuiteScriptsManifest https://github.com/emulebb/emulebb/releases/download/emulebb-v0.7.3-rc.1/suite-scripts-0.7.3-rc.1.manifest.json
+```
+
 Command behavior:
 
 - `help` prints supported commands and common options.
