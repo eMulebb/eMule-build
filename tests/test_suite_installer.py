@@ -213,6 +213,19 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "& (Join-Path $Root 'scripts\\Start-Suite.ps1')" in start_suite
     assert "function Initialize-AmutorrentConfig" in start_suite
     assert "Initialize-AmutorrentConfig -DataDir (Join-Path $Root 'data\\amutorrent')" in start_suite
+    assert "function Set-AmutorrentSuiteClient" in start_suite
+    assert "Set-AmutorrentSuiteClient -Config $config -EmulebbHost $EmulebbHost -EmulebbPort $EmulebbPort -EmulebbApiKey $EmulebbApiKey" in start_suite
+    assert "id = 'emulebb-suite'" in start_suite
+    assert "type = 'emulebb'" in start_suite
+    assert "name = 'eMuleBB Suite'" in start_suite
+    assert "enabled = $true" in start_suite
+    assert "host = $EmulebbHost" in start_suite
+    assert "port = $EmulebbPort" in start_suite
+    assert "apiKey = $EmulebbApiKey" in start_suite
+    assert "Set-ObjectProperty -Target $Config -Name 'clients' -Value $clients.ToArray()" in start_suite
+    assert "-EmulebbHost (Get-ServiceClientHost -ServiceName 'emulebb' -Service $Config.services.emulebb)" in start_suite
+    assert "-EmulebbPort ([int]$Config.services.emulebb.port)" in start_suite
+    assert "-EmulebbApiKey $EmuleKey" in start_suite
     assert "Set-ObjectProperty -Target $server -Name 'host' -Value $BindAddress" in start_suite
     assert "Set-ObjectProperty -Target $server -Name 'port' -Value $Port" in start_suite
     assert "Set-ObjectProperty -Target $auth -Name 'enabled' -Value $true" in start_suite

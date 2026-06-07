@@ -93,8 +93,56 @@ function Get-OrCreateObjectProperty {
     return $value
 }
 
+function Set-AmutorrentSuiteClient {
+    param($Config, [string]$EmulebbHost, [int]$EmulebbPort, [string]$EmulebbApiKey)
+    $suiteClient = [pscustomobject]@{
+        id = 'emulebb-suite'
+        type = 'emulebb'
+        name = 'eMuleBB Suite'
+        color = $null
+        enabled = $true
+        host = $EmulebbHost
+        port = $EmulebbPort
+        apiKey = $EmulebbApiKey
+        useSsl = $false
+        path = ''
+    }
+    $clients = New-Object System.Collections.Generic.List[object]
+    $replaced = $false
+    foreach ($client in @(Get-ObjectPropertyValue -Target $Config -Name 'clients' -Default @())) {
+        if ($null -eq $client) {
+            continue
+        }
+        $id = [string](Get-ObjectPropertyValue -Target $client -Name 'id' -Default '')
+        $type = [string](Get-ObjectPropertyValue -Target $client -Name 'type' -Default '')
+        $name = [string](Get-ObjectPropertyValue -Target $client -Name 'name' -Default '')
+        if ([string]::Equals($id, 'emulebb-suite', [StringComparison]::OrdinalIgnoreCase) -or
+            ([string]::Equals($type, 'emulebb', [StringComparison]::OrdinalIgnoreCase) -and [string]::Equals($name, 'eMuleBB Suite', [StringComparison]::OrdinalIgnoreCase))) {
+            if (-not $replaced) {
+                $clients.Add($suiteClient)
+                $replaced = $true
+            }
+            continue
+        }
+        $clients.Add($client)
+    }
+    if (-not $replaced) {
+        $clients.Add($suiteClient)
+    }
+    Set-ObjectProperty -Target $Config -Name 'clients' -Value $clients.ToArray()
+}
+
 function Initialize-AmutorrentConfig {
-    param([string]$DataDir, [string]$BindAddress, [int]$Port, [string]$Username, [string]$Password)
+    param(
+        [string]$DataDir,
+        [string]$BindAddress,
+        [int]$Port,
+        [string]$Username,
+        [string]$Password,
+        [string]$EmulebbHost,
+        [int]$EmulebbPort,
+        [string]$EmulebbApiKey
+    )
     New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
     $configPath = Join-Path $DataDir 'config.json'
     if (Test-Path -LiteralPath $configPath) {
@@ -122,6 +170,7 @@ function Initialize-AmutorrentConfig {
     $directories = Get-OrCreateObjectProperty -Target $config -Name 'directories'
     Set-ObjectProperty -Target $directories -Name 'data' -Value $DataDir
     Set-ObjectProperty -Target $directories -Name 'logs' -Value (Join-Path $DataDir 'logs')
+    Set-AmutorrentSuiteClient -Config $config -EmulebbHost $EmulebbHost -EmulebbPort $EmulebbPort -EmulebbApiKey $EmulebbApiKey
     $config | ConvertTo-Json -Depth 40 | Set-Content -Encoding UTF8 -LiteralPath $configPath
 }
 
@@ -264,7 +313,7 @@ $EmuleUrl = Get-ServiceUrl -Name 'emulebb' -Service $Config.services.emulebb
 $EmuleKey = [string]$Config.services.emulebb.apiKey
 
 if (Test-SelectedApp -Config $Config -Name 'amutorrent') {
-    Initialize-AmutorrentConfig -DataDir (Join-Path $Root 'data\amutorrent') -BindAddress ([string]$Config.services.amutorrent.bindAddress) -Port ([int]$Config.services.amutorrent.port) -Username ([string]$Config.credentials.username) -Password ([string]$Config.credentials.password)
+    Initialize-AmutorrentConfig -DataDir (Join-Path $Root 'data\amutorrent') -BindAddress ([string]$Config.services.amutorrent.bindAddress) -Port ([int]$Config.services.amutorrent.port) -Username ([string]$Config.credentials.username) -Password ([string]$Config.credentials.password) -EmulebbHost (Get-ServiceClientHost -ServiceName 'emulebb' -Service $Config.services.emulebb) -EmulebbPort ([int]$Config.services.emulebb.port) -EmulebbApiKey $EmuleKey
 }
 & (Join-Path $Root 'scripts\Start-Suite.ps1')
 Wait-Json -Name 'eMuleBB' -Uri "$EmuleUrl/api/v1/app" -Headers @{ 'X-API-Key' = $EmuleKey }
