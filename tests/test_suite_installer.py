@@ -1625,6 +1625,15 @@ def test_suite_installer_requires_hashed_pinned_dependencies() -> None:
     assert "function Get-DependencyDownloadRecoveryMessage" in installer
     assert "pass -DependencyManifest with reachable file paths or URLs and SHA256 hashes" in installer
     assert "Failed to download $Url -> $Destination after $maxAttempts attempts. $message $(Get-DependencyDownloadRecoveryMessage)" in installer
+    assert "function Get-ArrDependencyCacheRoot" in installer
+    assert "'emulebb-suite-arr-cache'" in installer
+    assert "function Restore-ArrDependencyCache" in installer
+    assert "Assert-FileHash -Path $cachePath -ExpectedSha256 $ExpectedSha256" in installer
+    assert "Using cached $Name dependency $AssetName" in installer
+    assert "Ignoring stale cached $Name dependency $cachePath" in installer
+    assert "function Save-ArrDependencyCache" in installer
+    assert "Cached $Name dependency $AssetName" in installer
+    assert "Restore-ArrDependencyCache -Name $Name -AssetName $assetName -ExpectedSha256 $Spec.Sha256 -Destination $archivePath" in installer
     assert "Downloading $Name dependency $assetName" in installer
     assert "Verifying $Name dependency" in installer
     assert "Extracting $Name dependency" in installer
