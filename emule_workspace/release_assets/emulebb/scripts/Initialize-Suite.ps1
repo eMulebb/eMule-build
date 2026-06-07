@@ -34,11 +34,24 @@ function Get-ServiceUrl {
 
 function Get-ExceptionMessage {
     param($Exception)
-    if ($null -ne $Exception -and $null -ne $Exception.Response) {
+    $response = $null
+    if ($null -ne $Exception) {
         try {
-            return "HTTP $([int]$Exception.Response.StatusCode) $($Exception.Response.StatusDescription)"
+            $responseProperty = $Exception.PSObject.Properties['Response']
+            if ($null -ne $responseProperty) {
+                $response = $responseProperty.Value
+            }
         } catch {
         }
+    }
+    if ($null -ne $response) {
+        try {
+            return "HTTP $([int]$response.StatusCode) $($response.StatusDescription)"
+        } catch {
+        }
+    }
+    if ($null -eq $Exception) {
+        return ''
     }
     return $Exception.Message
 }

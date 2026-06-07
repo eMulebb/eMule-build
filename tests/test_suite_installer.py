@@ -286,6 +286,9 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "$hostConfig.authenticationMethod = 'forms'" not in start_suite
     assert "Set-ArrHostCredentials -Name $display" in start_suite
     assert "function Get-ExceptionMessage" in start_suite
+    assert "$responseProperty = $Exception.PSObject.Properties['Response']" in start_suite
+    assert "$null -ne $responseProperty" in start_suite
+    assert "$null -ne $Exception -and $null -ne $Exception.Response" not in start_suite
     assert "function Invoke-SuiteJsonApi" in start_suite
     assert "function Get-ServiceClientHost" in start_suite
     assert "Last error:" in start_suite
