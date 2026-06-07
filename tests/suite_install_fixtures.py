@@ -8,6 +8,8 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from emule_workspace.release import EMULEBB_RUNTIME_SCRIPT_PATHS
+
 
 @dataclass(frozen=True)
 class LocalPackageArtifacts:
@@ -53,12 +55,13 @@ def write_core_release(
             / "scripts"
             / "Install-eMuleBBSuite.ps1"
         ).read_bytes()
+    package_entries = {
+        f"eMuleBB/{executable_name}": exe_payload,
+        **runtime_script_entries(installer_payload=installer_payload),
+    }
     write_zip(
         package_zip,
-        {
-            f"eMuleBB/{executable_name}": exe_payload,
-            "eMuleBB/scripts/Install-eMuleBBSuite.ps1": installer_payload,
-        },
+        package_entries,
     )
     write_manifest(manifest, package_zip)
     return CoreRelease(release_root=release_root, package_zip=package_zip, manifest=manifest)
@@ -134,7 +137,7 @@ def write_local_package_artifacts(
         emule_zip,
         {
             f"eMuleBB/{executable_name}": zip_exe_payload if zip_exe_payload is not None else package_exe_payload,
-            "eMuleBB/scripts/Install-eMuleBBSuite.ps1": installer_payload,
+            **runtime_script_entries(installer_payload=installer_payload),
         },
     )
     write_zip(amutorrent_zip, {"aMuTorrent/server/server.js": b"server\n"})
@@ -187,13 +190,51 @@ def write_dependency_manifest(path: Path, dependency_root: Path) -> None:
             "Sonarr/Sonarr.Console.exe": b"sonarr console\n",
         },
     )
+    lidarr_zip = dependency_root / "lidarr.zip"
+    readarr_zip = dependency_root / "readarr.zip"
+    whisparr_zip = dependency_root / "whisparr.zip"
+    write_zip(
+        lidarr_zip,
+        {
+            "Lidarr/Lidarr.exe": b"lidarr\n",
+            "Lidarr/Lidarr.Console.exe": b"lidarr console\n",
+        },
+    )
+    write_zip(
+        readarr_zip,
+        {
+            "Readarr/Readarr.exe": b"readarr\n",
+            "Readarr/Readarr.Console.exe": b"readarr console\n",
+        },
+    )
+    write_zip(
+        whisparr_zip,
+        {
+            "Whisparr/Whisparr.exe": b"whisparr\n",
+            "Whisparr/Whisparr.Console.exe": b"whisparr console\n",
+        },
+    )
     payload = {
         "node": dependency_spec(node_zip, file_name=node_zip.name),
         "prowlarr": arr_dependency_spec(prowlarr_zip, "Prowlarr.exe"),
         "radarr": arr_dependency_spec(radarr_zip, "Radarr.exe"),
         "sonarr": arr_dependency_spec(sonarr_zip, "Sonarr.exe"),
+        "lidarr": arr_dependency_spec(lidarr_zip, "Lidarr.exe"),
+        "readarr": arr_dependency_spec(readarr_zip, "Readarr.exe"),
+        "whisparr": arr_dependency_spec(whisparr_zip, "Whisparr.exe"),
     }
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def runtime_script_entries(*, installer_payload: bytes) -> dict[str, bytes]:
+    entries: dict[str, bytes] = {}
+    assets_root = Path("emule_workspace") / "release_assets" / "emulebb"
+    for relative_path in EMULEBB_RUNTIME_SCRIPT_PATHS:
+        payload = (assets_root / relative_path).read_bytes()
+        if relative_path == "scripts/Install-eMuleBBSuite.ps1":
+            payload = installer_payload
+        entries[f"eMuleBB/{relative_path}"] = payload
+    return entries
 
 
 def dependency_spec(path: Path, *, file_name: str | None = None) -> dict[str, str]:

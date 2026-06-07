@@ -87,7 +87,7 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
             "-P2PBindInterface",
             "hide.me",
             "-EmulebbPort",
-            "14711",
+            "49152",
         ],
         cwd=repo_root,
     )
@@ -101,7 +101,7 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "NetworkGuardAllowedCIDRs=" in preferences
     assert "[WebServer]" in preferences
     assert f"BindAddr={control_bind}" in preferences
-    assert "Port=14711" in preferences
+    assert "Port=49152" in preferences
 
     suite_config = json.loads((install_root / "manifests" / "suite-config.json").read_text(encoding="utf-8-sig"))
     assert suite_config["schema"] == "emulebb.suite-config.v1"
@@ -110,9 +110,10 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert suite_config["emulebbExecutableName"] == "emulebb.exe"
     assert suite_config["services"]["emulebb"]["bindAddress"] == control_bind
     assert suite_config["services"]["emulebb"]["clientHost"] == control_bind
-    assert suite_config["services"]["emulebb"]["port"] == 14711
+    assert suite_config["services"]["emulebb"]["port"] == 49152
+    assert suite_config["selectedApps"] == ["emulebb"]
     assert suite_config["services"]["amutorrent"]["bindAddress"] == control_bind
-    assert suite_config["services"]["amutorrent"]["clientHost"] == control_bind
+    assert suite_config["services"]["amutorrent"]["clientHost"] == ""
     assert suite_config["credentials"]["username"] == "admin"
     assert re.fullmatch(r"[A-Za-z0-9]{24}", suite_config["credentials"]["password"])
     assert re.fullmatch(r"[A-Za-z0-9]{24}", suite_config["services"]["emulebb"]["apiKey"])
@@ -144,11 +145,11 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "Suite web login" in credentials
     assert "Username: admin" in credentials
     assert f"Password: {suite_config['credentials']['password']}" in credentials
-    assert f"eMuleBB URL: http://{control_bind}:14711" in credentials
+    assert f"eMuleBB URL: http://{control_bind}:49152" in credentials
     assert f"eMuleBB API key: {suite_config['services']['emulebb']['apiKey']}" in credentials
     credentials_html = (install_root / "credentials.html").read_text(encoding="utf-8-sig")
     assert "eMuleBB Suite Credentials" in credentials_html
-    assert f"http://{control_bind}:14711" in credentials_html
+    assert f"http://{control_bind}:49152" in credentials_html
     assert 'target="_blank"' in credentials_html
     assert 'rel="noopener noreferrer"' in credentials_html
     assert 'data-copy="' in credentials_html
@@ -160,8 +161,8 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "emulebbExecutableName" in start_emulebb
     assert "'emulebb.exe'" in start_emulebb
     assert "profiles\\emulebb" in start_emulebb
-    assert "function Test-EmuleRunning" in start_emulebb
-    assert "Starting eMuleBB: $Emule" in start_emulebb
+    assert "function Test-ProcessRunning" in start_emulebb
+    assert "Starting eMuleBB: $emule" in start_emulebb
     assert "function Invoke-EmuleBootstrapFileDownload" not in start_emulebb
     assert "function Ensure-EmuleBootstrapFiles" not in start_emulebb
     assert "return to this PowerShell window so setup can complete the app registrations" not in start_emulebb
@@ -187,24 +188,10 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
 
     start_suite = initialize_suite
     assert "suite-config.json" in start_suite
-    assert "Start-eMuleBB.ps1" in start_suite
-    assert "function Invoke-EmuleBootstrapFileDownload" in start_suite
-    assert "function Ensure-EmuleBootstrapFiles" in start_suite
-    assert "https://upd.emule-security.org/server.met" in start_suite
-    assert "https://upd.emule-security.org/nodes.dat" in start_suite
-    assert "$Name bootstrap file ready: $Destination" in start_suite
-    assert "eMuleBB can still start, but first public connection may require manual server/node updates" in start_suite
-    assert "function Show-SuiteInitializationLaunchNotice" in start_suite
-    assert "Keep this PowerShell window open until suite initialization finishes" in start_suite
-    assert "Continuing in 6 seconds..." in start_suite
-    assert "Start-Sleep -Seconds 6" in start_suite
-    assert "return to this PowerShell window so setup can complete the app registrations" not in start_suite
-    assert start_suite.index("Ensure-EmuleBootstrapFiles") < start_suite.index("Show-SuiteInitializationLaunchNotice")
-    assert start_suite.rindex("Show-SuiteInitializationLaunchNotice") < start_suite.rindex("& (Join-Path $Root 'scripts\\Start-eMuleBB.ps1')")
-    assert "Show-EmuleLaunchReturnNotice" not in start_suite
+    assert "Start-Suite.ps1" in start_suite
+    assert "& (Join-Path $Root 'scripts\\Start-Suite.ps1')" in start_suite
     assert "function Initialize-AmutorrentConfig" in start_suite
-    assert "$env:AMUTORRENT_DATA_DIR = Join-Path $Root 'data\\amutorrent'" in start_suite
-    assert "Initialize-AmutorrentConfig -DataDir $env:AMUTORRENT_DATA_DIR" in start_suite
+    assert "Initialize-AmutorrentConfig -DataDir (Join-Path $Root 'data\\amutorrent')" in start_suite
     assert "Set-ObjectProperty -Target $server -Name 'host' -Value $BindAddress" in start_suite
     assert "Set-ObjectProperty -Target $server -Name 'port' -Value $Port" in start_suite
     assert "Set-ObjectProperty -Target $auth -Name 'enabled' -Value $true" in start_suite
@@ -226,96 +213,48 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "-AmutorrentPassword ([string]$Config.credentials.password)" in start_suite
     assert "-AppProfileName 'eMuleBB Suite'" in start_suite
     assert "Register-Prowlarr.ps1') -Action Register" in start_suite
-    assert "Register-ArrStack.ps1') -Action Register -Target Radarr" in start_suite
-    assert "Register-ArrStack.ps1') -Action Register -Target Sonarr" in start_suite
+    assert "Register-ArrStack.ps1') @args" in start_suite
+    assert "$args[\"${display}Url\"] = $arrUrls[$arrName]" in start_suite
+    assert "$args[\"${display}ApiKey\"] = [string]$Config.services.$arrName.apiKey" in start_suite
     assert "function Set-ArrHostCredentials" in start_suite
     assert "Set-ObjectProperty -Target $hostConfig -Name 'authenticationMethod' -Value 'forms'" in start_suite
     assert "Set-ObjectProperty -Target $hostConfig -Name 'authenticationRequired' -Value 'enabled'" in start_suite
     assert "Set-ObjectProperty -Target $hostConfig -Name 'username' -Value ([string]$Config.credentials.username)" in start_suite
     assert "Set-ObjectProperty -Target $hostConfig -Name 'password' -Value ([string]$Config.credentials.password)" in start_suite
+    assert "Set-ObjectProperty -Target $hostConfig -Name 'uiLanguage' -Value $Language" in start_suite
     assert "$hostConfig.authenticationMethod = 'forms'" not in start_suite
-    assert "Set-ArrHostCredentials -Name 'Prowlarr'" in start_suite
-    assert "Set-ArrHostCredentials -Name 'Radarr'" in start_suite
-    assert "Set-ArrHostCredentials -Name 'Sonarr'" in start_suite
-    assert "function Get-HttpErrorDetail" in start_suite
+    assert "Set-ArrHostCredentials -Name $display" in start_suite
     assert "function Get-ExceptionMessage" in start_suite
     assert "function Invoke-SuiteJsonApi" in start_suite
-    assert "function Get-ServiceTroubleshootingHint" in start_suite
     assert "function Get-ServiceClientHost" in start_suite
-    assert "Suite config is missing clientHost" in start_suite
-    assert "clientHost for $ServiceName cannot be a wildcard address" in start_suite
     assert "Last error:" in start_suite
     assert "Timed out waiting for $Name at $Uri" in start_suite
-    assert "Check $Root\\data\\radarr\\logs" in start_suite
     assert "Invoke-SuiteJsonApi -Name \"$Name web login update\"" in start_suite
-    assert "Invoke-StepWithRetry -Name 'Arr web login setup'" in start_suite
+    assert "Invoke-StepWithRetry -Name \"$display web login setup\"" in start_suite
     assert "function Ensure-ArrRootFolder" in start_suite
-    assert "function Test-ArrRootFolderPath" in start_suite
-    assert "function Test-ArrRootFolderCollection" in start_suite
     assert "$rootFolderUrl = \"$Url/$ApiPath/rootfolder\"" in start_suite
     assert "New-Item -ItemType Directory -Force -Path $Path" in start_suite
-    assert "$createdRootFolder = Invoke-SuiteJsonApi -Name \"$Name root folder create\"" in start_suite
+    assert "Invoke-SuiteJsonApi -Name \"$Name root folder create\"" in start_suite
     assert "already configured as a root folder" in start_suite
-    assert "Invoke-SuiteJsonApi -Name \"$Name root folder verify\"" in start_suite
-    assert "did not persist root folder" in start_suite
-    assert "Settings > Media Management > Root Folders" in start_suite
-    assert "$RootFolder.PSObject.Properties['path']" in start_suite
-    assert "Ensure-ArrRootFolder -Name 'Radarr'" in start_suite
-    assert "Join-Path $Root 'media\\movies'" in start_suite
-    assert "Ensure-ArrRootFolder -Name 'Sonarr'" in start_suite
-    assert "Join-Path $Root 'media\\series'" in start_suite
-    assert "Invoke-StepWithRetry -Name 'Radarr root folder setup'" in start_suite
-    assert "Invoke-StepWithRetry -Name 'Sonarr root folder setup'" in start_suite
-    assert "-EmulebbCategoryPath (Join-Path $Root 'downloads\\radarr')" in start_suite
-    assert "-EmulebbCategoryPath (Join-Path $Root 'downloads\\sonarr')" in start_suite
-    assert "function Start-ArrHost" in start_suite
-    assert "$trayName = $Name + '.exe'" in start_suite
-    assert "Missing Windows tray host" in start_suite
-    assert "Start-ProcessIfMissing -Name $Name -FilePath $exe.FullName" in start_suite
-    assert "Start-ProcessIfMissing -Name $Name -FilePath $exe.FullName -ArgumentList @('/data='" in start_suite
-    assert "working directory is missing" in start_suite
-    assert "could not be started from $FilePath" in start_suite
-    assert "did not stay running after launch" in start_suite
-    assert "function Ensure-EmuleBBAvailable" in start_suite
-    assert "function Ensure-SuiteServicesAvailable" in start_suite
+    assert "$rootFolder.PSObject.Properties['path']" in start_suite
+    assert "'radarr' { return 'media\\movies' }" in start_suite
+    assert "'sonarr' { return 'media\\series' }" in start_suite
+    assert "'lidarr' { return 'media\\music' }" in start_suite
+    assert "'readarr' { return 'media\\books' }" in start_suite
+    assert "'whisparr' { return 'media\\whisparr' }" in start_suite
+    assert "Ensure-ArrRootFolder -Name $display" in start_suite
+    assert "EmulebbCategoryPath = (Join-Path $Root \"downloads\\$arrName\")" in start_suite
     assert "Wait-Json -Name 'aMuTorrent' -Uri \"$AmutorrentUrl/api/auth/status\"" in start_suite
-    assert "Wait-Json -Name 'Prowlarr' -Uri \"$ProwlarrUrl/api/v1/system/status\" -Headers @{ 'X-Api-Key' = $ProwlarrKey }" in start_suite
-    assert "Wait-Json -Name 'Radarr' -Uri \"$RadarrUrl/api/v3/system/status\" -Headers @{ 'X-Api-Key' = $RadarrKey }" in start_suite
-    assert "Wait-Json -Name 'Sonarr' -Uri \"$SonarrUrl/api/v3/system/status\" -Headers @{ 'X-Api-Key' = $SonarrKey }" in start_suite
+    assert "Wait-Json -Name $display -Uri \"$($arrUrls[$arrName])/$apiPath/system/status\"" in start_suite
     assert "function Invoke-StepWithRetry" in start_suite
-    assert "Ensure-SuiteServicesAvailable" in start_suite
-    assert "Invoke-StepWithRetry -Name 'Sonarr registration'" in start_suite
-    assert "-ProwlarrApiKey $ProwlarrKey" in start_suite
-    assert "-RadarrApiKey $RadarrKey" in start_suite
-    assert "-SonarrApiKey $SonarrKey" in start_suite
-    assert "-SkipProwlarrSync" in start_suite
-    assert "function Test-ArrIndexerSynced" in start_suite
-    assert "function Wait-ArrIndexersSynced" in start_suite
-    assert "function Invoke-ProwlarrSyncIfNeeded" in start_suite
-    assert "AddSeconds(30)" in start_suite
-    assert "Giving Prowlarr 6 seconds to start syncing before the first verification probe" in start_suite
-    assert "Start-Sleep -Seconds 6" in start_suite
-    assert "Start-Sleep -Seconds 2" in start_suite
-    assert "-NoRetry *> $null" in start_suite
-    assert "indexer is not synced yet" not in start_suite
-    assert "Prowlarr application sync completed automatically." in start_suite
-    assert "triggering ApplicationIndexerSync" in start_suite
-    assert "Invoke-StepWithRetry -Name 'Prowlarr conditional application sync'" in start_suite
+    assert "Invoke-StepWithRetry -Name \"$display registration\"" in start_suite
+    assert "ProwlarrApiKey = [string]$Config.services.prowlarr.apiKey" in start_suite
+    assert "SkipProwlarrSync = $true" in start_suite
+    assert "Invoke-StepWithRetry -Name 'Prowlarr application sync'" in start_suite
     assert "-SyncProwlarrOnly" in start_suite
-    assert "Invoke-StepWithRetry -Name 'Radarr indexer verification'" in start_suite
-    assert "Invoke-StepWithRetry -Name 'Sonarr indexer verification'" in start_suite
-    assert "-VerifyIndexerOnly -Target Radarr" in start_suite
-    assert "-VerifyIndexerOnly -Target Sonarr" in start_suite
-    assert start_suite.index("Invoke-StepWithRetry -Name 'Arr web login setup'") < start_suite.index("Invoke-StepWithRetry -Name 'Radarr root folder setup'")
-    assert start_suite.index("Invoke-StepWithRetry -Name 'Radarr root folder setup'") < start_suite.index("Invoke-StepWithRetry -Name 'Sonarr root folder setup'")
-    assert start_suite.index("Invoke-StepWithRetry -Name 'Sonarr root folder setup'") < start_suite.index("Invoke-StepWithRetry -Name 'Prowlarr registration'")
-    assert start_suite.index("Invoke-StepWithRetry -Name 'Radarr registration'") < start_suite.index("Invoke-StepWithRetry -Name 'Sonarr registration'")
-    assert start_suite.index("Invoke-StepWithRetry -Name 'Sonarr registration'") < start_suite.index("Invoke-StepWithRetry -Name 'Prowlarr conditional application sync'")
-    assert start_suite.index("Invoke-StepWithRetry -Name 'Prowlarr conditional application sync'") < start_suite.index("Invoke-StepWithRetry -Name 'Radarr indexer verification'")
-    assert start_suite.index("Invoke-StepWithRetry -Name 'Radarr indexer verification'") < start_suite.index("Invoke-StepWithRetry -Name 'Sonarr indexer verification'")
-    assert start_suite.index("foreach ($item in @(@('Prowlarr'") < start_suite.index("Initialize-AmutorrentConfig -DataDir $env:AMUTORRENT_DATA_DIR")
-    assert start_suite.index("Initialize-AmutorrentConfig -DataDir $env:AMUTORRENT_DATA_DIR") < start_suite.index("Start-ProcessIfMissing -Name 'aMuTorrent' -FilePath $node")
-    assert start_suite.index("Start-ProcessIfMissing -Name 'aMuTorrent' -FilePath $node") < start_suite.index("Invoke-StepWithRetry -Name 'aMuTorrent registration'")
+    assert start_suite.index("Invoke-StepWithRetry -Name \"$display web login setup\"") < start_suite.index("Invoke-StepWithRetry -Name \"$display root folder setup\"")
+    assert start_suite.index("Invoke-StepWithRetry -Name \"$display root folder setup\"") < start_suite.index("Invoke-StepWithRetry -Name 'Prowlarr registration'")
+    assert start_suite.index("Invoke-StepWithRetry -Name \"$display registration\"") < start_suite.index("Invoke-StepWithRetry -Name 'Prowlarr application sync'")
 
     stop_suite = (install_root / "scripts" / "Stop-Suite.ps1").read_text(encoding="utf-8-sig")
     assert "Get-CimInstance Win32_Process" in stop_suite
@@ -623,7 +562,7 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
         package_zip,
         {
             "eMuleBB/emulebb.exe": b"exe\n",
-            "eMuleBB/scripts/Install-eMuleBBSuite.ps1": (repo_root / INSTALLER).read_bytes(),
+            **suite_install_fixtures.runtime_script_entries(installer_payload=(repo_root / INSTALLER).read_bytes()),
         },
     )
     _write_manifest(package_manifest, package_zip)
@@ -682,7 +621,7 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     service_order = ("emulebb", "amutorrent", "prowlarr", "radarr", "sonarr")
     service_ports = [suite_config["services"][name]["port"] for name in service_order]
     assert service_ports == list(range(service_ports[0], service_ports[0] + len(service_ports)))
-    assert 54001 <= service_ports[0] <= 59995
+    assert 49152 <= service_ports[0] <= 65535
     assert not ({4711, 4000, 9696, 7878, 8989} & set(service_ports))
     assert (install_root / "apps" / "eMuleBB" / "emulebb.exe").is_file()
     assert (install_root / "apps" / "aMuTorrent" / "server" / "server.js").is_file()
@@ -738,19 +677,20 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     assert f"aMuTorrent password: {suite_password}" in credentials
     for service_name in ("emulebb", "prowlarr", "radarr", "sonarr"):
         assert first_keys[service_name] in credentials
-    assert "Radarr/Sonarr download client" in credentials
+    assert "Arr download client" in credentials
     assert f"Password: {first_keys['emulebb']}" in credentials
     assert "First-run setup" in credentials
-    assert "Run scripts\\Initialize-Suite.ps1 once before adding movies or series if install-time startup was skipped" in credentials
+    assert "Run scripts\\Initialize-Suite.ps1 once if install-time startup was skipped" in credentials
+    assert "creates selected Arr root folders" in credentials
     assert "press Enter to use the default Register option" in credentials
     credentials_html = (install_root / "credentials.html").read_text(encoding="utf-8-sig")
     assert "eMuleBB Suite Credentials" in credentials_html
-    assert "Radarr/Sonarr Download Client" in credentials_html
+    assert "Arr Download Client" in credentials_html
     assert "data-copy=" in credentials_html
     assert f"http://{suite_config['services']['emulebb']['clientHost']}:" in credentials_html
     assert 'target="_blank"' in credentials_html
     assert 'rel="noopener noreferrer"' in credentials_html
-    assert "run scripts\\Initialize-Suite.ps1 once before adding movies or series if install-time startup was skipped" in credentials_html
+    assert "Run scripts\\Initialize-Suite.ps1 once if install-time startup was skipped" in credentials_html
     assert "press Enter to use the default Register option" in credentials_html
     assert suite_password in credentials_html
     for key in first_keys.values():
@@ -778,6 +718,105 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     }
     assert refreshed_keys == first_keys
     assert refreshed_config["credentials"]["password"] == suite_password
+
+
+def test_suite_installer_selected_arr_apps_and_language(tmp_path: Path) -> None:
+    release_root = tmp_path / "release"
+    dependency_root = tmp_path / "dependencies"
+    install_root = tmp_path / "suite"
+    dependency_manifest = tmp_path / "dependency-manifest.json"
+    suite_install_fixtures.write_core_release(release_root)
+    amutorrent_zip = release_root / "emulebb-0.7.3-rc.1-amutorrent-x64.zip"
+    amutorrent_manifest = release_root / "emulebb-0.7.3-rc.1-amutorrent-x64.manifest.json"
+    suite_install_fixtures.write_zip(amutorrent_zip, {"aMuTorrent/server/server.js": b"server\n"})
+    _write_manifest(amutorrent_manifest, amutorrent_zip)
+    suite_install_fixtures.write_dependency_manifest(dependency_manifest, dependency_root)
+
+    repo_root = Path.cwd()
+    suite_install_fixtures.run_installer(
+        (repo_root / INSTALLER).resolve(),
+        [
+            "-NonInteractive",
+            "-NoStart",
+            "-Force",
+            "-Bundle",
+            "Full",
+            "-Apps",
+            "lidarr,readarr",
+            "-Language",
+            "Portuguese",
+            "-InstallRoot",
+            str(install_root),
+            "-ReleaseBaseUrl",
+            release_root.as_uri(),
+            "-DependencyManifest",
+            str(dependency_manifest),
+        ],
+        cwd=repo_root,
+    )
+
+    suite_config = suite_install_fixtures.read_suite_config(install_root)
+    assert suite_config["selectedApps"] == ["emulebb", "amutorrent", "prowlarr", "lidarr", "readarr"]
+    service_ports = [suite_config["services"][name]["port"] for name in suite_config["selectedApps"]]
+    assert service_ports == list(range(service_ports[0], service_ports[0] + len(service_ports)))
+    assert 49152 <= service_ports[0] <= 65535
+    assert suite_config["language"]["name"] == "Portuguese"
+    assert suite_config["language"]["emuleLanguageId"] == 2070
+    assert suite_config["language"]["emuleLocale"] == "pt_PT"
+    preferences = suite_install_fixtures.read_suite_preferences(install_root)
+    assert "Language=2070" in preferences
+    category_sections = _read_ini_sections(install_root / "profiles" / "emulebb" / "config" / "Category.ini")
+    assert category_sections["General"]["Count"] == "3"
+    category_titles = {section.get("Title") for section in category_sections.values()}
+    assert "emulebb-prowlarr" in category_titles
+    assert "emulebb-lidarr" in category_titles
+    assert "emulebb-readarr" in category_titles
+    for app_name in ("prowlarr", "lidarr", "readarr"):
+        arr_config = (install_root / "data" / app_name / "config.xml").read_text(encoding="utf-8-sig")
+        assert "<UILanguage>Portuguese</UILanguage>" in arr_config
+    assert not (install_root / "data" / "radarr").exists()
+    assert not (install_root / "data" / "sonarr").exists()
+
+
+def test_suite_installer_can_select_whisparr(tmp_path: Path) -> None:
+    release_root = tmp_path / "release"
+    dependency_root = tmp_path / "dependencies"
+    install_root = tmp_path / "suite"
+    dependency_manifest = tmp_path / "dependency-manifest.json"
+    suite_install_fixtures.write_core_release(release_root)
+    amutorrent_zip = release_root / "emulebb-0.7.3-rc.1-amutorrent-x64.zip"
+    amutorrent_manifest = release_root / "emulebb-0.7.3-rc.1-amutorrent-x64.manifest.json"
+    suite_install_fixtures.write_zip(amutorrent_zip, {"aMuTorrent/server/server.js": b"server\n"})
+    _write_manifest(amutorrent_manifest, amutorrent_zip)
+    suite_install_fixtures.write_dependency_manifest(dependency_manifest, dependency_root)
+
+    repo_root = Path.cwd()
+    suite_install_fixtures.run_installer(
+        (repo_root / INSTALLER).resolve(),
+        [
+            "-NonInteractive",
+            "-NoStart",
+            "-Force",
+            "-Bundle",
+            "Full",
+            "-Apps",
+            "whisparr",
+            "-InstallRoot",
+            str(install_root),
+            "-ReleaseBaseUrl",
+            release_root.as_uri(),
+            "-DependencyManifest",
+            str(dependency_manifest),
+        ],
+        cwd=repo_root,
+    )
+
+    suite_config = suite_install_fixtures.read_suite_config(install_root)
+    assert suite_config["selectedApps"] == ["emulebb", "amutorrent", "prowlarr", "whisparr"]
+    assert list((install_root / "apps" / "whisparr").rglob("Whisparr.exe"))
+    assert (install_root / "data" / "whisparr" / "config.xml").is_file()
+    category_sections = _read_ini_sections(install_root / "profiles" / "emulebb" / "config" / "Category.ini")
+    assert "emulebb-whisparr" in {section.get("Title") for section in category_sections.values()}
 
 
 def test_suite_installer_imports_profile_config_only_once_and_preserves_refresh_profile(tmp_path: Path) -> None:
@@ -825,7 +864,7 @@ def test_suite_installer_imports_profile_config_only_once_and_preserves_refresh_
             "-P2PBindInterface",
             "hide.me",
             "-EmulebbPort",
-            "14711",
+            "49152",
         ],
         cwd=repo_root,
     )
@@ -841,7 +880,7 @@ def test_suite_installer_imports_profile_config_only_once_and_preserves_refresh_
     assert "TempDir=" + str(install_root / "downloads" / "temp") in preferences
     assert "BindInterface=hide.me" in preferences
     assert "Enabled=1" in preferences
-    assert "Port=14711" in preferences
+    assert "Port=49152" in preferences
     assert "ApiKey=" + suite_config["services"]["emulebb"]["apiKey"] in preferences
     assert "source-api-key" not in preferences
     assert (profile_config / "known.met").read_text(encoding="utf-8") == "identity\n"
@@ -912,7 +951,7 @@ def test_suite_installer_profile_import_appends_missing_ini_sections(tmp_path: P
             "-ImportProfileDir",
             str(source_profile),
             "-EmulebbPort",
-            "14712",
+            "49153",
         ],
         cwd=repo_root,
     )
@@ -922,7 +961,7 @@ def test_suite_installer_profile_import_appends_missing_ini_sections(tmp_path: P
     assert "Nick=missing-webserver" in preferences
     assert "[WebServer]" in preferences
     assert "Enabled=1" in preferences
-    assert "Port=14712" in preferences
+    assert "Port=49153" in preferences
     assert "ApiKey=" + suite_config["services"]["emulebb"]["apiKey"] in preferences
 
 
@@ -1010,12 +1049,14 @@ def test_suite_installer_copies_configured_emulebb_symbols(tmp_path: Path) -> No
 
 def test_suite_installer_keeps_full_suite_service_binds_config_driven() -> None:
     installer = INSTALLER.read_text(encoding="utf-8")
+    initialize_suite = Path("emule_workspace/release_assets/emulebb/scripts/Initialize-Suite.ps1").read_text(encoding="utf-8")
+    start_suite = Path("emule_workspace/release_assets/emulebb/scripts/Start-Suite.ps1").read_text(encoding="utf-8")
 
     assert '"  <BindAddress>$BindAddress</BindAddress>"' in installer
-    assert "Initialize-AmutorrentConfig -DataDir `$env:AMUTORRENT_DATA_DIR -BindAddress ([string]`$Config.services.amutorrent.bindAddress)" in installer
-    assert "Get-ServiceClientHost -ServiceName 'prowlarr' -Service `$Config.services.prowlarr" in installer
-    assert "Get-ServiceClientHost -ServiceName 'radarr' -Service `$Config.services.radarr" in installer
-    assert "Get-ServiceClientHost -ServiceName 'sonarr' -Service `$Config.services.sonarr" in installer
+    assert "Initialize-AmutorrentConfig -DataDir (Join-Path $Root 'data\\amutorrent') -BindAddress ([string]$Config.services.amutorrent.bindAddress)" in initialize_suite
+    assert "Get-ServiceClientHost -ServiceName $Name -Service $Service" in initialize_suite
+    assert "foreach ($arrName in @('prowlarr', 'radarr', 'sonarr', 'lidarr', 'readarr', 'whisparr'))" in start_suite
+    assert "Start-ArrHost -Name ($arrName.Substring(0, 1).ToUpperInvariant() + $arrName.Substring(1))" in start_suite
     assert "clientHost = ''" in installer
     assert "Resolve-ServiceClientHost" in installer
     assert "Set-SuiteClientHosts -Config $config" in installer
@@ -1199,8 +1240,12 @@ def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() 
     assert "example http://127.0.0.1" not in register_arr_stack
     assert "example http://LAN-IP:4711" in register_arr_stack
     assert "example http://LAN-IP:9696" in register_arr_stack
-    assert "example http://LAN-IP:7878" in register_arr_stack
-    assert "example http://LAN-IP:8989" in register_arr_stack
+    assert "example http://LAN-IP:$($ArrTargetPorts[$Target])" in register_arr_stack
+    assert "Radarr = 7878" in register_arr_stack
+    assert "Sonarr = 8989" in register_arr_stack
+    assert "Lidarr = 8686" in register_arr_stack
+    assert "Readarr = 8787" in register_arr_stack
+    assert "Whisparr = 6969" in register_arr_stack
     assert "[switch]$SkipProwlarrSync" in register_arr_stack
     assert "[switch]$SyncProwlarrOnly" in register_arr_stack
     assert "function Get-ArrUrlPrompt" in register_arr_stack
@@ -1241,7 +1286,8 @@ def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() 
     assert "Read-RequiredSecretValue -Prompt \"$Target API key\" -Value $script:targetApiKey -Name (\"${Target}ApiKey\")" in register_arr_stack
     assert "$script:EmulebbBaseUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue" in register_arr_stack
     assert "$script:targetUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue" in register_arr_stack
-    assert "$script:targetUrl = Normalize-ArgumentValue -Value $RadarrUrl" in register_arr_stack
+    assert "function Get-TargetUrlParameter" in register_arr_stack
+    assert "'Radarr' { return Normalize-ArgumentValue -Value $RadarrUrl }" in register_arr_stack
     assert "$script:targetUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue" in register_arr_stack
     assert register_arr_stack.index("Run-TargetWithRetry -Name 'eMuleBB category registration'") < register_arr_stack.index("$script:EmulebbBaseUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue")
     assert register_arr_stack.index("Run-TargetWithRetry -Name \"Prowlarr $Target application registration\"") < register_arr_stack.index("Run-TargetWithRetry -Name 'Prowlarr download client registration'")
@@ -1331,13 +1377,19 @@ def test_suite_installer_global_bind_is_default_not_override() -> None:
 
 def test_suite_generated_update_and_start_scripts_are_refresh_safe() -> None:
     installer = INSTALLER.read_text(encoding="utf-8")
+    update_suite = Path("emule_workspace/release_assets/emulebb/scripts/Update-Suite.ps1").read_text(encoding="utf-8")
+    initialize_suite = Path("emule_workspace/release_assets/emulebb/scripts/Initialize-Suite.ps1").read_text(encoding="utf-8")
+    start_emulebb = Path("emule_workspace/release_assets/emulebb/scripts/Start-eMuleBB.ps1").read_text(encoding="utf-8")
+    start_suite = Path("emule_workspace/release_assets/emulebb/scripts/Start-Suite.ps1").read_text(encoding="utf-8")
+    stop_suite = Path("emule_workspace/release_assets/emulebb/scripts/Stop-Suite.ps1").read_text(encoding="utf-8")
 
-    assert "& (Join-Path '$rootLiteral' 'scripts\\Stop-Suite.ps1')" in installer
-    assert "apps\\eMuleBB\\scripts\\Install-eMuleBBSuite.ps1" in installer
+    assert "& (Join-Path $Root 'scripts\\Stop-Suite.ps1')" in update_suite
+    assert "$sourceScriptsDir = Join-Path $script:Root 'apps\\eMuleBB\\scripts'" in installer
     assert "Copy-Item -Force -LiteralPath $PSCommandPath -Destination (Join-Path $scriptsDir 'Install-eMuleBBSuite.ps1')" not in installer
-    assert "function Test-ProcessRunning" in installer
-    assert "function Start-ProcessIfMissing" in installer
-    assert "function Get-ServiceClientHost" in installer
+    assert "function Test-ProcessRunning" in start_suite
+    assert "function Start-ProcessIfMissing" in start_suite
+    assert "function Get-ServiceClientHost" in initialize_suite
+    assert "function Get-FirstSuiteExecutable" in stop_suite
     assert "function Get-BundleServiceNames" in installer
     assert "function Get-BundleInstallDescription" in installer
     assert "function Write-BundlePortPreview" in installer
@@ -1349,16 +1401,15 @@ def test_suite_generated_update_and_start_scripts_are_refresh_safe() -> None:
     assert "auto (free port from $AutoPortRangeStart-$AutoPortRangeEnd)" in installer
     assert "function Read-WizardPortValue" in installer
     assert "Enter a number from 0 to 65535. Use 0 to auto-select a free suite port." in installer
-    assert "eMuleBB is already running" in installer
-    assert "function Test-EmuleRunning" in installer
-    assert "eMuleBB executable is missing" in installer
-    assert "eMuleBB could not be started from" in installer
-    assert "eMuleBB did not stay running after launch" in installer
-    assert "Start-ProcessIfMissing -Name 'aMuTorrent' -FilePath `$node" in installer
-    assert "working directory is missing" in installer
-    assert "could not be started from `$FilePath" in installer
-    assert "function Get-FirstSuiteExecutable" in installer
-    assert installer.index("`$nodeMatch = Get-ChildItem -Path (Join-Path `$Root 'runtime\\node')") < installer.index("`$node = (Get-Command node.exe -ErrorAction SilentlyContinue).Source")
+    assert "eMuleBB is already running" in start_emulebb
+    assert "function Test-ProcessRunning" in start_emulebb
+    assert "eMuleBB executable is missing" in start_emulebb
+    assert "eMuleBB could not be started from" in start_emulebb
+    assert "eMuleBB did not stay running after launch" in start_emulebb
+    assert "Start-ProcessIfMissing -Name 'aMuTorrent' -FilePath $node" in start_suite
+    assert "did not stay running after launch from $FilePath" in start_suite
+    assert "function Get-FirstSuiteExecutable" in stop_suite
+    assert start_suite.index("$nodeMatch = Get-ChildItem -Path (Join-Path $Root 'runtime\\node')") < start_suite.index("$node = if ($nodeMatch)")
     assert "Start skipped because -NoStart was used" in installer
     assert "credentials.html" in installer
     assert "if (-not $DryRun -and -not $NonInteractive)" in installer
