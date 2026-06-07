@@ -1639,6 +1639,12 @@ function Format-DownloadSize {
     return ('{0} bytes' -f $Bytes)
 }
 
+function Format-DownloadRate {
+    param([long]$Bytes, [datetime]$StartedAt)
+    $elapsed = [Math]::Max(0.001, ((Get-Date) - $StartedAt).TotalSeconds)
+    return ('{0}/s' -f (Format-DownloadSize -Bytes ([long]($Bytes / $elapsed))))
+}
+
 function Invoke-HttpDownload {
     param([string]$Url, [string]$TempPath, [string]$Destination)
     $activity = "Downloading $(Split-Path -Leaf $Destination)"
@@ -1662,7 +1668,8 @@ function Invoke-HttpDownload {
         try {
             $buffer = New-Object byte[] (1024 * 1024)
             $downloaded = [long]0
-            $nextHostReport = (Get-Date).AddSeconds(5)
+            $startedAt = Get-Date
+            $nextHostReport = $startedAt
             do {
                 $read = $inputStream.Read($buffer, 0, $buffer.Length)
                 if ($read -le 0) {
@@ -1671,17 +1678,18 @@ function Invoke-HttpDownload {
                 $outputStream.Write($buffer, 0, $read)
                 $downloaded += $read
                 $now = Get-Date
+                $rate = Format-DownloadRate -Bytes $downloaded -StartedAt $startedAt
                 if ($total -gt 0) {
                     $percent = [int]([Math]::Min(100, [Math]::Floor(($downloaded * 100.0) / $total)))
-                    $status = '{0} of {1} ({2}%)' -f (Format-DownloadSize -Bytes $downloaded), (Format-DownloadSize -Bytes $total), $percent
+                    $status = '{0} of {1} ({2}%, {3})' -f (Format-DownloadSize -Bytes $downloaded), (Format-DownloadSize -Bytes $total), $percent, $rate
                     Write-Progress -Activity $activity -Status $status -PercentComplete $percent
                 } else {
-                    $status = '{0} downloaded' -f (Format-DownloadSize -Bytes $downloaded)
+                    $status = '{0} downloaded ({1})' -f (Format-DownloadSize -Bytes $downloaded), $rate
                     Write-Progress -Activity $activity -Status $status
                 }
                 if ($now -ge $nextHostReport) {
                     Write-Host "  $status"
-                    $nextHostReport = $now.AddSeconds(5)
+                    $nextHostReport = $now.AddSeconds(1)
                 }
             } while ($true)
             Write-Progress -Activity $activity -Completed
