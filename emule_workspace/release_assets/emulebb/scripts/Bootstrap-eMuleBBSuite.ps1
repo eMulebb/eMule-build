@@ -24,6 +24,8 @@ param(
     [string]$AmutorrentPackageZip,
     [string]$AmutorrentPackageManifest,
     [string]$DependencyManifest,
+    [string]$SuiteScriptsZip,
+    [string]$SuiteScriptsManifest,
 
     [string]$P2PBindInterface,
     [string]$ControlBindAddress,
@@ -692,6 +694,8 @@ if ($Force) { $installerParams['Force'] = $true }
 if ($KeepDownloads) { $installerParams['KeepDownloads'] = $true }
 if (-not [string]::IsNullOrWhiteSpace($P2PBindInterface)) { $installerParams['P2PBindInterface'] = $P2PBindInterface }
 if (-not [string]::IsNullOrWhiteSpace($DependencyManifest)) { $installerParams['DependencyManifest'] = [IO.Path]::GetFullPath($DependencyManifest) }
+if (-not [string]::IsNullOrWhiteSpace($SuiteScriptsZip)) { $installerParams['SuiteScriptsZip'] = $SuiteScriptsZip }
+if (-not [string]::IsNullOrWhiteSpace($SuiteScriptsManifest)) { $installerParams['SuiteScriptsManifest'] = $SuiteScriptsManifest }
 if (-not [string]::IsNullOrWhiteSpace($ControlBindAddress)) { $installerParams['ControlBindAddress'] = $ControlBindAddress }
 if (-not [string]::IsNullOrWhiteSpace($EmulebbBindAddress)) { $installerParams['EmulebbBindAddress'] = $EmulebbBindAddress }
 if (-not [string]::IsNullOrWhiteSpace($AmutorrentBindAddress)) { $installerParams['AmutorrentBindAddress'] = $AmutorrentBindAddress }

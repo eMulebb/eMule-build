@@ -33,6 +33,8 @@ param(
     [string]$AmutorrentPackageManifest,
     [string]$NodeBaseUrl,
     [string]$DependencyManifest,
+    [string]$SuiteScriptsZip,
+    [string]$SuiteScriptsManifest,
     [string]$ImportProfileDir,
     [string]$EmulebbPdbPath,
     [ValidateSet('standard', 'diagnostics')]
@@ -648,6 +650,10 @@ function New-SuiteConfig {
                 manifest = $AmutorrentPackageManifest
             }
         }
+        suiteScripts = [ordered]@{
+            zip = $SuiteScriptsZip
+            manifest = $SuiteScriptsManifest
+        }
         emulebbPackageFlavor = $EmulebbPackageFlavor
         emulebbExecutableName = (Get-EmulebbExecutableNameForFlavor -PackageFlavor $EmulebbPackageFlavor)
         nodeBaseUrl = $NodeBaseUrl
@@ -1003,6 +1009,8 @@ function Resolve-SuiteConfig {
         @('EmulebbPackageManifest', { param($c, $v) $c.packageSources.emulebb.manifest = $v }),
         @('AmutorrentPackageZip', { param($c, $v) $c.packageSources.amutorrent.zip = $v }),
         @('AmutorrentPackageManifest', { param($c, $v) $c.packageSources.amutorrent.manifest = $v }),
+        @('SuiteScriptsZip', { param($c, $v) $c.suiteScripts.zip = $v }),
+        @('SuiteScriptsManifest', { param($c, $v) $c.suiteScripts.manifest = $v }),
         @('NodeBaseUrl', { param($c, $v) $c.nodeBaseUrl = $v }),
         @('DependencyManifest', { param($c, $v) $c.dependencyManifest = $v }),
         @('ImportProfileDir', { param($c, $v) $c.importProfileDir = $v }),
@@ -1073,6 +1081,15 @@ function Resolve-SuiteConfig {
     }
     if ($null -eq $config.portBlockStart) {
         $config.portBlockStart = 0
+    }
+    if ($null -eq $config.suiteScripts) {
+        $config.suiteScripts = [ordered]@{ zip = ''; manifest = '' }
+    }
+    if (-not $config.suiteScripts.Contains('zip')) {
+        $config.suiteScripts.zip = ''
+    }
+    if (-not $config.suiteScripts.Contains('manifest')) {
+        $config.suiteScripts.manifest = ''
     }
     $config.emulebbExecutableName = Get-EmulebbExecutableNameForFlavor -PackageFlavor ([string]$config.emulebbPackageFlavor)
     Set-SuiteClientHosts -Config $config
@@ -2465,19 +2482,8 @@ document.addEventListener('click', async function (event) {
     $html | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $script:Root 'credentials.html')
 }
 
-function Write-SuiteScripts {
-    param([hashtable]$Config)
-    $scriptsDir = Join-Path $script:Root 'scripts'
-    if ($DryRun) {
-        Write-Step "Would copy suite control scripts"
-        return
-    }
-    New-Item -ItemType Directory -Force -Path $scriptsDir | Out-Null
-    $sourceScriptsDir = Join-Path $script:Root 'apps\eMuleBB\scripts'
-    if (-not (Test-Path -LiteralPath $sourceScriptsDir -PathType Container)) {
-        throw "Installed eMuleBB package did not include scripts directory: $sourceScriptsDir"
-    }
-    foreach ($scriptName in @(
+function Get-SuiteScriptNames {
+    return @(
         'Install-eMuleBBSuite.ps1',
         'Initialize-Suite.ps1',
         'Start-eMuleBB.ps1',
@@ -2486,13 +2492,85 @@ function Write-SuiteScripts {
         'Get-SuiteStatus.ps1',
         'Test-Suite.ps1',
         'Update-Suite.ps1'
-    )) {
-        $source = Join-Path $sourceScriptsDir $scriptName
-        if (-not (Test-Path -LiteralPath $source)) {
-            throw "Installed eMuleBB package did not include scripts\$scriptName."
+    )
+}
+
+function Get-ArchiveLeafName {
+    param([string]$Value, [string]$DefaultName)
+    $uri = $null
+    if ([Uri]::TryCreate($Value, [UriKind]::Absolute, [ref]$uri) -and -not [string]::IsNullOrWhiteSpace($uri.AbsolutePath)) {
+        $leaf = [IO.Path]::GetFileName($uri.AbsolutePath)
+        if (-not [string]::IsNullOrWhiteSpace($leaf)) {
+            return $leaf
         }
-        Copy-Item -Force -LiteralPath $source -Destination (Join-Path $scriptsDir $scriptName)
     }
+    $pathLeaf = [IO.Path]::GetFileName($Value)
+    if ([string]::IsNullOrWhiteSpace($pathLeaf)) {
+        return $DefaultName
+    }
+    return $pathLeaf
+}
+
+function Save-SuiteScriptsBundle {
+    param([hashtable]$Config)
+    $zipSpec = [string]$Config.suiteScripts.zip
+    if ([string]::IsNullOrWhiteSpace($zipSpec)) {
+        return ''
+    }
+    $manifestSpec = [string]$Config.suiteScripts.manifest
+    if ([string]::IsNullOrWhiteSpace($manifestSpec)) {
+        throw 'SuiteScriptsZip requires -SuiteScriptsManifest with a SHA256 hash.'
+    }
+    $downloadRoot = Join-Path $script:Root 'downloads-cache'
+    $archivePath = Join-Path $downloadRoot (Get-ArchiveLeafName -Value $zipSpec -DefaultName 'suite-scripts.zip')
+    $manifestPath = Join-Path $downloadRoot (Get-ArchiveLeafName -Value $manifestSpec -DefaultName 'suite-scripts.manifest.json')
+    Write-Step 'Downloading suite scripts bundle'
+    Invoke-Download -Url $zipSpec -Destination $archivePath
+    Write-Step 'Downloading suite scripts manifest'
+    Invoke-Download -Url $manifestSpec -Destination $manifestPath
+    $manifest = Read-JsonFile -Path $manifestPath -Description 'SuiteScriptsManifest'
+    if ($null -eq $manifest.PSObject.Properties['sha256'] -or [string]::IsNullOrWhiteSpace([string]$manifest.sha256)) {
+        throw "SuiteScriptsManifest does not contain sha256: $manifestPath"
+    }
+    Assert-FileHash -Path $archivePath -ExpectedSha256 ([string]$manifest.sha256)
+    return $archivePath
+}
+
+function Copy-SuiteScriptSet {
+    param([string]$SourceRoot, [string]$DestinationRoot, [string]$Description)
+    foreach ($scriptName in @(Get-SuiteScriptNames)) {
+        $source = Get-ChildItem -Path $SourceRoot -Filter $scriptName -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($null -eq $source) {
+            throw "$Description did not include scripts\$scriptName."
+        }
+        Copy-Item -Force -LiteralPath $source.FullName -Destination (Join-Path $DestinationRoot $scriptName)
+    }
+}
+
+function Write-SuiteScripts {
+    param([hashtable]$Config)
+    $scriptsDir = Join-Path $script:Root 'scripts'
+    if ($DryRun) {
+        Write-Step "Would copy suite control scripts"
+        return
+    }
+    New-Item -ItemType Directory -Force -Path $scriptsDir | Out-Null
+    $suiteScriptsBundle = Save-SuiteScriptsBundle -Config $Config
+    if (-not [string]::IsNullOrWhiteSpace($suiteScriptsBundle)) {
+        $extractRoot = Join-Path (Join-Path $script:Root 'downloads-cache') 'extract-suite-scripts'
+        if (Test-Path -LiteralPath $extractRoot) {
+            Remove-Item -Recurse -Force -LiteralPath $extractRoot
+        }
+        Write-Step 'Extracting suite scripts bundle'
+        Expand-ZipSafe -Archive $suiteScriptsBundle -Destination $extractRoot
+        Copy-SuiteScriptSet -SourceRoot $extractRoot -DestinationRoot $scriptsDir -Description 'Suite scripts bundle'
+        return
+    }
+    $sourceScriptsDir = Join-Path $script:Root 'apps\eMuleBB\scripts'
+    if (-not (Test-Path -LiteralPath $sourceScriptsDir -PathType Container)) {
+        throw "Installed eMuleBB package did not include scripts directory: $sourceScriptsDir"
+    }
+    Copy-SuiteScriptSet -SourceRoot $sourceScriptsDir -DestinationRoot $scriptsDir -Description 'Installed eMuleBB package'
 }
 function Write-InstallManifest {
     param([hashtable]$Config, [hashtable]$ProfileImport, [hashtable]$Symbols)
@@ -2532,6 +2610,10 @@ function Write-InstallManifest {
         emulebbExecutableName = $Config.emulebbExecutableName
         profileImport = $ProfileImport
         symbols = $Symbols
+        suiteScripts = @{
+            zip = [string]$Config.suiteScripts.zip
+            manifest = [string]$Config.suiteScripts.manifest
+        }
         services = $serviceManifest
         p2p = @{
             bindInterfacePresent = -not [string]::IsNullOrWhiteSpace($Config.p2p.bindInterface)

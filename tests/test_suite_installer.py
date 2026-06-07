@@ -309,6 +309,50 @@ def test_suite_installer_copies_packaged_installer_into_suite_scripts(tmp_path: 
     assert (install_root / "scripts" / "Install-eMuleBBSuite.ps1").read_bytes() == installer_payload
 
 
+def test_suite_installer_accepts_hashed_suite_scripts_bundle(tmp_path: Path) -> None:
+    release_root = tmp_path / "release"
+    install_root = tmp_path / "suite"
+    scripts_zip = tmp_path / "suite-scripts.zip"
+    scripts_manifest = tmp_path / "suite-scripts.manifest.json"
+    suite_install_fixtures.write_core_release(release_root)
+    script_entries = suite_install_fixtures.runtime_script_entries(
+        installer_payload=INSTALLER.read_bytes(),
+    )
+    script_entries["eMuleBB/scripts/Start-Suite.ps1"] += b"\n# suite-scripts-bundle-marker\n"
+    suite_install_fixtures.write_zip(scripts_zip, script_entries)
+    _write_manifest(scripts_manifest, scripts_zip)
+
+    repo_root = Path.cwd()
+    _run_powershell(
+        [
+            "-File",
+            str((repo_root / INSTALLER).resolve()),
+            "-NonInteractive",
+            "-NoStart",
+            "-Force",
+            "-Bundle",
+            "Core",
+            "-InstallRoot",
+            str(install_root),
+            "-ReleaseBaseUrl",
+            release_root.as_uri(),
+            "-SuiteScriptsZip",
+            str(scripts_zip),
+            "-SuiteScriptsManifest",
+            str(scripts_manifest),
+        ],
+        cwd=repo_root,
+    )
+
+    start_suite = (install_root / "scripts" / "Start-Suite.ps1").read_text(encoding="utf-8-sig")
+    assert "suite-scripts-bundle-marker" in start_suite
+    install_manifest = suite_install_fixtures.read_suite_install_manifest(install_root)
+    assert install_manifest["suiteScripts"] == {
+        "zip": str(scripts_zip),
+        "manifest": str(scripts_manifest),
+    }
+
+
 def test_suite_installer_accepts_local_emulebb_package_zip_override(tmp_path: Path) -> None:
     release_root = tmp_path / "release"
     install_root = tmp_path / "suite"
@@ -1471,6 +1515,8 @@ def test_suite_bootstrapper_requires_emulebb_package_root() -> None:
     assert "EmulebbPackageZip" in bootstrapper
     assert "AmutorrentPackageZip" in bootstrapper
     assert "DependencyManifest" in bootstrapper
+    assert "SuiteScriptsZip" in bootstrapper
+    assert "SuiteScriptsManifest" in bootstrapper
     assert "function Enable-Tls12" in bootstrapper
     assert "[Net.SecurityProtocolType]::Tls12" in bootstrapper
     assert "[ValidateRange(0, 65535)]" in bootstrapper
@@ -1841,6 +1887,8 @@ param(
         "[string]$Version,",
         "[string]$Version = '0.7.3-rc.1',",
     )
+    bootstrapper_path = tmp_path / "Bootstrap-eMuleBBSuite.ps1"
+    bootstrapper_path.write_text(bootstrapper, encoding="utf-8")
     command = rf"""
 $env:PROCESSOR_ARCHITECTURE = 'AMD64'
 Remove-Item Env:\PROCESSOR_ARCHITEW6432 -ErrorAction SilentlyContinue
@@ -1904,9 +1952,7 @@ function Invoke-WebRequest {{
     }}
     throw "Unexpected download URI: $Uri"
 }}
-@'
-{bootstrapper}
-'@ | Invoke-Expression
+& '{bootstrapper_path.as_posix()}'
 """
 
     completed = _run_powershell(["-Command", command], cwd=repo_root)
