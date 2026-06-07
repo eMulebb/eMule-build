@@ -83,6 +83,11 @@ function Invoke-SuiteJsonApi {
     }
 }
 
+function Invoke-SuiteJsonApiList {
+    param([string]$Name, [string]$Uri, [hashtable]$Headers = @{})
+    return @(Invoke-SuiteJsonApi -Name $Name -Uri $Uri -Headers $Headers | ForEach-Object { $_ })
+}
+
 function Write-Utf8NoBomFile {
     param([string]$Path, [string]$Text)
     $encoding = New-Object System.Text.UTF8Encoding($false)
@@ -272,11 +277,11 @@ function Wait-ArrDefaultProfiles {
     $lastError = ''
     for ($attempt = 1; $attempt -le 60; $attempt++) {
         try {
-            $qualityProfiles = @(Invoke-SuiteJsonApi -Name "$Name quality profile list" -Uri "$Url/$ApiPath/qualityprofile" -Headers $Headers)
+            $qualityProfiles = @(Invoke-SuiteJsonApiList -Name "$Name quality profile list" -Uri "$Url/$ApiPath/qualityprofile" -Headers $Headers)
             $qualityProfile = Get-FirstObjectWithId -Items $qualityProfiles
             $metadataProfile = $null
             if ($IncludeMetadata) {
-                $metadataProfiles = @(Invoke-SuiteJsonApi -Name "$Name metadata profile list" -Uri "$Url/$ApiPath/metadataprofile" -Headers $Headers)
+                $metadataProfiles = @(Invoke-SuiteJsonApiList -Name "$Name metadata profile list" -Uri "$Url/$ApiPath/metadataprofile" -Headers $Headers)
                 $metadataProfile = Get-FirstObjectWithId -Items $metadataProfiles
             }
             if ($null -ne $qualityProfile -and (-not $IncludeMetadata -or $null -ne $metadataProfile)) {
@@ -303,7 +308,7 @@ function Ensure-ArrRootFolder {
     $rootFolderUrl = "$Url/$ApiPath/rootfolder"
     $headers = @{ 'X-Api-Key' = $ApiKey }
     $normalizedPath = [IO.Path]::GetFullPath($Path).TrimEnd('\')
-    $rootFolders = @(Invoke-SuiteJsonApi -Name "$Name root folder list" -Uri $rootFolderUrl -Headers $headers)
+    $rootFolders = @(Invoke-SuiteJsonApiList -Name "$Name root folder list" -Uri $rootFolderUrl -Headers $headers)
     foreach ($rootFolder in $rootFolders) {
         if ($rootFolder.PSObject.Properties['path'] -and [string]::Equals(([IO.Path]::GetFullPath([string]$rootFolder.path).TrimEnd('\')), $normalizedPath, [StringComparison]::OrdinalIgnoreCase)) {
             Write-Host "$Name root folder already configured: $normalizedPath"
@@ -362,7 +367,7 @@ function Wait-ArrContentLanguage {
     $lastError = ''
     for ($attempt = 1; $attempt -le 60; $attempt++) {
         try {
-            $languages = @(Invoke-SuiteJsonApi -Name "$Name language list" -Uri "$Url/$ApiPath/language" -Headers $Headers)
+            $languages = @(Invoke-SuiteJsonApiList -Name "$Name language list" -Uri "$Url/$ApiPath/language" -Headers $Headers)
             $languageMatch = Find-ArrLanguage -Languages $languages -Language $Language
             if ($null -ne $languageMatch) {
                 return $languageMatch
@@ -384,7 +389,7 @@ function Set-ArrPreferredContentLanguage {
     $headers = @{ 'X-Api-Key' = $ApiKey }
     try {
         $languageMatch = Wait-ArrContentLanguage -Name $Name -Url $Url -ApiPath $ApiPath -Headers $headers -Language $Language
-        $profiles = @(Invoke-SuiteJsonApi -Name "$Name quality profile list" -Uri "$Url/$ApiPath/qualityprofile" -Headers $headers)
+        $profiles = @(Invoke-SuiteJsonApiList -Name "$Name quality profile list" -Uri "$Url/$ApiPath/qualityprofile" -Headers $headers)
         foreach ($profile in $profiles) {
             $changed = $false
             if ($profile.PSObject.Properties['language']) {

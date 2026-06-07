@@ -290,6 +290,8 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "$null -ne $responseProperty" in start_suite
     assert "$null -ne $Exception -and $null -ne $Exception.Response" not in start_suite
     assert "function Invoke-SuiteJsonApi" in start_suite
+    assert "function Invoke-SuiteJsonApiList" in start_suite
+    assert "Invoke-SuiteJsonApi -Name $Name -Uri $Uri -Headers $Headers | ForEach-Object { $_ }" in start_suite
     assert "function Get-ServiceClientHost" in start_suite
     assert "Last error:" in start_suite
     assert "Timed out waiting for $Name at $Uri" in start_suite
@@ -298,6 +300,7 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "function Ensure-ArrRootFolder" in start_suite
     assert "function Wait-ArrDefaultProfiles" in start_suite
     assert "function Get-FirstObjectWithId" in start_suite
+    assert "Invoke-SuiteJsonApiList -Name \"$Name quality profile list\"" in start_suite
     assert "$rootFolderUrl = \"$Url/$ApiPath/rootfolder\"" in start_suite
     assert "New-Item -ItemType Directory -Force -Path $Path" in start_suite
     assert "Invoke-SuiteJsonApi -Name \"$Name root folder create\"" in start_suite
@@ -1718,6 +1721,7 @@ def test_suite_initializer_applies_arr_content_language_profiles() -> None:
     assert "'italian' { return @('Italian') }" in initialize_suite
     assert '"$Url/$ApiPath/language"' in initialize_suite
     assert '"$Url/$ApiPath/qualityprofile"' in initialize_suite
+    assert "Invoke-SuiteJsonApiList -Name \"$Name language list\"" in initialize_suite
     assert "$profile.language = $languageMatch" in initialize_suite
     assert "$profile.languages = @($ordered)" in initialize_suite
     assert '"$Url/$ApiPath/qualityprofile/$([int]$profile.id)"' in initialize_suite
