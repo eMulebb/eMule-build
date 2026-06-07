@@ -1491,6 +1491,42 @@ function Invoke-RestMethod {{
     ) in completed.stdout
 
 
+def test_suite_bootstrapper_auto_detects_platform_when_omitted() -> None:
+    repo_root = Path.cwd()
+    bootstrapper_path = (repo_root / BOOTSTRAPPER).resolve()
+    command = rf"""
+$env:PROCESSOR_ARCHITECTURE = 'AMD64'
+Remove-Item Env:\PROCESSOR_ARCHITEW6432 -ErrorAction SilentlyContinue
+function Invoke-RestMethod {{
+    param([string]$Uri, [hashtable]$Headers)
+    if ($Uri -ne 'https://api.github.com/repos/emulebb/emulebb/releases/tags/emulebb-nightly-20260524-ae562c1') {{
+        throw "Unexpected release URI: $Uri"
+    }}
+    return [pscustomobject]@{{
+        tag_name = 'emulebb-nightly-20260524-ae562c1'
+        draft = $false
+        prerelease = $true
+        assets = @(
+            [pscustomobject]@{{
+                name = 'emulebb-0.7.3-nightly.20260524.ae562c1-x64.zip'
+                browser_download_url = 'https://example.invalid/emulebb-0.7.3-nightly.20260524.ae562c1-x64.zip'
+            }},
+            [pscustomobject]@{{
+                name = 'emulebb-0.7.3-nightly.20260524.ae562c1-x64.manifest.json'
+                browser_download_url = 'https://example.invalid/emulebb-0.7.3-nightly.20260524.ae562c1-x64.manifest.json'
+            }}
+        )
+    }}
+}}
+& '{bootstrapper_path}' -Version 'emulebb-nightly-20260524-ae562c1' -Bundle Core -DryRun -NoStart
+"""
+
+    completed = _run_powershell(["-Command", command], cwd=repo_root)
+
+    assert "Resolved release emulebb-nightly-20260524-ae562c1 for x64" in completed.stdout
+    assert "emulebb-0.7.3-nightly.20260524.ae562c1-x64.zip" in completed.stdout
+
+
 def test_suite_bootstrapper_falls_back_to_nightly_when_only_legacy_stable_exists() -> None:
     repo_root = Path.cwd()
     bootstrapper_path = (repo_root / BOOTSTRAPPER).resolve()

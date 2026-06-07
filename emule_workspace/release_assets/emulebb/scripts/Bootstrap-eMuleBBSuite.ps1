@@ -8,8 +8,8 @@ param(
 
     [string]$Version,
 
-    [ValidateSet('x64', 'ARM64')]
-    [string]$Platform,
+    [ValidateSet('', 'x64', 'ARM64')]
+    [string]$Platform = '',
 
     [string]$EmulebbPackageZip,
     [string]$EmulebbPackageManifest,
