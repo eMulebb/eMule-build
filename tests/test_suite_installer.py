@@ -1528,6 +1528,9 @@ def test_suite_initializer_applies_arr_content_language_profiles() -> None:
     assert 'Invoke-StepWithRetry -Name "$display content language preference"' in initialize_suite
     assert "Set-ArrPreferredContentLanguage -Name $display" in initialize_suite
     assert "-Language ([string]$Config.language.arrContentLanguage)" in initialize_suite
+    assert "$suiteAppsManifest = Join-Path $Root 'config\\suite-apps.json'" in initialize_suite
+    assert "SuiteAppsManifest = $suiteAppsManifest" in initialize_suite
+    assert "-SuiteAppsManifest $suiteAppsManifest" in initialize_suite
 
 
 def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() -> None:
@@ -1572,6 +1575,8 @@ def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() 
     assert "function Get-ArrProwlarrIndexerName" in register_arr_stack
     assert "function Get-ExistingArrIndexers" in register_arr_stack
     assert "function Get-ArrIndexerCategories" in register_arr_stack
+    assert "[string]$SuiteAppsManifest" in register_arr_stack
+    assert "SuiteAppsManifest does not exist" in register_arr_stack
     assert "function Initialize-ArrIndexerCategories" in register_arr_stack
     assert "function ConvertTo-ArrIndexerCategoryMap" in register_arr_stack
     assert "config\\suite-apps.json" in register_arr_stack

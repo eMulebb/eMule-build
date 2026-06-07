@@ -280,6 +280,7 @@ if (Test-SelectedApp -Config $Config -Name 'amutorrent') {
 $selectedArr = @(@($Config.selectedApps) | Where-Object { @('prowlarr', 'radarr', 'sonarr', 'lidarr', 'readarr', 'whisparr') -contains $_ })
 if (@($selectedArr).Count -gt 0) {
     $arrUrls = @{}
+    $suiteAppsManifest = Join-Path $Root 'config\suite-apps.json'
     foreach ($arrName in $selectedArr) {
         $arrUrls[$arrName] = Get-ServiceUrl -Name $arrName -Service $Config.services.$arrName
         $display = Get-ArrDisplayName -Name $arrName
@@ -314,6 +315,7 @@ if (@($selectedArr).Count -gt 0) {
                     EmulebbCategoryPath = (Join-Path $Root "downloads\$arrName")
                     ProwlarrUrl = $arrUrls['prowlarr']
                     ProwlarrApiKey = [string]$Config.services.prowlarr.apiKey
+                    SuiteAppsManifest = $suiteAppsManifest
                     DownloadClientName = 'eMuleBB Suite'
                     SkipProwlarrSync = $true
                     NoRetry = $true
@@ -324,7 +326,7 @@ if (@($selectedArr).Count -gt 0) {
             }
         }
         Invoke-StepWithRetry -Name 'Prowlarr application sync' -Operation {
-            & (Join-Path $Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -SyncProwlarrOnly -ProwlarrUrl $arrUrls['prowlarr'] -ProwlarrApiKey ([string]$Config.services.prowlarr.apiKey) -NoRetry
+            & (Join-Path $Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -SyncProwlarrOnly -ProwlarrUrl $arrUrls['prowlarr'] -ProwlarrApiKey ([string]$Config.services.prowlarr.apiKey) -SuiteAppsManifest $suiteAppsManifest -NoRetry
         }
     }
 }

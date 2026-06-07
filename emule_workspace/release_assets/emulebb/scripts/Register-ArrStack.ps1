@@ -18,6 +18,7 @@ param(
     [string]$ReadarrApiKey,
     [string]$WhisparrUrl,
     [string]$WhisparrApiKey,
+    [string]$SuiteAppsManifest,
     [string]$DownloadClientName = 'eMuleBB',
     [switch]$SkipProwlarrSync,
     [switch]$SyncProwlarrOnly,
@@ -43,6 +44,12 @@ $script:ArrTargetIndexerCategories = @{
 }
 
 function Get-SuiteAppsManifestPath {
+    if (-not [string]::IsNullOrWhiteSpace($SuiteAppsManifest)) {
+        if (Test-Path -LiteralPath $SuiteAppsManifest -PathType Leaf) {
+            return [IO.Path]::GetFullPath($SuiteAppsManifest)
+        }
+        throw "SuiteAppsManifest does not exist: $SuiteAppsManifest"
+    }
     $candidates = @(
         (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\suite-apps.json'),
         ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..\config\suite-apps.json')))
