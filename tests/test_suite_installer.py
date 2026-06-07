@@ -1722,6 +1722,9 @@ def test_suite_bootstrapper_requires_emulebb_package_root() -> None:
     assert "DependencyManifest" in bootstrapper
     assert "SuiteScriptsZip" in bootstrapper
     assert "SuiteScriptsManifest" in bootstrapper
+    assert "NoSuiteScriptsBundle" in bootstrapper
+    assert "Resolve-ReleaseSuiteScriptsBundle" in bootstrapper
+    assert "Resolve-AdjacentSuiteScriptsBundle" in bootstrapper
     assert "function Enable-Tls12" in bootstrapper
     assert "[Net.SecurityProtocolType]::Tls12" in bootstrapper
     assert "[ValidateRange(0, 65535)]" in bootstrapper
@@ -1979,6 +1982,105 @@ function Invoke-WebRequest {{
     assert "Resolved release emulebb-nightly-20260604-5169162 for x64" in completed.stdout
     assert "Resolved aMuTorrent release amutorrent-nightly-20260604-9eff539e for Full suite" in completed.stdout
     assert captured_bundle.read_text(encoding="utf-8-sig").strip() == "Full"
+
+
+@pytest.mark.parametrize("disable_bundle", [False, True])
+def test_suite_bootstrapper_discovers_release_suite_scripts_bundle(tmp_path: Path, disable_bundle: bool) -> None:
+    repo_root = Path.cwd()
+    release_root = tmp_path / "release"
+    captured = tmp_path / "captured-suite-scripts.json"
+    installer_payload = f"""#Requires -Version 5.1
+param(
+    [string]$Bundle,
+    [string]$InstallRoot,
+    [string]$Version,
+    [string]$Platform,
+    [string]$ReleaseBaseUrl,
+    [string]$SuiteScriptsZip,
+    [string]$SuiteScriptsManifest,
+    [switch]$NoStart
+)
+@{{
+    hasSuiteScriptsZip = $PSBoundParameters.ContainsKey('SuiteScriptsZip')
+    hasSuiteScriptsManifest = $PSBoundParameters.ContainsKey('SuiteScriptsManifest')
+    suiteScriptsZip = $SuiteScriptsZip
+    suiteScriptsManifest = $SuiteScriptsManifest
+}} | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 -LiteralPath '{captured.as_posix()}'
+""".encode("utf-8")
+    version = "0.7.3-nightly.20260604.5169162"
+    package_zip = release_root / f"emulebb-{version}-x64.zip"
+    manifest = release_root / f"emulebb-{version}-x64.manifest.json"
+    suite_install_fixtures.write_zip(
+        package_zip,
+        {
+            "eMuleBB/emulebb.exe": b"exe\n",
+            "eMuleBB/scripts/Install-eMuleBBSuite.ps1": installer_payload,
+        },
+    )
+    suite_install_fixtures.write_manifest(manifest, package_zip)
+    bootstrapper_path = (repo_root / BOOTSTRAPPER).resolve()
+    disable_arg = "-NoSuiteScriptsBundle" if disable_bundle else ""
+    command = rf"""
+function Invoke-RestMethod {{
+    param([string]$Uri, [hashtable]$Headers)
+    if ($Uri -ne 'https://api.github.com/repos/emulebb/emulebb/releases/tags/emulebb-nightly-20260604-5169162') {{
+        throw "Unexpected release URI: $Uri"
+    }}
+    return [pscustomobject]@{{
+        tag_name = 'emulebb-nightly-20260604-5169162'
+        draft = $false
+        prerelease = $true
+        assets = @(
+            [pscustomobject]@{{
+                name = 'emulebb-{version}-x64.zip'
+                browser_download_url = 'https://example.invalid/emulebb-{version}-x64.zip'
+            }},
+            [pscustomobject]@{{
+                name = 'emulebb-{version}-x64.manifest.json'
+                browser_download_url = 'https://example.invalid/emulebb-{version}-x64.manifest.json'
+            }},
+            [pscustomobject]@{{
+                name = 'suite-scripts-{version}.zip'
+                browser_download_url = 'https://example.invalid/suite-scripts-{version}.zip'
+            }},
+            [pscustomobject]@{{
+                name = 'suite-scripts-{version}.manifest.json'
+                browser_download_url = 'https://example.invalid/suite-scripts-{version}.manifest.json'
+            }}
+        )
+    }}
+}}
+function Invoke-WebRequest {{
+    param([switch]$UseBasicParsing, [string]$Uri, [string]$OutFile, [hashtable]$Headers)
+    if ($Uri.EndsWith('emulebb-{version}-x64.manifest.json')) {{
+        Copy-Item -Force -LiteralPath '{manifest.as_posix()}' -Destination $OutFile
+        return
+    }}
+    if ($Uri.EndsWith('emulebb-{version}-x64.zip')) {{
+        Copy-Item -Force -LiteralPath '{package_zip.as_posix()}' -Destination $OutFile
+        return
+    }}
+    throw "Unexpected download URI: $Uri"
+}}
+& '{bootstrapper_path}' -Version 'emulebb-nightly-20260604-5169162' -Platform x64 -Bundle Core -NoStart {disable_arg}
+"""
+
+    completed = _run_powershell(["-Command", command], cwd=repo_root)
+    captured_payload = json.loads(captured.read_text(encoding="utf-8-sig"))
+
+    if disable_bundle:
+        assert "Resolved suite scripts bundle" not in completed.stdout
+        assert captured_payload["hasSuiteScriptsZip"] is False
+        assert captured_payload["hasSuiteScriptsManifest"] is False
+    else:
+        assert "Resolved suite scripts bundle https://example.invalid/suite-scripts-" in completed.stdout
+        assert captured_payload["hasSuiteScriptsZip"] is True
+        assert captured_payload["hasSuiteScriptsManifest"] is True
+        assert captured_payload["suiteScriptsZip"] == f"https://example.invalid/suite-scripts-{version}.zip"
+        assert (
+            captured_payload["suiteScriptsManifest"]
+            == f"https://example.invalid/suite-scripts-{version}.manifest.json"
+        )
 
 
 def test_suite_bootstrapper_prefers_matching_amutorrent_release_for_emulebb_version() -> None:
@@ -2298,6 +2400,60 @@ function Invoke-WebRequest {{
     assert Path(captured_payload["amutorrentPackageZip"]) == amutorrent_zip
     assert Path(captured_payload["amutorrentPackageManifest"]) == amutorrent_manifest
     assert Path(captured_payload["dependencyManifest"]) == dependency_manifest
+
+
+def test_suite_bootstrapper_discovers_adjacent_local_suite_scripts_bundle(tmp_path: Path) -> None:
+    repo_root = Path.cwd()
+    release_root = tmp_path / "release"
+    captured = tmp_path / "captured-local-suite-scripts.json"
+    installer_payload = f"""#Requires -Version 5.1
+param(
+    [string]$Bundle,
+    [string]$InstallRoot,
+    [string]$Version,
+    [string]$Platform,
+    [string]$EmulebbPackageZip,
+    [string]$EmulebbPackageManifest,
+    [string]$SuiteScriptsZip,
+    [string]$SuiteScriptsManifest,
+    [switch]$NoStart
+)
+@{{
+    suiteScriptsZip = $SuiteScriptsZip
+    suiteScriptsManifest = $SuiteScriptsManifest
+}} | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 -LiteralPath '{captured.as_posix()}'
+""".encode("utf-8")
+    package_zip = release_root / "emulebb-0.7.3-local.20260604-x64.zip"
+    package_manifest = release_root / "emulebb-0.7.3-local.20260604-x64.manifest.json"
+    suite_scripts_zip = release_root / "suite-scripts-0.7.3-local.20260604.zip"
+    suite_scripts_manifest = release_root / "suite-scripts-0.7.3-local.20260604.manifest.json"
+    suite_install_fixtures.write_zip(
+        package_zip,
+        {
+            "eMuleBB/emulebb.exe": b"exe\n",
+            "eMuleBB/scripts/Install-eMuleBBSuite.ps1": installer_payload,
+        },
+    )
+    suite_install_fixtures.write_manifest(package_manifest, package_zip)
+    suite_install_fixtures.write_zip(suite_scripts_zip, {"eMuleBB/scripts/Start-Suite.ps1": b"#Requires -Version 5.1\n"})
+    suite_install_fixtures.write_manifest(suite_scripts_manifest, suite_scripts_zip)
+    bootstrapper_path = (repo_root / BOOTSTRAPPER).resolve()
+    command = rf"""
+function Invoke-RestMethod {{
+    throw 'GitHub API should not be called for local package overrides.'
+}}
+function Invoke-WebRequest {{
+    throw 'Downloads should not be used for local package overrides.'
+}}
+& '{bootstrapper_path}' -Bundle Core -NoStart -EmulebbPackageZip '{package_zip.as_posix()}' -EmulebbPackageManifest '{package_manifest.as_posix()}'
+"""
+
+    completed = _run_powershell(["-Command", command], cwd=repo_root)
+    captured_payload = json.loads(captured.read_text(encoding="utf-8-sig"))
+
+    assert "Resolved suite scripts bundle" in completed.stdout
+    assert Path(captured_payload["suiteScriptsZip"]) == suite_scripts_zip
+    assert Path(captured_payload["suiteScriptsManifest"]) == suite_scripts_manifest
 
 
 def test_suite_bootstrapper_noninteractive_full_requires_amutorrent_assets() -> None:

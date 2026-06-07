@@ -59,6 +59,7 @@ param(
     [switch]$AllowRemoteServiceBind,
     [switch]$NonInteractive,
     [switch]$NoStart,
+    [switch]$NoSuiteScriptsBundle,
     [switch]$Force,
     [switch]$DryRun,
     [switch]$KeepDownloads
@@ -353,6 +354,43 @@ function Find-AssetUrl {
         }
     }
     return ''
+}
+
+function Resolve-ReleaseSuiteScriptsBundle {
+    param([object]$Release, [string]$ResolvedVersion)
+    $zipName = "suite-scripts-$ResolvedVersion.zip"
+    $manifestName = "suite-scripts-$ResolvedVersion.manifest.json"
+    $zipUrl = Find-AssetUrl -Release $Release -Name $zipName
+    $manifestUrl = Find-AssetUrl -Release $Release -Name $manifestName
+    if ([string]::IsNullOrWhiteSpace($zipUrl) -and [string]::IsNullOrWhiteSpace($manifestUrl)) {
+        return $null
+    }
+    if ([string]::IsNullOrWhiteSpace($zipUrl) -or [string]::IsNullOrWhiteSpace($manifestUrl)) {
+        throw "Release $($Release.tag_name) has incomplete suite scripts bundle assets. Expected $zipName and $manifestName."
+    }
+    return [ordered]@{
+        Zip = $zipUrl
+        Manifest = $manifestUrl
+    }
+}
+
+function Resolve-AdjacentSuiteScriptsBundle {
+    param([string]$PackageZip, [string]$ResolvedVersion)
+    $packageDir = Split-Path -Parent ([IO.Path]::GetFullPath($PackageZip))
+    $zipPath = Join-Path $packageDir "suite-scripts-$ResolvedVersion.zip"
+    $manifestPath = Join-Path $packageDir "suite-scripts-$ResolvedVersion.manifest.json"
+    $hasZip = Test-Path -LiteralPath $zipPath -PathType Leaf
+    $hasManifest = Test-Path -LiteralPath $manifestPath -PathType Leaf
+    if (-not $hasZip -and -not $hasManifest) {
+        return $null
+    }
+    if (-not $hasZip -or -not $hasManifest) {
+        throw "Local suite scripts bundle is incomplete. Expected $zipPath and $manifestPath."
+    }
+    return [ordered]@{
+        Zip = [IO.Path]::GetFullPath($zipPath)
+        Manifest = [IO.Path]::GetFullPath($manifestPath)
+    }
 }
 
 function Test-InteractiveConsole {
@@ -660,6 +698,18 @@ if ($effectiveBundle -ne 'Core') {
         }
     }
 }
+$suiteScriptsBundle = $null
+$explicitSuiteScriptsBundle = -not [string]::IsNullOrWhiteSpace($SuiteScriptsZip) -or -not [string]::IsNullOrWhiteSpace($SuiteScriptsManifest)
+if (-not $NoSuiteScriptsBundle -and -not $explicitSuiteScriptsBundle) {
+    if ($localEmulebbPackage) {
+        $suiteScriptsBundle = Resolve-AdjacentSuiteScriptsBundle -PackageZip $zipPath -ResolvedVersion $resolvedVersion
+    } else {
+        $suiteScriptsBundle = Resolve-ReleaseSuiteScriptsBundle -Release $release -ResolvedVersion $resolvedVersion
+    }
+    if ($null -ne $suiteScriptsBundle) {
+        Write-Step "Resolved suite scripts bundle $($suiteScriptsBundle.Zip)"
+    }
+}
 $workRoot = Join-Path $env:TEMP "emulebb-suite-bootstrap-$resolvedVersion-$assetArch"
 $extractRoot = Join-Path $workRoot 'installer'
 if (-not $DryRun -and (Test-Path -LiteralPath $extractRoot)) {
@@ -696,6 +746,10 @@ if (-not [string]::IsNullOrWhiteSpace($P2PBindInterface)) { $installerParams['P2
 if (-not [string]::IsNullOrWhiteSpace($DependencyManifest)) { $installerParams['DependencyManifest'] = [IO.Path]::GetFullPath($DependencyManifest) }
 if (-not [string]::IsNullOrWhiteSpace($SuiteScriptsZip)) { $installerParams['SuiteScriptsZip'] = $SuiteScriptsZip }
 if (-not [string]::IsNullOrWhiteSpace($SuiteScriptsManifest)) { $installerParams['SuiteScriptsManifest'] = $SuiteScriptsManifest }
+if ($null -ne $suiteScriptsBundle) {
+    $installerParams['SuiteScriptsZip'] = $suiteScriptsBundle.Zip
+    $installerParams['SuiteScriptsManifest'] = $suiteScriptsBundle.Manifest
+}
 if (-not [string]::IsNullOrWhiteSpace($ControlBindAddress)) { $installerParams['ControlBindAddress'] = $ControlBindAddress }
 if (-not [string]::IsNullOrWhiteSpace($EmulebbBindAddress)) { $installerParams['EmulebbBindAddress'] = $EmulebbBindAddress }
 if (-not [string]::IsNullOrWhiteSpace($AmutorrentBindAddress)) { $installerParams['AmutorrentBindAddress'] = $AmutorrentBindAddress }
