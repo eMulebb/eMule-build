@@ -208,8 +208,14 @@ function Get-Release {
 }
 
 function Get-AmutorrentRelease {
+    param([string]$EmulebbVersion)
     $releases = Invoke-GitHubApi -Uri "$ApiBase/repos/$AmutorrentRepository/releases" -Description 'aMuTorrent releases'
+    $stableFallback = $null
     $nightlyFallback = $null
+    $matchingReleasePattern = $null
+    if (-not [string]::IsNullOrWhiteSpace($EmulebbVersion)) {
+        $matchingReleasePattern = '^amutorrent-v.+-emulebb-v' + [regex]::Escape($EmulebbVersion) + '$'
+    }
     foreach ($release in @($releases)) {
         if ($release.draft) {
             continue
@@ -218,13 +224,21 @@ function Get-AmutorrentRelease {
         if (-not (Test-SupportedAmutorrentReleaseTag -Tag $tag)) {
             continue
         }
+        if ($null -ne $matchingReleasePattern -and $tag -match $matchingReleasePattern) {
+            return $release
+        }
         if ($release.prerelease) {
             if ($null -eq $nightlyFallback) {
                 $nightlyFallback = $release
             }
             continue
         }
-        return $release
+        if ($null -eq $stableFallback) {
+            $stableFallback = $release
+        }
+    }
+    if ($null -ne $stableFallback) {
+        return $stableFallback
     }
     if ($null -ne $nightlyFallback) {
         return $nightlyFallback
@@ -342,8 +356,8 @@ function Resolve-EffectiveBundle {
 }
 
 function Resolve-AmutorrentPackage {
-    param([string]$RequestedBundle)
-    $release = Get-AmutorrentRelease
+    param([string]$RequestedBundle, [string]$ResolvedEmulebbVersion)
+    $release = Get-AmutorrentRelease -EmulebbVersion $ResolvedEmulebbVersion
     $version = Get-AmutorrentReleaseVersion -Release $release
     $missing = @()
     foreach ($assetName in @(
@@ -619,7 +633,7 @@ if ($effectiveBundle -ne 'Core') {
         }
         Write-Step "Resolved local aMuTorrent package $amutorrentZipPath for $effectiveBundle suite"
     } else {
-        $amutorrentPackage = Resolve-AmutorrentPackage -RequestedBundle $effectiveBundle
+        $amutorrentPackage = Resolve-AmutorrentPackage -RequestedBundle $effectiveBundle -ResolvedEmulebbVersion $resolvedVersion
         if ($null -eq $amutorrentPackage) {
             $effectiveBundle = 'Core'
         } else {

@@ -341,6 +341,7 @@ def create_release_package(
         bootstrapper_asset_path, bootstrapper_hash_path, bootstrapper_hash = _write_standalone_bootstrapper_asset(
             package_root=package_root,
             release_root=release_root,
+            release_version=package_options.release_version,
         )
 
         if zip_path.exists():
@@ -1170,7 +1171,12 @@ def _copy_emule_runtime_assets(build_repo_root: Path, package_root: Path) -> Non
         _copy_package_file(source_root / relative_path, package_root, Path(relative_path))
 
 
-def _write_standalone_bootstrapper_asset(*, package_root: Path, release_root: Path) -> tuple[Path, Path, str]:
+def _write_standalone_bootstrapper_asset(
+    *,
+    package_root: Path,
+    release_root: Path,
+    release_version: str,
+) -> tuple[Path, Path, str]:
     """Copies the web bootstrapper next to the ZIP so public setup does not depend on a branch."""
 
     source_path = package_root / "scripts" / "Bootstrap-eMuleBBSuite.ps1"
@@ -1180,10 +1186,23 @@ def _write_standalone_bootstrapper_asset(*, package_root: Path, release_root: Pa
     hash_path = release_root / "Bootstrap-eMuleBBSuite.ps1.sha256"
     _assert_path_under_root(asset_path, release_root, "suite bootstrapper asset")
     _assert_path_under_root(hash_path, release_root, "suite bootstrapper hash")
-    shutil.copy2(source_path, asset_path)
+    source_text = source_path.read_text(encoding="utf-8")
+    asset_text = _bake_bootstrapper_release_version(source_text, release_version)
+    asset_path.write_text(asset_text, encoding="utf-8", newline="\n")
     digest = _sha256(asset_path)
     hash_path.write_text(f"{digest}  {asset_path.name}\n", encoding="ascii", newline="\n")
     return asset_path, hash_path, digest
+
+
+def _bake_bootstrapper_release_version(source_text: str, release_version: str) -> str:
+    """Returns the standalone bootstrapper with its release version default pinned."""
+
+    escaped_version = release_version.replace("'", "''")
+    pattern = re.compile(r"(?m)^(\s*\[string\]\$Version)(?:\s*=\s*'[^']*')?,\s*$")
+    updated, count = pattern.subn(rf"\1 = '{escaped_version}',", source_text, count=1)
+    if count != 1:
+        raise RuntimeError("Cannot bake release version into suite bootstrapper: Version parameter not found.")
+    return updated
 
 
 def _copy_directory_contents(source_path: Path, destination_path: Path) -> None:

@@ -1679,6 +1679,196 @@ function Invoke-WebRequest {{
     assert captured_bundle.read_text(encoding="utf-8-sig").strip() == "Full"
 
 
+def test_suite_bootstrapper_prefers_matching_amutorrent_release_for_emulebb_version() -> None:
+    repo_root = Path.cwd()
+    bootstrapper_path = (repo_root / BOOTSTRAPPER).resolve()
+    command = rf"""
+function Invoke-RestMethod {{
+    param([string]$Uri, [hashtable]$Headers)
+    if ($Uri -eq 'https://api.github.com/repos/emulebb/amutorrent/releases') {{
+        return @(
+            [pscustomobject]@{{
+                tag_name = 'amutorrent-v3.8.5-emulebb-v0.7.3'
+                draft = $false
+                prerelease = $false
+                assets = @(
+                    [pscustomobject]@{{
+                        name = 'emulebb-0.7.3-amutorrent-x64.zip'
+                        browser_download_url = 'https://example.invalid/emulebb-0.7.3-amutorrent-x64.zip'
+                    }},
+                    [pscustomobject]@{{
+                        name = 'emulebb-0.7.3-amutorrent-x64.manifest.json'
+                        browser_download_url = 'https://example.invalid/emulebb-0.7.3-amutorrent-x64.manifest.json'
+                    }}
+                )
+            }},
+            [pscustomobject]@{{
+                tag_name = 'amutorrent-v3.8.5-emulebb-v0.7.3-rc.1'
+                draft = $false
+                prerelease = $true
+                assets = @(
+                    [pscustomobject]@{{
+                        name = 'emulebb-0.7.3-rc.1-amutorrent-x64.zip'
+                        browser_download_url = 'https://example.invalid/emulebb-0.7.3-rc.1-amutorrent-x64.zip'
+                    }},
+                    [pscustomobject]@{{
+                        name = 'emulebb-0.7.3-rc.1-amutorrent-x64.manifest.json'
+                        browser_download_url = 'https://example.invalid/emulebb-0.7.3-rc.1-amutorrent-x64.manifest.json'
+                    }}
+                )
+            }}
+        )
+    }}
+    if ($Uri -ne 'https://api.github.com/repos/emulebb/emulebb/releases/tags/emulebb-v0.7.3-rc.1') {{
+        throw "Unexpected release URI: $Uri"
+    }}
+    return [pscustomobject]@{{
+        tag_name = 'emulebb-v0.7.3-rc.1'
+        draft = $false
+        prerelease = $true
+        assets = @(
+            [pscustomobject]@{{
+                name = 'emulebb-0.7.3-rc.1-x64.zip'
+                browser_download_url = 'https://example.invalid/emulebb-0.7.3-rc.1-x64.zip'
+            }},
+            [pscustomobject]@{{
+                name = 'emulebb-0.7.3-rc.1-x64.manifest.json'
+                browser_download_url = 'https://example.invalid/emulebb-0.7.3-rc.1-x64.manifest.json'
+            }}
+        )
+    }}
+}}
+& '{bootstrapper_path}' -Version 0.7.3-rc.1 -Platform x64 -Bundle Full -DryRun -NoStart
+"""
+
+    completed = _run_powershell(["-Command", command], cwd=repo_root)
+
+    assert "Resolved release emulebb-v0.7.3-rc.1 for x64" in completed.stdout
+    assert "Resolved aMuTorrent release amutorrent-v3.8.5-emulebb-v0.7.3-rc.1 for Full suite" in completed.stdout
+    assert "AmutorrentVersion 0.7.3-rc.1" in completed.stdout
+
+
+def test_suite_bootstrapper_baked_release_runs_from_pipeline_without_parameters(tmp_path: Path) -> None:
+    repo_root = Path.cwd()
+    release_root = tmp_path / "release"
+    captured = tmp_path / "captured.json"
+    installer_payload = f"""#Requires -Version 5.1
+param(
+    [string]$Bundle,
+    [string]$InstallRoot,
+    [string]$Version,
+    [string]$Platform,
+    [string]$ReleaseBaseUrl,
+    [string]$AmutorrentVersion,
+    [string]$AmutorrentReleaseBaseUrl
+)
+@{{
+    bundle = $Bundle
+    installRoot = $InstallRoot
+    version = $Version
+    platform = $Platform
+    releaseBaseUrl = $ReleaseBaseUrl
+    amutorrentVersion = $AmutorrentVersion
+    amutorrentReleaseBaseUrl = $AmutorrentReleaseBaseUrl
+}} | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 -LiteralPath '{captured.as_posix()}'
+""".encode("utf-8")
+    package_zip = release_root / "emulebb-0.7.3-rc.1-x64.zip"
+    manifest = release_root / "emulebb-0.7.3-rc.1-x64.manifest.json"
+    amutorrent_zip = release_root / "emulebb-0.7.3-rc.1-amutorrent-x64.zip"
+    amutorrent_manifest = release_root / "emulebb-0.7.3-rc.1-amutorrent-x64.manifest.json"
+    suite_install_fixtures.write_zip(
+        package_zip,
+        {
+            "eMuleBB/emulebb.exe": b"exe\n",
+            "eMuleBB/scripts/Install-eMuleBBSuite.ps1": installer_payload,
+        },
+    )
+    suite_install_fixtures.write_manifest(manifest, package_zip)
+    suite_install_fixtures.write_zip(amutorrent_zip, {"aMuTorrent/server/server.js": b"server\n"})
+    suite_install_fixtures.write_manifest(amutorrent_manifest, amutorrent_zip)
+    bootstrapper = BOOTSTRAPPER.read_text(encoding="utf-8").replace(
+        "[string]$Version,",
+        "[string]$Version = '0.7.3-rc.1',",
+    )
+    command = rf"""
+$env:PROCESSOR_ARCHITECTURE = 'AMD64'
+Remove-Item Env:\PROCESSOR_ARCHITEW6432 -ErrorAction SilentlyContinue
+function Invoke-RestMethod {{
+    param([string]$Uri, [hashtable]$Headers)
+    if ($Uri -eq 'https://api.github.com/repos/emulebb/amutorrent/releases') {{
+        return @(
+            [pscustomobject]@{{
+                tag_name = 'amutorrent-v3.8.5-emulebb-v0.7.3-rc.1'
+                draft = $false
+                prerelease = $true
+                assets = @(
+                    [pscustomobject]@{{
+                        name = 'emulebb-0.7.3-rc.1-amutorrent-x64.zip'
+                        browser_download_url = 'https://example.invalid/emulebb-0.7.3-rc.1-amutorrent-x64.zip'
+                    }},
+                    [pscustomobject]@{{
+                        name = 'emulebb-0.7.3-rc.1-amutorrent-x64.manifest.json'
+                        browser_download_url = 'https://example.invalid/emulebb-0.7.3-rc.1-amutorrent-x64.manifest.json'
+                    }}
+                )
+            }}
+        )
+    }}
+    if ($Uri -ne 'https://api.github.com/repos/emulebb/emulebb/releases/tags/emulebb-v0.7.3-rc.1') {{
+        throw "Unexpected release URI: $Uri"
+    }}
+    return [pscustomobject]@{{
+        tag_name = 'emulebb-v0.7.3-rc.1'
+        draft = $false
+        prerelease = $true
+        assets = @(
+            [pscustomobject]@{{
+                name = 'emulebb-0.7.3-rc.1-x64.zip'
+                browser_download_url = 'https://example.invalid/emulebb-0.7.3-rc.1-x64.zip'
+            }},
+            [pscustomobject]@{{
+                name = 'emulebb-0.7.3-rc.1-x64.manifest.json'
+                browser_download_url = 'https://example.invalid/emulebb-0.7.3-rc.1-x64.manifest.json'
+            }}
+        )
+    }}
+}}
+function Invoke-WebRequest {{
+    param([switch]$UseBasicParsing, [string]$Uri, [string]$OutFile, [hashtable]$Headers)
+    if ($Uri.EndsWith('emulebb-0.7.3-rc.1-x64.manifest.json')) {{
+        Copy-Item -Force -LiteralPath '{manifest.as_posix()}' -Destination $OutFile
+        return
+    }}
+    if ($Uri.EndsWith('emulebb-0.7.3-rc.1-x64.zip')) {{
+        Copy-Item -Force -LiteralPath '{package_zip.as_posix()}' -Destination $OutFile
+        return
+    }}
+    if ($Uri.EndsWith('emulebb-0.7.3-rc.1-amutorrent-x64.manifest.json')) {{
+        Copy-Item -Force -LiteralPath '{amutorrent_manifest.as_posix()}' -Destination $OutFile
+        return
+    }}
+    if ($Uri.EndsWith('emulebb-0.7.3-rc.1-amutorrent-x64.zip')) {{
+        Copy-Item -Force -LiteralPath '{amutorrent_zip.as_posix()}' -Destination $OutFile
+        return
+    }}
+    throw "Unexpected download URI: $Uri"
+}}
+@'
+{bootstrapper}
+'@ | Invoke-Expression
+"""
+
+    completed = _run_powershell(["-Command", command], cwd=repo_root)
+    captured_payload = json.loads(captured.read_text(encoding="utf-8-sig"))
+
+    assert "Resolved release emulebb-v0.7.3-rc.1 for x64" in completed.stdout
+    assert "Resolved aMuTorrent release amutorrent-v3.8.5-emulebb-v0.7.3-rc.1 for Full suite" in completed.stdout
+    assert captured_payload["bundle"] == "Full"
+    assert captured_payload["version"] == "0.7.3-rc.1"
+    assert captured_payload["platform"] == "x64"
+    assert captured_payload["amutorrentVersion"] == "0.7.3-rc.1"
+
+
 @pytest.mark.parametrize("pass_install_root", [False, True])
 def test_suite_bootstrapper_hands_resolved_install_root_to_installer(tmp_path: Path, pass_install_root: bool) -> None:
     repo_root = Path.cwd()

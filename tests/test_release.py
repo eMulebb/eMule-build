@@ -463,19 +463,50 @@ def test_standalone_bootstrapper_asset_is_hashed_next_to_release(tmp_path: Path)
     release_root = tmp_path / "release"
     bootstrapper = package_root / "scripts" / "Bootstrap-eMuleBBSuite.ps1"
     bootstrapper.parent.mkdir(parents=True)
-    bootstrapper.write_text("#Requires -Version 5.1\nWrite-Host 'bootstrap'\n", encoding="utf-8")
+    bootstrapper.write_text(
+        "#Requires -Version 5.1\nparam(\n    [string]$Version,\n    [string]$Platform = ''\n)\n",
+        encoding="utf-8",
+    )
     release_root.mkdir(parents=True)
 
     asset_path, hash_path, digest = release._write_standalone_bootstrapper_asset(
         package_root=package_root,
         release_root=release_root,
+        release_version="0.7.3-rc.1",
     )
 
     assert asset_path == release_root / "Bootstrap-eMuleBBSuite.ps1"
     assert hash_path == release_root / "Bootstrap-eMuleBBSuite.ps1.sha256"
-    assert asset_path.read_text(encoding="utf-8") == bootstrapper.read_text(encoding="utf-8")
+    assert "[string]$Version = '0.7.3-rc.1'," in asset_path.read_text(encoding="utf-8")
     assert digest == hashlib.sha256(asset_path.read_bytes()).hexdigest()
     assert hash_path.read_text(encoding="ascii") == f"{digest}  Bootstrap-eMuleBBSuite.ps1\n"
+
+
+def test_standalone_bootstrapper_asset_bakes_release_version(tmp_path: Path) -> None:
+    package_root = tmp_path / "staging" / "eMuleBB"
+    release_root = tmp_path / "release"
+    bootstrapper = package_root / "scripts" / "Bootstrap-eMuleBBSuite.ps1"
+    bootstrapper.parent.mkdir(parents=True)
+    bootstrapper.write_text(
+        "#Requires -Version 5.1\n"
+        "param(\n"
+        "    [string]$Version,\n"
+        "    [ValidateSet('', 'x64', 'ARM64')]\n"
+        "    [string]$Platform = ''\n"
+        ")\n",
+        encoding="utf-8",
+    )
+    release_root.mkdir(parents=True)
+
+    asset_path, _hash_path, _digest = release._write_standalone_bootstrapper_asset(
+        package_root=package_root,
+        release_root=release_root,
+        release_version="0.7.3-rc.1",
+    )
+
+    text = asset_path.read_text(encoding="utf-8")
+    assert "[string]$Version = '0.7.3-rc.1'," in text
+    assert "[string]$Platform = ''" in text
 
 
 def test_release_signing_required_rejects_missing_identity(monkeypatch: pytest.MonkeyPatch) -> None:
