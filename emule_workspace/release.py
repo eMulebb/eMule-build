@@ -79,6 +79,7 @@ SIGNTOOL_PATH_ENV = "EMULEBB_SIGNTOOL"
 DEFAULT_SIGNING_TIMESTAMP_URL = "http://timestamp.digicert.com"
 EMULEBB_RUNTIME_SCRIPT_PATHS = (
     "scripts/Bootstrap-eMuleBBSuite.ps1",
+    "scripts/Import-SuiteAppManifest.ps1",
     "scripts/Install-eMuleBBSuite.ps1",
     "scripts/Repair-Firewall.ps1",
     "scripts/Set-DefenderExclusions.ps1",

@@ -1486,10 +1486,15 @@ def test_suite_installer_uses_packaged_language_manifest() -> None:
 def test_suite_installer_uses_packaged_suite_apps_manifest() -> None:
     installer = INSTALLER.read_text(encoding="utf-8")
     app_manifest = Path("emule_workspace/release_assets/emulebb/config/suite-apps.json")
+    manifest_helper = Path("emule_workspace/release_assets/emulebb/scripts/Import-SuiteAppManifest.ps1")
+    _assert_powershell_parse(Path.cwd() / manifest_helper, cwd=Path.cwd())
+    helper_text = manifest_helper.read_text(encoding="utf-8")
     payload = json.loads(app_manifest.read_text(encoding="utf-8"))
     arr_apps = {entry["key"]: entry for entry in payload["arrApps"]}
 
     assert payload["schema"] == "emulebb.suite-apps.v1"
+    assert "function ConvertTo-SuiteAppManifest" in helper_text
+    assert "function Read-SuiteAppManifest" in helper_text
     assert set(arr_apps) == {"prowlarr", "radarr", "sonarr", "lidarr", "readarr", "whisparr"}
     assert payload["defaultArrAppNames"] == ["prowlarr", "radarr", "sonarr"]
     assert payload["suiteServiceOrder"] == [
@@ -1510,6 +1515,8 @@ def test_suite_installer_uses_packaged_suite_apps_manifest() -> None:
     assert arr_apps["readarr"]["indexerCategories"] == [7000]
     assert arr_apps["whisparr"]["indexerCategories"] == [6000]
     assert "config\\suite-apps.json" in installer
+    assert "Import-SuiteAppManifest.ps1" in installer
+    assert "Read-SuiteAppManifest -Path $manifestPath" in installer
     assert "function Initialize-SuiteAppMetadata" in installer
     assert "'suite-apps.json'" in installer
 
@@ -1578,7 +1585,8 @@ def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() 
     assert "[string]$SuiteAppsManifest" in register_arr_stack
     assert "SuiteAppsManifest does not exist" in register_arr_stack
     assert "function Initialize-ArrIndexerCategories" in register_arr_stack
-    assert "function ConvertTo-ArrIndexerCategoryMap" in register_arr_stack
+    assert "Import-SuiteAppManifest.ps1" in register_arr_stack
+    assert "Read-SuiteAppManifest -Path $manifestPath" in register_arr_stack
     assert "config\\suite-apps.json" in register_arr_stack
     assert "Prowlarr indexer '$Name' is not registered. Run Register-Prowlarr.ps1 first" in register_arr_stack
     assert "Prowlarr URL for indexer verification (example http://LAN-IP:9696)" in register_arr_stack
@@ -1763,6 +1771,7 @@ def test_suite_bootstrapper_requires_emulebb_package_root() -> None:
     bootstrapper = BOOTSTRAPPER.read_text(encoding="utf-8")
 
     assert "eMuleBB/scripts/Install-eMuleBBSuite.ps1" in bootstrapper
+    assert "eMuleBB/scripts/Import-SuiteAppManifest.ps1" in bootstrapper
     assert "eMule/scripts/Install-eMuleBBSuite.ps1" not in bootstrapper
     assert "Release ZIP does not contain eMuleBB/scripts/Install-eMuleBBSuite.ps1." in bootstrapper
     assert "Assert-FileHash" in bootstrapper

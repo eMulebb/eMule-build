@@ -671,6 +671,10 @@ function Expand-Installer {
         }
         $target = Join-Path $Destination 'Install-eMuleBBSuite.ps1'
         [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $target, $true)
+        $helperEntry = $zip.GetEntry('eMuleBB/scripts/Import-SuiteAppManifest.ps1')
+        if ($null -ne $helperEntry) {
+            [IO.Compression.ZipFileExtensions]::ExtractToFile($helperEntry, (Join-Path $Destination 'Import-SuiteAppManifest.ps1'), $true)
+        }
         return $target
     } finally {
         $zip.Dispose()

@@ -27,6 +27,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'Import-SuiteAppManifest.ps1')
 $ArrTargets = @('Radarr', 'Sonarr', 'Lidarr', 'Readarr', 'Whisparr')
 $ArrTargetPorts = @{
     Radarr = 7878
@@ -67,46 +68,15 @@ function Get-SuiteAppsManifestPath {
     return ''
 }
 
-function ConvertTo-ArrIndexerCategoryMap {
-    param([object]$Payload)
-    $result = @{}
-    if ($null -eq $Payload -or $null -eq $Payload.PSObject.Properties['arrApps']) {
-        return $result
-    }
-    foreach ($entry in @($Payload.arrApps)) {
-        if ($null -eq $entry.PSObject.Properties['key'] -or $null -eq $entry.PSObject.Properties['indexerCategories']) {
-            continue
-        }
-        $key = ([string]$entry.key).ToLowerInvariant()
-        if ([string]::IsNullOrWhiteSpace($key)) {
-            continue
-        }
-        $categories = @()
-        foreach ($category in @($entry.indexerCategories)) {
-            if (-not [string]::IsNullOrWhiteSpace([string]$category)) {
-                $categories += [int]$category
-            }
-        }
-        if ($categories.Count -gt 0) {
-            $result[$key] = $categories
-        }
-    }
-    return $result
-}
-
 function Initialize-ArrIndexerCategories {
     $manifestPath = Get-SuiteAppsManifestPath
     if ([string]::IsNullOrWhiteSpace($manifestPath)) {
         return
     }
     try {
-        $payload = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
-        if ($null -eq $payload.PSObject.Properties['schema'] -or [string]$payload.schema -ne 'emulebb.suite-apps.v1') {
-            throw "suite app manifest has an unsupported schema: $manifestPath"
-        }
-        $categories = ConvertTo-ArrIndexerCategoryMap -Payload $payload
-        foreach ($key in $categories.Keys) {
-            $script:ArrTargetIndexerCategories[$key] = $categories[$key]
+        $manifest = Read-SuiteAppManifest -Path $manifestPath
+        foreach ($key in $manifest.ArrIndexerCategories.Keys) {
+            $script:ArrTargetIndexerCategories[$key] = $manifest.ArrIndexerCategories[$key]
         }
     } catch {
         throw "Could not load Arr indexer categories from suite app manifest: $manifestPath. $($_.Exception.Message)"

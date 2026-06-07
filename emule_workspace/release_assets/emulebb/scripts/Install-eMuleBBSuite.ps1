@@ -102,6 +102,7 @@ if ($Bundle -like '-*') {
     throw "Install-eMuleBBSuite.ps1 was invoked with positional parameter strings. Call it with named parameters, for example -Bundle Full, not an argv string array."
 }
 $script:InstallerBoundParameters = $PSBoundParameters
+. (Join-Path $PSScriptRoot 'Import-SuiteAppManifest.ps1')
 
 $AutoPortRangeStart = 49152
 $AutoPortRangeEnd = 65535
@@ -734,100 +735,22 @@ function Read-JsonFile {
     }
 }
 
-function ConvertTo-StringArray {
-    param([object]$Value)
-    $items = @()
-    foreach ($item in @($Value)) {
-        if (-not [string]::IsNullOrWhiteSpace([string]$item)) {
-            $items += [string]$item
-        }
-    }
-    return $items
-}
-
 function Initialize-SuiteAppMetadata {
     $manifestPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'config\suite-apps.json'
     if (-not (Test-Path -LiteralPath $manifestPath)) {
         return
     }
-    $payload = Read-JsonFile -Path $manifestPath -Description 'suite app manifest'
-    if ($null -eq $payload.PSObject.Properties['schema'] -or [string]$payload.schema -ne 'emulebb.suite-apps.v1') {
-        throw "suite app manifest has an unsupported schema: $manifestPath"
-    }
-    if ($null -eq $payload.PSObject.Properties['arrApps']) {
-        throw "suite app manifest does not contain arrApps: $manifestPath"
-    }
-
-    $arrNames = @()
-    $arrMetadata = @{}
-    $dependencyPins = @{}
-    foreach ($entry in @($payload.arrApps)) {
-        $key = (Resolve-OptionalValue -Value ([string]$entry.key) -Default '').ToLowerInvariant()
-        if ([string]::IsNullOrWhiteSpace($key)) {
-            continue
-        }
-        $arrNames += $key
-        $arrMetadata[$key] = @{
-            DisplayName = [string]$entry.displayName
-            Exe = [string]$entry.exe
-            ApiPath = [string]$entry.apiPath
-            DataDir = [string]$entry.dataDir
-            MediaRoot = [string]$entry.mediaRoot
-        }
-        $dependencyProperty = $entry.PSObject.Properties['dependency']
-        if ($null -ne $dependencyProperty -and $null -ne $dependencyProperty.Value) {
-            $dependency = $dependencyProperty.Value
-            $dependencyPins[$key] = @{
-                Repo = [string]$dependency.repo
-                Tag = [string]$dependency.tag
-                Pattern = [string]$dependency.assetPattern
-                Exe = [string]$dependency.exe
-                Url = [string]$dependency.url
-                Sha256 = [string]$dependency.sha256
-            }
-        }
-    }
-    if ($arrNames.Count -eq 0) {
-        throw "suite app manifest does not define any Arr apps: $manifestPath"
-    }
-
-    $script:AllArrAppNames = $arrNames
-    $script:ArrAppMetadata = $arrMetadata
-    if ($dependencyPins.Count -gt 0) {
-        $script:PinnedDependencies = $dependencyPins
-    }
-    if ($null -ne $payload.PSObject.Properties['coreServiceNames']) {
-        $script:CoreServiceNames = ConvertTo-StringArray -Value $payload.coreServiceNames
-    }
-    if ($null -ne $payload.PSObject.Properties['controllerServiceNames']) {
-        $script:ControllerServiceNames = ConvertTo-StringArray -Value $payload.controllerServiceNames
-    }
-    if ($null -ne $payload.PSObject.Properties['defaultArrAppNames']) {
-        $script:DefaultArrAppNames = ConvertTo-StringArray -Value $payload.defaultArrAppNames
-    }
-    if ($null -ne $payload.PSObject.Properties['suiteServiceOrder']) {
-        $script:SuiteServiceOrder = ConvertTo-StringArray -Value $payload.suiteServiceOrder
-    }
-    if ($null -ne $payload.PSObject.Properties['node'] -and $null -ne $payload.node) {
-        if ($null -ne $payload.node.PSObject.Properties['version'] -and -not [string]::IsNullOrWhiteSpace([string]$payload.node.version)) {
-            $script:NodeVersion = [string]$payload.node.version
-        }
-        if ($null -ne $payload.node.PSObject.Properties['minimumMajor']) {
-            $script:MinimumNodeMajor = [int]$payload.node.minimumMajor
-        }
-        if ($null -ne $payload.node.PSObject.Properties['archives']) {
-            $archives = @{}
-            foreach ($property in $payload.node.archives.PSObject.Properties) {
-                $archives[$property.Name] = @{
-                    FileName = [string]$property.Value.fileName
-                    Sha256 = [string]$property.Value.sha256
-                }
-            }
-            if ($archives.Count -gt 0) {
-                $script:NodeArchives = $archives
-            }
-        }
-    }
+    $manifest = Read-SuiteAppManifest -Path $manifestPath
+    $script:AllArrAppNames = $manifest.AllArrAppNames
+    $script:ArrAppMetadata = $manifest.ArrAppMetadata
+    if ($manifest.PinnedDependencies.Count -gt 0) { $script:PinnedDependencies = $manifest.PinnedDependencies }
+    if (@($manifest.CoreServiceNames).Count -gt 0) { $script:CoreServiceNames = $manifest.CoreServiceNames }
+    if (@($manifest.ControllerServiceNames).Count -gt 0) { $script:ControllerServiceNames = $manifest.ControllerServiceNames }
+    if (@($manifest.DefaultArrAppNames).Count -gt 0) { $script:DefaultArrAppNames = $manifest.DefaultArrAppNames }
+    if (@($manifest.SuiteServiceOrder).Count -gt 0) { $script:SuiteServiceOrder = $manifest.SuiteServiceOrder }
+    if (-not [string]::IsNullOrWhiteSpace([string]$manifest.NodeVersion)) { $script:NodeVersion = [string]$manifest.NodeVersion }
+    if ($null -ne $manifest.MinimumNodeMajor) { $script:MinimumNodeMajor = [int]$manifest.MinimumNodeMajor }
+    if ($manifest.NodeArchives.Count -gt 0) { $script:NodeArchives = $manifest.NodeArchives }
 }
 
 function Merge-Hashtable {
@@ -2656,6 +2579,7 @@ document.addEventListener('click', async function (event) {
 
 function Get-SuiteScriptNames {
     return @(
+        'Import-SuiteAppManifest.ps1',
         'Install-eMuleBBSuite.ps1',
         'Initialize-Suite.ps1',
         'Start-eMuleBB.ps1',
