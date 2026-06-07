@@ -306,7 +306,10 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "Invoke-SuiteJsonApi -Name \"$Name root folder create\"" in start_suite
     assert "$Name metadata profile list" in start_suite
     assert "$Url/$ApiPath/metadataprofile" in start_suite
-    assert "name = 'eMuleBB Music'" in start_suite
+    assert "name = $rootName" in start_suite
+    assert "'eMuleBB Music'" in start_suite
+    assert "'eMuleBB Books'" in start_suite
+    assert "[string]::Equals($Name, 'Readarr'" in start_suite
     assert "defaultQualityProfileId = [int]$profiles.QualityProfile.id" in start_suite
     assert "defaultMetadataProfileId = [int]$profiles.MetadataProfile.id" in start_suite
     assert "already configured as a root folder" in start_suite

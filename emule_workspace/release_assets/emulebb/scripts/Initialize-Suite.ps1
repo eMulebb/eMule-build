@@ -317,11 +317,12 @@ function Ensure-ArrRootFolder {
     }
     try {
         $body = @{ path = $normalizedPath }
-        if ([string]::Equals($Name, 'Lidarr', [StringComparison]::OrdinalIgnoreCase)) {
+        if ([string]::Equals($Name, 'Lidarr', [StringComparison]::OrdinalIgnoreCase) -or [string]::Equals($Name, 'Readarr', [StringComparison]::OrdinalIgnoreCase)) {
             $profiles = Wait-ArrDefaultProfiles -Name $Name -Url $Url -ApiPath $ApiPath -Headers $headers -IncludeMetadata
+            $rootName = if ([string]::Equals($Name, 'Readarr', [StringComparison]::OrdinalIgnoreCase)) { 'eMuleBB Books' } else { 'eMuleBB Music' }
             $body = @{
                 path = $normalizedPath
-                name = 'eMuleBB Music'
+                name = $rootName
                 defaultQualityProfileId = [int]$profiles.QualityProfile.id
                 defaultMetadataProfileId = [int]$profiles.MetadataProfile.id
             }
