@@ -2987,6 +2987,10 @@ if (-not $KeepDownloads -and -not $DryRun) {
     Remove-Item -Recurse -Force -LiteralPath (Join-Path $script:Root 'downloads-cache') -ErrorAction SilentlyContinue
 }
 if (-not $NoStart -and -not $DryRun) {
+    if (-not $NonInteractive -and (Test-InteractiveConsole)) {
+        Write-Host ''
+        [void](Read-Host 'Press Enter to start the suite')
+    }
     & (Join-Path $script:Root 'scripts\Initialize-Suite.ps1')
 } elseif ($NoStart -and -not $DryRun) {
     Write-Step "Start skipped because -NoStart was used. Run $(Join-Path $script:Root 'scripts\Initialize-Suite.ps1') once to start services, register integrations, and create selected Arr root folders."

@@ -1908,6 +1908,8 @@ def test_suite_generated_update_and_start_scripts_are_refresh_safe() -> None:
     assert "function Get-FirstSuiteExecutable" in stop_suite
     assert start_suite.index("$nodeMatch = Get-ChildItem -Path (Join-Path $Root 'runtime\\node')") < start_suite.index("$node = if ($nodeMatch)")
     assert "Start skipped because -NoStart was used" in installer
+    assert "Press Enter to start the suite" in installer
+    assert installer.index("Press Enter to start the suite") < installer.index("& (Join-Path $script:Root 'scripts\\Initialize-Suite.ps1')")
     assert "credentials.html" in installer
     assert "if (-not $DryRun -and -not $NonInteractive)" in installer
     assert "The HTML install summary will open now" in installer
