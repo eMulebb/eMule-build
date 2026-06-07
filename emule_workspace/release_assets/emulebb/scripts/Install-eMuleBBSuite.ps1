@@ -750,7 +750,7 @@ function Normalize-AppName {
     if ($normalized -eq 'emulebb' -or $normalized -eq 'core') { return 'emulebb' }
     if ($normalized -eq 'amutorrent' -or $normalized -eq 'controller') { return 'amutorrent' }
     if ($AllArrAppNames -contains $normalized) { return $normalized }
-    throw "Unknown suite app '$Name'. Valid apps are: emulebb, amutorrent, $($AllArrAppNames -join ', ')."
+    throw "Unknown suite app '$Name'. Valid apps are: emulebb, amutorrent, $($AllArrAppNames -join ', '), or presets all, controller, default-arr, all-arr, none-arr."
 }
 
 function Resolve-LanguagePreference {
@@ -786,6 +786,42 @@ function Resolve-SelectedApps {
         foreach ($app in $RequestedApps) {
             foreach ($part in ([string]$app -split ',')) {
                 if ([string]::IsNullOrWhiteSpace($part)) {
+                    continue
+                }
+                $preset = $part.Trim().ToLowerInvariant()
+                if ($preset -eq 'none-arr') {
+                    continue
+                }
+                if ($preset -eq 'default-arr') {
+                    foreach ($name in $DefaultArrAppNames) {
+                        if (-not $selected.Contains($name)) {
+                            $selected.Add($name)
+                        }
+                    }
+                    continue
+                }
+                if ($preset -eq 'all-arr') {
+                    foreach ($name in $AllArrAppNames) {
+                        if (-not $selected.Contains($name)) {
+                            $selected.Add($name)
+                        }
+                    }
+                    continue
+                }
+                if ($preset -eq 'controller') {
+                    foreach ($name in $ControllerServiceNames) {
+                        if (-not $selected.Contains($name)) {
+                            $selected.Add($name)
+                        }
+                    }
+                    continue
+                }
+                if ($preset -eq 'all' -or $preset -eq 'full') {
+                    foreach ($name in $SuiteServiceOrder) {
+                        if (-not $selected.Contains($name)) {
+                            $selected.Add($name)
+                        }
+                    }
                     continue
                 }
                 $normalized = Normalize-AppName -Name $part

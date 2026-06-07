@@ -863,6 +863,88 @@ def test_suite_installer_can_select_whisparr(tmp_path: Path) -> None:
     assert "emulebb-whisparr" in {section.get("Title") for section in category_sections.values()}
 
 
+def test_suite_installer_apps_none_arr_preset_installs_core_only(tmp_path: Path) -> None:
+    release_root = tmp_path / "release"
+    install_root = tmp_path / "suite"
+    suite_install_fixtures.write_core_release(release_root)
+
+    repo_root = Path.cwd()
+    suite_install_fixtures.run_installer(
+        (repo_root / INSTALLER).resolve(),
+        [
+            "-NonInteractive",
+            "-NoStart",
+            "-Force",
+            "-Bundle",
+            "Full",
+            "-Apps",
+            "none-arr",
+            "-InstallRoot",
+            str(install_root),
+            "-ReleaseBaseUrl",
+            release_root.as_uri(),
+        ],
+        cwd=repo_root,
+    )
+
+    suite_config = suite_install_fixtures.read_suite_config(install_root)
+    assert suite_config["selectedApps"] == ["emulebb"]
+    assert not (install_root / "data" / "prowlarr").exists()
+    assert not (install_root / "data" / "radarr").exists()
+
+
+def test_suite_installer_apps_all_arr_preset_selects_every_arr_app(tmp_path: Path) -> None:
+    release_root = tmp_path / "release"
+    dependency_root = tmp_path / "dependencies"
+    install_root = tmp_path / "suite"
+    dependency_manifest = tmp_path / "dependency-manifest.json"
+    suite_install_fixtures.write_core_release(release_root)
+    amutorrent_zip = release_root / "emulebb-0.7.3-rc.1-amutorrent-x64.zip"
+    amutorrent_manifest = release_root / "emulebb-0.7.3-rc.1-amutorrent-x64.manifest.json"
+    suite_install_fixtures.write_zip(amutorrent_zip, {"aMuTorrent/server/server.js": b"server\n"})
+    _write_manifest(amutorrent_manifest, amutorrent_zip)
+    suite_install_fixtures.write_dependency_manifest(dependency_manifest, dependency_root)
+
+    repo_root = Path.cwd()
+    suite_install_fixtures.run_installer(
+        (repo_root / INSTALLER).resolve(),
+        [
+            "-NonInteractive",
+            "-NoStart",
+            "-Force",
+            "-Bundle",
+            "Core",
+            "-Apps",
+            "all-arr",
+            "-InstallRoot",
+            str(install_root),
+            "-ReleaseBaseUrl",
+            release_root.as_uri(),
+            "-DependencyManifest",
+            str(dependency_manifest),
+            "-AmutorrentPackageZip",
+            str(amutorrent_zip),
+            "-AmutorrentPackageManifest",
+            str(amutorrent_manifest),
+        ],
+        cwd=repo_root,
+    )
+
+    suite_config = suite_install_fixtures.read_suite_config(install_root)
+    assert suite_config["selectedApps"] == [
+        "emulebb",
+        "amutorrent",
+        "prowlarr",
+        "radarr",
+        "sonarr",
+        "lidarr",
+        "readarr",
+        "whisparr",
+    ]
+    for app_name in ("prowlarr", "radarr", "sonarr", "lidarr", "readarr", "whisparr"):
+        assert (install_root / "data" / app_name / "config.xml").is_file()
+
+
 def test_suite_installer_imports_profile_config_only_once_and_preserves_refresh_profile(tmp_path: Path) -> None:
     release_root = tmp_path / "release"
     install_root = tmp_path / "suite"
