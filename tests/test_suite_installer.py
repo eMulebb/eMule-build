@@ -2142,65 +2142,6 @@ function Invoke-RestMethod {{
     assert "has incomplete suite scripts bundle assets" in " ".join(completed.stdout.split())
 
 
-@pytest.mark.parametrize("missing_asset", ["zip", "manifest"])
-def test_suite_bootstrapper_rejects_incomplete_release_suite_scripts_bundle(missing_asset: str) -> None:
-    repo_root = Path.cwd()
-    bootstrapper_path = (repo_root / BOOTSTRAPPER).resolve()
-    version = "0.7.3-nightly.20260604.5169162"
-    suite_assets = []
-    if missing_asset != "zip":
-        suite_assets.append("""
-            [pscustomobject]@{
-                name = 'suite-scripts-0.7.3-nightly.20260604.5169162.zip'
-                browser_download_url = 'https://example.invalid/suite-scripts-0.7.3-nightly.20260604.5169162.zip'
-            }""")
-    if missing_asset != "manifest":
-        suite_assets.append("""
-            [pscustomobject]@{
-                name = 'suite-scripts-0.7.3-nightly.20260604.5169162.manifest.json'
-                browser_download_url = 'https://example.invalid/suite-scripts-0.7.3-nightly.20260604.5169162.manifest.json'
-            }""")
-    suite_asset_text = ",\n".join(suite_assets)
-    command = rf"""
-function Invoke-RestMethod {{
-    param([string]$Uri, [hashtable]$Headers)
-    if ($Uri -ne 'https://api.github.com/repos/emulebb/emulebb/releases/tags/emulebb-nightly-20260604-5169162') {{
-        throw "Unexpected release URI: $Uri"
-    }}
-    return [pscustomobject]@{{
-        tag_name = 'emulebb-nightly-20260604-5169162'
-        draft = $false
-        prerelease = $true
-        assets = @(
-            [pscustomobject]@{{
-                name = 'emulebb-{version}-x64.zip'
-                browser_download_url = 'https://example.invalid/emulebb-{version}-x64.zip'
-            }},
-            [pscustomobject]@{{
-                name = 'emulebb-{version}-x64.manifest.json'
-                browser_download_url = 'https://example.invalid/emulebb-{version}-x64.manifest.json'
-            }},
-{suite_asset_text}
-        )
-    }}
-}}
-& '{bootstrapper_path}' -Version 'emulebb-nightly-20260604-5169162' -Platform x64 -Bundle Core -DryRun -NoStart
-"""
-    powershell = shutil.which("powershell")
-    assert powershell is not None
-    completed = subprocess.run(
-        [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
-        cwd=repo_root,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        check=False,
-    )
-
-    assert completed.returncode != 0
-    assert "has incomplete suite scripts bundle assets" in " ".join(completed.stdout.split())
-
-
 def test_suite_bootstrapper_prefers_matching_amutorrent_release_for_emulebb_version() -> None:
     repo_root = Path.cwd()
     bootstrapper_path = (repo_root / BOOTSTRAPPER).resolve()
