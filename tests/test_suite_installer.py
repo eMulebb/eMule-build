@@ -236,6 +236,10 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "Downloaded $Name was empty." in start_suite
     assert "function Initialize-AmutorrentConfig" in start_suite
     assert "Initialize-AmutorrentConfig -DataDir (Join-Path $Root 'data\\amutorrent')" in start_suite
+    assert "function Write-Utf8NoBomFile" in start_suite
+    assert "New-Object System.Text.UTF8Encoding($false)" in start_suite
+    assert "Write-Utf8NoBomFile -Path $configPath -Text ($config | ConvertTo-Json -Depth 40)" in start_suite
+    assert "$config | ConvertTo-Json -Depth 40 | Set-Content -Encoding UTF8 -LiteralPath $configPath" not in start_suite
     assert "function Set-AmutorrentSuiteClient" in start_suite
     assert "Set-AmutorrentSuiteClient -Config $config -EmulebbHost $EmulebbHost -EmulebbPort $EmulebbPort -EmulebbApiKey $EmulebbApiKey" in start_suite
     assert "id = 'emulebb-suite'" in start_suite

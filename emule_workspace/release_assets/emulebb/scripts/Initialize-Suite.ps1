@@ -70,6 +70,12 @@ function Invoke-SuiteJsonApi {
     }
 }
 
+function Write-Utf8NoBomFile {
+    param([string]$Path, [string]$Text)
+    $encoding = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($Path, $Text, $encoding)
+}
+
 function Invoke-EmuleBootstrapFileDownload {
     param([string]$Name, [string]$Url, [string]$Destination)
     $parent = Split-Path -Parent $Destination
@@ -219,7 +225,7 @@ function Initialize-AmutorrentConfig {
     Set-ObjectProperty -Target $directories -Name 'data' -Value $DataDir
     Set-ObjectProperty -Target $directories -Name 'logs' -Value (Join-Path $DataDir 'logs')
     Set-AmutorrentSuiteClient -Config $config -EmulebbHost $EmulebbHost -EmulebbPort $EmulebbPort -EmulebbApiKey $EmulebbApiKey
-    $config | ConvertTo-Json -Depth 40 | Set-Content -Encoding UTF8 -LiteralPath $configPath
+    Write-Utf8NoBomFile -Path $configPath -Text ($config | ConvertTo-Json -Depth 40)
 }
 
 function Set-ArrHostCredentials {
