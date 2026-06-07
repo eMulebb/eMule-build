@@ -86,6 +86,13 @@ EMULEBB_RUNTIME_SCRIPT_PATHS = (
     "scripts/Register-Prowlarr.ps1",
     "scripts/Register-ArrStack.ps1",
     "scripts/Register-aMuTorrent.ps1",
+    "scripts/Initialize-Suite.ps1",
+    "scripts/Start-eMuleBB.ps1",
+    "scripts/Start-Suite.ps1",
+    "scripts/Stop-Suite.ps1",
+    "scripts/Get-SuiteStatus.ps1",
+    "scripts/Test-Suite.ps1",
+    "scripts/Update-Suite.ps1",
 )
 EMULEBB_SKIN_ASSET_PATHS = (
     "skins/emulebb-slate.eMuleSkin.ini",

@@ -4,6 +4,14 @@ param(
     [ValidateSet('Core', 'Controller', 'Full')]
     [string]$Bundle = 'Full',
 
+    [string[]]$Apps,
+
+    [ValidateSet('English', 'Spanish', 'Italian', 'Portuguese')]
+    [string]$Language = 'English',
+
+    [ValidateRange(0, 65535)]
+    [int]$PortBlockStart = 0,
+
     [string]$InstallRoot = 'C:\eMuleBBSuite',
 
     [string]$Version,
@@ -24,17 +32,26 @@ param(
     [string]$ProwlarrBindAddress,
     [string]$RadarrBindAddress,
     [string]$SonarrBindAddress,
+    [string]$LidarrBindAddress,
+    [string]$ReadarrBindAddress,
+    [string]$WhisparrBindAddress,
 
     [ValidateRange(0, 65535)]
-    [int]$EmulebbPort = 4711,
+    [int]$EmulebbPort = 0,
     [ValidateRange(0, 65535)]
-    [int]$AmutorrentPort = 4000,
+    [int]$AmutorrentPort = 0,
     [ValidateRange(0, 65535)]
-    [int]$ProwlarrPort = 9696,
+    [int]$ProwlarrPort = 0,
     [ValidateRange(0, 65535)]
-    [int]$RadarrPort = 7878,
+    [int]$RadarrPort = 0,
     [ValidateRange(0, 65535)]
-    [int]$SonarrPort = 8989,
+    [int]$SonarrPort = 0,
+    [ValidateRange(0, 65535)]
+    [int]$LidarrPort = 0,
+    [ValidateRange(0, 65535)]
+    [int]$ReadarrPort = 0,
+    [ValidateRange(0, 65535)]
+    [int]$WhisparrPort = 0,
 
     [switch]$IncludePrerelease,
     [switch]$AllowRemoteServiceBind,
@@ -652,7 +669,10 @@ $installerParams = [ordered]@{
     InstallRoot = $InstallRoot
     Version = $resolvedVersion
     Platform = $resolvedPlatform
+    Language = $Language
 }
+if ($null -ne $Apps -and @($Apps).Count -gt 0) { $installerParams['Apps'] = $Apps }
+if ($PSBoundParameters.ContainsKey('PortBlockStart')) { $installerParams['PortBlockStart'] = $PortBlockStart }
 if (-not [string]::IsNullOrWhiteSpace($releaseBaseUrl)) { $installerParams['ReleaseBaseUrl'] = $releaseBaseUrl }
 if ($localEmulebbPackage) {
     $installerParams['EmulebbPackageZip'] = $zipPath
@@ -678,11 +698,17 @@ if (-not [string]::IsNullOrWhiteSpace($AmutorrentBindAddress)) { $installerParam
 if (-not [string]::IsNullOrWhiteSpace($ProwlarrBindAddress)) { $installerParams['ProwlarrBindAddress'] = $ProwlarrBindAddress }
 if (-not [string]::IsNullOrWhiteSpace($RadarrBindAddress)) { $installerParams['RadarrBindAddress'] = $RadarrBindAddress }
 if (-not [string]::IsNullOrWhiteSpace($SonarrBindAddress)) { $installerParams['SonarrBindAddress'] = $SonarrBindAddress }
+if (-not [string]::IsNullOrWhiteSpace($LidarrBindAddress)) { $installerParams['LidarrBindAddress'] = $LidarrBindAddress }
+if (-not [string]::IsNullOrWhiteSpace($ReadarrBindAddress)) { $installerParams['ReadarrBindAddress'] = $ReadarrBindAddress }
+if (-not [string]::IsNullOrWhiteSpace($WhisparrBindAddress)) { $installerParams['WhisparrBindAddress'] = $WhisparrBindAddress }
 if ($PSBoundParameters.ContainsKey('EmulebbPort')) { $installerParams['EmulebbPort'] = $EmulebbPort }
 if ($PSBoundParameters.ContainsKey('AmutorrentPort')) { $installerParams['AmutorrentPort'] = $AmutorrentPort }
 if ($PSBoundParameters.ContainsKey('ProwlarrPort')) { $installerParams['ProwlarrPort'] = $ProwlarrPort }
 if ($PSBoundParameters.ContainsKey('RadarrPort')) { $installerParams['RadarrPort'] = $RadarrPort }
 if ($PSBoundParameters.ContainsKey('SonarrPort')) { $installerParams['SonarrPort'] = $SonarrPort }
+if ($PSBoundParameters.ContainsKey('LidarrPort')) { $installerParams['LidarrPort'] = $LidarrPort }
+if ($PSBoundParameters.ContainsKey('ReadarrPort')) { $installerParams['ReadarrPort'] = $ReadarrPort }
+if ($PSBoundParameters.ContainsKey('WhisparrPort')) { $installerParams['WhisparrPort'] = $WhisparrPort }
 if ($AllowRemoteServiceBind) { $installerParams['AllowRemoteServiceBind'] = $true }
 $displayArgs = @()
 foreach ($name in $installerParams.Keys) {

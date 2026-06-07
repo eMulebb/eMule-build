@@ -420,7 +420,7 @@ def build_suite_installer_options(
 
 
 def choose_free_tcp_ports(count: int, *, host: str = "127.0.0.1") -> tuple[int, ...]:
-    """Reserves and returns distinct free TCP ports for an isolated test install."""
+    """Reserves and returns one contiguous Dynamic/Private TCP port block."""
 
     bind_host = host.strip()
     if bind_host in {"", "0.0.0.0", "::", "[::]"}:
@@ -428,13 +428,19 @@ def choose_free_tcp_ports(count: int, *, host: str = "127.0.0.1") -> tuple[int, 
 
     sockets: list[socket.socket] = []
     try:
-        ports: list[int] = []
-        for _ in range(count):
-            probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            probe.bind((bind_host, 0))
-            sockets.append(probe)
-            ports.append(int(probe.getsockname()[1]))
-        return tuple(ports)
+        for base_port in range(49152, 65535 - count + 2):
+            block_sockets: list[socket.socket] = []
+            try:
+                for port in range(base_port, base_port + count):
+                    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    probe.bind((bind_host, port))
+                    block_sockets.append(probe)
+                sockets.extend(block_sockets)
+                return tuple(range(base_port, base_port + count))
+            except OSError:
+                for probe in block_sockets:
+                    probe.close()
+        raise RuntimeError(f"Could not reserve a contiguous free TCP port block of {count} ports on {bind_host}.")
     finally:
         for probe in sockets:
             probe.close()

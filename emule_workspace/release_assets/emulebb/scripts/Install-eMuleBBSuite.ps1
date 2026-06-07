@@ -16,6 +16,14 @@ param(
     [ValidateSet('Pinned', 'Latest')]
     [string]$DependencyChannel = 'Pinned',
 
+    [string[]]$Apps,
+
+    [ValidateSet('English', 'Spanish', 'Italian', 'Portuguese')]
+    [string]$Language = 'English',
+
+    [ValidateRange(0, 65535)]
+    [int]$PortBlockStart = 0,
+
     [string]$ReleaseBaseUrl,
     [string]$AmutorrentReleaseBaseUrl,
     [string]$AmutorrentVersion,
@@ -38,6 +46,9 @@ param(
     [string]$ProwlarrBindAddress,
     [string]$RadarrBindAddress,
     [string]$SonarrBindAddress,
+    [string]$LidarrBindAddress,
+    [string]$ReadarrBindAddress,
+    [string]$WhisparrBindAddress,
 
     [string]$SuiteUsername = 'admin',
     [string]$SuitePassword,
@@ -52,6 +63,12 @@ param(
     [int]$RadarrPort = 0,
     [ValidateRange(0, 65535)]
     [int]$SonarrPort = 0,
+    [ValidateRange(0, 65535)]
+    [int]$LidarrPort = 0,
+    [ValidateRange(0, 65535)]
+    [int]$ReadarrPort = 0,
+    [ValidateRange(0, 65535)]
+    [int]$WhisparrPort = 0,
 
     [string]$P2PBindInterface,
 
@@ -84,10 +101,89 @@ if ($Bundle -like '-*') {
 }
 $script:InstallerBoundParameters = $PSBoundParameters
 
-$AutoPortRangeStart = 54000
-$AutoPortRangeEnd = 59999
+$AutoPortRangeStart = 49152
+$AutoPortRangeEnd = 65535
 $NodeVersion = 'v24.15.0'
 $MinimumNodeMajor = 24
+$CoreServiceNames = @('emulebb')
+$ControllerServiceNames = @('emulebb', 'amutorrent')
+$DefaultArrAppNames = @('prowlarr', 'radarr', 'sonarr')
+$AllArrAppNames = @('prowlarr', 'radarr', 'sonarr', 'lidarr', 'readarr', 'whisparr')
+$SuiteServiceOrder = @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr', 'lidarr', 'readarr', 'whisparr')
+$LanguageOptions = @{
+    english = @{
+        DisplayName = 'English'
+        EmuleLanguageId = 9
+        EmuleLocale = 'en_US'
+        ArrUiLanguage = 'English'
+        ArrContentLanguage = 'English'
+    }
+    spanish = @{
+        DisplayName = 'Spanish'
+        EmuleLanguageId = 1034
+        EmuleLocale = 'es_ES_T'
+        ArrUiLanguage = 'Spanish'
+        ArrContentLanguage = 'Spanish'
+    }
+    italian = @{
+        DisplayName = 'Italian'
+        EmuleLanguageId = 16
+        EmuleLocale = 'it_IT'
+        ArrUiLanguage = 'Italian'
+        ArrContentLanguage = 'Italian'
+    }
+    portuguese = @{
+        DisplayName = 'Portuguese'
+        EmuleLanguageId = 2070
+        EmuleLocale = 'pt_PT'
+        ArrUiLanguage = 'Portuguese'
+        ArrContentLanguage = 'Portuguese'
+    }
+}
+$ArrAppMetadata = @{
+    prowlarr = @{
+        DisplayName = 'Prowlarr'
+        Exe = 'Prowlarr.exe'
+        ApiPath = 'api/v1'
+        DataDir = 'data\prowlarr'
+        MediaRoot = ''
+    }
+    radarr = @{
+        DisplayName = 'Radarr'
+        Exe = 'Radarr.exe'
+        ApiPath = 'api/v3'
+        DataDir = 'data\radarr'
+        MediaRoot = 'media\movies'
+    }
+    sonarr = @{
+        DisplayName = 'Sonarr'
+        Exe = 'Sonarr.exe'
+        ApiPath = 'api/v3'
+        DataDir = 'data\sonarr'
+        MediaRoot = 'media\series'
+    }
+    lidarr = @{
+        DisplayName = 'Lidarr'
+        Exe = 'Lidarr.exe'
+        ApiPath = 'api/v1'
+        DataDir = 'data\lidarr'
+        MediaRoot = 'media\music'
+    }
+    readarr = @{
+        DisplayName = 'Readarr'
+        Exe = 'Readarr.exe'
+        ApiPath = 'api/v1'
+        DataDir = 'data\readarr'
+        MediaRoot = 'media\books'
+    }
+    whisparr = @{
+        DisplayName = 'Whisparr'
+        Exe = 'Whisparr.exe'
+        ApiPath = 'api/v3'
+        DataDir = 'data\whisparr'
+        MediaRoot = 'media\whisparr'
+    }
+}
 $NodeArchives = @{
     x64 = @{
         FileName = 'node-v24.15.0-win-x64.zip'
@@ -122,6 +218,30 @@ $PinnedDependencies = @{
         Exe = 'Sonarr.exe'
         Url = 'https://github.com/Sonarr/Sonarr/releases/download/v4.0.17.2952/Sonarr.main.4.0.17.2952.win-x64.zip'
         Sha256 = '19a81e69dedd8d317b5fa8a1a9c48d63bc3b3f3ba87b84c94ff6d75b1803e419'
+    }
+    lidarr = @{
+        Repo = 'Lidarr/Lidarr'
+        Tag = 'v3.1.0.4875'
+        Pattern = 'windows(?:-core)?-x64\.zip$'
+        Exe = 'Lidarr.exe'
+        Url = 'https://github.com/Lidarr/Lidarr/releases/download/v3.1.0.4875/Lidarr.master.3.1.0.4875.windows-core-x64.zip'
+        Sha256 = '26f6da02a579aa84f49f2ececc27ad0d3a82760d3cd3b13fa4d99df7c6c12443'
+    }
+    readarr = @{
+        Repo = 'Readarr/Readarr'
+        Tag = 'v0.4.18.2805'
+        Pattern = 'windows(?:-core)?-x64\.zip$'
+        Exe = 'Readarr.exe'
+        Url = 'https://github.com/Readarr/Readarr/releases/download/v0.4.18.2805/Readarr.develop.0.4.18.2805.windows-core-x64.zip'
+        Sha256 = 'a0062093de475a588d1fc253488739be2d518b78f02849325a1392edb8e36eab'
+    }
+    whisparr = @{
+        Repo = 'Whisparr/Whisparr'
+        Tag = 'v2.2.0-release.108'
+        Pattern = 'win(?:dows)?(?:-core)?-x64\.zip$'
+        Exe = 'Whisparr.exe'
+        Url = 'https://github.com/Whisparr/Whisparr/releases/download/v2.2.0-release.108/Whisparr.2.2.0-release.108.win-x64.zip'
+        Sha256 = '7e90caa524c18bb6e8d63be2e1e3c79e1e06fa023e9db1568d6096deae83d9c7'
     }
 }
 
@@ -424,7 +544,7 @@ function Assert-ServiceClientHost {
 
 function Set-SuiteClientHosts {
     param([hashtable]$Config)
-    foreach ($serviceName in @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr')) {
+    foreach ($serviceName in @(Get-SuiteServiceNames -Config $Config)) {
         $service = $Config.services[$serviceName]
         $existing = ''
         if ($service.Contains('clientHost')) {
@@ -481,6 +601,8 @@ function Get-LocalPackageVersionFromZipName {
 
 function New-SuiteConfig {
     $controlBind = Resolve-OptionalValue -Value $ControlBindAddress -Default (Get-DefaultControlBindAddress)
+    $selectedApps = @(Resolve-SelectedApps -BundleName $Bundle -RequestedApps $Apps)
+    $languagePreference = Resolve-LanguagePreference -Value $Language
     $resolvedVersion = $Version
     if (-not $script:InstallerBoundParameters.ContainsKey('Version')) {
         $inferredVersion = Get-LocalPackageVersionFromZipName -ZipPath $EmulebbPackageZip -PackageName 'eMuleBB'
@@ -498,6 +620,16 @@ function New-SuiteConfig {
     $config = [ordered]@{
         schema = 'emulebb.suite-config.v1'
         bundle = $Bundle
+        selectedApps = $selectedApps
+        language = [ordered]@{
+            name = [string]$languagePreference.DisplayName
+            emuleLanguageId = [int]$languagePreference.EmuleLanguageId
+            emuleLocale = [string]$languagePreference.EmuleLocale
+            arrUiLanguage = [string]$languagePreference.ArrUiLanguage
+            arrContentLanguage = [string]$languagePreference.ArrContentLanguage
+            arrContentLanguageMode = 'prefer'
+        }
+        portBlockStart = $PortBlockStart
         version = $resolvedVersion
         platform = $Platform
         installKind = $InstallKind
@@ -535,6 +667,9 @@ function New-SuiteConfig {
             prowlarr = [ordered]@{ bindAddress = (Resolve-OptionalValue -Value $ProwlarrBindAddress -Default $controlBind); clientHost = ''; port = $ProwlarrPort; apiKey = '' }
             radarr = [ordered]@{ bindAddress = (Resolve-OptionalValue -Value $RadarrBindAddress -Default $controlBind); clientHost = ''; port = $RadarrPort; apiKey = '' }
             sonarr = [ordered]@{ bindAddress = (Resolve-OptionalValue -Value $SonarrBindAddress -Default $controlBind); clientHost = ''; port = $SonarrPort; apiKey = '' }
+            lidarr = [ordered]@{ bindAddress = (Resolve-OptionalValue -Value $LidarrBindAddress -Default $controlBind); clientHost = ''; port = $LidarrPort; apiKey = '' }
+            readarr = [ordered]@{ bindAddress = (Resolve-OptionalValue -Value $ReadarrBindAddress -Default $controlBind); clientHost = ''; port = $ReadarrPort; apiKey = '' }
+            whisparr = [ordered]@{ bindAddress = (Resolve-OptionalValue -Value $WhisparrBindAddress -Default $controlBind); clientHost = ''; port = $WhisparrPort; apiKey = '' }
         }
         p2p = [ordered]@{
             bindInterface = (Resolve-OptionalValue -Value $P2PBindInterface -Default '')
@@ -603,19 +738,92 @@ function Merge-Hashtable {
     }
 }
 
-function Get-SuiteServiceNames {
-    return @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr')
+function Normalize-AppName {
+    param([string]$Name)
+    $normalized = (Resolve-OptionalValue -Value $Name -Default '').ToLowerInvariant()
+    if ($normalized -eq 'emulebb' -or $normalized -eq 'core') { return 'emulebb' }
+    if ($normalized -eq 'amutorrent' -or $normalized -eq 'controller') { return 'amutorrent' }
+    if ($AllArrAppNames -contains $normalized) { return $normalized }
+    throw "Unknown suite app '$Name'. Valid apps are: emulebb, amutorrent, $($AllArrAppNames -join ', ')."
+}
+
+function Resolve-LanguagePreference {
+    param([string]$Value)
+    $key = (Resolve-OptionalValue -Value $Value -Default 'English').ToLowerInvariant()
+    if (-not $LanguageOptions.ContainsKey($key)) {
+        throw "Language must be English, Spanish, Italian, or Portuguese, not '$Value'."
+    }
+    return $LanguageOptions[$key]
 }
 
 function Get-BundleServiceNames {
     param([string]$BundleName)
     if ($BundleName -eq 'Core') {
-        return @('emulebb')
+        return $CoreServiceNames
     }
     if ($BundleName -eq 'Controller') {
-        return @('emulebb', 'amutorrent')
+        return $ControllerServiceNames
     }
-    return @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr')
+    return @($ControllerServiceNames + $DefaultArrAppNames)
+}
+
+function Resolve-SelectedApps {
+    param([string]$BundleName, [string[]]$RequestedApps)
+    $selected = New-Object 'System.Collections.Generic.List[string]'
+    foreach ($serviceName in @(Get-BundleServiceNames -BundleName $BundleName)) {
+        if (-not $selected.Contains($serviceName)) {
+            $selected.Add($serviceName)
+        }
+    }
+    if ($null -ne $RequestedApps -and @($RequestedApps).Count -gt 0) {
+        $selected.Clear()
+        foreach ($app in $RequestedApps) {
+            foreach ($part in ([string]$app -split ',')) {
+                if ([string]::IsNullOrWhiteSpace($part)) {
+                    continue
+                }
+                $normalized = Normalize-AppName -Name $part
+                if (-not $selected.Contains($normalized)) {
+                    $selected.Add($normalized)
+                }
+            }
+        }
+        if (-not $selected.Contains('emulebb')) {
+            $selected.Insert(0, 'emulebb')
+        }
+        if (@($selected | Where-Object { $AllArrAppNames -contains $_ }).Count -gt 0 -and -not $selected.Contains('amutorrent')) {
+            $selected.Insert(1, 'amutorrent')
+        }
+    }
+    if (@($selected | Where-Object { ($_ -ne 'prowlarr') -and ($AllArrAppNames -contains $_) }).Count -gt 0 -and -not $selected.Contains('prowlarr')) {
+        $insertAt = [Math]::Min($selected.Count, 2)
+        $selected.Insert($insertAt, 'prowlarr')
+    }
+    $ordered = @()
+    foreach ($serviceName in $SuiteServiceOrder) {
+        if ($selected.Contains($serviceName)) {
+            $ordered += $serviceName
+        }
+    }
+    return $ordered
+}
+
+function Get-SuiteServiceNames {
+    param([hashtable]$Config = $null)
+    if ($null -ne $Config -and $null -ne $Config.selectedApps) {
+        return @($Config.selectedApps)
+    }
+    return @($SuiteServiceOrder)
+}
+
+function Get-SelectedArrAppNames {
+    param([hashtable]$Config)
+    return @((Get-SuiteServiceNames -Config $Config) | Where-Object { $AllArrAppNames -contains $_ })
+}
+
+function Get-SelectedMediaArrAppNames {
+    param([hashtable]$Config)
+    return @((Get-SelectedArrAppNames -Config $Config) | Where-Object { $_ -ne 'prowlarr' })
 }
 
 function Get-ServiceDisplayName {
@@ -626,13 +834,21 @@ function Get-ServiceDisplayName {
         'prowlarr' { return 'Prowlarr' }
         'radarr' { return 'Radarr' }
         'sonarr' { return 'Sonarr' }
+        'lidarr' { return 'Lidarr' }
+        'readarr' { return 'Readarr' }
+        'whisparr' { return 'Whisparr' }
         default { return $ServiceName }
     }
 }
 
+function Get-InstallDescription {
+    param([string[]]$ServiceNames)
+    return (($ServiceNames | ForEach-Object { Get-ServiceDisplayName -ServiceName $_ }) -join ', ')
+}
+
 function Get-BundleInstallDescription {
     param([string]$BundleName)
-    return ((Get-BundleServiceNames -BundleName $BundleName | ForEach-Object { Get-ServiceDisplayName -ServiceName $_ }) -join ', ')
+    return (Get-InstallDescription -ServiceNames @(Get-BundleServiceNames -BundleName $BundleName))
 }
 
 function Get-ServicePortDisplayValue {
@@ -645,10 +861,10 @@ function Get-ServicePortDisplayValue {
 
 function Write-BundlePortPreview {
     param([hashtable]$Config)
-    $serviceNames = @(Get-BundleServiceNames -BundleName ([string]$Config.bundle))
+    $serviceNames = @(Get-SuiteServiceNames -Config $Config)
     Write-Host ''
     Write-Host ('Selected bundle: {0}' -f $Config.bundle) -ForegroundColor Cyan
-    Write-Host ('  Installs: {0}' -f (Get-BundleInstallDescription -BundleName ([string]$Config.bundle)))
+    Write-Host ('  Installs: {0}' -f (Get-InstallDescription -ServiceNames $serviceNames))
     Write-Host '  Service ports:'
     foreach ($serviceName in $serviceNames) {
         $service = $Config.services[$serviceName]
@@ -693,50 +909,71 @@ function Test-TcpPortAvailable {
 
 function Resolve-ServicePorts {
     param([hashtable]$Config)
-    $serviceNames = @(Get-SuiteServiceNames)
-    $explicitPorts = @{}
+    $serviceNames = @(Get-SuiteServiceNames -Config $Config)
+    if ($serviceNames.Count -eq 0) {
+        throw 'At least one suite service must be selected.'
+    }
+    $explicit = @()
     foreach ($serviceName in $serviceNames) {
-        $service = $Config.services[$serviceName]
-        $port = [int]$service.port
+        $port = [int]$Config.services[$serviceName].port
         if ($port -gt 0) {
-            if ($explicitPorts.ContainsKey($port)) {
-                throw "Duplicate configured service port $port for $($explicitPorts[$port]) and $serviceName."
-            }
-            if (-not (Test-TcpPortAvailable -BindAddress ([string]$service.bindAddress) -Port $port)) {
-                throw "Configured $serviceName port $port is not free on $($service.bindAddress)."
-            }
-            $explicitPorts[$port] = $serviceName
+            $explicit += $port
         }
     }
-
-    $autoServiceNames = @($serviceNames | Where-Object { [int]$Config.services[$_].port -le 0 })
-    if ($autoServiceNames.Count -eq 0) {
+    if ($explicit.Count -gt 0) {
+        if ($explicit.Count -ne $serviceNames.Count) {
+            throw 'Explicit service ports must be supplied for every selected service, or leave all selected service ports as 0 for automatic contiguous allocation.'
+        }
+        $basePort = [int]$Config.services[$serviceNames[0]].port
+        if ($basePort -lt $AutoPortRangeStart -or ($basePort + $serviceNames.Count - 1) -gt $AutoPortRangeEnd) {
+            throw "Explicit service port block must stay inside Dynamic/Private Ports $AutoPortRangeStart-$AutoPortRangeEnd."
+        }
+        for ($index = 0; $index -lt $serviceNames.Count; ++$index) {
+            $serviceName = $serviceNames[$index]
+            $expected = $basePort + $index
+            $actual = [int]$Config.services[$serviceName].port
+            if ($actual -ne $expected) {
+                throw "Explicit service ports must be a contiguous block in selected service order. Expected $serviceName on $expected, got $actual."
+            }
+            if (-not (Test-TcpPortAvailable -BindAddress ([string]$Config.services[$serviceName].bindAddress) -Port $actual)) {
+                throw "Configured $serviceName port $actual is not free on $($Config.services[$serviceName].bindAddress)."
+            }
+        }
+        $Config.portBlockStart = $basePort
         return
     }
 
-    for ($basePort = $AutoPortRangeStart; $basePort -le ($AutoPortRangeEnd - $autoServiceNames.Count + 1); ++$basePort) {
+    $startPort = [int]$Config.portBlockStart
+    if ($startPort -le 0) {
+        $startPort = $AutoPortRangeStart
+    }
+    if ($startPort -lt $AutoPortRangeStart -or ($startPort + $serviceNames.Count - 1) -gt $AutoPortRangeEnd) {
+        throw "PortBlockStart must allow a contiguous selected-service block inside Dynamic/Private Ports $AutoPortRangeStart-$AutoPortRangeEnd."
+    }
+    for ($basePort = $startPort; $basePort -le ($AutoPortRangeEnd - $serviceNames.Count + 1); ++$basePort) {
         $candidatePorts = @()
-        for ($offset = 0; $offset -lt $autoServiceNames.Count; ++$offset) {
+        for ($offset = 0; $offset -lt $serviceNames.Count; ++$offset) {
             $candidatePorts += ($basePort + $offset)
         }
         $available = $true
-        for ($index = 0; $index -lt $autoServiceNames.Count; ++$index) {
-            $serviceName = $autoServiceNames[$index]
+        for ($index = 0; $index -lt $serviceNames.Count; ++$index) {
+            $serviceName = $serviceNames[$index]
             $port = $candidatePorts[$index]
-            if ($explicitPorts.ContainsKey($port) -or -not (Test-TcpPortAvailable -BindAddress ([string]$Config.services[$serviceName].bindAddress) -Port $port)) {
+            if (-not (Test-TcpPortAvailable -BindAddress ([string]$Config.services[$serviceName].bindAddress) -Port $port)) {
                 $available = $false
                 break
             }
         }
         if ($available) {
-            for ($index = 0; $index -lt $autoServiceNames.Count; ++$index) {
-                $Config.services[$autoServiceNames[$index]].port = $candidatePorts[$index]
+            for ($index = 0; $index -lt $serviceNames.Count; ++$index) {
+                $Config.services[$serviceNames[$index]].port = $candidatePorts[$index]
             }
-            Write-Step "Selected service ports $($candidatePorts -join ', ') from free high-port range $AutoPortRangeStart-$AutoPortRangeEnd"
+            $Config.portBlockStart = $basePort
+            Write-Step "Selected contiguous service port block $basePort-$($basePort + $serviceNames.Count - 1) from Dynamic/Private Ports $AutoPortRangeStart-$AutoPortRangeEnd"
             return
         }
     }
-    throw "Could not find a free high-port range in $AutoPortRangeStart-$AutoPortRangeEnd for $($autoServiceNames.Count) service(s)."
+    throw "Could not find a free contiguous service port block in $AutoPortRangeStart-$AutoPortRangeEnd for $($serviceNames.Count) service(s)."
 }
 
 function Resolve-SuiteConfig {
@@ -751,6 +988,9 @@ function Resolve-SuiteConfig {
 
     foreach ($entry in @(
         @('Bundle', { param($c, $v) $c.bundle = $v }),
+        @('Apps', { param($c, $v) $c.selectedApps = @(Resolve-SelectedApps -BundleName ([string]$c.bundle) -RequestedApps $v) }),
+        @('Language', { param($c, $v) $pref = Resolve-LanguagePreference -Value $v; $c.language.name = [string]$pref.DisplayName; $c.language.emuleLanguageId = [int]$pref.EmuleLanguageId; $c.language.emuleLocale = [string]$pref.EmuleLocale; $c.language.arrUiLanguage = [string]$pref.ArrUiLanguage; $c.language.arrContentLanguage = [string]$pref.ArrContentLanguage; $c.language.arrContentLanguageMode = 'prefer' }),
+        @('PortBlockStart', { param($c, $v) $c.portBlockStart = [int]$v }),
         @('InstallRoot', { param($c, $v) $c.installRoot = $v }),
         @('Version', { param($c, $v) $c.version = $v }),
         @('Platform', { param($c, $v) $c.platform = $v }),
@@ -770,7 +1010,7 @@ function Resolve-SuiteConfig {
         @('EmulebbPackageFlavor', { param($c, $v) $c.emulebbPackageFlavor = $v }),
         @('ControlBindAddress', {
             param($c, $v)
-            foreach ($serviceName in @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr')) {
+            foreach ($serviceName in $SuiteServiceOrder) {
                 $c.services[$serviceName].bindAddress = $v
             }
         }),
@@ -779,11 +1019,17 @@ function Resolve-SuiteConfig {
         @('ProwlarrBindAddress', { param($c, $v) $c.services.prowlarr.bindAddress = $v }),
         @('RadarrBindAddress', { param($c, $v) $c.services.radarr.bindAddress = $v }),
         @('SonarrBindAddress', { param($c, $v) $c.services.sonarr.bindAddress = $v }),
+        @('LidarrBindAddress', { param($c, $v) $c.services.lidarr.bindAddress = $v }),
+        @('ReadarrBindAddress', { param($c, $v) $c.services.readarr.bindAddress = $v }),
+        @('WhisparrBindAddress', { param($c, $v) $c.services.whisparr.bindAddress = $v }),
         @('EmulebbPort', { param($c, $v) $c.services.emulebb.port = $v }),
         @('AmutorrentPort', { param($c, $v) $c.services.amutorrent.port = $v }),
         @('ProwlarrPort', { param($c, $v) $c.services.prowlarr.port = $v }),
         @('RadarrPort', { param($c, $v) $c.services.radarr.port = $v }),
         @('SonarrPort', { param($c, $v) $c.services.sonarr.port = $v }),
+        @('LidarrPort', { param($c, $v) $c.services.lidarr.port = $v }),
+        @('ReadarrPort', { param($c, $v) $c.services.readarr.port = $v }),
+        @('WhisparrPort', { param($c, $v) $c.services.whisparr.port = $v }),
         @('P2PBindInterface', { param($c, $v) $c.p2p.bindInterface = $v })
     )) {
         $name = [string]$entry[0]
@@ -793,6 +1039,40 @@ function Resolve-SuiteConfig {
     }
     if ($script:InstallerBoundParameters.ContainsKey('AllowRemoteServiceBind')) {
         $config.allowRemoteServiceBind = [bool]$AllowRemoteServiceBind
+    }
+    if ($null -eq $config.selectedApps -or @($config.selectedApps).Count -eq 0) {
+        $config.selectedApps = @(Resolve-SelectedApps -BundleName ([string]$config.bundle) -RequestedApps @())
+    }
+    foreach ($serviceName in $SuiteServiceOrder) {
+        if ($null -eq $config.services[$serviceName]) {
+            $config.services[$serviceName] = [ordered]@{ bindAddress = (Resolve-OptionalValue -Value $ControlBindAddress -Default (Get-DefaultControlBindAddress)); clientHost = ''; port = 0 }
+            if ($serviceName -eq 'emulebb' -or $AllArrAppNames -contains $serviceName) {
+                $config.services[$serviceName].apiKey = ''
+            }
+        }
+        if (-not $config.services[$serviceName].Contains('clientHost')) {
+            $config.services[$serviceName].clientHost = ''
+        }
+        if (($serviceName -eq 'emulebb' -or $AllArrAppNames -contains $serviceName) -and -not $config.services[$serviceName].Contains('apiKey')) {
+            $config.services[$serviceName].apiKey = ''
+        }
+    }
+    if (@($config.selectedApps | Where-Object { ($_ -ne 'prowlarr') -and ($AllArrAppNames -contains $_) }).Count -gt 0 -and @($config.selectedApps) -notcontains 'prowlarr') {
+        $config.selectedApps = @(Resolve-SelectedApps -BundleName ([string]$config.bundle) -RequestedApps @($config.selectedApps))
+    }
+    if ($null -eq $config.language) {
+        $pref = Resolve-LanguagePreference -Value 'English'
+        $config.language = [ordered]@{
+            name = [string]$pref.DisplayName
+            emuleLanguageId = [int]$pref.EmuleLanguageId
+            emuleLocale = [string]$pref.EmuleLocale
+            arrUiLanguage = [string]$pref.ArrUiLanguage
+            arrContentLanguage = [string]$pref.ArrContentLanguage
+            arrContentLanguageMode = 'prefer'
+        }
+    }
+    if ($null -eq $config.portBlockStart) {
+        $config.portBlockStart = 0
     }
     $config.emulebbExecutableName = Get-EmulebbExecutableNameForFlavor -PackageFlavor ([string]$config.emulebbPackageFlavor)
     Set-SuiteClientHosts -Config $config
@@ -856,6 +1136,65 @@ function Read-WizardChoice {
     }
 }
 
+function Read-WizardChecklist {
+    param([string]$Prompt, [string[]]$Items, [string[]]$Selected)
+    $selectedSet = @{}
+    foreach ($item in @($Selected)) {
+        $selectedSet[$item] = $true
+    }
+    while ($true) {
+        Write-Host ''
+        Write-Host $Prompt
+        for ($i = 0; $i -lt $Items.Count; $i++) {
+            $item = $Items[$i]
+            $mark = if ($selectedSet.ContainsKey($item) -and $selectedSet[$item]) { 'x' } else { ' ' }
+            Write-Host ("  {0}. [{1}] {2}" -f ($i + 1), $mark, (Get-ServiceDisplayName -ServiceName $item))
+        }
+        $raw = Read-Host 'Toggle numbers separated by commas, Enter=continue, B=back, Q=quit'
+        if ([string]::IsNullOrWhiteSpace($raw)) {
+            $result = @()
+            foreach ($item in $Items) {
+                if ($selectedSet.ContainsKey($item) -and $selectedSet[$item]) {
+                    $result += $item
+                }
+            }
+            return $result
+        }
+        if ($raw -match '^[Qq]$') {
+            throw 'Installer cancelled.'
+        }
+        if ($raw -match '^[Bb]$') {
+            return $null
+        }
+        foreach ($part in ($raw -split ',')) {
+            $index = 0
+            if (-not [int]::TryParse($part.Trim(), [ref]$index) -or $index -lt 1 -or $index -gt $Items.Count) {
+                Write-Host "Invalid checklist item: $part" -ForegroundColor Yellow
+                continue
+            }
+            $item = $Items[$index - 1]
+            if ($item -eq 'prowlarr' -and ($selectedSet.ContainsKey('radarr') -or $selectedSet.ContainsKey('sonarr') -or $selectedSet.ContainsKey('lidarr') -or $selectedSet.ContainsKey('readarr') -or $selectedSet.ContainsKey('whisparr'))) {
+                Write-Host 'Prowlarr stays selected while any media Arr app is selected.' -ForegroundColor Yellow
+                continue
+            }
+            if ($selectedSet.ContainsKey($item) -and $selectedSet[$item]) {
+                [void]$selectedSet.Remove($item)
+            } else {
+                $selectedSet[$item] = $true
+            }
+        }
+        $hasMediaArr = $false
+        foreach ($item in @('radarr', 'sonarr', 'lidarr', 'readarr', 'whisparr')) {
+            if ($selectedSet.ContainsKey($item) -and $selectedSet[$item]) {
+                $hasMediaArr = $true
+            }
+        }
+        if ($hasMediaArr) {
+            $selectedSet['prowlarr'] = $true
+        }
+    }
+}
+
 function Get-BindableInterfaceOptions {
     $options = @()
     foreach ($info in @(Get-LocalIPv4InterfaceInfos | Sort-Object InterfaceAlias, IPAddress)) {
@@ -881,7 +1220,7 @@ function Get-BindableInterfaceNames {
 function Invoke-InstallWizard {
     param([hashtable]$Config)
     $step = 0
-    while ($step -lt 6) {
+    while ($step -lt 7) {
         switch ($step) {
             0 {
                 $bundleChoices = @(
@@ -892,6 +1231,12 @@ function Invoke-InstallWizard {
                 $choice = Read-WizardChoice -Prompt 'Bundle' -Choices $bundleChoices -DefaultIndex (@('Full', 'Controller', 'Core').IndexOf([string]$Config.bundle))
                 if ($choice -lt 0) { $step = [Math]::Max(0, $step - 1); continue }
                 $Config.bundle = @('Full', 'Controller', 'Core')[$choice]
+                $Config.selectedApps = @(Resolve-SelectedApps -BundleName ([string]$Config.bundle) -RequestedApps @())
+                if ($Config.bundle -eq 'Full') {
+                    $selectedArr = Read-WizardChecklist -Prompt 'Arr apps' -Items $AllArrAppNames -Selected @(Get-SelectedArrAppNames -Config $Config)
+                    if ($null -eq $selectedArr) { $step = [Math]::Max(0, $step - 1); continue }
+                    $Config.selectedApps = @(Resolve-SelectedApps -BundleName ([string]$Config.bundle) -RequestedApps @($ControllerServiceNames + $selectedArr))
+                }
                 Write-BundlePortPreview -Config $Config
                 $Config.installRoot = Read-WizardValue -Prompt 'Install root' -Default $Config.installRoot
                 $step++
@@ -907,16 +1252,16 @@ function Invoke-InstallWizard {
                 }
                 if ($choice -lt 0) { $step--; continue }
                 if ($choice -eq 0) {
-                    foreach ($serviceName in @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr')) {
+                    foreach ($serviceName in @(Get-SuiteServiceNames -Config $Config)) {
                         $Config.services[$serviceName].bindAddress = $defaultBind
                     }
                 } elseif ($choice -eq 1) {
                     $bind = Read-WizardValue -Prompt 'Bind address for all control services' -Default $defaultBind
-                    foreach ($serviceName in @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr')) {
+                    foreach ($serviceName in @(Get-SuiteServiceNames -Config $Config)) {
                         $Config.services[$serviceName].bindAddress = $bind
                     }
                 } else {
-                    foreach ($serviceName in @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr')) {
+                    foreach ($serviceName in @(Get-SuiteServiceNames -Config $Config)) {
                         $Config.services[$serviceName].bindAddress = Read-WizardValue -Prompt "$serviceName bind address" -Default $Config.services[$serviceName].bindAddress
                     }
                 }
@@ -945,16 +1290,33 @@ function Invoke-InstallWizard {
             }
             3 {
                 Write-BundlePortPreview -Config $Config
-                $choice = Read-WizardChoice -Prompt 'Ports' -Choices @('Use defaults/current values', 'Edit service ports') -DefaultIndex 0
+                $choice = Read-WizardChoice -Prompt 'Ports' -Choices @('Auto-select contiguous Dynamic/Private port block', 'Choose block start') -DefaultIndex 0
                 if ($choice -lt 0) { $step--; continue }
                 if ($choice -eq 1) {
-                    foreach ($serviceName in @(Get-BundleServiceNames -BundleName ([string]$Config.bundle))) {
-                        $Config.services[$serviceName].port = Read-WizardPortValue -Prompt "$serviceName port" -Default ([int]$Config.services[$serviceName].port)
-                    }
+                    $Config.portBlockStart = Read-WizardPortValue -Prompt "Port block start ($AutoPortRangeStart-$AutoPortRangeEnd)" -Default ([int]$Config.portBlockStart)
+                } else {
+                    $Config.portBlockStart = 0
+                }
+                foreach ($serviceName in @(Get-SuiteServiceNames -Config $Config)) {
+                    $Config.services[$serviceName].port = 0
                 }
                 $step++
             }
             4 {
+                $languageNames = @('English', 'Spanish', 'Italian', 'Portuguese')
+                $defaultLanguageIndex = [Math]::Max(0, [Array]::IndexOf($languageNames, [string]$Config.language.name))
+                $choice = Read-WizardChoice -Prompt 'Language preference' -Choices $languageNames -DefaultIndex $defaultLanguageIndex
+                if ($choice -lt 0) { $step--; continue }
+                $pref = Resolve-LanguagePreference -Value $languageNames[$choice]
+                $Config.language.name = [string]$pref.DisplayName
+                $Config.language.emuleLanguageId = [int]$pref.EmuleLanguageId
+                $Config.language.emuleLocale = [string]$pref.EmuleLocale
+                $Config.language.arrUiLanguage = [string]$pref.ArrUiLanguage
+                $Config.language.arrContentLanguage = [string]$pref.ArrContentLanguage
+                $Config.language.arrContentLanguageMode = 'prefer'
+                $step++
+            }
+            5 {
                 if ([string]::IsNullOrWhiteSpace([string]$Config.dependencyManifest)) {
                     if ($Config.dependencyChannel -eq 'Latest') {
                         Write-Host 'Latest dependency releases require -DependencyManifest with exact URLs and SHA256 hashes. Using pinned dependency versions.' -ForegroundColor Yellow
@@ -970,7 +1332,7 @@ function Invoke-InstallWizard {
                 $Config.dependencyChannel = @('Pinned', 'Latest')[$choice]
                 $step++
             }
-            5 {
+            6 {
                 Write-ConfigSummary -Config $Config
                 $choice = Read-WizardChoice -Prompt 'Install plan' -Choices @('Install now', 'Back to edit', 'Quit') -DefaultIndex 0
                 if ($choice -eq 0) { return }
@@ -983,7 +1345,7 @@ function Invoke-InstallWizard {
 
 function Test-HasRemoteServiceBind {
     param([hashtable]$Config)
-    foreach ($serviceName in @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr')) {
+    foreach ($serviceName in @(Get-SuiteServiceNames -Config $Config)) {
         $address = [string]$Config.services[$serviceName].bindAddress
         if (-not (Test-LoopbackAddress -Address $address)) {
             return $true
@@ -997,10 +1359,11 @@ function Write-ConfigSummary {
     Write-Host ''
     Write-Host 'Install summary'
     Write-Host "  Bundle: $($Config.bundle)"
-    Write-Host ('  Installs: {0}' -f (Get-BundleInstallDescription -BundleName ([string]$Config.bundle)))
+    Write-Host ('  Installs: {0}' -f (Get-InstallDescription -ServiceNames @(Get-SuiteServiceNames -Config $Config)))
+    Write-Host "  Language: $($Config.language.name) (content language preference: prefer)"
     Write-Host "  Root: $($Config.installRoot)"
     Write-Host "  Version/platform: $($Config.version) / $($Config.platform)"
-    foreach ($serviceName in @(Get-BundleServiceNames -BundleName ([string]$Config.bundle))) {
+    foreach ($serviceName in @(Get-SuiteServiceNames -Config $Config)) {
         $service = $Config.services[$serviceName]
         $clientHostText = if ([string]::Equals([string]$service.clientHost, [string]$service.bindAddress, [StringComparison]::OrdinalIgnoreCase)) { '' } else { " (client URL host: $($service.clientHost))" }
         Write-Host ("  {0}: {1}:{2}{3}" -f $serviceName, $service.bindAddress, $service.port, $clientHostText)
@@ -1087,7 +1450,7 @@ function Assert-SuiteConfig {
     if (@('x64', 'ARM64') -notcontains $Config.platform) {
         throw "Platform must be x64 or ARM64: $($Config.platform)"
     }
-    if (($Config.bundle -eq 'Controller' -or $Config.bundle -eq 'Full') -and $Config.platform -ne 'x64') {
+    if (((@($Config.selectedApps) -contains 'amutorrent') -or @(Get-SelectedArrAppNames -Config $Config).Count -gt 0) -and $Config.platform -ne 'x64') {
         throw 'Controller and Full bundles are x64-only in v1 because aMuTorrent native node_modules are packaged for the selected Node architecture.'
     }
     if (@('standard', 'diagnostics') -notcontains $Config.emulebbPackageFlavor) {
@@ -1109,7 +1472,7 @@ function Assert-SuiteConfig {
     if ([string]::IsNullOrWhiteSpace($Config.credentials.username) -or $Config.credentials.username -notmatch '^[a-zA-Z0-9_]{3,32}$') {
         throw "SuiteUsername must be 3-32 characters and contain only letters, numbers, or underscores: $($Config.credentials.username)"
     }
-    foreach ($serviceName in @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr')) {
+    foreach ($serviceName in @(Get-SuiteServiceNames -Config $Config)) {
         $service = $Config.services[$serviceName]
         Assert-ServiceBindAddress -ServiceName $serviceName -Address $service.bindAddress -AllowRemote ([bool]$Config.allowRemoteServiceBind)
         Assert-Port -ServiceName $serviceName -Port ([int]$service.port)
@@ -1124,10 +1487,7 @@ function Assert-SuiteConfig {
         $Config.p2p.networkGuardAllowedCIDRs = ''
     }
     if (-not $DryRun -and -not $Force) {
-        foreach ($serviceName in @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr')) {
-            if (($Config.bundle -eq 'Core' -and $serviceName -ne 'emulebb') -or ($Config.bundle -eq 'Controller' -and @('prowlarr', 'radarr', 'sonarr') -contains $serviceName)) {
-                continue
-            }
+        foreach ($serviceName in @(Get-SuiteServiceNames -Config $Config)) {
             $service = $Config.services[$serviceName]
             if (-not (Test-PortAvailable -Address $service.bindAddress -Port ([int]$service.port))) {
                 throw "$serviceName port is not available on $($service.bindAddress):$($service.port)"
@@ -1342,7 +1702,7 @@ function Load-DependencyManifestPayload {
 }
 
 function Load-DependencyManifest {
-    param([object]$Payload, [string]$Channel)
+    param([object]$Payload, [string]$Channel, [string[]]$Names)
     if ($null -eq $Payload) {
         if ($Channel -eq 'Latest') {
             throw 'Latest dependency resolution requires -DependencyManifest entries with exact URLs and SHA256 hashes.'
@@ -1350,7 +1710,7 @@ function Load-DependencyManifest {
         return $PinnedDependencies
     }
     $result = @{}
-    foreach ($name in @('prowlarr', 'radarr', 'sonarr')) {
+    foreach ($name in $Names) {
         $item = $Payload.$name
         if ($null -eq $item) {
             throw "Dependency manifest is missing '$name'."
@@ -1549,7 +1909,7 @@ function ConvertTo-XmlText {
 }
 
 function Write-ArrConfig {
-    param([string]$Name, [int]$Port, [string]$BindAddress, [string]$ApiKey, [string]$Username, [string]$Password)
+    param([string]$Name, [int]$Port, [string]$BindAddress, [string]$ApiKey, [string]$Username, [string]$Password, [string]$Language)
     $dataDir = Join-Path (Join-Path $script:Root 'data') $Name
     if (-not $DryRun) {
         New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
@@ -1563,6 +1923,7 @@ function Write-ArrConfig {
             "  <BindAddress>$BindAddress</BindAddress>"
             '  <EnableSsl>False</EnableSsl>'
             "  <ApiKey>$ApiKey</ApiKey>"
+            "  <UILanguage>$Language</UILanguage>"
             '  <AuthenticationMethod>Forms</AuthenticationMethod>'
             '  <AuthenticationRequired>Enabled</AuthenticationRequired>'
             "  <Username>$safeUsername</Username>"
@@ -1584,6 +1945,7 @@ function New-DefaultEmulePreferencesText {
         "TempDir=$(Join-Path $script:Root 'downloads\temp')"
         'CreateCrashDump=2'
         'SaveLogToDisk=1'
+        "Language=$([int]$Config.language.emuleLanguageId)"
         "BindInterface=$p2pInterface"
         'BindAddr='
         'BlockNetworkWhenBindUnavailableAtStartup=0'
@@ -1696,6 +2058,7 @@ function Update-EmulePreferencesFile {
         [pscustomobject]@{ Section = 'eMule'; Key = 'TempDir'; Value = (Join-Path $script:Root 'downloads\temp') }
         [pscustomobject]@{ Section = 'eMule'; Key = 'CreateCrashDump'; Value = '2' }
         [pscustomobject]@{ Section = 'eMule'; Key = 'SaveLogToDisk'; Value = '1' }
+        [pscustomobject]@{ Section = 'eMule'; Key = 'Language'; Value = [string]([int]$Config.language.emuleLanguageId) }
         [pscustomobject]@{ Section = 'eMule'; Key = 'BindInterface'; Value = [string]$Config.p2p.bindInterface }
         [pscustomobject]@{ Section = 'eMule'; Key = 'BindAddr'; Value = '' }
         [pscustomobject]@{ Section = 'eMule'; Key = 'BlockNetworkWhenBindUnavailableAtStartup'; Value = '0' }
@@ -1759,14 +2122,8 @@ function Get-IniSections {
 }
 
 function Ensure-EmuleCategoryIni {
-    param([string]$ConfigDir)
+    param([string]$ConfigDir, [hashtable]$Config)
     $categoryPath = Join-Path $ConfigDir 'Category.ini'
-    $prowlarrIncoming = Join-Path $script:Root 'downloads\prowlarr'
-    $radarrIncoming = Join-Path $script:Root 'downloads\radarr'
-    $sonarrIncoming = Join-Path $script:Root 'downloads\sonarr'
-    New-Item -ItemType Directory -Force -Path $prowlarrIncoming | Out-Null
-    New-Item -ItemType Directory -Force -Path $radarrIncoming | Out-Null
-    New-Item -ItemType Directory -Force -Path $sonarrIncoming | Out-Null
 
     $text = if (Test-Path -LiteralPath $categoryPath) { Get-Content -Raw -LiteralPath $categoryPath } else { New-DefaultCategoryIniText }
     $sections = Get-IniSections -Text $text
@@ -1781,11 +2138,10 @@ function Ensure-EmuleCategoryIni {
     }
 
     $updates = New-Object 'System.Collections.Generic.List[object]'
-    foreach ($entry in @(
-        [pscustomobject]@{ Title = 'emulebb-prowlarr'; Incoming = $prowlarrIncoming },
-        [pscustomobject]@{ Title = 'emulebb-radarr'; Incoming = $radarrIncoming },
-        [pscustomobject]@{ Title = 'emulebb-sonarr'; Incoming = $sonarrIncoming }
-    )) {
+    foreach ($arrName in @(Get-SelectedArrAppNames -Config $Config)) {
+        $incoming = Join-Path $script:Root ("downloads\$arrName")
+        New-Item -ItemType Directory -Force -Path $incoming | Out-Null
+        $entry = [pscustomobject]@{ Title = "emulebb-$arrName"; Incoming = $incoming }
         $section = $null
         foreach ($sectionName in @($sections.Keys)) {
             if ($sectionName -notmatch '^Cat#\d+$') {
@@ -1851,8 +2207,8 @@ function Write-EmuleProfile {
         }
     }
     Update-EmulePreferencesFile -PreferencesPath $preferencesPath -Config $Config
-    if ([string]$Config.bundle -eq 'Full') {
-        Ensure-EmuleCategoryIni -ConfigDir $configDir
+    if (@(Get-SelectedArrAppNames -Config $Config).Count -gt 0) {
+        Ensure-EmuleCategoryIni -ConfigDir $configDir -Config $Config
     }
     return $importResult
 }
@@ -1963,6 +2319,8 @@ function Write-CredentialsFile {
     $lines.Add("Generated UTC: $([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))")
     $lines.Add("Install root: $script:Root")
     $lines.Add("Bundle: $($Config.bundle)")
+    $lines.Add('Selected apps: ' + (Get-InstallDescription -ServiceNames @(Get-SuiteServiceNames -Config $Config)))
+    $lines.Add("Language: $($Config.language.name)")
     $lines.Add('')
     $lines.Add('Suite web login')
     $lines.Add("Username: $($Config.credentials.username)")
@@ -1971,14 +2329,14 @@ function Write-CredentialsFile {
     $lines.Add('Services')
     $lines.Add("eMuleBB URL: $(Get-ServiceUrl -Service $Config.services.emulebb)")
     $lines.Add("eMuleBB API key: $($Config.services.emulebb.apiKey)")
-    if ([string]$Config.bundle -ne 'Core') {
+    if (@($Config.selectedApps) -contains 'amutorrent') {
         $lines.Add('')
         $lines.Add("aMuTorrent URL: $(Get-ServiceUrl -Service $Config.services.amutorrent)")
         $lines.Add("aMuTorrent username: $($Config.credentials.username)")
         $lines.Add("aMuTorrent password: $($Config.credentials.password)")
     }
-    if ([string]$Config.bundle -eq 'Full') {
-        foreach ($serviceName in @('prowlarr', 'radarr', 'sonarr')) {
+    if (@(Get-SelectedArrAppNames -Config $Config).Count -gt 0) {
+        foreach ($serviceName in @(Get-SelectedArrAppNames -Config $Config)) {
             $service = $Config.services[$serviceName]
             $lines.Add('')
             $lines.Add("$serviceName URL: $(Get-ServiceUrl -Service $service)")
@@ -1986,15 +2344,15 @@ function Write-CredentialsFile {
             $lines.Add("$serviceName web authentication: disabled by suite config; use the API key above for integrations.")
         }
         $lines.Add('')
-        $lines.Add('Radarr/Sonarr download client')
+        $lines.Add('Arr download client')
         $lines.Add('Name: eMuleBB Suite')
         $lines.Add('Username: emule')
         $lines.Add("Password: $($Config.services.emulebb.apiKey)")
     }
-    if ([string]$Config.bundle -eq 'Full') {
+    if (@(Get-SelectedArrAppNames -Config $Config).Count -gt 0) {
         $lines.Add('')
         $lines.Add('First-run setup')
-        $lines.Add('Run scripts\Initialize-Suite.ps1 once before adding movies or series if install-time startup was skipped. It starts the suite, registers aMuTorrent/Prowlarr/Radarr/Sonarr, and creates the Radarr/Sonarr root folders.')
+        $lines.Add('Run scripts\Initialize-Suite.ps1 once if install-time startup was skipped. It starts the suite, registers integrations, and creates selected Arr root folders.')
         $lines.Add('If a registration script asks for Action, press Enter to use the default Register option. Choose Unregister only when you are intentionally removing an integration.')
     }
     $lines.Add('')
@@ -2016,29 +2374,29 @@ function Write-CredentialsFile {
     )
     $cards.Add((New-ServiceCardHtml -Name 'eMuleBB' -Url (Get-ServiceUrl -Service $Config.services.emulebb) -Fields $emuleFields))
 
-    if ([string]$Config.bundle -ne 'Core') {
+    if (@($Config.selectedApps) -contains 'amutorrent') {
         $amutorrentFields = @(
             (New-CopyFieldHtml -Label 'Username' -Value ([string]$Config.credentials.username)),
             (New-CopyFieldHtml -Label 'Password' -Value ([string]$Config.credentials.password))
         )
         $cards.Add((New-ServiceCardHtml -Name 'aMuTorrent' -Url (Get-ServiceUrl -Service $Config.services.amutorrent) -Fields $amutorrentFields))
     }
-    if ([string]$Config.bundle -eq 'Full') {
-        foreach ($serviceName in @('prowlarr', 'radarr', 'sonarr')) {
+    if (@(Get-SelectedArrAppNames -Config $Config).Count -gt 0) {
+        foreach ($serviceName in @(Get-SelectedArrAppNames -Config $Config)) {
             $service = $Config.services[$serviceName]
             $arrFields = @(
                 (New-CopyFieldHtml -Label 'Username' -Value ([string]$Config.credentials.username)),
                 (New-CopyFieldHtml -Label 'Password' -Value ([string]$Config.credentials.password)),
                 (New-CopyFieldHtml -Label 'API key' -Value ([string]$service.apiKey))
             )
-            $cards.Add((New-ServiceCardHtml -Name $serviceName -Url (Get-ServiceUrl -Service $service) -Fields $arrFields))
+            $cards.Add((New-ServiceCardHtml -Name (Get-ServiceDisplayName -ServiceName $serviceName) -Url (Get-ServiceUrl -Service $service) -Fields $arrFields))
         }
         $downloadClientFields = @(
             (New-CopyFieldHtml -Label 'Name' -Value 'eMuleBB Suite'),
             (New-CopyFieldHtml -Label 'Username' -Value 'emule'),
             (New-CopyFieldHtml -Label 'Password' -Value ([string]$Config.services.emulebb.apiKey))
         )
-        $cards.Add((New-ServiceCardHtml -Name 'Radarr/Sonarr Download Client' -Url (Get-ServiceUrl -Service $Config.services.emulebb) -Fields $downloadClientFields))
+        $cards.Add((New-ServiceCardHtml -Name 'Arr Download Client' -Url (Get-ServiceUrl -Service $Config.services.emulebb) -Fields $downloadClientFields))
     }
 
     $generatedUtc = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
@@ -2046,6 +2404,8 @@ function Write-CredentialsFile {
     $safeBundle = ConvertTo-HtmlText -Value ([string]$Config.bundle)
     $safeVersion = ConvertTo-HtmlText -Value ([string]$Config.version)
     $safePlatform = ConvertTo-HtmlText -Value ([string]$Config.platform)
+    $safeLanguage = ConvertTo-HtmlText -Value ([string]$Config.language.name)
+    $safeApps = ConvertTo-HtmlText -Value (Get-InstallDescription -ServiceNames @(Get-SuiteServiceNames -Config $Config))
     $cardsHtml = ($cards -join "`r`n")
     $html = @"
 <!doctype html>
@@ -2074,11 +2434,11 @@ function Write-CredentialsFile {
 <body>
 <main>
   <h1>eMuleBB Suite Credentials</h1>
-  <p class="summary">Generated $generatedUtc. Bundle $safeBundle, version $safeVersion, platform $safePlatform. Install root: $safeRoot.</p>
+  <p class="summary">Generated $generatedUtc. Bundle $safeBundle, version $safeVersion, platform $safePlatform. Language $safeLanguage. Apps: $safeApps. Install root: $safeRoot.</p>
   <div class="grid">
 $cardsHtml
   </div>
-  <footer>Keep this file private. API keys and passwords are shown here for first-run setup and recovery. For Full installs, run scripts\Initialize-Suite.ps1 once before adding movies or series if install-time startup was skipped so Radarr/Sonarr root folders and suite registrations are created. If a registration script asks for Action, press Enter to use the default Register option; choose Unregister only when removing an integration.</footer>
+  <footer>Keep this file private. API keys and passwords are shown here for first-run setup and recovery. Run scripts\Initialize-Suite.ps1 once if install-time startup was skipped so selected Arr root folders and suite registrations are created. If a registration script asks for Action, press Enter to use the default Register option; choose Unregister only when removing an integration.</footer>
 </main>
 <script>
 document.addEventListener('click', async function (event) {
@@ -2109,811 +2469,31 @@ function Write-SuiteScripts {
     param([hashtable]$Config)
     $scriptsDir = Join-Path $script:Root 'scripts'
     if ($DryRun) {
-        Write-Step "Would write suite control scripts"
+        Write-Step "Would copy suite control scripts"
         return
     }
     New-Item -ItemType Directory -Force -Path $scriptsDir | Out-Null
-    $rootLiteral = $script:Root.Replace("'", "''")
-    $versionLiteral = ([string]$Config.version).Replace("'", "''")
-    $platformLiteral = ([string]$Config.platform).Replace("'", "''")
-$startEmuleBB = @"
-#Requires -Version 5.1
-`$ErrorActionPreference = 'Stop'
-`$Root = '$rootLiteral'
-function Read-SuiteConfig {
-    `$configPath = Join-Path `$Root 'manifests\suite-config.json'
-    if (-not (Test-Path -LiteralPath `$configPath)) {
-        throw "Suite config is missing: `$configPath. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to rebuild the suite config."
+    $sourceScriptsDir = Join-Path $script:Root 'apps\eMuleBB\scripts'
+    if (-not (Test-Path -LiteralPath $sourceScriptsDir -PathType Container)) {
+        throw "Installed eMuleBB package did not include scripts directory: $sourceScriptsDir"
     }
-    try {
-        `$config = Get-Content -Raw -LiteralPath `$configPath | ConvertFrom-Json
-    } catch {
-        throw "Suite config is not valid JSON: `$configPath. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to rebuild it. `$(`$_.Exception.Message)"
-    }
-    if (`$null -eq `$config -or `$null -eq `$config.PSObject.Properties['services']) {
-        throw "Suite config is incomplete: `$configPath. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to rebuild it."
-    }
-    return `$config
-}
-`$Config = Read-SuiteConfig
-`$EmuleExe = if ([string]::IsNullOrWhiteSpace([string]`$Config.emulebbExecutableName)) { 'emulebb.exe' } else { [string]`$Config.emulebbExecutableName }
-`$Emule = Join-Path (Join-Path `$Root 'apps\eMuleBB') `$EmuleExe
-function Test-EmuleRunning {
-    param([string]`$Path)
-    return [bool](Get-Process | Where-Object { `$_.Path -and [string]::Equals(`$_.Path, `$Path, [StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1)
-}
-if (-not (Test-Path -LiteralPath `$Emule)) {
-    throw "eMuleBB executable is missing: `$Emule. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to refresh suite files."
-}
-`$Existing = Get-Process | Where-Object { `$_.Path -and [string]::Equals(`$_.Path, `$Emule, [StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1
-if (`$Existing) {
-    Write-Host "eMuleBB is already running: PID `$(`$Existing.Id)"
-    return
-}
-try {
-    Write-Host "Starting eMuleBB: `$Emule"
-    Start-Process -FilePath `$Emule -ArgumentList @('-c', (Join-Path `$Root 'profiles\emulebb')) -ErrorAction Stop | Out-Null
-} catch {
-    throw "eMuleBB could not be started from `$Emule. Working directory: `$Root. Check `$Root\profiles\emulebb\logs and `$Root\profiles\emulebb\config\preferences.ini. `$(`$_.Exception.Message)"
-}
-Start-Sleep -Seconds 2
-if (-not (Test-EmuleRunning -Path `$Emule)) {
-    throw "eMuleBB did not stay running after launch from `$Emule. Check `$Root\profiles\emulebb\logs and `$Root\profiles\emulebb\config\preferences.ini."
-}
-"@
-    $startEmuleBB | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $scriptsDir 'Start-eMuleBB.ps1')
-$startSuite = @"
-#Requires -Version 5.1
-`$ErrorActionPreference = 'Stop'
-`$Root = '$rootLiteral'
-function Read-SuiteConfig {
-    `$configPath = Join-Path `$Root 'manifests\suite-config.json'
-    if (-not (Test-Path -LiteralPath `$configPath)) {
-        throw "Suite config is missing: `$configPath. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to rebuild the suite config."
-    }
-    try {
-        `$config = Get-Content -Raw -LiteralPath `$configPath | ConvertFrom-Json
-    } catch {
-        throw "Suite config is not valid JSON: `$configPath. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to rebuild it. `$(`$_.Exception.Message)"
-    }
-    if (`$null -eq `$config -or `$null -eq `$config.PSObject.Properties['services']) {
-        throw "Suite config is incomplete: `$configPath. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to rebuild it."
-    }
-    return `$config
-}
-`$Config = Read-SuiteConfig
-function Get-ServiceClientHost {
-    param([string]`$ServiceName, `$Service)
-    `$clientHost = [string]`$Service.clientHost
-    if ([string]::IsNullOrWhiteSpace(`$clientHost)) {
-        `$bindAddress = [string]`$Service.bindAddress
-        if (`$bindAddress -eq '0.0.0.0' -or `$bindAddress -eq '::') {
-            throw "Suite config is missing clientHost for `$ServiceName wildcard bind `$bindAddress. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force, or edit manifests\suite-config.json and set services.`$ServiceName.clientHost to a LAN/VPN IP."
+    foreach ($scriptName in @(
+        'Install-eMuleBBSuite.ps1',
+        'Initialize-Suite.ps1',
+        'Start-eMuleBB.ps1',
+        'Start-Suite.ps1',
+        'Stop-Suite.ps1',
+        'Get-SuiteStatus.ps1',
+        'Test-Suite.ps1',
+        'Update-Suite.ps1'
+    )) {
+        $source = Join-Path $sourceScriptsDir $scriptName
+        if (-not (Test-Path -LiteralPath $source)) {
+            throw "Installed eMuleBB package did not include scripts\$scriptName."
         }
-        return `$bindAddress
-    }
-    if (`$clientHost -eq '0.0.0.0' -or `$clientHost -eq '::') {
-        throw "Suite config clientHost for `$ServiceName cannot be a wildcard address: `$clientHost. Set services.`$ServiceName.clientHost to a concrete LAN/VPN IP, or explicit 127.0.0.1 for local-only use."
-    }
-    return `$clientHost
-}
-function Get-HttpErrorDetail {
-    param(`$Exception)
-    if (`$null -eq `$Exception -or `$null -eq `$Exception.Response) {
-        return ''
-    }
-    `$response = `$Exception.Response
-    `$status = 0
-    try { `$status = [int]`$response.StatusCode } catch { `$status = 0 }
-    `$statusText = if (`$status -gt 0) { "HTTP `$status" } else { 'HTTP request failed' }
-    try {
-        if (-not [string]::IsNullOrWhiteSpace([string]`$response.StatusDescription)) {
-            `$statusText = "`$statusText `$(`$response.StatusDescription)"
-        }
-    } catch {
-    }
-    `$detail = ''
-    try {
-        `$stream = `$response.GetResponseStream()
-        if (`$null -ne `$stream) {
-            `$reader = New-Object IO.StreamReader(`$stream)
-            try {
-                `$detail = `$reader.ReadToEnd()
-            } finally {
-                `$reader.Dispose()
-            }
-        }
-    } catch {
-    }
-    `$detail = ([string]`$detail -replace '\s+', ' ').Trim()
-    if (`$detail.Length -gt 1200) {
-        `$detail = `$detail.Substring(0, 1200) + '...'
-    }
-    if ([string]::IsNullOrWhiteSpace(`$detail)) {
-        return `$statusText
-    }
-    return "`${statusText}: `$detail"
-}
-function Get-ExceptionMessage {
-    param(`$Exception)
-    `$detail = Get-HttpErrorDetail -Exception `$Exception
-    if (-not [string]::IsNullOrWhiteSpace(`$detail)) {
-        return `$detail
-    }
-    return `$Exception.Message
-}
-function Invoke-SuiteJsonApi {
-    param([string]`$Name, [string]`$Uri, [string]`$Method = 'GET', [hashtable]`$Headers = @{}, `$Body = `$null)
-    try {
-        if (`$null -eq `$Body) {
-            return Invoke-RestMethod -Uri `$Uri -Method `$Method -Headers `$Headers -TimeoutSec 20 -ErrorAction Stop
-        }
-        return Invoke-RestMethod -Uri `$Uri -Method `$Method -Headers `$Headers -Body (`$Body | ConvertTo-Json -Depth 20) -ContentType 'application/json' -TimeoutSec 20 -ErrorAction Stop
-    } catch {
-        throw "`$Name failed at `$Uri. `$(Get-ExceptionMessage -Exception `$_.Exception)"
+        Copy-Item -Force -LiteralPath $source -Destination (Join-Path $scriptsDir $scriptName)
     }
 }
-function Get-ServiceTroubleshootingHint {
-    param([string]`$Name)
-    switch (`$Name) {
-        'eMuleBB' { return "Check `$Root\profiles\emulebb\logs and confirm eMuleBB is not blocked by Windows Firewall or Defender." }
-        'aMuTorrent' { return "Check `$Root\data\amutorrent\logs and confirm the pinned Node runtime exists under `$Root\runtime\node." }
-        'Prowlarr' { return "Check `$Root\data\prowlarr\logs and `$Root\data\prowlarr\config.xml." }
-        'Radarr' { return "Check `$Root\data\radarr\logs and `$Root\data\radarr\config.xml." }
-        'Sonarr' { return "Check `$Root\data\sonarr\logs and `$Root\data\sonarr\config.xml." }
-        default { return "Check the service log and config files under `$Root\data." }
-    }
-}
-function Wait-Json {
-    param([string]`$Name, [string]`$Uri, [hashtable]`$Headers = @{})
-    `$lastError = ''
-    for (`$i = 0; `$i -lt 90; `$i++) {
-        try {
-            Invoke-RestMethod -Uri `$Uri -Headers `$Headers -TimeoutSec 2 -ErrorAction Stop | Out-Null
-            return
-        } catch {
-            `$lastError = Get-ExceptionMessage -Exception `$_.Exception
-            Start-Sleep -Seconds 1
-        }
-    }
-    if ([string]::IsNullOrWhiteSpace(`$lastError)) {
-        throw "Timed out waiting for `$Name at `$Uri. `$(Get-ServiceTroubleshootingHint -Name `$Name)"
-    }
-    throw "Timed out waiting for `$Name at `$Uri. Last error: `$lastError. `$(Get-ServiceTroubleshootingHint -Name `$Name)"
-}
-function Set-ObjectProperty {
-    param(`$Target, [string]`$Name, `$Value)
-    if (`$null -ne `$Target.PSObject.Properties[`$Name]) {
-        `$Target.`$Name = `$Value
-    } else {
-        `$Target | Add-Member -NotePropertyName `$Name -NotePropertyValue `$Value -Force
-    }
-}
-function Get-ObjectPropertyValue {
-    param(`$Target, [string]`$Name, `$Default = `$null)
-    if (`$null -eq `$Target -or `$null -eq `$Target.PSObject.Properties[`$Name]) {
-        return `$Default
-    }
-    return `$Target.PSObject.Properties[`$Name].Value
-}
-function Get-OrCreateObjectProperty {
-    param(`$Target, [string]`$Name)
-    `$value = Get-ObjectPropertyValue -Target `$Target -Name `$Name -Default `$null
-    if (`$null -eq `$value) {
-        `$value = [pscustomobject]@{}
-        Set-ObjectProperty -Target `$Target -Name `$Name -Value `$value
-    }
-    return `$value
-}
-function Initialize-AmutorrentConfig {
-    param([string]`$DataDir, [string]`$BindAddress, [int]`$Port, [string]`$Username, [string]`$Password)
-    New-Item -ItemType Directory -Force -Path `$DataDir | Out-Null
-    `$configPath = Join-Path `$DataDir 'config.json'
-    if (Test-Path -LiteralPath `$configPath) {
-        try {
-            `$config = Get-Content -Raw -LiteralPath `$configPath | ConvertFrom-Json
-            if (`$null -eq `$config) { `$config = [pscustomobject]@{} }
-        } catch {
-            `$backupPath = "`$configPath.corrupt.`$(Get-Date -Format 'yyyyMMddHHmmss')"
-            Move-Item -Force -LiteralPath `$configPath -Destination `$backupPath
-            Write-Warning "aMuTorrent config was not valid JSON and was moved to `$backupPath. A fresh suite-managed config will be written."
-            `$config = [pscustomobject]@{}
-        }
-    } else {
-        `$config = [pscustomobject]@{}
-    }
-    if ([string]::IsNullOrWhiteSpace([string](Get-ObjectPropertyValue -Target `$config -Name 'version' -Default ''))) {
-        Set-ObjectProperty -Target `$config -Name 'version' -Value '1.0'
-    }
-    Set-ObjectProperty -Target `$config -Name 'firstRunCompleted' -Value `$true
-    `$server = Get-OrCreateObjectProperty -Target `$config -Name 'server'
-    Set-ObjectProperty -Target `$server -Name 'host' -Value `$BindAddress
-    Set-ObjectProperty -Target `$server -Name 'port' -Value `$Port
-    `$auth = Get-OrCreateObjectProperty -Target `$server -Name 'auth'
-    Set-ObjectProperty -Target `$auth -Name 'enabled' -Value `$true
-    Set-ObjectProperty -Target `$auth -Name 'adminUsername' -Value `$Username
-    Set-ObjectProperty -Target `$auth -Name 'password' -Value `$Password
-    `$directories = Get-OrCreateObjectProperty -Target `$config -Name 'directories'
-    Set-ObjectProperty -Target `$directories -Name 'data' -Value `$DataDir
-    Set-ObjectProperty -Target `$directories -Name 'logs' -Value (Join-Path `$DataDir 'logs')
-    Set-ObjectProperty -Target `$directories -Name 'geoip' -Value (Join-Path `$DataDir 'geoip')
-    if (`$null -eq `$config.PSObject.Properties['clients'] -or `$null -eq `$config.clients) {
-        Set-ObjectProperty -Target `$config -Name 'clients' -Value @()
-    }
-    `$config | ConvertTo-Json -Depth 40 | Set-Content -Encoding UTF8 -LiteralPath `$configPath
-    Write-Host "aMuTorrent bootstrap config ready: `$configPath"
-}
-function Set-ArrHostCredentials {
-    param([string]`$Name, [string]`$Url, [string]`$ApiPath, [string]`$ApiKey)
-    `$hostConfigUrl = "`$Url/`$ApiPath/config/host"
-    `$headers = @{ 'X-Api-Key' = `$ApiKey }
-    `$hostConfig = Invoke-SuiteJsonApi -Name "`$Name host config read" -Uri `$hostConfigUrl -Headers `$headers
-    Set-ObjectProperty -Target `$hostConfig -Name 'authenticationMethod' -Value 'forms'
-    Set-ObjectProperty -Target `$hostConfig -Name 'authenticationRequired' -Value 'enabled'
-    Set-ObjectProperty -Target `$hostConfig -Name 'username' -Value ([string]`$Config.credentials.username)
-    Set-ObjectProperty -Target `$hostConfig -Name 'password' -Value ([string]`$Config.credentials.password)
-    Set-ObjectProperty -Target `$hostConfig -Name 'passwordConfirmation' -Value ([string]`$Config.credentials.password)
-    [void](Invoke-SuiteJsonApi -Name "`$Name web login update" -Uri `$hostConfigUrl -Method 'PUT' -Headers `$headers -Body `$hostConfig)
-    Write-Host "`$Name web login configured."
-}
-function Ensure-ArrRootFolder {
-    param([string]`$Name, [string]`$Url, [string]`$ApiPath, [string]`$ApiKey, [string]`$Path)
-    New-Item -ItemType Directory -Force -Path `$Path | Out-Null
-    `$rootFolderUrl = "`$Url/`$ApiPath/rootfolder"
-    `$headers = @{ 'X-Api-Key' = `$ApiKey }
-    `$normalizedPath = [IO.Path]::GetFullPath(`$Path).TrimEnd('\')
-    function Test-ArrRootFolderPath {
-        param(`$RootFolder, [string]`$ExpectedPath)
-        if (`$null -eq `$RootFolder -or `$null -eq `$RootFolder.PSObject.Properties['path']) {
-            return `$false
-        }
-        return [string]::Equals(([IO.Path]::GetFullPath([string]`$RootFolder.path).TrimEnd('\')), `$ExpectedPath, [StringComparison]::OrdinalIgnoreCase)
-    }
-    function Test-ArrRootFolderCollection {
-        param(`$RootFolders, [string]`$ExpectedPath)
-        foreach (`$rootFolder in @(`$RootFolders)) {
-            if (Test-ArrRootFolderPath -RootFolder `$rootFolder -ExpectedPath `$ExpectedPath) {
-                return `$true
-            }
-        }
-        return `$false
-    }
-    `$rootFolders = @(Invoke-SuiteJsonApi -Name "`$Name root folder list" -Uri `$rootFolderUrl -Headers `$headers)
-    if (Test-ArrRootFolderCollection -RootFolders `$rootFolders -ExpectedPath `$normalizedPath) {
-        Write-Host "`$Name root folder already configured: `$normalizedPath"
-        return
-    }
-    try {
-        `$createdRootFolder = Invoke-SuiteJsonApi -Name "`$Name root folder create" -Uri `$rootFolderUrl -Method 'POST' -Headers `$headers -Body @{ path = `$normalizedPath }
-        if (Test-ArrRootFolderPath -RootFolder `$createdRootFolder -ExpectedPath `$normalizedPath) {
-            Write-Host "`$Name root folder configured: `$normalizedPath"
-            return
-        }
-    } catch {
-        `$message = Get-ExceptionMessage -Exception `$_.Exception
-        if (`$message -match 'already configured as a root folder') {
-            Write-Host "`$Name root folder already configured: `$normalizedPath"
-            return
-        }
-        throw
-    }
-    `$rootFolders = @(Invoke-SuiteJsonApi -Name "`$Name root folder verify" -Uri `$rootFolderUrl -Headers `$headers)
-    if (Test-ArrRootFolderCollection -RootFolders `$rootFolders -ExpectedPath `$normalizedPath) {
-        Write-Host "`$Name root folder configured: `$normalizedPath"
-        return
-    }
-    throw "`$Name did not persist root folder `$normalizedPath. Open `$Name, go to Settings > Media Management > Root Folders, and add that folder manually before adding movies or series."
-}
-function Ensure-EmuleBBAvailable {
-    & (Join-Path `$Root 'scripts\Start-eMuleBB.ps1')
-    Wait-Json -Name 'eMuleBB' -Uri "`$EmuleUrl/api/v1/app" -Headers @{ 'X-API-Key' = `$EmuleKey }
-}
-function Ensure-SuiteServicesAvailable {
-    Ensure-EmuleBBAvailable
-    if (`$Bundle -ne 'Core' -and -not [string]::IsNullOrWhiteSpace(`$AmutorrentUrl)) {
-        Wait-Json -Name 'aMuTorrent' -Uri "`$AmutorrentUrl/api/auth/status"
-    }
-    if (`$Bundle -eq 'Full') {
-        if (-not [string]::IsNullOrWhiteSpace(`$ProwlarrUrl) -and -not [string]::IsNullOrWhiteSpace(`$ProwlarrKey)) {
-            Wait-Json -Name 'Prowlarr' -Uri "`$ProwlarrUrl/api/v1/system/status" -Headers @{ 'X-Api-Key' = `$ProwlarrKey }
-        }
-        if (-not [string]::IsNullOrWhiteSpace(`$RadarrUrl) -and -not [string]::IsNullOrWhiteSpace(`$RadarrKey)) {
-            Wait-Json -Name 'Radarr' -Uri "`$RadarrUrl/api/v3/system/status" -Headers @{ 'X-Api-Key' = `$RadarrKey }
-        }
-        if (-not [string]::IsNullOrWhiteSpace(`$SonarrUrl) -and -not [string]::IsNullOrWhiteSpace(`$SonarrKey)) {
-            Wait-Json -Name 'Sonarr' -Uri "`$SonarrUrl/api/v3/system/status" -Headers @{ 'X-Api-Key' = `$SonarrKey }
-        }
-    }
-}
-function Invoke-StepWithRetry {
-    param([string]`$Name, [scriptblock]`$Operation)
-    for (`$attempt = 1; `$attempt -le 3; `$attempt++) {
-        try {
-            & `$Operation
-            return
-        } catch {
-            if (`$attempt -ge 3) { throw }
-            Write-Warning "`$Name failed on attempt `$(`$attempt): `$(`$_.Exception.Message)"
-            Ensure-SuiteServicesAvailable
-            Start-Sleep -Seconds 3
-        }
-    }
-}
-function Test-ArrIndexerSynced {
-    param([ValidateSet('Radarr','Sonarr')][string]`$Target)
-    try {
-        if (`$Target -eq 'Radarr') {
-            & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -VerifyIndexerOnly -Target Radarr -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -RadarrUrl `$RadarrUrl -RadarrApiKey `$RadarrKey -DownloadClientName 'eMuleBB Suite' -NoRetry *> `$null
-        } else {
-            & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -VerifyIndexerOnly -Target Sonarr -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -SonarrUrl `$SonarrUrl -SonarrApiKey `$SonarrKey -DownloadClientName 'eMuleBB Suite' -NoRetry *> `$null
-        }
-        return `$true
-    } catch {
-        return `$false
-    }
-}
-function Wait-ArrIndexersSynced {
-    `$deadline = [DateTime]::UtcNow.AddSeconds(30)
-    Write-Host 'Waiting up to 30 seconds for Prowlarr to sync Radarr and Sonarr indexers automatically...'
-    Write-Host 'Giving Prowlarr 6 seconds to start syncing before the first verification probe...'
-    Start-Sleep -Seconds 6
-    do {
-        `$radarrSynced = Test-ArrIndexerSynced -Target 'Radarr'
-        `$sonarrSynced = Test-ArrIndexerSynced -Target 'Sonarr'
-        if (`$radarrSynced -and `$sonarrSynced) {
-            Write-Host 'Prowlarr application sync completed automatically.' -ForegroundColor Green
-            return `$true
-        }
-        if ([DateTime]::UtcNow -lt `$deadline) {
-            Start-Sleep -Seconds 2
-        }
-    } while ([DateTime]::UtcNow -lt `$deadline)
-    return `$false
-}
-function Invoke-ProwlarrSyncIfNeeded {
-    if (Wait-ArrIndexersSynced) {
-        return
-    }
-    Write-Host 'Prowlarr application indexers were not synced within 30 seconds; triggering ApplicationIndexerSync.' -ForegroundColor Yellow
-    & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -SyncProwlarrOnly -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -NoRetry
-}
-function Test-ProcessRunning {
-    param([string]`$ExecutablePath, [string]`$CommandLineContains = '')
-    try {
-        foreach (`$process in @(Get-CimInstance Win32_Process -ErrorAction Stop)) {
-            if ([string]::IsNullOrWhiteSpace(`$process.ExecutablePath)) { continue }
-            if (-not [string]::Equals(`$process.ExecutablePath, `$ExecutablePath, [StringComparison]::OrdinalIgnoreCase)) { continue }
-            if ([string]::IsNullOrWhiteSpace(`$CommandLineContains) -or ([string]`$process.CommandLine).IndexOf(`$CommandLineContains, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
-                return `$true
-            }
-        }
-    } catch {
-        return [bool](Get-Process | Where-Object { `$_.Path -and [string]::Equals(`$_.Path, `$ExecutablePath, [StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1)
-    }
-    return `$false
-}
-function Start-ProcessIfMissing {
-    param([string]`$Name, [string]`$FilePath, [string[]]`$ArgumentList = @(), [string]`$WorkingDirectory = '', [string]`$CommandLineContains = '', [switch]`$Hidden)
-    if ([string]::IsNullOrWhiteSpace(`$FilePath)) {
-        throw "`$Name executable path is empty. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to refresh suite files."
-    }
-    if (-not (Test-Path -LiteralPath `$FilePath)) {
-        throw "`$Name executable is missing: `$FilePath"
-    }
-    if (Test-ProcessRunning -ExecutablePath `$FilePath -CommandLineContains `$CommandLineContains) {
-        Write-Host "`$Name is already running: `$FilePath"
-        return
-    }
-    if (-not [string]::IsNullOrWhiteSpace(`$WorkingDirectory) -and -not (Test-Path -LiteralPath `$WorkingDirectory -PathType Container)) {
-        throw "`$Name working directory is missing: `$WorkingDirectory. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to refresh suite files."
-    }
-    Write-Host "Starting `${Name}: `$FilePath"
-    `$startArgs = @{
-        FilePath = `$FilePath
-        ArgumentList = `$ArgumentList
-        ErrorAction = 'Stop'
-    }
-    if (-not [string]::IsNullOrWhiteSpace(`$WorkingDirectory)) { `$startArgs.WorkingDirectory = `$WorkingDirectory }
-    if (`$Hidden) { `$startArgs.WindowStyle = 'Hidden' }
-    try {
-        Start-Process @startArgs | Out-Null
-    } catch {
-        `$workDirText = if ([string]::IsNullOrWhiteSpace(`$WorkingDirectory)) { '<current PowerShell directory>' } else { `$WorkingDirectory }
-        throw "`$Name could not be started from `$FilePath. Working directory: `$workDirText. `$(Get-ServiceTroubleshootingHint -Name `$Name) `$(`$_.Exception.Message)"
-    }
-    Start-Sleep -Seconds 2
-    if (-not (Test-ProcessRunning -ExecutablePath `$FilePath -CommandLineContains `$CommandLineContains)) {
-        throw "`$Name did not stay running after launch from `$FilePath. `$(Get-ServiceTroubleshootingHint -Name `$Name)"
-    }
-}
-function Start-ArrHost {
-    param([string]`$Name, [string]`$DataDir)
-    `$appRoot = Join-Path `$Root ('apps\' + `$Name)
-    `$trayName = `$Name + '.exe'
-    `$exe = Get-ChildItem -Path `$appRoot -Filter `$trayName -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not `$exe) {
-        throw "Missing Windows tray host for `$Name under `$appRoot"
-    }
-    Start-ProcessIfMissing -Name `$Name -FilePath `$exe.FullName -ArgumentList @('/data=' + (Join-Path `$Root `$DataDir), '/nobrowser') -CommandLineContains (Join-Path `$Root `$DataDir)
-}
-function Invoke-EmuleBootstrapFileDownload {
-    param([string]`$Name, [string]`$Url, [string]`$Destination)
-    `$existingFile = Get-Item -LiteralPath `$Destination -ErrorAction SilentlyContinue
-    if (`$existingFile -and `$existingFile.Length -gt 0) {
-        Write-Host "`$Name bootstrap file already present: `$Destination"
-        return
-    }
-    New-Item -ItemType Directory -Force -Path ([IO.Path]::GetDirectoryName(`$Destination)) | Out-Null
-    `$tempPath = "`$Destination.download"
-    Remove-Item -Force -LiteralPath `$tempPath -ErrorAction SilentlyContinue
-    try {
-        Write-Host "Downloading `$Name bootstrap file: `$Url"
-        Invoke-WebRequest -UseBasicParsing -Uri `$Url -OutFile `$tempPath -ErrorAction Stop
-        `$downloaded = Get-Item -LiteralPath `$tempPath -ErrorAction Stop
-        if (`$downloaded.Length -le 0) {
-            throw "downloaded file was empty"
-        }
-        Move-Item -Force -LiteralPath `$tempPath -Destination `$Destination
-        Write-Host "`$Name bootstrap file ready: `$Destination"
-    } catch {
-        Remove-Item -Force -LiteralPath `$tempPath -ErrorAction SilentlyContinue
-        Write-Warning "Could not download `$Name bootstrap file from `$Url to `$Destination. eMuleBB can still start, but first public connection may require manual server/node updates. `$(`$_.Exception.Message)"
-    }
-}
-function Ensure-EmuleBootstrapFiles {
-    `$configDir = Join-Path `$Root 'profiles\emulebb\config'
-    Invoke-EmuleBootstrapFileDownload -Name 'server.met' -Url 'https://upd.emule-security.org/server.met' -Destination (Join-Path `$configDir 'server.met')
-    Invoke-EmuleBootstrapFileDownload -Name 'nodes.dat' -Url 'https://upd.emule-security.org/nodes.dat' -Destination (Join-Path `$configDir 'nodes.dat')
-}
-function Show-SuiteInitializationLaunchNotice {
-    Write-Host 'eMuleBB will launch now. Keep this PowerShell window open until suite initialization finishes.' -ForegroundColor Cyan
-    Write-Host 'Continuing in 6 seconds...'
-    Start-Sleep -Seconds 6
-}
-`$Bundle = [string]`$Config.bundle
-`$EmuleHost = Get-ServiceClientHost -ServiceName 'emulebb' -Service `$Config.services.emulebb
-`$EmulePort = [int]`$Config.services.emulebb.port
-`$EmuleUrl = "http://`$(`$EmuleHost):`$EmulePort"
-`$EmuleKey = [string]`$Config.services.emulebb.apiKey
-Ensure-EmuleBootstrapFiles
-Show-SuiteInitializationLaunchNotice
-& (Join-Path `$Root 'scripts\Start-eMuleBB.ps1')
-if (`$Bundle -eq 'Full') {
-    foreach (`$item in @(@('Prowlarr','data\prowlarr'), @('Radarr','data\radarr'), @('Sonarr','data\sonarr'))) {
-        Start-ArrHost -Name `$item[0] -DataDir `$item[1]
-    }
-}
-if (`$Bundle -ne 'Core') {
-    `$node = `$null
-    `$nodeMatch = Get-ChildItem -Path (Join-Path `$Root 'runtime\node') -Filter node.exe -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (`$nodeMatch) {
-        `$node = `$nodeMatch.FullName
-    } else {
-        `$node = (Get-Command node.exe -ErrorAction SilentlyContinue).Source
-    }
-    if ([string]::IsNullOrWhiteSpace(`$node) -or -not (Test-Path -LiteralPath `$node)) { throw 'Node is not available. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to install the pinned runtime.' }
-    `$amutorrentServer = Join-Path `$Root 'apps\aMuTorrent\server\server.js'
-    `$env:AMUTORRENT_DATA_DIR = Join-Path `$Root 'data\amutorrent'
-    Initialize-AmutorrentConfig -DataDir `$env:AMUTORRENT_DATA_DIR -BindAddress ([string]`$Config.services.amutorrent.bindAddress) -Port ([int]`$Config.services.amutorrent.port) -Username ([string]`$Config.credentials.username) -Password ([string]`$Config.credentials.password)
-    Start-ProcessIfMissing -Name 'aMuTorrent' -FilePath `$node -ArgumentList @(`$amutorrentServer) -WorkingDirectory (Join-Path `$Root 'apps\aMuTorrent') -CommandLineContains `$amutorrentServer -Hidden
-}
-Ensure-EmuleBBAvailable
-if (`$Bundle -ne 'Core') {
-    `$AmutorrentHost = Get-ServiceClientHost -ServiceName 'amutorrent' -Service `$Config.services.amutorrent
-    `$AmutorrentUrl = "http://`$(`$AmutorrentHost):`$([int]`$Config.services.amutorrent.port)"
-    Wait-Json -Name 'aMuTorrent' -Uri "`$AmutorrentUrl/api/auth/status"
-    Invoke-StepWithRetry -Name 'aMuTorrent registration' -Operation {
-        & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-aMuTorrent.ps1') -Action Register -AmutorrentUrl `$AmutorrentUrl -AmutorrentApiKey '' -AmutorrentUsername ([string]`$Config.credentials.username) -AmutorrentPassword ([string]`$Config.credentials.password) -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -InstanceName 'eMuleBB Suite' -InstanceId 'emulebb-suite' -NoRetry
-    }
-}
-if (`$Bundle -eq 'Full') {
-    `$ProwlarrUrl = "http://`$(Get-ServiceClientHost -ServiceName 'prowlarr' -Service `$Config.services.prowlarr):`$([int]`$Config.services.prowlarr.port)"
-    `$RadarrUrl = "http://`$(Get-ServiceClientHost -ServiceName 'radarr' -Service `$Config.services.radarr):`$([int]`$Config.services.radarr.port)"
-    `$SonarrUrl = "http://`$(Get-ServiceClientHost -ServiceName 'sonarr' -Service `$Config.services.sonarr):`$([int]`$Config.services.sonarr.port)"
-    `$ProwlarrKey = [string]`$Config.services.prowlarr.apiKey
-    `$RadarrKey = [string]`$Config.services.radarr.apiKey
-    `$SonarrKey = [string]`$Config.services.sonarr.apiKey
-    Wait-Json -Name 'Prowlarr' -Uri "`$ProwlarrUrl/api/v1/system/status" -Headers @{ 'X-Api-Key' = `$ProwlarrKey }
-    Wait-Json -Name 'Radarr' -Uri "`$RadarrUrl/api/v3/system/status" -Headers @{ 'X-Api-Key' = `$RadarrKey }
-    Wait-Json -Name 'Sonarr' -Uri "`$SonarrUrl/api/v3/system/status" -Headers @{ 'X-Api-Key' = `$SonarrKey }
-    Invoke-StepWithRetry -Name 'Arr web login setup' -Operation {
-        Set-ArrHostCredentials -Name 'Prowlarr' -Url `$ProwlarrUrl -ApiPath 'api/v1' -ApiKey `$ProwlarrKey
-        Set-ArrHostCredentials -Name 'Radarr' -Url `$RadarrUrl -ApiPath 'api/v3' -ApiKey `$RadarrKey
-        Set-ArrHostCredentials -Name 'Sonarr' -Url `$SonarrUrl -ApiPath 'api/v3' -ApiKey `$SonarrKey
-    }
-    Invoke-StepWithRetry -Name 'Radarr root folder setup' -Operation {
-        Ensure-ArrRootFolder -Name 'Radarr' -Url `$RadarrUrl -ApiPath 'api/v3' -ApiKey `$RadarrKey -Path (Join-Path `$Root 'media\movies')
-    }
-    Invoke-StepWithRetry -Name 'Sonarr root folder setup' -Operation {
-        Ensure-ArrRootFolder -Name 'Sonarr' -Url `$SonarrUrl -ApiPath 'api/v3' -ApiKey `$SonarrKey -Path (Join-Path `$Root 'media\series')
-    }
-    Invoke-StepWithRetry -Name 'Prowlarr registration' -Operation {
-        & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-Prowlarr.ps1') -Action Register -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -IndexerName 'eMuleBB Suite' -AppProfileName 'eMuleBB Suite' -NoRetry
-    }
-    Invoke-StepWithRetry -Name 'Radarr registration' -Operation {
-        & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -Action Register -Target Radarr -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -EmulebbCategoryPath (Join-Path `$Root 'downloads\radarr') -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -RadarrUrl `$RadarrUrl -RadarrApiKey `$RadarrKey -DownloadClientName 'eMuleBB Suite' -SkipProwlarrSync -NoRetry
-    }
-    Invoke-StepWithRetry -Name 'Sonarr registration' -Operation {
-        & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -Action Register -Target Sonarr -EmulebbBaseUrl `$EmuleUrl -EmulebbApiKey `$EmuleKey -EmulebbCategoryPath (Join-Path `$Root 'downloads\sonarr') -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -SonarrUrl `$SonarrUrl -SonarrApiKey `$SonarrKey -DownloadClientName 'eMuleBB Suite' -SkipProwlarrSync -NoRetry
-    }
-    Invoke-StepWithRetry -Name 'Prowlarr conditional application sync' -Operation {
-        Invoke-ProwlarrSyncIfNeeded
-    }
-    Invoke-StepWithRetry -Name 'Radarr indexer verification' -Operation {
-        & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -VerifyIndexerOnly -Target Radarr -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -RadarrUrl `$RadarrUrl -RadarrApiKey `$RadarrKey -DownloadClientName 'eMuleBB Suite' -NoRetry
-    }
-    Invoke-StepWithRetry -Name 'Sonarr indexer verification' -Operation {
-        & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -VerifyIndexerOnly -Target Sonarr -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -SonarrUrl `$SonarrUrl -SonarrApiKey `$SonarrKey -DownloadClientName 'eMuleBB Suite' -NoRetry
-    }
-}
-"@
-    $startSuite | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $scriptsDir 'Initialize-Suite.ps1')
-    $startSuite = @"
-#Requires -Version 5.1
-`$ErrorActionPreference = 'Stop'
-`$Root = '$rootLiteral'
-function Read-SuiteConfig {
-    `$configPath = Join-Path `$Root 'manifests\suite-config.json'
-    if (-not (Test-Path -LiteralPath `$configPath)) {
-        throw "Suite config is missing: `$configPath. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to rebuild the suite config."
-    }
-    try {
-        `$config = Get-Content -Raw -LiteralPath `$configPath | ConvertFrom-Json
-    } catch {
-        throw "Suite config is not valid JSON: `$configPath. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to rebuild it. `$(`$_.Exception.Message)"
-    }
-    if (`$null -eq `$config -or `$null -eq `$config.PSObject.Properties['services']) {
-        throw "Suite config is incomplete: `$configPath. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to rebuild it."
-    }
-    return `$config
-}
-`$Config = Read-SuiteConfig
-function Get-ServiceTroubleshootingHint {
-    param([string]`$Name)
-    switch (`$Name) {
-        'eMuleBB' { return "Check `$Root\profiles\emulebb\logs and confirm eMuleBB is not blocked by Windows Firewall or Defender." }
-        'aMuTorrent' { return "Check `$Root\data\amutorrent\logs and confirm the pinned Node runtime exists under `$Root\runtime\node." }
-        'Prowlarr' { return "Check `$Root\data\prowlarr\logs and `$Root\data\prowlarr\config.xml." }
-        'Radarr' { return "Check `$Root\data\radarr\logs and `$Root\data\radarr\config.xml." }
-        'Sonarr' { return "Check `$Root\data\sonarr\logs and `$Root\data\sonarr\config.xml." }
-        default { return "Check the service log and config files under `$Root\data." }
-    }
-}
-function Test-ProcessRunning {
-    param([string]`$ExecutablePath, [string]`$CommandLineContains = '')
-    try {
-        foreach (`$process in @(Get-CimInstance Win32_Process -ErrorAction Stop)) {
-            if ([string]::IsNullOrWhiteSpace(`$process.ExecutablePath)) { continue }
-            if (-not [string]::Equals(`$process.ExecutablePath, `$ExecutablePath, [StringComparison]::OrdinalIgnoreCase)) { continue }
-            if ([string]::IsNullOrWhiteSpace(`$CommandLineContains) -or ([string]`$process.CommandLine).IndexOf(`$CommandLineContains, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
-                return `$true
-            }
-        }
-    } catch {
-        return [bool](Get-Process | Where-Object { `$_.Path -and [string]::Equals(`$_.Path, `$ExecutablePath, [StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1)
-    }
-    return `$false
-}
-function Start-ProcessIfMissing {
-    param([string]`$Name, [string]`$FilePath, [string[]]`$ArgumentList = @(), [string]`$WorkingDirectory = '', [string]`$CommandLineContains = '', [switch]`$Hidden)
-    if ([string]::IsNullOrWhiteSpace(`$FilePath)) {
-        throw "`$Name executable path is empty. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to refresh suite files."
-    }
-    if (-not (Test-Path -LiteralPath `$FilePath)) {
-        throw "`$Name executable is missing: `$FilePath"
-    }
-    if (Test-ProcessRunning -ExecutablePath `$FilePath -CommandLineContains `$CommandLineContains) {
-        Write-Host "`$Name is already running: `$FilePath"
-        return
-    }
-    if (-not [string]::IsNullOrWhiteSpace(`$WorkingDirectory) -and -not (Test-Path -LiteralPath `$WorkingDirectory -PathType Container)) {
-        throw "`$Name working directory is missing: `$WorkingDirectory. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to refresh suite files."
-    }
-    Write-Host "Starting `${Name}: `$FilePath"
-    `$startArgs = @{
-        FilePath = `$FilePath
-        ArgumentList = `$ArgumentList
-        ErrorAction = 'Stop'
-    }
-    if (-not [string]::IsNullOrWhiteSpace(`$WorkingDirectory)) { `$startArgs.WorkingDirectory = `$WorkingDirectory }
-    if (`$Hidden) { `$startArgs.WindowStyle = 'Hidden' }
-    try {
-        Start-Process @startArgs | Out-Null
-    } catch {
-        `$workDirText = if ([string]::IsNullOrWhiteSpace(`$WorkingDirectory)) { '<current PowerShell directory>' } else { `$WorkingDirectory }
-        throw "`$Name could not be started from `$FilePath. Working directory: `$workDirText. `$(Get-ServiceTroubleshootingHint -Name `$Name) `$(`$_.Exception.Message)"
-    }
-    Start-Sleep -Seconds 2
-    if (-not (Test-ProcessRunning -ExecutablePath `$FilePath -CommandLineContains `$CommandLineContains)) {
-        throw "`$Name did not stay running after launch from `$FilePath. `$(Get-ServiceTroubleshootingHint -Name `$Name)"
-    }
-}
-function Start-ArrHost {
-    param([string]`$Name, [string]`$DataDir)
-    `$appRoot = Join-Path `$Root ('apps\' + `$Name)
-    `$trayName = `$Name + '.exe'
-    `$exe = Get-ChildItem -Path `$appRoot -Filter `$trayName -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not `$exe) {
-        throw "Missing Windows tray host for `$Name under `$appRoot"
-    }
-    Start-ProcessIfMissing -Name `$Name -FilePath `$exe.FullName -ArgumentList @('/data=' + (Join-Path `$Root `$DataDir), '/nobrowser') -CommandLineContains (Join-Path `$Root `$DataDir)
-}
-`$Bundle = [string]`$Config.bundle
-& (Join-Path `$Root 'scripts\Start-eMuleBB.ps1')
-if (`$Bundle -eq 'Full') {
-    foreach (`$item in @(@('Prowlarr','data\prowlarr'), @('Radarr','data\radarr'), @('Sonarr','data\sonarr'))) {
-        Start-ArrHost -Name `$item[0] -DataDir `$item[1]
-    }
-}
-if (`$Bundle -ne 'Core') {
-    `$node = `$null
-    `$nodeMatch = Get-ChildItem -Path (Join-Path `$Root 'runtime\node') -Filter node.exe -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (`$nodeMatch) {
-        `$node = `$nodeMatch.FullName
-    } else {
-        `$node = (Get-Command node.exe -ErrorAction SilentlyContinue).Source
-    }
-    if ([string]::IsNullOrWhiteSpace(`$node) -or -not (Test-Path -LiteralPath `$node)) { throw 'Node is not available. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to install the pinned runtime.' }
-    `$amutorrentServer = Join-Path `$Root 'apps\aMuTorrent\server\server.js'
-    `$env:AMUTORRENT_DATA_DIR = Join-Path `$Root 'data\amutorrent'
-    `$amutorrentConfig = Join-Path `$env:AMUTORRENT_DATA_DIR 'config.json'
-    if (-not (Test-Path -LiteralPath `$amutorrentConfig)) {
-        throw "aMuTorrent config is missing: `$amutorrentConfig. Run scripts\Initialize-Suite.ps1 once, or rerun scripts\Install-eMuleBBSuite.ps1 with -Force."
-    }
-    Start-ProcessIfMissing -Name 'aMuTorrent' -FilePath `$node -ArgumentList @(`$amutorrentServer) -WorkingDirectory (Join-Path `$Root 'apps\aMuTorrent') -CommandLineContains `$amutorrentServer -Hidden
-}
-"@
-    $startSuite | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $scriptsDir 'Start-Suite.ps1')
-    @"
-#Requires -Version 5.1
-`$ErrorActionPreference = 'Stop'
-`$Root = '$rootLiteral'
-`$ConfigPath = Join-Path `$Root 'manifests\suite-config.json'
-`$EmuleExeName = 'emulebb.exe'
-if (Test-Path -LiteralPath `$ConfigPath) {
-    try {
-        `$Config = Get-Content -Raw -LiteralPath `$ConfigPath | ConvertFrom-Json
-        if (-not [string]::IsNullOrWhiteSpace([string]`$Config.emulebbExecutableName)) {
-            `$EmuleExeName = [string]`$Config.emulebbExecutableName
-        }
-    } catch {
-        Write-Warning "Could not read `$ConfigPath. Using default eMuleBB executable name. `$(`$_.Exception.Message)"
-    }
-}
-`$amutorrentServer = Join-Path `$Root 'apps\aMuTorrent\server\server.js'
-function Get-FirstSuiteExecutable {
-    param([string]`$RelativeRoot, [string]`$FileName)
-    `$appRoot = Join-Path `$Root `$RelativeRoot
-    `$match = Get-ChildItem -Path `$appRoot -Filter `$FileName -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (`$match) { return `$match.FullName }
-    return Join-Path `$appRoot `$FileName
-}
-`$serviceExecutables = @(
-    (Join-Path (Join-Path `$Root 'apps\eMuleBB') `$EmuleExeName),
-    (Get-FirstSuiteExecutable -RelativeRoot 'apps\Prowlarr' -FileName 'Prowlarr.exe'),
-    (Get-FirstSuiteExecutable -RelativeRoot 'apps\Radarr' -FileName 'Radarr.exe'),
-    (Get-FirstSuiteExecutable -RelativeRoot 'apps\Sonarr' -FileName 'Sonarr.exe')
-)
-function Test-SuiteProcess {
-    param(`$Process)
-    `$executablePath = [string]`$Process.ExecutablePath
-    `$commandLine = [string]`$Process.CommandLine
-    if (`$Process.Name -eq 'node.exe' -and `$commandLine.IndexOf(`$amutorrentServer, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
-        return `$true
-    }
-    if ([string]::IsNullOrWhiteSpace(`$executablePath)) {
-        return `$false
-    }
-    foreach (`$serviceExecutable in `$serviceExecutables) {
-        if ([string]::Equals(`$executablePath, `$serviceExecutable, [StringComparison]::OrdinalIgnoreCase)) {
-            return `$true
-        }
-    }
-    return `$false
-}
-`$processes = @(Get-CimInstance Win32_Process | Where-Object { Test-SuiteProcess -Process `$_ })
-if (`$processes.Count -eq 0) {
-    Write-Host 'No eMuleBB Suite processes are running.'
-    return
-}
-foreach (`$process in `$processes) {
-    `$label = if ([string]::IsNullOrWhiteSpace([string]`$process.ExecutablePath)) { [string]`$process.Name } else { [string]`$process.ExecutablePath }
-    Write-Host ("Stopping {0} (PID {1})" -f `$label, `$process.ProcessId)
-    try {
-        Stop-Process -Id `$process.ProcessId -Force -ErrorAction Stop
-    } catch {
-        Write-Warning "Could not stop PID `$(`$process.ProcessId): `$(`$_.Exception.Message)"
-    }
-}
-Write-Host 'eMuleBB Suite stop request completed.'
-"@ | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $scriptsDir 'Stop-Suite.ps1')
-    @"
-#Requires -Version 5.1
-`$ErrorActionPreference = 'Stop'
-`$Root = '$rootLiteral'
-function Read-SuiteConfig {
-    `$configPath = Join-Path `$Root 'manifests\suite-config.json'
-    if (-not (Test-Path -LiteralPath `$configPath)) {
-        throw "Suite config is missing: `$configPath. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to rebuild the suite config."
-    }
-    try {
-        `$config = Get-Content -Raw -LiteralPath `$configPath | ConvertFrom-Json
-    } catch {
-        throw "Suite config is not valid JSON: `$configPath. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to rebuild it. `$(`$_.Exception.Message)"
-    }
-    if (`$null -eq `$config -or `$null -eq `$config.PSObject.Properties['services']) {
-        throw "Suite config is incomplete: `$configPath. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to rebuild it."
-    }
-    return `$config
-}
-`$Config = Read-SuiteConfig
-Write-Host "Suite root: `$Root"
-Write-Host "Bundle: `$(`$Config.bundle)"
-foreach (`$name in @('emulebb','amutorrent','prowlarr','radarr','sonarr')) {
-    `$service = `$Config.services.`$name
-    Write-Host ("{0}: {1}:{2}" -f `$name, `$service.bindAddress, `$service.port)
-}
-`$amutorrentServer = Join-Path `$Root 'apps\aMuTorrent\server\server.js'
-`$emuleExeName = if ([string]::IsNullOrWhiteSpace([string]`$Config.emulebbExecutableName)) { 'emulebb.exe' } else { [string]`$Config.emulebbExecutableName }
-function Get-FirstSuiteExecutable {
-    param([string]`$RelativeRoot, [string]`$FileName)
-    `$appRoot = Join-Path `$Root `$RelativeRoot
-    `$match = Get-ChildItem -Path `$appRoot -Filter `$FileName -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (`$match) { return `$match.FullName }
-    return Join-Path `$appRoot `$FileName
-}
-`$serviceExecutables = @(
-    (Join-Path (Join-Path `$Root 'apps\eMuleBB') `$emuleExeName),
-    (Get-FirstSuiteExecutable -RelativeRoot 'apps\Prowlarr' -FileName 'Prowlarr.exe'),
-    (Get-FirstSuiteExecutable -RelativeRoot 'apps\Radarr' -FileName 'Radarr.exe'),
-    (Get-FirstSuiteExecutable -RelativeRoot 'apps\Sonarr' -FileName 'Sonarr.exe')
-)
-function Test-SuiteProcess {
-    param(`$Process)
-    `$executablePath = [string]`$Process.ExecutablePath
-    `$commandLine = [string]`$Process.CommandLine
-    if (`$Process.Name -eq 'node.exe' -and `$commandLine.IndexOf(`$amutorrentServer, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
-        return `$true
-    }
-    if ([string]::IsNullOrWhiteSpace(`$executablePath)) {
-        return `$false
-    }
-    foreach (`$serviceExecutable in `$serviceExecutables) {
-        if ([string]::Equals(`$executablePath, `$serviceExecutable, [StringComparison]::OrdinalIgnoreCase)) {
-            return `$true
-        }
-    }
-    return `$false
-}
-`$processes = @(Get-CimInstance Win32_Process | Where-Object { Test-SuiteProcess -Process `$_ } | Select-Object ProcessId, Name, ExecutablePath, CommandLine)
-if (`$processes.Count -eq 0) {
-    Write-Host 'No eMuleBB Suite processes are running.'
-} else {
-    `$processes
-}
-"@ | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $scriptsDir 'Get-SuiteStatus.ps1')
-    @"
-#Requires -Version 5.1
-`$ErrorActionPreference = 'Stop'
-`$Root = '$rootLiteral'
-Write-Host 'Suite root: $rootLiteral'
-Write-Host 'Config: ' (Join-Path '$rootLiteral' 'manifests\suite-config.json')
-Write-Host 'Manual reconfiguration: edit manifests\suite-config.json, profiles\emulebb\config\preferences.ini, and Arr config.xml files consistently.'
-& (Join-Path '$rootLiteral' 'scripts\Get-SuiteStatus.ps1')
-"@ | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $scriptsDir 'Test-Suite.ps1')
-    @"
-#Requires -Version 5.1
-`$ErrorActionPreference = 'Stop'
-& (Join-Path '$rootLiteral' 'scripts\Stop-Suite.ps1')
-& (Join-Path '$rootLiteral' 'scripts\Install-eMuleBBSuite.ps1') -ConfigFile (Join-Path '$rootLiteral' 'manifests\suite-config.json') -NonInteractive -Force -Version '$versionLiteral' -Platform '$platformLiteral'
-"@ | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $scriptsDir 'Update-Suite.ps1')
-    $packagedInstaller = Join-Path $script:Root 'apps\eMuleBB\scripts\Install-eMuleBBSuite.ps1'
-    if (-not (Test-Path -LiteralPath $packagedInstaller)) {
-        throw "Installed eMuleBB package did not include scripts\Install-eMuleBBSuite.ps1."
-    }
-    Copy-Item -Force -LiteralPath $packagedInstaller -Destination (Join-Path $scriptsDir 'Install-eMuleBBSuite.ps1')
-}
-
 function Write-InstallManifest {
     param([hashtable]$Config, [hashtable]$ProfileImport, [hashtable]$Symbols)
     if ($DryRun) {
@@ -2921,10 +2501,29 @@ function Write-InstallManifest {
     }
     $manifestDir = Join-Path $script:Root 'manifests'
     New-Item -ItemType Directory -Force -Path $manifestDir | Out-Null
+    $serviceManifest = @{}
+    foreach ($serviceName in @(Get-SuiteServiceNames -Config $Config)) {
+        $service = $Config.services[$serviceName]
+        $entry = @{ bindAddress = $service.bindAddress; clientHost = $service.clientHost; port = $service.port }
+        if ($service.PSObject.Properties['apiKey'] -or ($service -is [System.Collections.IDictionary] -and $service.Contains('apiKey'))) {
+            $entry.apiKeyPresent = -not [string]::IsNullOrWhiteSpace($service.apiKey)
+        }
+        $serviceManifest[$serviceName] = $entry
+    }
     @{
         schema = 'emulebb.suite-install.v1'
         installedAtUtc = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
         bundle = $Config.bundle
+        selectedApps = @($Config.selectedApps)
+        language = @{
+            name = $Config.language.name
+            emuleLanguageId = $Config.language.emuleLanguageId
+            emuleLocale = $Config.language.emuleLocale
+            arrUiLanguage = $Config.language.arrUiLanguage
+            arrContentLanguage = $Config.language.arrContentLanguage
+            arrContentLanguageMode = $Config.language.arrContentLanguageMode
+        }
+        portBlockStart = $Config.portBlockStart
         version = $Config.version
         platform = $Config.platform
         installKind = $Config.installKind
@@ -2933,13 +2532,7 @@ function Write-InstallManifest {
         emulebbExecutableName = $Config.emulebbExecutableName
         profileImport = $ProfileImport
         symbols = $Symbols
-        services = @{
-            emulebb = @{ bindAddress = $Config.services.emulebb.bindAddress; clientHost = $Config.services.emulebb.clientHost; port = $Config.services.emulebb.port; apiKeyPresent = -not [string]::IsNullOrWhiteSpace($Config.services.emulebb.apiKey) }
-            amutorrent = @{ bindAddress = $Config.services.amutorrent.bindAddress; clientHost = $Config.services.amutorrent.clientHost; port = $Config.services.amutorrent.port }
-            prowlarr = @{ bindAddress = $Config.services.prowlarr.bindAddress; clientHost = $Config.services.prowlarr.clientHost; port = $Config.services.prowlarr.port; apiKeyPresent = -not [string]::IsNullOrWhiteSpace($Config.services.prowlarr.apiKey) }
-            radarr = @{ bindAddress = $Config.services.radarr.bindAddress; clientHost = $Config.services.radarr.clientHost; port = $Config.services.radarr.port; apiKeyPresent = -not [string]::IsNullOrWhiteSpace($Config.services.radarr.apiKey) }
-            sonarr = @{ bindAddress = $Config.services.sonarr.bindAddress; clientHost = $Config.services.sonarr.clientHost; port = $Config.services.sonarr.port; apiKeyPresent = -not [string]::IsNullOrWhiteSpace($Config.services.sonarr.apiKey) }
-        }
+        services = $serviceManifest
         p2p = @{
             bindInterfacePresent = -not [string]::IsNullOrWhiteSpace($Config.p2p.bindInterface)
             blockNetworkWhenBindUnavailableAtStartup = [bool]$Config.p2p.blockNetworkWhenBindUnavailableAtStartup
@@ -2974,9 +2567,9 @@ if (-not $DryRun) {
 }
 
 $script:SuiteConfig.services.emulebb.apiKey = Resolve-ApiKey -Value $script:SuiteConfig.services.emulebb.apiKey -Name 'eMuleBB API key'
-$script:SuiteConfig.services.prowlarr.apiKey = Resolve-ApiKey -Value $script:SuiteConfig.services.prowlarr.apiKey -Name 'Prowlarr API key'
-$script:SuiteConfig.services.radarr.apiKey = Resolve-ApiKey -Value $script:SuiteConfig.services.radarr.apiKey -Name 'Radarr API key'
-$script:SuiteConfig.services.sonarr.apiKey = Resolve-ApiKey -Value $script:SuiteConfig.services.sonarr.apiKey -Name 'Sonarr API key'
+foreach ($name in @(Get-SelectedArrAppNames -Config $script:SuiteConfig)) {
+    $script:SuiteConfig.services[$name].apiKey = Resolve-ApiKey -Value $script:SuiteConfig.services[$name].apiKey -Name "$((Get-ServiceDisplayName -ServiceName $name)) API key"
+}
 $script:SuiteConfig.credentials.password = Resolve-Secret -Value $script:SuiteConfig.credentials.password -Name 'Suite password'
 
 $releaseBase = Resolve-OptionalValue -Value $script:SuiteConfig.releaseBaseUrl -Default "https://github.com/emulebb/emulebb/releases/download/emulebb-v$($script:SuiteConfig.version)"
@@ -2989,14 +2582,14 @@ $emulebbAssetSuffix = if ($script:SuiteConfig.emulebbPackageFlavor -eq 'diagnost
 $appRoot = Join-Path $script:Root 'apps'
 $emulebbPackage = Save-PackageZip -Name 'eMuleBB' -ZipUrl "$releaseBase/emulebb-$($script:SuiteConfig.version)$emulebbAssetSuffix-$assetArch.zip" -ManifestUrl "$releaseBase/emulebb-$($script:SuiteConfig.version)$emulebbAssetSuffix-$assetArch.manifest.json" -LocalZip ([string]$script:SuiteConfig.packageSources.emulebb.zip) -LocalManifest ([string]$script:SuiteConfig.packageSources.emulebb.manifest)
 $amutorrentPackage = $null
-if ($script:SuiteConfig.bundle -ne 'Core') {
+if (@($script:SuiteConfig.selectedApps) -contains 'amutorrent') {
     $amutorrentPackage = Save-PackageZip -Name 'aMuTorrent' -ZipUrl "$amutorrentReleaseBase/emulebb-$amutorrentVersion-amutorrent-x64.zip" -ManifestUrl "$amutorrentReleaseBase/emulebb-$amutorrentVersion-amutorrent-x64.manifest.json" -LocalZip ([string]$script:SuiteConfig.packageSources.amutorrent.zip) -LocalManifest ([string]$script:SuiteConfig.packageSources.amutorrent.manifest)
 }
 
 Install-VerifiedReleaseZip -Name 'eMuleBB' -ArchivePath $emulebbPackage.ArchivePath -Destination $appRoot
 Assert-EmulebbExecutableInstalled -Config $script:SuiteConfig
 
-if ($script:SuiteConfig.bundle -ne 'Core') {
+if (@($script:SuiteConfig.selectedApps) -contains 'amutorrent') {
     Install-VerifiedReleaseZip -Name 'aMuTorrent' -ArchivePath $amutorrentPackage.ArchivePath -Destination $appRoot
     $nodeSpec = Load-NodeSpec -Payload $dependencyManifestPayload -Platform $script:SuiteConfig.platform
     $nodeArchive = Join-Path (Join-Path $script:Root 'downloads-cache') $nodeSpec.FileName
@@ -3009,19 +2602,20 @@ if ($script:SuiteConfig.bundle -ne 'Core') {
     Expand-ZipSafe -Archive $nodeArchive -Destination (Join-Path $script:Root 'runtime\node')
 }
 
-if ($script:SuiteConfig.bundle -eq 'Full') {
-    $dependencies = Load-DependencyManifest -Payload $dependencyManifestPayload -Channel $script:SuiteConfig.dependencyChannel
-    foreach ($name in @('prowlarr', 'radarr', 'sonarr')) {
+if (@(Get-SelectedArrAppNames -Config $script:SuiteConfig).Count -gt 0) {
+    $selectedArrDependencies = @(Get-SelectedArrAppNames -Config $script:SuiteConfig)
+    $dependencies = Load-DependencyManifest -Payload $dependencyManifestPayload -Channel $script:SuiteConfig.dependencyChannel -Names $selectedArrDependencies
+    foreach ($name in $selectedArrDependencies) {
         Install-ArrDependency -Name $name -Spec $dependencies[$name] -Channel $script:SuiteConfig.dependencyChannel
     }
 }
 
 $script:ProfileImport = Write-EmuleProfile -Config $script:SuiteConfig
 $script:Symbols = Copy-OptionalEmuleSymbols -Config $script:SuiteConfig
-if ($script:SuiteConfig.bundle -eq 'Full') {
-    Write-ArrConfig -Name 'prowlarr' -Port $script:SuiteConfig.services.prowlarr.port -BindAddress $script:SuiteConfig.services.prowlarr.bindAddress -ApiKey $script:SuiteConfig.services.prowlarr.apiKey -Username $script:SuiteConfig.credentials.username -Password $script:SuiteConfig.credentials.password
-    Write-ArrConfig -Name 'radarr' -Port $script:SuiteConfig.services.radarr.port -BindAddress $script:SuiteConfig.services.radarr.bindAddress -ApiKey $script:SuiteConfig.services.radarr.apiKey -Username $script:SuiteConfig.credentials.username -Password $script:SuiteConfig.credentials.password
-    Write-ArrConfig -Name 'sonarr' -Port $script:SuiteConfig.services.sonarr.port -BindAddress $script:SuiteConfig.services.sonarr.bindAddress -ApiKey $script:SuiteConfig.services.sonarr.apiKey -Username $script:SuiteConfig.credentials.username -Password $script:SuiteConfig.credentials.password
+if (@(Get-SelectedArrAppNames -Config $script:SuiteConfig).Count -gt 0) {
+    foreach ($name in @(Get-SelectedArrAppNames -Config $script:SuiteConfig)) {
+        Write-ArrConfig -Name $name -Port $script:SuiteConfig.services[$name].port -BindAddress $script:SuiteConfig.services[$name].bindAddress -ApiKey $script:SuiteConfig.services[$name].apiKey -Username $script:SuiteConfig.credentials.username -Password $script:SuiteConfig.credentials.password -Language ([string]$script:SuiteConfig.language.arrUiLanguage)
+    }
 }
 Write-SuiteConfigFile -Config $script:SuiteConfig
 Write-CredentialsFile -Config $script:SuiteConfig
@@ -3034,7 +2628,7 @@ if (-not $KeepDownloads -and -not $DryRun) {
 if (-not $NoStart -and -not $DryRun) {
     & (Join-Path $script:Root 'scripts\Initialize-Suite.ps1')
 } elseif ($NoStart -and -not $DryRun) {
-    Write-Step "Start skipped because -NoStart was used. Before adding movies or series, run $(Join-Path $script:Root 'scripts\Initialize-Suite.ps1') once to start services, register integrations, and create Radarr/Sonarr root folders."
+    Write-Step "Start skipped because -NoStart was used. Run $(Join-Path $script:Root 'scripts\Initialize-Suite.ps1') once to start services, register integrations, and create selected Arr root folders."
 }
 Write-Step "Installed $($script:SuiteConfig.bundle) bundle at $script:Root"
 if (-not $DryRun -and -not $NonInteractive) {
