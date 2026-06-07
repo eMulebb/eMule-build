@@ -353,6 +353,60 @@ def test_suite_installer_accepts_hashed_suite_scripts_bundle(tmp_path: Path) -> 
     }
 
 
+@pytest.mark.parametrize(
+    ("case", "expected"),
+    [
+        ("missing-manifest", "SuiteScriptsZip requires -SuiteScriptsManifest with a SHA256 hash."),
+        ("bad-hash", "SHA256 mismatch"),
+        ("missing-script", "Suite scripts bundle did not include scripts\\Update-Suite.ps1."),
+    ],
+)
+def test_suite_installer_rejects_invalid_suite_scripts_bundle(
+    tmp_path: Path,
+    case: str,
+    expected: str,
+) -> None:
+    release_root = tmp_path / "release"
+    install_root = tmp_path / "suite"
+    scripts_zip = tmp_path / "suite-scripts.zip"
+    scripts_manifest = tmp_path / "suite-scripts.manifest.json"
+    suite_install_fixtures.write_core_release(release_root)
+    script_entries = suite_install_fixtures.runtime_script_entries(installer_payload=INSTALLER.read_bytes())
+    if case == "missing-script":
+        del script_entries["eMuleBB/scripts/Update-Suite.ps1"]
+    suite_install_fixtures.write_zip(scripts_zip, script_entries)
+    if case == "bad-hash":
+        scripts_manifest.write_text(json.dumps({"sha256": "0" * 64}) + "\n", encoding="utf-8")
+    elif case != "missing-manifest":
+        _write_manifest(scripts_manifest, scripts_zip)
+
+    args = [
+        "-NonInteractive",
+        "-NoStart",
+        "-Force",
+        "-Bundle",
+        "Core",
+        "-InstallRoot",
+        str(install_root),
+        "-ReleaseBaseUrl",
+        release_root.as_uri(),
+        "-SuiteScriptsZip",
+        str(scripts_zip),
+    ]
+    if case != "missing-manifest":
+        args.extend(["-SuiteScriptsManifest", str(scripts_manifest)])
+
+    completed = suite_install_fixtures.run_installer(
+        (Path.cwd() / INSTALLER).resolve(),
+        args,
+        cwd=Path.cwd(),
+        check=False,
+    )
+
+    assert completed.returncode != 0
+    assert expected in completed.stdout
+
+
 def test_suite_installer_accepts_local_emulebb_package_zip_override(tmp_path: Path) -> None:
     release_root = tmp_path / "release"
     install_root = tmp_path / "suite"
