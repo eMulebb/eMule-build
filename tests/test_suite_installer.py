@@ -895,15 +895,16 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     suite_config_path = install_root / "manifests" / "suite-config.json"
     suite_config = json.loads(suite_config_path.read_text(encoding="utf-8-sig"))
     assert suite_config["services"]["emulebb"]["clientHost"] == "127.0.0.1"
+    arr_service_names = ("prowlarr", "radarr", "sonarr", "lidarr", "readarr", "whisparr")
     first_keys = {
         name: suite_config["services"][name]["apiKey"]
-        for name in ("emulebb", "prowlarr", "radarr", "sonarr")
+        for name in ("emulebb", *arr_service_names)
     }
     suite_password = suite_config["credentials"]["password"]
     assert re.fullmatch(r"[A-Za-z0-9]{24}", suite_password)
     for key in first_keys.values():
         assert re.fullmatch(r"[A-Za-z0-9]{24}", key)
-    service_order = ("emulebb", "amutorrent", "prowlarr", "radarr", "sonarr")
+    service_order = ("emulebb", "amutorrent", *arr_service_names)
     service_ports = [suite_config["services"][name]["port"] for name in service_order]
     assert service_ports == list(range(service_ports[0], service_ports[0] + len(service_ports)))
     assert 49152 <= service_ports[0] <= 65535
@@ -916,6 +917,9 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     assert list((install_root / "apps" / "prowlarr").rglob("Prowlarr.exe"))
     assert list((install_root / "apps" / "radarr").rglob("Radarr.exe"))
     assert list((install_root / "apps" / "sonarr").rglob("Sonarr.exe"))
+    assert list((install_root / "apps" / "lidarr").rglob("Lidarr.exe"))
+    assert list((install_root / "apps" / "readarr").rglob("Readarr.exe"))
+    assert list((install_root / "apps" / "whisparr").rglob("Whisparr.exe"))
     assert list((install_root / "apps" / "prowlarr").rglob("Prowlarr.Console.exe"))
     assert list((install_root / "apps" / "radarr").rglob("Radarr.Console.exe"))
     assert list((install_root / "apps" / "sonarr").rglob("Sonarr.Console.exe"))
@@ -934,19 +938,16 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     assert "MaxLogBuff=" not in preferences
     assert "LogFileFormat=" not in preferences
     category_sections = _read_ini_sections(install_root / "profiles" / "emulebb" / "config" / "Category.ini")
-    assert category_sections["General"]["Count"] == "3"
+    assert category_sections["General"]["Count"] == "6"
     categories_by_title = {
         section["Title"]: section
         for section in category_sections.values()
         if section.get("Title")
     }
-    assert categories_by_title["emulebb-prowlarr"]["Incoming"] == f"{install_root}\\downloads\\prowlarr"
-    assert categories_by_title["emulebb-radarr"]["Incoming"] == f"{install_root}\\downloads\\radarr"
-    assert categories_by_title["emulebb-sonarr"]["Incoming"] == f"{install_root}\\downloads\\sonarr"
-    assert (install_root / "downloads" / "prowlarr").is_dir()
-    assert (install_root / "downloads" / "radarr").is_dir()
-    assert (install_root / "downloads" / "sonarr").is_dir()
-    for service_name in ("prowlarr", "radarr", "sonarr"):
+    for service_name in arr_service_names:
+        assert categories_by_title[f"emulebb-{service_name}"]["Incoming"] == f"{install_root}\\downloads\\{service_name}"
+        assert (install_root / "downloads" / service_name).is_dir()
+    for service_name in arr_service_names:
         arr_config = (install_root / "data" / service_name / "config.xml").read_text(encoding="utf-8-sig")
         assert "<LogLevel>info</LogLevel>" in arr_config
         assert f"<BindAddress>{suite_config['services'][service_name]['bindAddress']}</BindAddress>" in arr_config
@@ -960,7 +961,7 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     credentials = (install_root / "credentials.txt").read_text(encoding="utf-8-sig")
     assert f"Password: {suite_password}" in credentials
     assert f"aMuTorrent password: {suite_password}" in credentials
-    for service_name in ("emulebb", "prowlarr", "radarr", "sonarr"):
+    for service_name in ("emulebb", *arr_service_names):
         assert first_keys[service_name] in credentials
     assert "Arr download client" in credentials
     assert f"Password: {first_keys['emulebb']}" in credentials
@@ -999,7 +1000,7 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     refreshed_config = json.loads(suite_config_path.read_text(encoding="utf-8-sig"))
     refreshed_keys = {
         name: refreshed_config["services"][name]["apiKey"]
-        for name in ("emulebb", "prowlarr", "radarr", "sonarr")
+        for name in ("emulebb", *arr_service_names)
     }
     assert refreshed_keys == first_keys
     assert refreshed_config["credentials"]["password"] == suite_password
@@ -1345,6 +1346,7 @@ def test_suite_installer_profile_import_appends_missing_ini_sections(tmp_path: P
     (source_config / "preferences.ini").write_text("[eMule]\nNick=missing-webserver\n", encoding="utf-16")
 
     repo_root = Path.cwd()
+    emulebb_port = _find_free_loopback_port()
     suite_install_fixtures.run_installer(
         (repo_root / INSTALLER).resolve(),
         [
@@ -1360,7 +1362,7 @@ def test_suite_installer_profile_import_appends_missing_ini_sections(tmp_path: P
             "-ImportProfileDir",
             str(source_profile),
             "-EmulebbPort",
-            "49153",
+            str(emulebb_port),
         ],
         cwd=repo_root,
     )
@@ -1370,7 +1372,7 @@ def test_suite_installer_profile_import_appends_missing_ini_sections(tmp_path: P
     assert "Nick=missing-webserver" in preferences
     assert "[WebServer]" in preferences
     assert "Enabled=1" in preferences
-    assert "Port=49153" in preferences
+    assert f"Port={emulebb_port}" in preferences
     assert "ApiKey=" + suite_config["services"]["emulebb"]["apiKey"] in preferences
 
 
@@ -1522,6 +1524,7 @@ def test_suite_installer_recomputes_client_host_when_bind_changes(tmp_path: Path
                 "schema": "emulebb.suite-config.v1",
                 "bundle": "Core",
                 "installRoot": r"C:\SuiteProbe",
+                "selectedApps": ["emulebb"],
                 "services": {
                     name: {
                         "bindAddress": "192.168.1.10",
