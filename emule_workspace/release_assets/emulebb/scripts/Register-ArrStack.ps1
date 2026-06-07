@@ -12,6 +12,12 @@ param(
     [string]$RadarrApiKey,
     [string]$SonarrUrl,
     [string]$SonarrApiKey,
+    [string]$LidarrUrl,
+    [string]$LidarrApiKey,
+    [string]$ReadarrUrl,
+    [string]$ReadarrApiKey,
+    [string]$WhisparrUrl,
+    [string]$WhisparrApiKey,
     [string]$DownloadClientName = 'eMuleBB',
     [switch]$SkipProwlarrSync,
     [switch]$SyncProwlarrOnly,
@@ -20,6 +26,21 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$ArrTargets = @('Radarr', 'Sonarr', 'Lidarr', 'Readarr', 'Whisparr')
+$ArrTargetPorts = @{
+    Radarr = 7878
+    Sonarr = 8989
+    Lidarr = 8686
+    Readarr = 8787
+    Whisparr = 6969
+}
+$ArrTargetIndexerCategories = @{
+    Radarr = @(2000)
+    Sonarr = @(5000)
+    Lidarr = @(3000)
+    Readarr = @(7000)
+    Whisparr = @(6000)
+}
 
 function Normalize-ArgumentValue {
     param([string]$Value)
@@ -98,16 +119,22 @@ function Read-TargetValue {
     param([string]$Value)
     if (-not [string]::IsNullOrWhiteSpace($Value)) {
         $normalized = $Value.Trim().ToLowerInvariant()
+        if ($normalized -eq 'readarr' -or $normalized -eq 're') { return 'Readarr' }
         if ($normalized -eq 'radarr' -or $normalized -eq 'r') { return 'Radarr' }
         if ($normalized -eq 'sonarr' -or $normalized -eq 's') { return 'Sonarr' }
-        throw "Target must be Radarr or Sonarr, not '$Value'."
+        if ($normalized -eq 'lidarr' -or $normalized -eq 'l') { return 'Lidarr' }
+        if ($normalized -eq 'whisparr' -or $normalized -eq 'w') { return 'Whisparr' }
+        throw "Target must be Radarr, Sonarr, Lidarr, Readarr, or Whisparr, not '$Value'."
     }
     while ($true) {
-        $answer = Read-Host 'Target [R]adarr/[S]onarr'
+        $answer = Read-Host 'Target [R]adarr/[S]onarr/[L]idarr/Re[a]darr/[W]hisparr'
         $normalized = $answer.Trim().ToLowerInvariant()
         if ($normalized.StartsWith('r')) { return 'Radarr' }
         if ($normalized.StartsWith('s')) { return 'Sonarr' }
-        Write-Host 'Enter R for Radarr or S for Sonarr.' -ForegroundColor Yellow
+        if ($normalized.StartsWith('l')) { return 'Lidarr' }
+        if ($normalized -eq 'a' -or $normalized -eq 'readarr') { return 'Readarr' }
+        if ($normalized.StartsWith('w')) { return 'Whisparr' }
+        Write-Host 'Enter R, S, L, A, or W.' -ForegroundColor Yellow
     }
 }
 
@@ -131,13 +158,31 @@ function Read-RequiredSecretValue {
 
 function Get-ArrUrlPrompt {
     param([string]$Target)
-    if ($Target -eq 'Radarr') {
-        return 'Radarr URL for eMuleBB download client (example http://LAN-IP:7878)'
+    return "$Target URL for eMuleBB download client (example http://LAN-IP:$($ArrTargetPorts[$Target]))"
+}
+
+function Get-TargetUrlParameter {
+    param([string]$Target)
+    switch ($Target) {
+        'Radarr' { return Normalize-ArgumentValue -Value $RadarrUrl }
+        'Sonarr' { return Normalize-ArgumentValue -Value $SonarrUrl }
+        'Lidarr' { return Normalize-ArgumentValue -Value $LidarrUrl }
+        'Readarr' { return Normalize-ArgumentValue -Value $ReadarrUrl }
+        'Whisparr' { return Normalize-ArgumentValue -Value $WhisparrUrl }
     }
-    if ($Target -eq 'Sonarr') {
-        return 'Sonarr URL for eMuleBB download client (example http://LAN-IP:8989)'
+    return ''
+}
+
+function Get-TargetApiKeyParameter {
+    param([string]$Target)
+    switch ($Target) {
+        'Radarr' { return Normalize-ArgumentValue -Value $RadarrApiKey }
+        'Sonarr' { return Normalize-ArgumentValue -Value $SonarrApiKey }
+        'Lidarr' { return Normalize-ArgumentValue -Value $LidarrApiKey }
+        'Readarr' { return Normalize-ArgumentValue -Value $ReadarrApiKey }
+        'Whisparr' { return Normalize-ArgumentValue -Value $WhisparrApiKey }
     }
-    return "$Target URL for eMuleBB download client"
+    return ''
 }
 
 function Invoke-JsonApi {
@@ -441,7 +486,6 @@ function Save-QbitClient {
     Set-ObjectProperty -Target $payload -Name 'protocol' -Value 'torrent'
     Set-ObjectProperty -Target $payload -Name 'removeCompletedDownloads' -Value $false
     Set-ObjectProperty -Target $payload -Name 'removeFailedDownloads' -Value $false
-    $categoryField = if ($Kind -eq 'radarr') { 'movieCategory' } else { 'tvCategory' }
     $category = (Get-ArrCategoryInfo -Kind $Kind).Name
     $urlBase = if ($uri.AbsolutePath -and $uri.AbsolutePath -ne '/') { $uri.AbsolutePath.TrimEnd('/') } else { '' }
     [void](Set-ProviderField -Provider $payload -Name 'host' -Value $uri.Host)
@@ -450,7 +494,16 @@ function Save-QbitClient {
     [void](Set-ProviderField -Provider $payload -Name 'urlBase' -Value $urlBase)
     [void](Set-ProviderField -Provider $payload -Name 'username' -Value 'emule')
     [void](Set-ProviderField -Provider $payload -Name 'password' -Value $EmuleApiKey)
-    [void](Set-ProviderField -Provider $payload -Name $categoryField -Value $category)
+    if ($Kind -eq 'radarr') {
+        [void](Set-ProviderField -Provider $payload -Name 'movieCategory' -Value $category)
+    } elseif ($Kind -eq 'sonarr') {
+        [void](Set-ProviderField -Provider $payload -Name 'tvCategory' -Value $category)
+    } else {
+        [void](Set-ProviderField -Provider $payload -Name 'category' -Value $category -Optional)
+        [void](Set-ProviderField -Provider $payload -Name 'musicCategory' -Value $category -Optional)
+        [void](Set-ProviderField -Provider $payload -Name 'bookCategory' -Value $category -Optional)
+        [void](Set-ProviderField -Provider $payload -Name 'tvCategory' -Value $category -Optional)
+    }
     [void](Set-ProviderField -Provider $payload -Name 'initialState' -Value 0)
     if ($uri.Scheme -eq 'https') {
         [void](Set-LocalCertificateValidation -BaseUrl $BaseUrl -ApiKey $ApiKey)
@@ -512,10 +565,14 @@ function Get-ArrCategoryName {
 
 function Get-ArrIndexerCategories {
     param([string]$Kind)
-    if ($Kind -eq 'radarr') {
-        return ,@(2000)
+    switch ($Kind.ToLowerInvariant()) {
+        'radarr' { return ,@(2000) }
+        'sonarr' { return ,@(5000) }
+        'lidarr' { return ,@(3000) }
+        'readarr' { return ,@(7000) }
+        'whisparr' { return ,@(6000) }
+        default { return ,@(5000) }
     }
-    return ,@(5000)
 }
 
 function Get-ArrCategoryRelativePath {
@@ -525,10 +582,17 @@ function Get-ArrCategoryRelativePath {
 
 function Get-ArrCategoryInfo {
     param([string]$Kind)
-    if ($Kind -eq 'radarr') {
-        return [pscustomobject]@{ Name = 'emulebb-radarr'; RelativePath = 'downloads\radarr' }
+    $normalized = $Kind.ToLowerInvariant()
+    return [pscustomobject]@{ Name = "emulebb-$normalized"; RelativePath = "downloads\$normalized" }
+}
+
+function Get-CultureInvariantTitleCase {
+    param([string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return ''
     }
-    return [pscustomobject]@{ Name = 'emulebb-sonarr'; RelativePath = 'downloads\sonarr' }
+    $lower = $Value.ToLowerInvariant()
+    return $lower.Substring(0, 1).ToUpperInvariant() + $lower.Substring(1)
 }
 
 function Normalize-OptionalCategoryPath {
@@ -746,7 +810,8 @@ function Invoke-ProwlarrSync {
 
 function Get-ProwlarrApplicationSchema {
     param([string]$BaseUrl, [string]$ApiKey, [string]$Kind)
-    $implementation = if ($Kind -eq 'radarr') { 'Radarr' } else { 'Sonarr' }
+    $kindText = $Kind.ToLowerInvariant()
+    $implementation = $kindText.Substring(0, 1).ToUpperInvariant() + $kindText.Substring(1)
     $schemas = Invoke-JsonApi -BaseUrl $BaseUrl -ApiKey $ApiKey -Path '/api/v1/applications/schema'
     foreach ($schema in @($schemas)) {
         if ($schema.implementation -eq $implementation) {
@@ -787,7 +852,8 @@ function Save-ProwlarrApplication {
         [string]$ArrUrl,
         [string]$ArrKey
     )
-    $name = if ($Kind -eq 'radarr') { 'Radarr' } else { 'Sonarr' }
+    $kindText = $Kind.ToLowerInvariant()
+    $name = $kindText.Substring(0, 1).ToUpperInvariant() + $kindText.Substring(1)
     $normalizedProwlarrBaseUrl = Normalize-HttpBaseUrl -Value $ProwlarrBaseUrl -Name 'ProwlarrBaseUrl'
     $normalizedArrUrl = Normalize-HttpBaseUrl -Value $ArrUrl -Name 'ArrUrl'
     $existing = Get-ExistingProwlarrApplication -BaseUrl $normalizedProwlarrBaseUrl -ApiKey $ProwlarrKey -ArrUrl $normalizedArrUrl
@@ -851,13 +917,8 @@ if ($VerifyIndexerOnly) {
     $Target = Read-TargetValue -Value $Target
     $targetKind = $Target.ToLowerInvariant()
     Write-Host ('eMuleBB {0} Indexer Verification' -f $Target) -ForegroundColor Cyan
-    if ($Target -eq 'Radarr') {
-        $script:targetUrl = Normalize-ArgumentValue -Value $RadarrUrl
-        $script:targetApiKey = Normalize-ArgumentValue -Value $RadarrApiKey
-    } else {
-        $script:targetUrl = Normalize-ArgumentValue -Value $SonarrUrl
-        $script:targetApiKey = Normalize-ArgumentValue -Value $SonarrApiKey
-    }
+    $script:targetUrl = Get-TargetUrlParameter -Target $Target
+    $script:targetApiKey = Get-TargetApiKeyParameter -Target $Target
     Run-TargetWithRetry -Name "$Target indexer verification" -NoRetry:$NoRetry -OnRetry {
         $script:ProwlarrUrl = ''
         $script:ProwlarrApiKey = ''
@@ -881,15 +942,10 @@ $Target = Read-TargetValue -Value $Target
 $targetKind = $Target.ToLowerInvariant()
 Write-Host ('eMuleBB {0} Integration - {1}' -f $Target, $Action) -ForegroundColor Cyan
 if ($Action -eq 'Register' -and [string]::IsNullOrWhiteSpace($ProwlarrUrl)) {
-    throw 'ProwlarrUrl is required for Arr registration. Register eMuleBB in Prowlarr and let Prowlarr sync indexers to Radarr/Sonarr.'
+    throw 'ProwlarrUrl is required for Arr registration. Register eMuleBB in Prowlarr and let Prowlarr sync indexers to selected Arr apps.'
 }
-if ($Target -eq 'Radarr') {
-    $script:targetUrl = Normalize-ArgumentValue -Value $RadarrUrl
-    $script:targetApiKey = Normalize-ArgumentValue -Value $RadarrApiKey
-} else {
-    $script:targetUrl = Normalize-ArgumentValue -Value $SonarrUrl
-    $script:targetApiKey = Normalize-ArgumentValue -Value $SonarrApiKey
-}
+$script:targetUrl = Get-TargetUrlParameter -Target $Target
+$script:targetApiKey = Get-TargetApiKeyParameter -Target $Target
 
 if ($Action -eq 'Register') {
     $arrCategoryName = Get-ArrCategoryName -Kind $targetKind
