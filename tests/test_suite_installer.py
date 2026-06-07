@@ -26,6 +26,25 @@ def _write_manifest(path: Path, zip_path: Path) -> None:
     )
 
 
+def _automation_example_entries() -> dict[str, bytes]:
+    return {
+        "eMuleBB/examples/automation/README.md": b"examples\n",
+        "eMuleBB/examples/automation/Import-eMuleBBRestExample.ps1": b"#Requires -Version 5.1\n",
+        "eMuleBB/examples/automation/Get-eMuleBBStatus.ps1": b"#Requires -Version 5.1\n",
+        "eMuleBB/examples/automation/Set-eMuleBBLimits.ps1": b"#Requires -Version 5.1\n",
+        "eMuleBB/examples/automation/Search-eMuleBB.ps1": b"#Requires -Version 5.1\n",
+        "eMuleBB/examples/automation/Download-ReleaseGroup.ps1": b"#Requires -Version 5.1\n",
+    }
+
+
+def _write_automation_examples_component(release_root: Path, version: str) -> tuple[Path, Path]:
+    zip_path = release_root / f"automation-examples-{version}.zip"
+    manifest_path = release_root / f"automation-examples-{version}.manifest.json"
+    suite_install_fixtures.write_zip(zip_path, _automation_example_entries())
+    suite_install_fixtures.write_manifest(manifest_path, zip_path)
+    return zip_path, manifest_path
+
+
 def _run_powershell(args: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
     powershell = shutil.which("powershell")
     assert powershell is not None
@@ -373,6 +392,104 @@ def test_suite_installer_accepts_hashed_suite_scripts_bundle(tmp_path: Path) -> 
     }
 
 
+def test_suite_installer_accepts_hashed_automation_examples_bundle(tmp_path: Path) -> None:
+    release_root = tmp_path / "release"
+    install_root = tmp_path / "suite"
+    examples_zip = tmp_path / "automation-examples.zip"
+    examples_manifest = tmp_path / "automation-examples.manifest.json"
+    suite_install_fixtures.write_core_release(release_root)
+    entries = _automation_example_entries()
+    entries["eMuleBB/examples/automation/README.md"] = b"examples-marker\n"
+    suite_install_fixtures.write_zip(examples_zip, entries)
+    _write_manifest(examples_manifest, examples_zip)
+
+    repo_root = Path.cwd()
+    _run_powershell(
+        [
+            "-File",
+            str((repo_root / INSTALLER).resolve()),
+            "-NonInteractive",
+            "-NoStart",
+            "-Force",
+            "-Bundle",
+            "Core",
+            "-InstallRoot",
+            str(install_root),
+            "-ReleaseBaseUrl",
+            release_root.as_uri(),
+            "-AutomationExamplesZip",
+            str(examples_zip),
+            "-AutomationExamplesManifest",
+            str(examples_manifest),
+        ],
+        cwd=repo_root,
+    )
+
+    readme = (install_root / "examples" / "automation" / "README.md").read_text(encoding="utf-8-sig")
+    assert "examples-marker" in readme
+    assert (install_root / "examples" / "automation" / "Download-ReleaseGroup.ps1").is_file()
+    install_manifest = suite_install_fixtures.read_suite_install_manifest(install_root)
+    assert install_manifest["automationExamples"] == {
+        "zip": str(examples_zip),
+        "manifest": str(examples_manifest),
+        "installed": True,
+    }
+
+
+@pytest.mark.parametrize(
+    ("case", "expected"),
+    [
+        ("missing-manifest", "AutomationExamplesZip requires -AutomationExamplesManifest with a SHA256 hash."),
+        ("bad-hash", "SHA256 mismatch"),
+        ("missing-example", "Automation examples bundle did not include examples\\automation\\Search-eMuleBB.ps1."),
+    ],
+)
+def test_suite_installer_rejects_invalid_automation_examples_bundle(
+    tmp_path: Path,
+    case: str,
+    expected: str,
+) -> None:
+    release_root = tmp_path / "release"
+    install_root = tmp_path / "suite"
+    examples_zip = tmp_path / "automation-examples.zip"
+    examples_manifest = tmp_path / "automation-examples.manifest.json"
+    suite_install_fixtures.write_core_release(release_root)
+    entries = _automation_example_entries()
+    if case == "missing-example":
+        del entries["eMuleBB/examples/automation/Search-eMuleBB.ps1"]
+    suite_install_fixtures.write_zip(examples_zip, entries)
+    if case == "bad-hash":
+        examples_manifest.write_text(json.dumps({"sha256": "0" * 64}) + "\n", encoding="utf-8")
+    elif case != "missing-manifest":
+        _write_manifest(examples_manifest, examples_zip)
+
+    args = [
+        "-NonInteractive",
+        "-NoStart",
+        "-Force",
+        "-Bundle",
+        "Core",
+        "-InstallRoot",
+        str(install_root),
+        "-ReleaseBaseUrl",
+        release_root.as_uri(),
+        "-AutomationExamplesZip",
+        str(examples_zip),
+    ]
+    if case != "missing-manifest":
+        args.extend(["-AutomationExamplesManifest", str(examples_manifest)])
+
+    completed = suite_install_fixtures.run_installer(
+        (Path.cwd() / INSTALLER).resolve(),
+        args,
+        cwd=Path.cwd(),
+        check=False,
+    )
+
+    assert completed.returncode != 0
+    assert expected in completed.stdout
+
+
 @pytest.mark.parametrize(
     ("case", "expected"),
     [
@@ -552,8 +669,8 @@ def test_suite_installer_recomputes_executable_name_from_package_flavor(tmp_path
 def test_suite_installer_rejects_release_manifest_without_sha256(tmp_path: Path) -> None:
     release_root = tmp_path / "release"
     install_root = tmp_path / "suite"
-    package_zip = release_root / "emulebb-0.7.3-rc.1-x64.zip"
-    manifest = release_root / "emulebb-0.7.3-rc.1-x64.manifest.json"
+    package_zip = release_root / "emulebb-0.7.3-rc.2-x64.zip"
+    manifest = release_root / "emulebb-0.7.3-rc.2-x64.manifest.json"
     suite_install_fixtures.write_zip(
         package_zip,
         {
@@ -618,7 +735,7 @@ def test_suite_installer_full_release_asset_gap_fails_before_app_replace(tmp_pat
 
     assert completed.returncode != 0
     assert "Failed to download" in completed.stdout
-    assert "emulebb-0.7.3-rc.1-amutorrent-x64.manifest.json" in completed.stdout
+    assert "emulebb-0.7.3-rc.2-amutorrent-x64.manifest.json" in completed.stdout
     assert not (install_root / "apps" / "eMuleBB").exists()
 
 
@@ -670,10 +787,10 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     release_root = tmp_path / "release"
     dependency_root = tmp_path / "dependencies"
     install_root = tmp_path / "suite"
-    package_zip = release_root / "emulebb-0.7.3-rc.1-x64.zip"
-    package_manifest = release_root / "emulebb-0.7.3-rc.1-x64.manifest.json"
-    amutorrent_zip = release_root / "emulebb-0.7.3-rc.1-amutorrent-x64.zip"
-    amutorrent_manifest = release_root / "emulebb-0.7.3-rc.1-amutorrent-x64.manifest.json"
+    package_zip = release_root / "emulebb-0.7.3-rc.2-x64.zip"
+    package_manifest = release_root / "emulebb-0.7.3-rc.2-x64.manifest.json"
+    amutorrent_zip = release_root / "emulebb-0.7.3-rc.2-amutorrent-x64.zip"
+    amutorrent_manifest = release_root / "emulebb-0.7.3-rc.2-amutorrent-x64.manifest.json"
     dependency_manifest = tmp_path / "dependency-manifest.json"
     repo_root = Path.cwd()
     suite_install_fixtures.write_zip(
@@ -844,8 +961,8 @@ def test_suite_installer_selected_arr_apps_and_language(tmp_path: Path) -> None:
     install_root = tmp_path / "suite"
     dependency_manifest = tmp_path / "dependency-manifest.json"
     suite_install_fixtures.write_core_release(release_root)
-    amutorrent_zip = release_root / "emulebb-0.7.3-rc.1-amutorrent-x64.zip"
-    amutorrent_manifest = release_root / "emulebb-0.7.3-rc.1-amutorrent-x64.manifest.json"
+    amutorrent_zip = release_root / "emulebb-0.7.3-rc.2-amutorrent-x64.zip"
+    amutorrent_manifest = release_root / "emulebb-0.7.3-rc.2-amutorrent-x64.manifest.json"
     suite_install_fixtures.write_zip(amutorrent_zip, {"aMuTorrent/server/server.js": b"server\n"})
     _write_manifest(amutorrent_manifest, amutorrent_zip)
     suite_install_fixtures.write_dependency_manifest(dependency_manifest, dependency_root)
@@ -902,8 +1019,8 @@ def test_suite_installer_can_select_whisparr(tmp_path: Path) -> None:
     install_root = tmp_path / "suite"
     dependency_manifest = tmp_path / "dependency-manifest.json"
     suite_install_fixtures.write_core_release(release_root)
-    amutorrent_zip = release_root / "emulebb-0.7.3-rc.1-amutorrent-x64.zip"
-    amutorrent_manifest = release_root / "emulebb-0.7.3-rc.1-amutorrent-x64.manifest.json"
+    amutorrent_zip = release_root / "emulebb-0.7.3-rc.2-amutorrent-x64.zip"
+    amutorrent_manifest = release_root / "emulebb-0.7.3-rc.2-amutorrent-x64.manifest.json"
     suite_install_fixtures.write_zip(amutorrent_zip, {"aMuTorrent/server/server.js": b"server\n"})
     _write_manifest(amutorrent_manifest, amutorrent_zip)
     suite_install_fixtures.write_dependency_manifest(dependency_manifest, dependency_root)
@@ -973,8 +1090,8 @@ def test_suite_installer_apps_all_arr_preset_selects_every_arr_app(tmp_path: Pat
     install_root = tmp_path / "suite"
     dependency_manifest = tmp_path / "dependency-manifest.json"
     suite_install_fixtures.write_core_release(release_root)
-    amutorrent_zip = release_root / "emulebb-0.7.3-rc.1-amutorrent-x64.zip"
-    amutorrent_manifest = release_root / "emulebb-0.7.3-rc.1-amutorrent-x64.manifest.json"
+    amutorrent_zip = release_root / "emulebb-0.7.3-rc.2-amutorrent-x64.zip"
+    amutorrent_manifest = release_root / "emulebb-0.7.3-rc.2-amutorrent-x64.manifest.json"
     suite_install_fixtures.write_zip(amutorrent_zip, {"aMuTorrent/server/server.js": b"server\n"})
     _write_manifest(amutorrent_manifest, amutorrent_zip)
     suite_install_fixtures.write_dependency_manifest(dependency_manifest, dependency_root)
@@ -1208,8 +1325,8 @@ def test_suite_installer_import_profile_requires_source_before_bootstrap(tmp_pat
     release_root = tmp_path / "release"
     install_root = tmp_path / "suite"
     missing_source = tmp_path / "missing-profile"
-    package_zip = release_root / "emulebb-0.7.3-rc.1-x64.zip"
-    manifest = release_root / "emulebb-0.7.3-rc.1-x64.manifest.json"
+    package_zip = release_root / "emulebb-0.7.3-rc.2-x64.zip"
+    manifest = release_root / "emulebb-0.7.3-rc.2-x64.manifest.json"
     suite_install_fixtures.write_zip(package_zip, {"eMuleBB/emulebb.exe": b"exe\n"})
     _write_manifest(manifest, package_zip)
 
@@ -1275,7 +1392,7 @@ def test_suite_installer_copies_configured_emulebb_symbols(tmp_path: Path) -> No
     )
 
     adjacent_pdb = install_root / "apps" / "eMuleBB" / "emulebb.pdb"
-    versioned_pdb = install_root / "symbols" / "emulebb-v0.7.3-rc.1" / "x64" / "emulebb.pdb"
+    versioned_pdb = install_root / "symbols" / "emulebb-v0.7.3-rc.2" / "x64" / "emulebb.pdb"
     assert adjacent_pdb.read_bytes() == b"private-symbols\n"
     assert versioned_pdb.read_bytes() == b"private-symbols\n"
     install_manifest = suite_install_fixtures.read_suite_install_manifest(install_root)
@@ -1845,6 +1962,14 @@ function Invoke-RestMethod {{
             [pscustomobject]@{{
                 name = 'emulebb-0.7.3-rc.2-x64.manifest.json'
                 browser_download_url = 'https://example.invalid/emulebb-0.7.3-rc.2-x64.manifest.json'
+            }},
+            [pscustomobject]@{{
+                name = 'automation-examples-0.7.3-rc.2.zip'
+                browser_download_url = 'https://example.invalid/automation-examples-0.7.3-rc.2.zip'
+            }},
+            [pscustomobject]@{{
+                name = 'automation-examples-0.7.3-rc.2.manifest.json'
+                browser_download_url = 'https://example.invalid/automation-examples-0.7.3-rc.2.manifest.json'
             }}
         )
     }}
@@ -1900,6 +2025,14 @@ function Invoke-RestMethod {{
             [pscustomobject]@{{
                 name = 'emulebb-0.7.3-nightly.20260524.ae562c1-x64.manifest.json'
                 browser_download_url = 'https://example.invalid/emulebb-0.7.3-nightly.20260524.ae562c1-x64.manifest.json'
+            }},
+            [pscustomobject]@{{
+                name = 'automation-examples-0.7.3-nightly.20260524.ae562c1.zip'
+                browser_download_url = 'https://example.invalid/automation-examples-0.7.3-nightly.20260524.ae562c1.zip'
+            }},
+            [pscustomobject]@{{
+                name = 'automation-examples-0.7.3-nightly.20260524.ae562c1.manifest.json'
+                browser_download_url = 'https://example.invalid/automation-examples-0.7.3-nightly.20260524.ae562c1.manifest.json'
             }}
         )
     }}
@@ -1940,6 +2073,14 @@ function Invoke-RestMethod {{
             [pscustomobject]@{{
                 name = 'emulebb-0.7.3-nightly.20260524.ae562c1-x64.manifest.json'
                 browser_download_url = 'https://example.invalid/emulebb-0.7.3-nightly.20260524.ae562c1-x64.manifest.json'
+            }},
+            [pscustomobject]@{{
+                name = 'automation-examples-0.7.3-nightly.20260524.ae562c1.zip'
+                browser_download_url = 'https://example.invalid/automation-examples-0.7.3-nightly.20260524.ae562c1.zip'
+            }},
+            [pscustomobject]@{{
+                name = 'automation-examples-0.7.3-nightly.20260524.ae562c1.manifest.json'
+                browser_download_url = 'https://example.invalid/automation-examples-0.7.3-nightly.20260524.ae562c1.manifest.json'
             }}
         )
     }}
@@ -1990,6 +2131,14 @@ function Invoke-RestMethod {{
                 [pscustomobject]@{{
                     name = 'emulebb-0.7.3-nightly.20260604.5169162-x64.manifest.json'
                     browser_download_url = 'https://example.invalid/emulebb-0.7.3-nightly.20260604.5169162-x64.manifest.json'
+                }},
+                [pscustomobject]@{{
+                    name = 'automation-examples-0.7.3-nightly.20260604.5169162.zip'
+                    browser_download_url = 'https://example.invalid/automation-examples-0.7.3-nightly.20260604.5169162.zip'
+                }},
+                [pscustomobject]@{{
+                    name = 'automation-examples-0.7.3-nightly.20260604.5169162.manifest.json'
+                    browser_download_url = 'https://example.invalid/automation-examples-0.7.3-nightly.20260604.5169162.manifest.json'
                 }}
             )
         }},
@@ -2025,6 +2174,8 @@ param(
     [string]$ReleaseBaseUrl,
     [string]$AmutorrentVersion,
     [string]$AmutorrentReleaseBaseUrl,
+    [string]$AutomationExamplesZip,
+    [string]$AutomationExamplesManifest,
     [switch]$NoStart
 )
 Set-Content -Encoding UTF8 -LiteralPath '{captured_bundle.as_posix()}' -Value $Bundle
@@ -2078,6 +2229,14 @@ function Invoke-RestMethod {{
                 [pscustomobject]@{{
                     name = 'emulebb-0.7.3-nightly.20260604.5169162-x64.manifest.json'
                     browser_download_url = 'https://example.invalid/emulebb-0.7.3-nightly.20260604.5169162-x64.manifest.json'
+                }},
+                [pscustomobject]@{{
+                    name = 'automation-examples-0.7.3-nightly.20260604.5169162.zip'
+                    browser_download_url = 'https://example.invalid/automation-examples-0.7.3-nightly.20260604.5169162.zip'
+                }},
+                [pscustomobject]@{{
+                    name = 'automation-examples-0.7.3-nightly.20260604.5169162.manifest.json'
+                    browser_download_url = 'https://example.invalid/automation-examples-0.7.3-nightly.20260604.5169162.manifest.json'
                 }}
             )
         }}
@@ -2119,6 +2278,8 @@ param(
     [string]$ReleaseBaseUrl,
     [string]$SuiteScriptsZip,
     [string]$SuiteScriptsManifest,
+    [string]$AutomationExamplesZip,
+    [string]$AutomationExamplesManifest,
     [switch]$NoStart
 )
 @{{
@@ -2167,6 +2328,14 @@ function Invoke-RestMethod {{
             [pscustomobject]@{{
                 name = 'suite-scripts-{version}.manifest.json'
                 browser_download_url = 'https://example.invalid/suite-scripts-{version}.manifest.json'
+            }},
+            [pscustomobject]@{{
+                name = 'automation-examples-{version}.zip'
+                browser_download_url = 'https://example.invalid/automation-examples-{version}.zip'
+            }},
+            [pscustomobject]@{{
+                name = 'automation-examples-{version}.manifest.json'
+                browser_download_url = 'https://example.invalid/automation-examples-{version}.manifest.json'
             }}
         )
     }}
@@ -2217,6 +2386,8 @@ param(
     [string]$ReleaseBaseUrl,
     [string]$SuiteScriptsZip,
     [string]$SuiteScriptsManifest,
+    [string]$AutomationExamplesZip,
+    [string]$AutomationExamplesManifest,
     [switch]$NoStart
 )
 @{{
@@ -2226,6 +2397,8 @@ param(
     releaseBaseUrl = $ReleaseBaseUrl
     suiteScriptsZip = $SuiteScriptsZip
     suiteScriptsManifest = $SuiteScriptsManifest
+    automationExamplesZip = $AutomationExamplesZip
+    automationExamplesManifest = $AutomationExamplesManifest
 }} | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 -LiteralPath '{captured.as_posix()}'
 """.encode("utf-8")
     package_entries = {
@@ -2249,7 +2422,19 @@ param(
         release_root=release_root,
         release_version=version,
     )
+    automation_source_root = (
+        repo_root
+        / "emule_workspace"
+        / "release_assets"
+        / release.EMULEBB_AUTOMATION_EXAMPLE_ASSET_ROOT_NAME
+    )
+    automation_asset, automation_manifest, automation_digest = release._write_automation_examples_asset(
+        build_repo_root=repo_root,
+        release_root=release_root,
+        release_version=version,
+    )
     suite_manifest_payload = json.loads(suite_manifest.read_text(encoding="utf-8"))
+    automation_manifest_payload = json.loads(automation_manifest.read_text(encoding="utf-8"))
 
     bootstrapper_path = (repo_root / BOOTSTRAPPER).resolve()
     command = rf"""
@@ -2278,6 +2463,14 @@ function Invoke-RestMethod {{
             [pscustomobject]@{{
                 name = '{suite_manifest.name}'
                 browser_download_url = 'https://example.invalid/{suite_manifest.name}'
+            }},
+            [pscustomobject]@{{
+                name = '{automation_asset.name}'
+                browser_download_url = 'https://example.invalid/{automation_asset.name}'
+            }},
+            [pscustomobject]@{{
+                name = '{automation_manifest.name}'
+                browser_download_url = 'https://example.invalid/{automation_manifest.name}'
             }}
         )
     }}
@@ -2301,11 +2494,17 @@ function Invoke-WebRequest {{
     captured_payload = json.loads(captured.read_text(encoding="utf-8-sig"))
 
     assert "Resolved suite scripts bundle https://example.invalid/suite-scripts-" in completed.stdout
+    assert "Resolved automation examples bundle https://example.invalid/automation-examples-" in completed.stdout
     assert suite_manifest_payload["schema"] == "emulebb.suite-scripts-manifest.v1"
     assert suite_manifest_payload["sha256"] == suite_digest
+    assert automation_source_root.is_dir()
+    assert automation_manifest_payload["schema"] == "emulebb.automation-examples-manifest.v1"
+    assert automation_manifest_payload["sha256"] == automation_digest
     assert captured_payload["version"] == version
     assert captured_payload["suiteScriptsZip"] == f"https://example.invalid/{suite_asset.name}"
     assert captured_payload["suiteScriptsManifest"] == f"https://example.invalid/{suite_manifest.name}"
+    assert captured_payload["automationExamplesZip"] == f"https://example.invalid/{automation_asset.name}"
+    assert captured_payload["automationExamplesManifest"] == f"https://example.invalid/{automation_manifest.name}"
 
 
 @pytest.mark.parametrize("missing_asset", ["zip", "manifest"])
@@ -2345,6 +2544,14 @@ function Invoke-RestMethod {{
             [pscustomobject]@{{
                 name = 'emulebb-{version}-x64.manifest.json'
                 browser_download_url = 'https://example.invalid/emulebb-{version}-x64.manifest.json'
+            }},
+            [pscustomobject]@{{
+                name = 'automation-examples-{version}.zip'
+                browser_download_url = 'https://example.invalid/automation-examples-{version}.zip'
+            }},
+            [pscustomobject]@{{
+                name = 'automation-examples-{version}.manifest.json'
+                browser_download_url = 'https://example.invalid/automation-examples-{version}.manifest.json'
             }},
 {suite_asset_text}
         )
@@ -2391,49 +2598,58 @@ function Invoke-RestMethod {{
                 )
             }},
             [pscustomobject]@{{
-                tag_name = 'amutorrent-v3.8.5-emulebb-v0.7.3-rc.1'
+                tag_name = 'amutorrent-v3.8.5-emulebb-v0.7.3-rc.2'
                 draft = $false
                 prerelease = $true
                 assets = @(
                     [pscustomobject]@{{
-                        name = 'emulebb-0.7.3-rc.1-amutorrent-x64.zip'
-                        browser_download_url = 'https://example.invalid/emulebb-0.7.3-rc.1-amutorrent-x64.zip'
+                        name = 'emulebb-0.7.3-rc.2-amutorrent-x64.zip'
+                        browser_download_url = 'https://example.invalid/emulebb-0.7.3-rc.2-amutorrent-x64.zip'
                     }},
                     [pscustomobject]@{{
-                        name = 'emulebb-0.7.3-rc.1-amutorrent-x64.manifest.json'
-                        browser_download_url = 'https://example.invalid/emulebb-0.7.3-rc.1-amutorrent-x64.manifest.json'
+                        name = 'emulebb-0.7.3-rc.2-amutorrent-x64.manifest.json'
+                        browser_download_url = 'https://example.invalid/emulebb-0.7.3-rc.2-amutorrent-x64.manifest.json'
                     }}
                 )
             }}
         )
     }}
-    if ($Uri -ne 'https://api.github.com/repos/emulebb/emulebb/releases/tags/emulebb-v0.7.3-rc.1') {{
+    if ($Uri -ne 'https://api.github.com/repos/emulebb/emulebb/releases/tags/emulebb-v0.7.3-rc.2') {{
         throw "Unexpected release URI: $Uri"
     }}
     return [pscustomobject]@{{
-        tag_name = 'emulebb-v0.7.3-rc.1'
+        tag_name = 'emulebb-v0.7.3-rc.2'
         draft = $false
         prerelease = $true
         assets = @(
             [pscustomobject]@{{
-                name = 'emulebb-0.7.3-rc.1-x64.zip'
-                browser_download_url = 'https://example.invalid/emulebb-0.7.3-rc.1-x64.zip'
+                name = 'emulebb-0.7.3-rc.2-x64.zip'
+                browser_download_url = 'https://example.invalid/emulebb-0.7.3-rc.2-x64.zip'
             }},
             [pscustomobject]@{{
-                name = 'emulebb-0.7.3-rc.1-x64.manifest.json'
-                browser_download_url = 'https://example.invalid/emulebb-0.7.3-rc.1-x64.manifest.json'
+                name = 'emulebb-0.7.3-rc.2-x64.manifest.json'
+                browser_download_url = 'https://example.invalid/emulebb-0.7.3-rc.2-x64.manifest.json'
+            }},
+            [pscustomobject]@{{
+                name = 'automation-examples-0.7.3-rc.2.zip'
+                browser_download_url = 'https://example.invalid/automation-examples-0.7.3-rc.2.zip'
+            }},
+            [pscustomobject]@{{
+                name = 'automation-examples-0.7.3-rc.2.manifest.json'
+                browser_download_url = 'https://example.invalid/automation-examples-0.7.3-rc.2.manifest.json'
             }}
         )
     }}
 }}
-& '{bootstrapper_path}' -Version 0.7.3-rc.1 -Platform x64 -Bundle Full -DryRun -NoStart
+& '{bootstrapper_path}' -Version 0.7.3-rc.2 -Platform x64 -Bundle Full -DryRun -NoStart
 """
 
     completed = _run_powershell(["-Command", command], cwd=repo_root)
 
-    assert "Resolved release emulebb-v0.7.3-rc.1 for x64" in completed.stdout
-    assert "Resolved aMuTorrent release amutorrent-v3.8.5-emulebb-v0.7.3-rc.1 for Full suite" in completed.stdout
-    assert "AmutorrentVersion 0.7.3-rc.1" in completed.stdout
+    assert "Resolved release emulebb-v0.7.3-rc.2 for x64" in completed.stdout
+    assert "Resolved aMuTorrent release amutorrent-v3.8.5-emulebb-v0.7.3-rc.2 for Full suite" in completed.stdout
+    assert "Resolved automation examples bundle https://example.invalid/automation-examples-0.7.3-rc.2.zip" in completed.stdout
+    assert "AmutorrentVersion 0.7.3-rc.2" in completed.stdout
 
 
 def test_suite_bootstrapper_baked_release_runs_from_pipeline_without_parameters(tmp_path: Path) -> None:
@@ -2448,7 +2664,9 @@ param(
     [string]$Platform,
     [string]$ReleaseBaseUrl,
     [string]$AmutorrentVersion,
-    [string]$AmutorrentReleaseBaseUrl
+    [string]$AmutorrentReleaseBaseUrl,
+    [string]$AutomationExamplesZip,
+    [string]$AutomationExamplesManifest
 )
 @{{
     bundle = $Bundle
@@ -2458,12 +2676,16 @@ param(
     releaseBaseUrl = $ReleaseBaseUrl
     amutorrentVersion = $AmutorrentVersion
     amutorrentReleaseBaseUrl = $AmutorrentReleaseBaseUrl
+    automationExamplesZip = $AutomationExamplesZip
+    automationExamplesManifest = $AutomationExamplesManifest
 }} | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 -LiteralPath '{captured.as_posix()}'
 """.encode("utf-8")
-    package_zip = release_root / "emulebb-0.7.3-rc.1-x64.zip"
-    manifest = release_root / "emulebb-0.7.3-rc.1-x64.manifest.json"
-    amutorrent_zip = release_root / "emulebb-0.7.3-rc.1-amutorrent-x64.zip"
-    amutorrent_manifest = release_root / "emulebb-0.7.3-rc.1-amutorrent-x64.manifest.json"
+    package_zip = release_root / "emulebb-0.7.3-rc.2-x64.zip"
+    manifest = release_root / "emulebb-0.7.3-rc.2-x64.manifest.json"
+    amutorrent_zip = release_root / "emulebb-0.7.3-rc.2-amutorrent-x64.zip"
+    amutorrent_manifest = release_root / "emulebb-0.7.3-rc.2-amutorrent-x64.manifest.json"
+    automation_zip = release_root / "automation-examples-0.7.3-rc.2.zip"
+    automation_manifest = release_root / "automation-examples-0.7.3-rc.2.manifest.json"
     suite_install_fixtures.write_zip(
         package_zip,
         {
@@ -2474,9 +2696,11 @@ param(
     suite_install_fixtures.write_manifest(manifest, package_zip)
     suite_install_fixtures.write_zip(amutorrent_zip, {"aMuTorrent/server/server.js": b"server\n"})
     suite_install_fixtures.write_manifest(amutorrent_manifest, amutorrent_zip)
+    suite_install_fixtures.write_zip(automation_zip, {"eMuleBB/examples/automation/README.md": b"examples\n"})
+    suite_install_fixtures.write_manifest(automation_manifest, automation_zip)
     bootstrapper = BOOTSTRAPPER.read_text(encoding="utf-8").replace(
         "[string]$Version,",
-        "[string]$Version = '0.7.3-rc.1',",
+        "[string]$Version = '0.7.3-rc.2',",
     )
     bootstrapper_path = tmp_path / "Bootstrap-eMuleBBSuite.ps1"
     bootstrapper_path.write_text(bootstrapper, encoding="utf-8")
@@ -2488,57 +2712,73 @@ function Invoke-RestMethod {{
     if ($Uri -eq 'https://api.github.com/repos/emulebb/amutorrent/releases') {{
         return @(
             [pscustomobject]@{{
-                tag_name = 'amutorrent-v3.8.5-emulebb-v0.7.3-rc.1'
+                tag_name = 'amutorrent-v3.8.5-emulebb-v0.7.3-rc.2'
                 draft = $false
                 prerelease = $true
                 assets = @(
                     [pscustomobject]@{{
-                        name = 'emulebb-0.7.3-rc.1-amutorrent-x64.zip'
-                        browser_download_url = 'https://example.invalid/emulebb-0.7.3-rc.1-amutorrent-x64.zip'
+                        name = 'emulebb-0.7.3-rc.2-amutorrent-x64.zip'
+                        browser_download_url = 'https://example.invalid/emulebb-0.7.3-rc.2-amutorrent-x64.zip'
                     }},
                     [pscustomobject]@{{
-                        name = 'emulebb-0.7.3-rc.1-amutorrent-x64.manifest.json'
-                        browser_download_url = 'https://example.invalid/emulebb-0.7.3-rc.1-amutorrent-x64.manifest.json'
+                        name = 'emulebb-0.7.3-rc.2-amutorrent-x64.manifest.json'
+                        browser_download_url = 'https://example.invalid/emulebb-0.7.3-rc.2-amutorrent-x64.manifest.json'
                     }}
                 )
             }}
         )
     }}
-    if ($Uri -ne 'https://api.github.com/repos/emulebb/emulebb/releases/tags/emulebb-v0.7.3-rc.1') {{
+    if ($Uri -ne 'https://api.github.com/repos/emulebb/emulebb/releases/tags/emulebb-v0.7.3-rc.2') {{
         throw "Unexpected release URI: $Uri"
     }}
     return [pscustomobject]@{{
-        tag_name = 'emulebb-v0.7.3-rc.1'
+        tag_name = 'emulebb-v0.7.3-rc.2'
         draft = $false
         prerelease = $true
         assets = @(
             [pscustomobject]@{{
-                name = 'emulebb-0.7.3-rc.1-x64.zip'
-                browser_download_url = 'https://example.invalid/emulebb-0.7.3-rc.1-x64.zip'
+                name = 'emulebb-0.7.3-rc.2-x64.zip'
+                browser_download_url = 'https://example.invalid/emulebb-0.7.3-rc.2-x64.zip'
             }},
             [pscustomobject]@{{
-                name = 'emulebb-0.7.3-rc.1-x64.manifest.json'
-                browser_download_url = 'https://example.invalid/emulebb-0.7.3-rc.1-x64.manifest.json'
+                name = 'emulebb-0.7.3-rc.2-x64.manifest.json'
+                browser_download_url = 'https://example.invalid/emulebb-0.7.3-rc.2-x64.manifest.json'
+            }},
+            [pscustomobject]@{{
+                name = 'automation-examples-0.7.3-rc.2.zip'
+                browser_download_url = 'https://example.invalid/automation-examples-0.7.3-rc.2.zip'
+            }},
+            [pscustomobject]@{{
+                name = 'automation-examples-0.7.3-rc.2.manifest.json'
+                browser_download_url = 'https://example.invalid/automation-examples-0.7.3-rc.2.manifest.json'
             }}
         )
     }}
 }}
 function Invoke-WebRequest {{
     param([switch]$UseBasicParsing, [string]$Uri, [string]$OutFile, [hashtable]$Headers)
-    if ($Uri.EndsWith('emulebb-0.7.3-rc.1-x64.manifest.json')) {{
+    if ($Uri.EndsWith('emulebb-0.7.3-rc.2-x64.manifest.json')) {{
         Copy-Item -Force -LiteralPath '{manifest.as_posix()}' -Destination $OutFile
         return
     }}
-    if ($Uri.EndsWith('emulebb-0.7.3-rc.1-x64.zip')) {{
+    if ($Uri.EndsWith('emulebb-0.7.3-rc.2-x64.zip')) {{
         Copy-Item -Force -LiteralPath '{package_zip.as_posix()}' -Destination $OutFile
         return
     }}
-    if ($Uri.EndsWith('emulebb-0.7.3-rc.1-amutorrent-x64.manifest.json')) {{
+    if ($Uri.EndsWith('emulebb-0.7.3-rc.2-amutorrent-x64.manifest.json')) {{
         Copy-Item -Force -LiteralPath '{amutorrent_manifest.as_posix()}' -Destination $OutFile
         return
     }}
-    if ($Uri.EndsWith('emulebb-0.7.3-rc.1-amutorrent-x64.zip')) {{
+    if ($Uri.EndsWith('emulebb-0.7.3-rc.2-amutorrent-x64.zip')) {{
         Copy-Item -Force -LiteralPath '{amutorrent_zip.as_posix()}' -Destination $OutFile
+        return
+    }}
+    if ($Uri.EndsWith('automation-examples-0.7.3-rc.2.manifest.json')) {{
+        Copy-Item -Force -LiteralPath '{automation_manifest.as_posix()}' -Destination $OutFile
+        return
+    }}
+    if ($Uri.EndsWith('automation-examples-0.7.3-rc.2.zip')) {{
+        Copy-Item -Force -LiteralPath '{automation_zip.as_posix()}' -Destination $OutFile
         return
     }}
     throw "Unexpected download URI: $Uri"
@@ -2549,12 +2789,14 @@ function Invoke-WebRequest {{
     completed = _run_powershell(["-Command", command], cwd=repo_root)
     captured_payload = json.loads(captured.read_text(encoding="utf-8-sig"))
 
-    assert "Resolved release emulebb-v0.7.3-rc.1 for x64" in completed.stdout
-    assert "Resolved aMuTorrent release amutorrent-v3.8.5-emulebb-v0.7.3-rc.1 for Full suite" in completed.stdout
+    assert "Resolved release emulebb-v0.7.3-rc.2 for x64" in completed.stdout
+    assert "Resolved aMuTorrent release amutorrent-v3.8.5-emulebb-v0.7.3-rc.2 for Full suite" in completed.stdout
     assert captured_payload["bundle"] == "Full"
-    assert captured_payload["version"] == "0.7.3-rc.1"
+    assert captured_payload["version"] == "0.7.3-rc.2"
     assert captured_payload["platform"] == "x64"
-    assert captured_payload["amutorrentVersion"] == "0.7.3-rc.1"
+    assert captured_payload["amutorrentVersion"] == "0.7.3-rc.2"
+    assert captured_payload["automationExamplesZip"].endswith("automation-examples-0.7.3-rc.2.zip")
+    assert captured_payload["automationExamplesManifest"].endswith("automation-examples-0.7.3-rc.2.manifest.json")
 
 
 @pytest.mark.parametrize("pass_install_root", [False, True])
@@ -2570,6 +2812,8 @@ param(
     [string]$Platform,
     [string]$EmulebbPackageZip,
     [string]$EmulebbPackageManifest,
+    [string]$AutomationExamplesZip,
+    [string]$AutomationExamplesManifest,
     [switch]$NoStart
 )
 @{{
@@ -2587,6 +2831,7 @@ param(
         },
     )
     suite_install_fixtures.write_manifest(package_manifest, package_zip)
+    _write_automation_examples_component(release_root, "0.7.3-local.20260604")
 
     bootstrapper_path = (repo_root / BOOTSTRAPPER).resolve()
     command = [
@@ -2629,6 +2874,8 @@ param(
     [string]$AmutorrentPackageZip,
     [string]$AmutorrentPackageManifest,
     [string]$DependencyManifest,
+    [string]$AutomationExamplesZip,
+    [string]$AutomationExamplesManifest,
     [switch]$NoStart
 )
 @{{
@@ -2659,6 +2906,7 @@ param(
     suite_install_fixtures.write_zip(amutorrent_zip, {"aMuTorrent/server/server.js": b"server\n"})
     suite_install_fixtures.write_manifest(amutorrent_manifest, amutorrent_zip)
     dependency_manifest.write_text("{}\n", encoding="utf-8")
+    _write_automation_examples_component(release_root, "0.7.3-local.20260604")
     bootstrapper_path = (repo_root / BOOTSTRAPPER).resolve()
     command = rf"""
 function Invoke-RestMethod {{
@@ -2700,6 +2948,8 @@ param(
     [string]$EmulebbPackageManifest,
     [string]$SuiteScriptsZip,
     [string]$SuiteScriptsManifest,
+    [string]$AutomationExamplesZip,
+    [string]$AutomationExamplesManifest,
     [switch]$NoStart
 )
 @{{
@@ -2721,6 +2971,7 @@ param(
     suite_install_fixtures.write_manifest(package_manifest, package_zip)
     suite_install_fixtures.write_zip(suite_scripts_zip, {"eMuleBB/scripts/Start-Suite.ps1": b"#Requires -Version 5.1\n"})
     suite_install_fixtures.write_manifest(suite_scripts_manifest, suite_scripts_zip)
+    _write_automation_examples_component(release_root, "0.7.3-local.20260604")
     bootstrapper_path = (repo_root / BOOTSTRAPPER).resolve()
     command = rf"""
 function Invoke-RestMethod {{

@@ -5,7 +5,7 @@ param(
 
     [string]$InstallRoot = 'C:\eMuleBBSuite',
 
-    [string]$Version = '0.7.3-rc.1',
+    [string]$Version = '0.7.3-rc.2',
 
     [ValidateSet('x64', 'ARM64')]
     [string]$Platform = 'x64',
@@ -35,6 +35,8 @@ param(
     [string]$DependencyManifest,
     [string]$SuiteScriptsZip,
     [string]$SuiteScriptsManifest,
+    [string]$AutomationExamplesZip,
+    [string]$AutomationExamplesManifest,
     [string]$ImportProfileDir,
     [string]$EmulebbPdbPath,
     [ValidateSet('standard', 'diagnostics')]
@@ -656,6 +658,10 @@ function New-SuiteConfig {
             zip = $SuiteScriptsZip
             manifest = $SuiteScriptsManifest
         }
+        automationExamples = [ordered]@{
+            zip = $AutomationExamplesZip
+            manifest = $AutomationExamplesManifest
+        }
         emulebbPackageFlavor = $EmulebbPackageFlavor
         emulebbExecutableName = (Get-EmulebbExecutableNameForFlavor -PackageFlavor $EmulebbPackageFlavor)
         nodeBaseUrl = $NodeBaseUrl
@@ -1106,6 +1112,8 @@ function Resolve-SuiteConfig {
         @('AmutorrentPackageManifest', { param($c, $v) $c.packageSources.amutorrent.manifest = $v }),
         @('SuiteScriptsZip', { param($c, $v) $c.suiteScripts.zip = $v }),
         @('SuiteScriptsManifest', { param($c, $v) $c.suiteScripts.manifest = $v }),
+        @('AutomationExamplesZip', { param($c, $v) $c.automationExamples.zip = $v }),
+        @('AutomationExamplesManifest', { param($c, $v) $c.automationExamples.manifest = $v }),
         @('NodeBaseUrl', { param($c, $v) $c.nodeBaseUrl = $v }),
         @('DependencyManifest', { param($c, $v) $c.dependencyManifest = $v }),
         @('ImportProfileDir', { param($c, $v) $c.importProfileDir = $v }),
@@ -1185,6 +1193,15 @@ function Resolve-SuiteConfig {
     }
     if (-not $config.suiteScripts.Contains('manifest')) {
         $config.suiteScripts.manifest = ''
+    }
+    if ($null -eq $config.automationExamples) {
+        $config.automationExamples = [ordered]@{ zip = ''; manifest = '' }
+    }
+    if (-not $config.automationExamples.Contains('zip')) {
+        $config.automationExamples.zip = ''
+    }
+    if (-not $config.automationExamples.Contains('manifest')) {
+        $config.automationExamples.manifest = ''
     }
     $config.emulebbExecutableName = Get-EmulebbExecutableNameForFlavor -PackageFlavor ([string]$config.emulebbPackageFlavor)
     Set-SuiteClientHosts -Config $config
@@ -2598,6 +2615,17 @@ function Get-SuiteConfigAssetNames {
     )
 }
 
+function Get-AutomationExampleNames {
+    return @(
+        'README.md',
+        'Import-eMuleBBRestExample.ps1',
+        'Get-eMuleBBStatus.ps1',
+        'Set-eMuleBBLimits.ps1',
+        'Search-eMuleBB.ps1',
+        'Download-ReleaseGroup.ps1'
+    )
+}
+
 function Get-ArchiveLeafName {
     param([string]$Value, [string]$DefaultName)
     $uri = $null
@@ -2639,6 +2667,31 @@ function Save-SuiteScriptsBundle {
     return $archivePath
 }
 
+function Save-AutomationExamplesBundle {
+    param([hashtable]$Config)
+    $zipSpec = [string]$Config.automationExamples.zip
+    if ([string]::IsNullOrWhiteSpace($zipSpec)) {
+        return ''
+    }
+    $manifestSpec = [string]$Config.automationExamples.manifest
+    if ([string]::IsNullOrWhiteSpace($manifestSpec)) {
+        throw 'AutomationExamplesZip requires -AutomationExamplesManifest with a SHA256 hash.'
+    }
+    $downloadRoot = Join-Path $script:Root 'downloads-cache'
+    $archivePath = Join-Path $downloadRoot (Get-ArchiveLeafName -Value $zipSpec -DefaultName 'automation-examples.zip')
+    $manifestPath = Join-Path $downloadRoot (Get-ArchiveLeafName -Value $manifestSpec -DefaultName 'automation-examples.manifest.json')
+    Write-Step 'Downloading automation examples bundle'
+    Invoke-Download -Url $zipSpec -Destination $archivePath
+    Write-Step 'Downloading automation examples manifest'
+    Invoke-Download -Url $manifestSpec -Destination $manifestPath
+    $manifest = Read-JsonFile -Path $manifestPath -Description 'AutomationExamplesManifest'
+    if ($null -eq $manifest.PSObject.Properties['sha256'] -or [string]::IsNullOrWhiteSpace([string]$manifest.sha256)) {
+        throw "AutomationExamplesManifest does not contain sha256: $manifestPath"
+    }
+    Assert-FileHash -Path $archivePath -ExpectedSha256 ([string]$manifest.sha256)
+    return $archivePath
+}
+
 function Copy-SuiteScriptSet {
     param([string]$SourceRoot, [string]$DestinationRoot, [string]$Description)
     foreach ($scriptName in @(Get-SuiteScriptNames)) {
@@ -2647,6 +2700,21 @@ function Copy-SuiteScriptSet {
             throw "$Description did not include scripts\$scriptName."
         }
         Copy-Item -Force -LiteralPath $source.FullName -Destination (Join-Path $DestinationRoot $scriptName)
+    }
+}
+
+function Copy-AutomationExampleSet {
+    param([string]$SourceRoot, [string]$DestinationRoot)
+    if (Test-Path -LiteralPath $DestinationRoot) {
+        Remove-Item -Recurse -Force -LiteralPath $DestinationRoot
+    }
+    New-Item -ItemType Directory -Force -Path $DestinationRoot | Out-Null
+    foreach ($assetName in @(Get-AutomationExampleNames)) {
+        $source = Get-ChildItem -Path $SourceRoot -Filter $assetName -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($null -eq $source) {
+            throw "Automation examples bundle did not include examples\automation\$assetName."
+        }
+        Copy-Item -Force -LiteralPath $source.FullName -Destination (Join-Path $DestinationRoot $assetName)
     }
 }
 
@@ -2662,6 +2730,26 @@ function Copy-SuiteConfigAssetSet {
             Copy-Item -Force -LiteralPath $source.FullName -Destination (Join-Path $DestinationRoot $assetName)
         }
     }
+}
+
+function Write-AutomationExamples {
+    param([hashtable]$Config)
+    $examplesDir = Join-Path $script:Root 'examples\automation'
+    if ($DryRun) {
+        Write-Step "Would install automation examples"
+        return
+    }
+    $automationExamplesBundle = Save-AutomationExamplesBundle -Config $Config
+    if ([string]::IsNullOrWhiteSpace($automationExamplesBundle)) {
+        return
+    }
+    $extractRoot = Join-Path (Join-Path $script:Root 'downloads-cache') 'extract-automation-examples'
+    if (Test-Path -LiteralPath $extractRoot) {
+        Remove-Item -Recurse -Force -LiteralPath $extractRoot
+    }
+    Write-Step 'Extracting automation examples bundle'
+    Expand-ZipSafe -Archive $automationExamplesBundle -Destination $extractRoot
+    Copy-AutomationExampleSet -SourceRoot $extractRoot -DestinationRoot $examplesDir
 }
 
 function Write-SuiteScripts {
@@ -2733,6 +2821,11 @@ function Write-InstallManifest {
         suiteScripts = @{
             zip = [string]$Config.suiteScripts.zip
             manifest = [string]$Config.suiteScripts.manifest
+        }
+        automationExamples = @{
+            zip = [string]$Config.automationExamples.zip
+            manifest = [string]$Config.automationExamples.manifest
+            installed = -not [string]::IsNullOrWhiteSpace([string]$Config.automationExamples.zip)
         }
         services = $serviceManifest
         p2p = @{
@@ -2823,6 +2916,7 @@ if (@(Get-SelectedArrAppNames -Config $script:SuiteConfig).Count -gt 0) {
 Write-SuiteConfigFile -Config $script:SuiteConfig
 Write-CredentialsFile -Config $script:SuiteConfig
 Write-SuiteScripts -Config $script:SuiteConfig
+Write-AutomationExamples -Config $script:SuiteConfig
 Write-InstallManifest -Config $script:SuiteConfig -ProfileImport $script:ProfileImport -Symbols $script:Symbols
 
 if (-not $KeepDownloads -and -not $DryRun) {

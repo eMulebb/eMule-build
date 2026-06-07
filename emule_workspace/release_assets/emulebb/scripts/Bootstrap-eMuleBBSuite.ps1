@@ -26,6 +26,8 @@ param(
     [string]$DependencyManifest,
     [string]$SuiteScriptsZip,
     [string]$SuiteScriptsManifest,
+    [string]$AutomationExamplesZip,
+    [string]$AutomationExamplesManifest,
 
     [string]$P2PBindInterface,
     [string]$ControlBindAddress,
@@ -374,6 +376,23 @@ function Get-SuiteScriptsBundleVersion {
     return ''
 }
 
+function Get-AutomationExamplesBundleVersion {
+    param([string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return ''
+    }
+    $uri = $null
+    if ([Uri]::TryCreate($Value, [UriKind]::Absolute, [ref]$uri) -and -not [string]::IsNullOrWhiteSpace($uri.AbsolutePath)) {
+        $leaf = [IO.Path]::GetFileName($uri.AbsolutePath)
+    } else {
+        $leaf = [IO.Path]::GetFileName($Value)
+    }
+    if ($leaf -match '^automation-examples-(.+?)(?:\.manifest\.json|\.zip)$') {
+        return $Matches[1]
+    }
+    return ''
+}
+
 function Assert-SuiteScriptsBundleVersion {
     param([string]$Zip, [string]$Manifest, [string]$ExpectedVersion)
     $zipVersion = Get-SuiteScriptsBundleVersion -Value $Zip
@@ -387,6 +406,22 @@ function Assert-SuiteScriptsBundleVersion {
     }
     if ($bundleVersion -ne $ExpectedVersion) {
         throw "Suite scripts bundle version $bundleVersion does not match eMuleBB package version $ExpectedVersion. Pass -AllowSuiteScriptsVersionMismatch only when testing a manually assembled local bundle."
+    }
+}
+
+function Assert-AutomationExamplesBundleVersion {
+    param([string]$Zip, [string]$Manifest, [string]$ExpectedVersion)
+    $zipVersion = Get-AutomationExamplesBundleVersion -Value $Zip
+    $manifestVersion = Get-AutomationExamplesBundleVersion -Value $Manifest
+    if (-not [string]::IsNullOrWhiteSpace($zipVersion) -and -not [string]::IsNullOrWhiteSpace($manifestVersion) -and $zipVersion -ne $manifestVersion) {
+        throw "Automation examples ZIP version $zipVersion does not match manifest version $manifestVersion."
+    }
+    $bundleVersion = if (-not [string]::IsNullOrWhiteSpace($zipVersion)) { $zipVersion } else { $manifestVersion }
+    if ([string]::IsNullOrWhiteSpace($bundleVersion)) {
+        return
+    }
+    if ($bundleVersion -ne $ExpectedVersion) {
+        throw "Automation examples version $bundleVersion does not match eMuleBB package version $ExpectedVersion."
     }
 }
 
@@ -408,6 +443,24 @@ function Resolve-ReleaseSuiteScriptsBundle {
     }
 }
 
+function Resolve-ReleaseAutomationExamplesBundle {
+    param([object]$Release, [string]$ResolvedVersion)
+    $zipName = "automation-examples-$ResolvedVersion.zip"
+    $manifestName = "automation-examples-$ResolvedVersion.manifest.json"
+    $zipUrl = Find-AssetUrl -Release $Release -Name $zipName
+    $manifestUrl = Find-AssetUrl -Release $Release -Name $manifestName
+    if ([string]::IsNullOrWhiteSpace($zipUrl) -and [string]::IsNullOrWhiteSpace($manifestUrl)) {
+        return $null
+    }
+    if ([string]::IsNullOrWhiteSpace($zipUrl) -or [string]::IsNullOrWhiteSpace($manifestUrl)) {
+        throw "Release $($Release.tag_name) has incomplete automation examples assets. Expected $zipName and $manifestName."
+    }
+    return [ordered]@{
+        Zip = $zipUrl
+        Manifest = $manifestUrl
+    }
+}
+
 function Resolve-AdjacentSuiteScriptsBundle {
     param([string]$PackageZip, [string]$ResolvedVersion)
     $packageDir = Split-Path -Parent ([IO.Path]::GetFullPath($PackageZip))
@@ -420,6 +473,25 @@ function Resolve-AdjacentSuiteScriptsBundle {
     }
     if (-not $hasZip -or -not $hasManifest) {
         throw "Local suite scripts bundle is incomplete. Expected $zipPath and $manifestPath."
+    }
+    return [ordered]@{
+        Zip = [IO.Path]::GetFullPath($zipPath)
+        Manifest = [IO.Path]::GetFullPath($manifestPath)
+    }
+}
+
+function Resolve-AdjacentAutomationExamplesBundle {
+    param([string]$PackageZip, [string]$ResolvedVersion)
+    $packageDir = Split-Path -Parent ([IO.Path]::GetFullPath($PackageZip))
+    $zipPath = Join-Path $packageDir "automation-examples-$ResolvedVersion.zip"
+    $manifestPath = Join-Path $packageDir "automation-examples-$ResolvedVersion.manifest.json"
+    $hasZip = Test-Path -LiteralPath $zipPath -PathType Leaf
+    $hasManifest = Test-Path -LiteralPath $manifestPath -PathType Leaf
+    if (-not $hasZip -and -not $hasManifest) {
+        return $null
+    }
+    if (-not $hasZip -or -not $hasManifest) {
+        throw "Local automation examples bundle is incomplete. Expected $zipPath and $manifestPath."
     }
     return [ordered]@{
         Zip = [IO.Path]::GetFullPath($zipPath)
@@ -737,9 +809,17 @@ if ($effectiveBundle -ne 'Core') {
     }
 }
 $suiteScriptsBundle = $null
+$automationExamplesBundle = $null
 $explicitSuiteScriptsBundle = -not [string]::IsNullOrWhiteSpace($SuiteScriptsZip) -or -not [string]::IsNullOrWhiteSpace($SuiteScriptsManifest)
 if ($explicitSuiteScriptsBundle -and -not $AllowSuiteScriptsVersionMismatch) {
     Assert-SuiteScriptsBundleVersion -Zip $SuiteScriptsZip -Manifest $SuiteScriptsManifest -ExpectedVersion $resolvedVersion
+}
+$explicitAutomationExamplesBundle = -not [string]::IsNullOrWhiteSpace($AutomationExamplesZip) -or -not [string]::IsNullOrWhiteSpace($AutomationExamplesManifest)
+if ($explicitAutomationExamplesBundle) {
+    if ([string]::IsNullOrWhiteSpace($AutomationExamplesZip) -or [string]::IsNullOrWhiteSpace($AutomationExamplesManifest)) {
+        throw 'AutomationExamplesZip requires -AutomationExamplesManifest with a SHA256 hash.'
+    }
+    Assert-AutomationExamplesBundleVersion -Zip $AutomationExamplesZip -Manifest $AutomationExamplesManifest -ExpectedVersion $resolvedVersion
 }
 if (-not $NoSuiteScriptsBundle -and -not $explicitSuiteScriptsBundle) {
     if ($localEmulebbPackage) {
@@ -749,6 +829,16 @@ if (-not $NoSuiteScriptsBundle -and -not $explicitSuiteScriptsBundle) {
     }
     if ($null -ne $suiteScriptsBundle) {
         Write-Step "Resolved suite scripts bundle $($suiteScriptsBundle.Zip)"
+    }
+}
+if (-not $explicitAutomationExamplesBundle) {
+    if ($localEmulebbPackage) {
+        $automationExamplesBundle = Resolve-AdjacentAutomationExamplesBundle -PackageZip $zipPath -ResolvedVersion $resolvedVersion
+    } else {
+        $automationExamplesBundle = Resolve-ReleaseAutomationExamplesBundle -Release $release -ResolvedVersion $resolvedVersion
+    }
+    if ($null -ne $automationExamplesBundle) {
+        Write-Step "Resolved automation examples bundle $($automationExamplesBundle.Zip)"
     }
 }
 $workRoot = Join-Path $env:TEMP "emulebb-suite-bootstrap-$resolvedVersion-$assetArch"
@@ -787,9 +877,15 @@ if (-not [string]::IsNullOrWhiteSpace($P2PBindInterface)) { $installerParams['P2
 if (-not [string]::IsNullOrWhiteSpace($DependencyManifest)) { $installerParams['DependencyManifest'] = [IO.Path]::GetFullPath($DependencyManifest) }
 if (-not [string]::IsNullOrWhiteSpace($SuiteScriptsZip)) { $installerParams['SuiteScriptsZip'] = $SuiteScriptsZip }
 if (-not [string]::IsNullOrWhiteSpace($SuiteScriptsManifest)) { $installerParams['SuiteScriptsManifest'] = $SuiteScriptsManifest }
+if (-not [string]::IsNullOrWhiteSpace($AutomationExamplesZip)) { $installerParams['AutomationExamplesZip'] = $AutomationExamplesZip }
+if (-not [string]::IsNullOrWhiteSpace($AutomationExamplesManifest)) { $installerParams['AutomationExamplesManifest'] = $AutomationExamplesManifest }
 if ($null -ne $suiteScriptsBundle) {
     $installerParams['SuiteScriptsZip'] = $suiteScriptsBundle.Zip
     $installerParams['SuiteScriptsManifest'] = $suiteScriptsBundle.Manifest
+}
+if ($null -ne $automationExamplesBundle) {
+    $installerParams['AutomationExamplesZip'] = $automationExamplesBundle.Zip
+    $installerParams['AutomationExamplesManifest'] = $automationExamplesBundle.Manifest
 }
 if (-not [string]::IsNullOrWhiteSpace($ControlBindAddress)) { $installerParams['ControlBindAddress'] = $ControlBindAddress }
 if (-not [string]::IsNullOrWhiteSpace($EmulebbBindAddress)) { $installerParams['EmulebbBindAddress'] = $EmulebbBindAddress }
