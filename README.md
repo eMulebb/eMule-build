@@ -114,9 +114,15 @@ The packaged suite installer supports non-interactive app and language selection
 `all`). If a media Arr app is selected, Prowlarr and aMuTorrent are included
 automatically.
 
-Release assets can publish a script-only bundle beside the normal package ZIPs.
-Use it when refreshing installer/runtime PowerShell without relying on scripts
-inside the app package:
+Release assets publish `suite-scripts-<version>.zip` and
+`suite-scripts-<version>.manifest.json` beside the normal package ZIPs. The
+bundle carries installer/runtime PowerShell plus suite config such as language
+preferences. The bootstrapper auto-discovers matching bundle assets from the
+selected GitHub Release, or adjacent files when `-EmulebbPackageZip` points at a
+local package. Pass `-NoSuiteScriptsBundle` to use the scripts embedded in the
+package instead.
+
+Explicit bundle URLs or file paths still override auto-discovery:
 
 ```powershell
 .\Bootstrap-eMuleBBSuite.ps1 `
