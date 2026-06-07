@@ -296,14 +296,16 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "Invoke-SuiteJsonApi -Name \"$Name web login update\"" in start_suite
     assert "Invoke-StepWithRetry -Name \"$display web login setup\"" in start_suite
     assert "function Ensure-ArrRootFolder" in start_suite
+    assert "function Wait-ArrDefaultProfiles" in start_suite
+    assert "function Get-FirstObjectWithId" in start_suite
     assert "$rootFolderUrl = \"$Url/$ApiPath/rootfolder\"" in start_suite
     assert "New-Item -ItemType Directory -Force -Path $Path" in start_suite
     assert "Invoke-SuiteJsonApi -Name \"$Name root folder create\"" in start_suite
     assert "$Name metadata profile list" in start_suite
     assert "$Url/$ApiPath/metadataprofile" in start_suite
     assert "name = 'eMuleBB Music'" in start_suite
-    assert "defaultQualityProfileId = [int]$qualityProfile[0].id" in start_suite
-    assert "defaultMetadataProfileId = [int]$metadataProfile[0].id" in start_suite
+    assert "defaultQualityProfileId = [int]$profiles.QualityProfile.id" in start_suite
+    assert "defaultMetadataProfileId = [int]$profiles.MetadataProfile.id" in start_suite
     assert "already configured as a root folder" in start_suite
     assert "$rootFolder.PSObject.Properties['path']" in start_suite
     assert "'radarr' { return 'media\\movies' }" in start_suite
@@ -1708,6 +1710,9 @@ def test_suite_initializer_applies_arr_content_language_profiles() -> None:
     initialize_suite = script_path.read_text(encoding="utf-8")
 
     assert "function Set-ArrPreferredContentLanguage" in initialize_suite
+    assert "function Wait-ArrContentLanguage" in initialize_suite
+    assert "function Find-ArrLanguage" in initialize_suite
+    assert "'italian' { return @('Italian') }" in initialize_suite
     assert '"$Url/$ApiPath/language"' in initialize_suite
     assert '"$Url/$ApiPath/qualityprofile"' in initialize_suite
     assert "$profile.language = $languageMatch" in initialize_suite

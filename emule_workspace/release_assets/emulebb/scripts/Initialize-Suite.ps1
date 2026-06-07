@@ -257,6 +257,43 @@ function Set-ArrHostCredentials {
     [void](Invoke-SuiteJsonApi -Name "$Name web login update" -Uri $hostConfigUrl -Method 'PUT' -Headers $headers -Body $hostConfig)
 }
 
+function Get-FirstObjectWithId {
+    param($Items)
+    foreach ($item in @($Items)) {
+        if ($null -ne $item -and $item.PSObject.Properties['id']) {
+            return $item
+        }
+    }
+    return $null
+}
+
+function Wait-ArrDefaultProfiles {
+    param([string]$Name, [string]$Url, [string]$ApiPath, [hashtable]$Headers, [switch]$IncludeMetadata)
+    $lastError = ''
+    for ($attempt = 1; $attempt -le 60; $attempt++) {
+        try {
+            $qualityProfiles = @(Invoke-SuiteJsonApi -Name "$Name quality profile list" -Uri "$Url/$ApiPath/qualityprofile" -Headers $Headers)
+            $qualityProfile = Get-FirstObjectWithId -Items $qualityProfiles
+            $metadataProfile = $null
+            if ($IncludeMetadata) {
+                $metadataProfiles = @(Invoke-SuiteJsonApi -Name "$Name metadata profile list" -Uri "$Url/$ApiPath/metadataprofile" -Headers $Headers)
+                $metadataProfile = Get-FirstObjectWithId -Items $metadataProfiles
+            }
+            if ($null -ne $qualityProfile -and (-not $IncludeMetadata -or $null -ne $metadataProfile)) {
+                return [pscustomobject]@{
+                    QualityProfile = $qualityProfile
+                    MetadataProfile = $metadataProfile
+                }
+            }
+            $lastError = 'profile list was empty'
+        } catch {
+            $lastError = $_.Exception.Message
+        }
+        Start-Sleep -Seconds 1
+    }
+    throw "$Name did not expose the default profiles required to create a root folder. Last error: $lastError"
+}
+
 function Ensure-ArrRootFolder {
     param([string]$Name, [string]$Url, [string]$ApiPath, [string]$ApiKey, [string]$Path)
     if ([string]::IsNullOrWhiteSpace($Path)) {
@@ -276,18 +313,12 @@ function Ensure-ArrRootFolder {
     try {
         $body = @{ path = $normalizedPath }
         if ([string]::Equals($Name, 'Lidarr', [StringComparison]::OrdinalIgnoreCase)) {
-            $qualityProfiles = @(Invoke-SuiteJsonApi -Name "$Name quality profile list" -Uri "$Url/$ApiPath/qualityprofile" -Headers $headers)
-            $metadataProfiles = @(Invoke-SuiteJsonApi -Name "$Name metadata profile list" -Uri "$Url/$ApiPath/metadataprofile" -Headers $headers)
-            $qualityProfile = @($qualityProfiles | Where-Object { $_.PSObject.Properties['id'] } | Select-Object -First 1)
-            $metadataProfile = @($metadataProfiles | Where-Object { $_.PSObject.Properties['id'] } | Select-Object -First 1)
-            if ($qualityProfile.Count -eq 0 -or $metadataProfile.Count -eq 0) {
-                throw "$Name did not expose the default profiles required to create a root folder."
-            }
+            $profiles = Wait-ArrDefaultProfiles -Name $Name -Url $Url -ApiPath $ApiPath -Headers $headers -IncludeMetadata
             $body = @{
                 path = $normalizedPath
                 name = 'eMuleBB Music'
-                defaultQualityProfileId = [int]$qualityProfile[0].id
-                defaultMetadataProfileId = [int]$metadataProfile[0].id
+                defaultQualityProfileId = [int]$profiles.QualityProfile.id
+                defaultMetadataProfileId = [int]$profiles.MetadataProfile.id
             }
         }
         [void](Invoke-SuiteJsonApi -Name "$Name root folder create" -Uri $rootFolderUrl -Method 'POST' -Headers $headers -Body $body)
@@ -302,6 +333,49 @@ function Ensure-ArrRootFolder {
     }
 }
 
+function Get-ArrLanguageCandidates {
+    param([string]$Language)
+    switch ($Language.ToLowerInvariant()) {
+        'spanish' { return @('Spanish', 'Spanish (Latino)') }
+        'italian' { return @('Italian') }
+        'portuguese' { return @('Portuguese', 'Portuguese (Brazil)') }
+        default { return @($Language) }
+    }
+}
+
+function Find-ArrLanguage {
+    param($Languages, [string]$Language)
+    $candidates = @(Get-ArrLanguageCandidates -Language $Language)
+    foreach ($candidate in $candidates) {
+        foreach ($item in @($Languages)) {
+            if ([string]::Equals([string]$item.name, $candidate, [StringComparison]::OrdinalIgnoreCase) -or
+                [string]::Equals([string]$item.nameLower, $candidate.ToLowerInvariant(), [StringComparison]::OrdinalIgnoreCase)) {
+                return $item
+            }
+        }
+    }
+    return $null
+}
+
+function Wait-ArrContentLanguage {
+    param([string]$Name, [string]$Url, [string]$ApiPath, [hashtable]$Headers, [string]$Language)
+    $lastError = ''
+    for ($attempt = 1; $attempt -le 60; $attempt++) {
+        try {
+            $languages = @(Invoke-SuiteJsonApi -Name "$Name language list" -Uri "$Url/$ApiPath/language" -Headers $Headers)
+            $languageMatch = Find-ArrLanguage -Languages $languages -Language $Language
+            if ($null -ne $languageMatch) {
+                return $languageMatch
+            }
+            $lastError = "language list did not include '$Language'"
+        } catch {
+            $lastError = $_.Exception.Message
+        }
+        Start-Sleep -Seconds 1
+    }
+    throw "$Name did not expose content language '$Language'. Last error: $lastError"
+}
+
 function Set-ArrPreferredContentLanguage {
     param([string]$Name, [string]$Url, [string]$ApiPath, [string]$ApiKey, [string]$Language)
     if ([string]::IsNullOrWhiteSpace($Language) -or $Language -eq 'English') {
@@ -309,18 +383,7 @@ function Set-ArrPreferredContentLanguage {
     }
     $headers = @{ 'X-Api-Key' = $ApiKey }
     try {
-        $languages = @(Invoke-SuiteJsonApi -Name "$Name language list" -Uri "$Url/$ApiPath/language" -Headers $headers)
-        $languageMatch = $null
-        foreach ($item in $languages) {
-            if ([string]::Equals([string]$item.name, $Language, [StringComparison]::OrdinalIgnoreCase)) {
-                $languageMatch = $item
-                break
-            }
-        }
-        if ($null -eq $languageMatch) {
-            Write-Warning "$Name did not expose content language '$Language'. Leaving existing profiles unchanged."
-            return
-        }
+        $languageMatch = Wait-ArrContentLanguage -Name $Name -Url $Url -ApiPath $ApiPath -Headers $headers -Language $Language
         $profiles = @(Invoke-SuiteJsonApi -Name "$Name quality profile list" -Uri "$Url/$ApiPath/qualityprofile" -Headers $headers)
         foreach ($profile in $profiles) {
             $changed = $false
