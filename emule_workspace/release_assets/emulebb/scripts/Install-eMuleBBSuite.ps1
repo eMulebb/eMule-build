@@ -2571,6 +2571,12 @@ function Get-SuiteScriptNames {
     )
 }
 
+function Get-SuiteConfigAssetNames {
+    return @(
+        'suite-languages.json'
+    )
+}
+
 function Get-ArchiveLeafName {
     param([string]$Value, [string]$DefaultName)
     $uri = $null
@@ -2623,9 +2629,24 @@ function Copy-SuiteScriptSet {
     }
 }
 
+function Copy-SuiteConfigAssetSet {
+    param([string]$SourceRoot, [string]$DestinationRoot)
+    if (-not (Test-Path -LiteralPath $SourceRoot -PathType Container)) {
+        return
+    }
+    foreach ($assetName in @(Get-SuiteConfigAssetNames)) {
+        $source = Get-ChildItem -Path $SourceRoot -Filter $assetName -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($null -ne $source) {
+            New-Item -ItemType Directory -Force -Path $DestinationRoot | Out-Null
+            Copy-Item -Force -LiteralPath $source.FullName -Destination (Join-Path $DestinationRoot $assetName)
+        }
+    }
+}
+
 function Write-SuiteScripts {
     param([hashtable]$Config)
     $scriptsDir = Join-Path $script:Root 'scripts'
+    $configDir = Join-Path $script:Root 'config'
     if ($DryRun) {
         Write-Step "Would copy suite control scripts"
         return
@@ -2640,6 +2661,7 @@ function Write-SuiteScripts {
         Write-Step 'Extracting suite scripts bundle'
         Expand-ZipSafe -Archive $suiteScriptsBundle -Destination $extractRoot
         Copy-SuiteScriptSet -SourceRoot $extractRoot -DestinationRoot $scriptsDir -Description 'Suite scripts bundle'
+        Copy-SuiteConfigAssetSet -SourceRoot $extractRoot -DestinationRoot $configDir
         return
     }
     $sourceScriptsDir = Join-Path $script:Root 'apps\eMuleBB\scripts'
@@ -2647,6 +2669,7 @@ function Write-SuiteScripts {
         throw "Installed eMuleBB package did not include scripts directory: $sourceScriptsDir"
     }
     Copy-SuiteScriptSet -SourceRoot $sourceScriptsDir -DestinationRoot $scriptsDir -Description 'Installed eMuleBB package'
+    Copy-SuiteConfigAssetSet -SourceRoot (Join-Path $script:Root 'apps\eMuleBB\config') -DestinationRoot $configDir
 }
 function Write-InstallManifest {
     param([hashtable]$Config, [hashtable]$ProfileImport, [hashtable]$Symbols)

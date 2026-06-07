@@ -319,6 +319,22 @@ def test_suite_installer_accepts_hashed_suite_scripts_bundle(tmp_path: Path) -> 
         installer_payload=INSTALLER.read_bytes(),
     )
     script_entries["eMuleBB/scripts/Start-Suite.ps1"] += b"\n# suite-scripts-bundle-marker\n"
+    script_entries["eMuleBB/config/suite-languages.json"] = json.dumps(
+        {
+            "schema": "emulebb.suite-languages.v1",
+            "languages": [
+                {
+                    "key": "english",
+                    "displayName": "English",
+                    "emuleLanguageId": 9,
+                    "emuleLocale": "en_US",
+                    "arrUiLanguage": "English",
+                    "arrContentLanguage": "English",
+                }
+            ],
+            "testMarker": "suite-config-bundle-marker",
+        }
+    ).encode("utf-8")
     suite_install_fixtures.write_zip(scripts_zip, script_entries)
     _write_manifest(scripts_manifest, scripts_zip)
 
@@ -346,6 +362,8 @@ def test_suite_installer_accepts_hashed_suite_scripts_bundle(tmp_path: Path) -> 
 
     start_suite = (install_root / "scripts" / "Start-Suite.ps1").read_text(encoding="utf-8-sig")
     assert "suite-scripts-bundle-marker" in start_suite
+    language_config = (install_root / "config" / "suite-languages.json").read_text(encoding="utf-8-sig")
+    assert "suite-config-bundle-marker" in language_config
     install_manifest = suite_install_fixtures.read_suite_install_manifest(install_root)
     assert install_manifest["suiteScripts"] == {
         "zip": str(scripts_zip),

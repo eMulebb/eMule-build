@@ -1224,7 +1224,7 @@ def _write_suite_scripts_bundle_asset(
     release_root: Path,
     release_version: str,
 ) -> tuple[Path, Path, str]:
-    """Writes the suite control scripts as a separate hashed release asset."""
+    """Writes the suite control scripts and config as a separate hashed release asset."""
 
     asset_path = release_root / f"suite-scripts-{release_version}.zip"
     manifest_path = release_root / f"suite-scripts-{release_version}.manifest.json"
@@ -1232,10 +1232,10 @@ def _write_suite_scripts_bundle_asset(
     _assert_path_under_root(manifest_path, release_root, "suite scripts manifest")
     release_root.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(asset_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for relative_path in EMULEBB_RUNTIME_SCRIPT_PATHS:
+        for relative_path in (*EMULEBB_RUNTIME_SCRIPT_PATHS, *EMULEBB_CONFIG_ASSET_PATHS):
             source_path = package_root / relative_path
             if not source_path.is_file():
-                raise RuntimeError(f"Cannot publish missing suite script: {source_path}")
+                raise RuntimeError(f"Cannot publish missing suite bundle asset: {source_path}")
             archive.write(source_path, f"{EMULEBB_PACKAGE_ROOT_NAME}/{relative_path}")
     digest = _sha256(asset_path)
     manifest_path.write_text(json.dumps({"sha256": digest}, indent=2) + "\n", encoding="utf-8", newline="\n")

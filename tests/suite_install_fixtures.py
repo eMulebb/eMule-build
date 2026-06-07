@@ -8,7 +8,7 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from emule_workspace.release import EMULEBB_RUNTIME_SCRIPT_PATHS
+from emule_workspace.release import EMULEBB_CONFIG_ASSET_PATHS, EMULEBB_RUNTIME_SCRIPT_PATHS
 
 
 @dataclass(frozen=True)
@@ -234,6 +234,8 @@ def runtime_script_entries(*, installer_payload: bytes) -> dict[str, bytes]:
         if relative_path == "scripts/Install-eMuleBBSuite.ps1":
             payload = installer_payload
         entries[f"eMuleBB/{relative_path}"] = payload
+    for relative_path in EMULEBB_CONFIG_ASSET_PATHS:
+        entries[f"eMuleBB/{relative_path}"] = (assets_root / relative_path).read_bytes()
     return entries
 
 
