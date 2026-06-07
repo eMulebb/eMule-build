@@ -2989,7 +2989,8 @@ if (-not $KeepDownloads -and -not $DryRun) {
 if (-not $NoStart -and -not $DryRun) {
     if (-not $NonInteractive -and (Test-InteractiveConsole)) {
         Write-Host ''
-        [void](Read-Host 'Press Enter to start the suite')
+        Write-Host 'Press Enter to start the suite and complete its setup..' -NoNewline
+        [void][Console]::ReadLine()
     }
     & (Join-Path $script:Root 'scripts\Initialize-Suite.ps1')
 } elseif ($NoStart -and -not $DryRun) {
