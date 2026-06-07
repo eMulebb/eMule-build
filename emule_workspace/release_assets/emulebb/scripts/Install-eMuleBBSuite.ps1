@@ -1994,7 +1994,7 @@ function Write-CredentialsFile {
     if ([string]$Config.bundle -eq 'Full') {
         $lines.Add('')
         $lines.Add('First-run setup')
-        $lines.Add('Run scripts\Start-Suite.ps1 once before adding movies or series. It starts the suite, registers aMuTorrent/Prowlarr/Radarr/Sonarr, and creates the Radarr/Sonarr root folders.')
+        $lines.Add('Run scripts\Initialize-Suite.ps1 once before adding movies or series if install-time startup was skipped. It starts the suite, registers aMuTorrent/Prowlarr/Radarr/Sonarr, and creates the Radarr/Sonarr root folders.')
         $lines.Add('If a registration script asks for Action, press Enter to use the default Register option. Choose Unregister only when you are intentionally removing an integration.')
     }
     $lines.Add('')
@@ -2078,7 +2078,7 @@ function Write-CredentialsFile {
   <div class="grid">
 $cardsHtml
   </div>
-  <footer>Keep this file private. API keys and passwords are shown here for first-run setup and recovery. For Full installs, run scripts\Start-Suite.ps1 once before adding movies or series so Radarr/Sonarr root folders and suite registrations are created. If a registration script asks for Action, press Enter to use the default Register option; choose Unregister only when removing an integration.</footer>
+  <footer>Keep this file private. API keys and passwords are shown here for first-run setup and recovery. For Full installs, run scripts\Initialize-Suite.ps1 once before adding movies or series if install-time startup was skipped so Radarr/Sonarr root folders and suite registrations are created. If a registration script asks for Action, press Enter to use the default Register option; choose Unregister only when removing an integration.</footer>
 </main>
 <script>
 document.addEventListener('click', async function (event) {
@@ -2150,43 +2150,8 @@ if (`$Existing) {
     Write-Host "eMuleBB is already running: PID `$(`$Existing.Id)"
     return
 }
-function Invoke-EmuleBootstrapFileDownload {
-    param([string]`$Name, [string]`$Url, [string]`$Destination)
-    `$existingFile = Get-Item -LiteralPath `$Destination -ErrorAction SilentlyContinue
-    if (`$existingFile -and `$existingFile.Length -gt 0) {
-        Write-Host "`$Name bootstrap file already present: `$Destination"
-        return
-    }
-    New-Item -ItemType Directory -Force -Path ([IO.Path]::GetDirectoryName(`$Destination)) | Out-Null
-    `$tempPath = "`$Destination.download"
-    Remove-Item -Force -LiteralPath `$tempPath -ErrorAction SilentlyContinue
-    try {
-        Write-Host "Downloading `$Name bootstrap file: `$Url"
-        Invoke-WebRequest -UseBasicParsing -Uri `$Url -OutFile `$tempPath -ErrorAction Stop
-        `$downloaded = Get-Item -LiteralPath `$tempPath -ErrorAction Stop
-        if (`$downloaded.Length -le 0) {
-            throw "downloaded file was empty"
-        }
-        Move-Item -Force -LiteralPath `$tempPath -Destination `$Destination
-        Write-Host "`$Name bootstrap file ready: `$Destination"
-    } catch {
-        Remove-Item -Force -LiteralPath `$tempPath -ErrorAction SilentlyContinue
-        Write-Warning "Could not download `$Name bootstrap file from `$Url to `$Destination. eMuleBB can still start, but first public connection may require manual server/node updates. `$(`$_.Exception.Message)"
-    }
-}
-function Ensure-EmuleBootstrapFiles {
-    `$configDir = Join-Path `$Root 'profiles\emulebb\config'
-    Invoke-EmuleBootstrapFileDownload -Name 'server.met' -Url 'https://upd.emule-security.org/server.met' -Destination (Join-Path `$configDir 'server.met')
-    Invoke-EmuleBootstrapFileDownload -Name 'nodes.dat' -Url 'https://upd.emule-security.org/nodes.dat' -Destination (Join-Path `$configDir 'nodes.dat')
-}
-function Show-EmuleLaunchReturnNotice {
-    Write-Host 'eMuleBB will launch now. After eMuleBB is running, return to this PowerShell window so setup can complete the app registrations.' -ForegroundColor Cyan
-    Write-Host 'Continuing in 6 seconds...'
-    Start-Sleep -Seconds 6
-}
-Ensure-EmuleBootstrapFiles
-Show-EmuleLaunchReturnNotice
 try {
+    Write-Host "Starting eMuleBB: `$Emule"
     Start-Process -FilePath `$Emule -ArgumentList @('-c', (Join-Path `$Root 'profiles\emulebb')) -ErrorAction Stop | Out-Null
 } catch {
     throw "eMuleBB could not be started from `$Emule. Working directory: `$Root. Check `$Root\profiles\emulebb\logs and `$Root\profiles\emulebb\config\preferences.ini. `$(`$_.Exception.Message)"
@@ -2571,11 +2536,47 @@ function Start-ArrHost {
     }
     Start-ProcessIfMissing -Name `$Name -FilePath `$exe.FullName -ArgumentList @('/data=' + (Join-Path `$Root `$DataDir), '/nobrowser') -CommandLineContains (Join-Path `$Root `$DataDir)
 }
+function Invoke-EmuleBootstrapFileDownload {
+    param([string]`$Name, [string]`$Url, [string]`$Destination)
+    `$existingFile = Get-Item -LiteralPath `$Destination -ErrorAction SilentlyContinue
+    if (`$existingFile -and `$existingFile.Length -gt 0) {
+        Write-Host "`$Name bootstrap file already present: `$Destination"
+        return
+    }
+    New-Item -ItemType Directory -Force -Path ([IO.Path]::GetDirectoryName(`$Destination)) | Out-Null
+    `$tempPath = "`$Destination.download"
+    Remove-Item -Force -LiteralPath `$tempPath -ErrorAction SilentlyContinue
+    try {
+        Write-Host "Downloading `$Name bootstrap file: `$Url"
+        Invoke-WebRequest -UseBasicParsing -Uri `$Url -OutFile `$tempPath -ErrorAction Stop
+        `$downloaded = Get-Item -LiteralPath `$tempPath -ErrorAction Stop
+        if (`$downloaded.Length -le 0) {
+            throw "downloaded file was empty"
+        }
+        Move-Item -Force -LiteralPath `$tempPath -Destination `$Destination
+        Write-Host "`$Name bootstrap file ready: `$Destination"
+    } catch {
+        Remove-Item -Force -LiteralPath `$tempPath -ErrorAction SilentlyContinue
+        Write-Warning "Could not download `$Name bootstrap file from `$Url to `$Destination. eMuleBB can still start, but first public connection may require manual server/node updates. `$(`$_.Exception.Message)"
+    }
+}
+function Ensure-EmuleBootstrapFiles {
+    `$configDir = Join-Path `$Root 'profiles\emulebb\config'
+    Invoke-EmuleBootstrapFileDownload -Name 'server.met' -Url 'https://upd.emule-security.org/server.met' -Destination (Join-Path `$configDir 'server.met')
+    Invoke-EmuleBootstrapFileDownload -Name 'nodes.dat' -Url 'https://upd.emule-security.org/nodes.dat' -Destination (Join-Path `$configDir 'nodes.dat')
+}
+function Show-SuiteInitializationLaunchNotice {
+    Write-Host 'eMuleBB will launch now. Keep this PowerShell window open until suite initialization finishes.' -ForegroundColor Cyan
+    Write-Host 'Continuing in 6 seconds...'
+    Start-Sleep -Seconds 6
+}
 `$Bundle = [string]`$Config.bundle
 `$EmuleHost = Get-ServiceClientHost -ServiceName 'emulebb' -Service `$Config.services.emulebb
 `$EmulePort = [int]`$Config.services.emulebb.port
 `$EmuleUrl = "http://`$(`$EmuleHost):`$EmulePort"
 `$EmuleKey = [string]`$Config.services.emulebb.apiKey
+Ensure-EmuleBootstrapFiles
+Show-SuiteInitializationLaunchNotice
 & (Join-Path `$Root 'scripts\Start-eMuleBB.ps1')
 if (`$Bundle -eq 'Full') {
     foreach (`$item in @(@('Prowlarr','data\prowlarr'), @('Radarr','data\radarr'), @('Sonarr','data\sonarr'))) {
@@ -2644,6 +2645,122 @@ if (`$Bundle -eq 'Full') {
     Invoke-StepWithRetry -Name 'Sonarr indexer verification' -Operation {
         & (Join-Path `$Root 'apps\eMuleBB\scripts\Register-ArrStack.ps1') -VerifyIndexerOnly -Target Sonarr -ProwlarrUrl `$ProwlarrUrl -ProwlarrApiKey `$ProwlarrKey -SonarrUrl `$SonarrUrl -SonarrApiKey `$SonarrKey -DownloadClientName 'eMuleBB Suite' -NoRetry
     }
+}
+"@
+    $startSuite | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $scriptsDir 'Initialize-Suite.ps1')
+    $startSuite = @"
+#Requires -Version 5.1
+`$ErrorActionPreference = 'Stop'
+`$Root = '$rootLiteral'
+function Read-SuiteConfig {
+    `$configPath = Join-Path `$Root 'manifests\suite-config.json'
+    if (-not (Test-Path -LiteralPath `$configPath)) {
+        throw "Suite config is missing: `$configPath. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to rebuild the suite config."
+    }
+    try {
+        `$config = Get-Content -Raw -LiteralPath `$configPath | ConvertFrom-Json
+    } catch {
+        throw "Suite config is not valid JSON: `$configPath. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to rebuild it. `$(`$_.Exception.Message)"
+    }
+    if (`$null -eq `$config -or `$null -eq `$config.PSObject.Properties['services']) {
+        throw "Suite config is incomplete: `$configPath. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to rebuild it."
+    }
+    return `$config
+}
+`$Config = Read-SuiteConfig
+function Get-ServiceTroubleshootingHint {
+    param([string]`$Name)
+    switch (`$Name) {
+        'eMuleBB' { return "Check `$Root\profiles\emulebb\logs and confirm eMuleBB is not blocked by Windows Firewall or Defender." }
+        'aMuTorrent' { return "Check `$Root\data\amutorrent\logs and confirm the pinned Node runtime exists under `$Root\runtime\node." }
+        'Prowlarr' { return "Check `$Root\data\prowlarr\logs and `$Root\data\prowlarr\config.xml." }
+        'Radarr' { return "Check `$Root\data\radarr\logs and `$Root\data\radarr\config.xml." }
+        'Sonarr' { return "Check `$Root\data\sonarr\logs and `$Root\data\sonarr\config.xml." }
+        default { return "Check the service log and config files under `$Root\data." }
+    }
+}
+function Test-ProcessRunning {
+    param([string]`$ExecutablePath, [string]`$CommandLineContains = '')
+    try {
+        foreach (`$process in @(Get-CimInstance Win32_Process -ErrorAction Stop)) {
+            if ([string]::IsNullOrWhiteSpace(`$process.ExecutablePath)) { continue }
+            if (-not [string]::Equals(`$process.ExecutablePath, `$ExecutablePath, [StringComparison]::OrdinalIgnoreCase)) { continue }
+            if ([string]::IsNullOrWhiteSpace(`$CommandLineContains) -or ([string]`$process.CommandLine).IndexOf(`$CommandLineContains, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+                return `$true
+            }
+        }
+    } catch {
+        return [bool](Get-Process | Where-Object { `$_.Path -and [string]::Equals(`$_.Path, `$ExecutablePath, [StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1)
+    }
+    return `$false
+}
+function Start-ProcessIfMissing {
+    param([string]`$Name, [string]`$FilePath, [string[]]`$ArgumentList = @(), [string]`$WorkingDirectory = '', [string]`$CommandLineContains = '', [switch]`$Hidden)
+    if ([string]::IsNullOrWhiteSpace(`$FilePath)) {
+        throw "`$Name executable path is empty. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to refresh suite files."
+    }
+    if (-not (Test-Path -LiteralPath `$FilePath)) {
+        throw "`$Name executable is missing: `$FilePath"
+    }
+    if (Test-ProcessRunning -ExecutablePath `$FilePath -CommandLineContains `$CommandLineContains) {
+        Write-Host "`$Name is already running: `$FilePath"
+        return
+    }
+    if (-not [string]::IsNullOrWhiteSpace(`$WorkingDirectory) -and -not (Test-Path -LiteralPath `$WorkingDirectory -PathType Container)) {
+        throw "`$Name working directory is missing: `$WorkingDirectory. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to refresh suite files."
+    }
+    Write-Host "Starting `${Name}: `$FilePath"
+    `$startArgs = @{
+        FilePath = `$FilePath
+        ArgumentList = `$ArgumentList
+        ErrorAction = 'Stop'
+    }
+    if (-not [string]::IsNullOrWhiteSpace(`$WorkingDirectory)) { `$startArgs.WorkingDirectory = `$WorkingDirectory }
+    if (`$Hidden) { `$startArgs.WindowStyle = 'Hidden' }
+    try {
+        Start-Process @startArgs | Out-Null
+    } catch {
+        `$workDirText = if ([string]::IsNullOrWhiteSpace(`$WorkingDirectory)) { '<current PowerShell directory>' } else { `$WorkingDirectory }
+        throw "`$Name could not be started from `$FilePath. Working directory: `$workDirText. `$(Get-ServiceTroubleshootingHint -Name `$Name) `$(`$_.Exception.Message)"
+    }
+    Start-Sleep -Seconds 2
+    if (-not (Test-ProcessRunning -ExecutablePath `$FilePath -CommandLineContains `$CommandLineContains)) {
+        throw "`$Name did not stay running after launch from `$FilePath. `$(Get-ServiceTroubleshootingHint -Name `$Name)"
+    }
+}
+function Start-ArrHost {
+    param([string]`$Name, [string]`$DataDir)
+    `$appRoot = Join-Path `$Root ('apps\' + `$Name)
+    `$trayName = `$Name + '.exe'
+    `$exe = Get-ChildItem -Path `$appRoot -Filter `$trayName -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not `$exe) {
+        throw "Missing Windows tray host for `$Name under `$appRoot"
+    }
+    Start-ProcessIfMissing -Name `$Name -FilePath `$exe.FullName -ArgumentList @('/data=' + (Join-Path `$Root `$DataDir), '/nobrowser') -CommandLineContains (Join-Path `$Root `$DataDir)
+}
+`$Bundle = [string]`$Config.bundle
+& (Join-Path `$Root 'scripts\Start-eMuleBB.ps1')
+if (`$Bundle -eq 'Full') {
+    foreach (`$item in @(@('Prowlarr','data\prowlarr'), @('Radarr','data\radarr'), @('Sonarr','data\sonarr'))) {
+        Start-ArrHost -Name `$item[0] -DataDir `$item[1]
+    }
+}
+if (`$Bundle -ne 'Core') {
+    `$node = `$null
+    `$nodeMatch = Get-ChildItem -Path (Join-Path `$Root 'runtime\node') -Filter node.exe -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (`$nodeMatch) {
+        `$node = `$nodeMatch.FullName
+    } else {
+        `$node = (Get-Command node.exe -ErrorAction SilentlyContinue).Source
+    }
+    if ([string]::IsNullOrWhiteSpace(`$node) -or -not (Test-Path -LiteralPath `$node)) { throw 'Node is not available. Re-run scripts\Install-eMuleBBSuite.ps1 with -Force to install the pinned runtime.' }
+    `$amutorrentServer = Join-Path `$Root 'apps\aMuTorrent\server\server.js'
+    `$env:AMUTORRENT_DATA_DIR = Join-Path `$Root 'data\amutorrent'
+    `$amutorrentConfig = Join-Path `$env:AMUTORRENT_DATA_DIR 'config.json'
+    if (-not (Test-Path -LiteralPath `$amutorrentConfig)) {
+        throw "aMuTorrent config is missing: `$amutorrentConfig. Run scripts\Initialize-Suite.ps1 once, or rerun scripts\Install-eMuleBBSuite.ps1 with -Force."
+    }
+    Start-ProcessIfMissing -Name 'aMuTorrent' -FilePath `$node -ArgumentList @(`$amutorrentServer) -WorkingDirectory (Join-Path `$Root 'apps\aMuTorrent') -CommandLineContains `$amutorrentServer -Hidden
 }
 "@
     $startSuite | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $scriptsDir 'Start-Suite.ps1')
@@ -2915,9 +3032,9 @@ if (-not $KeepDownloads -and -not $DryRun) {
     Remove-Item -Recurse -Force -LiteralPath (Join-Path $script:Root 'downloads-cache') -ErrorAction SilentlyContinue
 }
 if (-not $NoStart -and -not $DryRun) {
-    & (Join-Path $script:Root 'scripts\Start-Suite.ps1')
+    & (Join-Path $script:Root 'scripts\Initialize-Suite.ps1')
 } elseif ($NoStart -and -not $DryRun) {
-    Write-Step "Start skipped because -NoStart was used. Before adding movies or series, run $(Join-Path $script:Root 'scripts\Start-Suite.ps1') once to start services, register integrations, and create Radarr/Sonarr root folders."
+    Write-Step "Start skipped because -NoStart was used. Before adding movies or series, run $(Join-Path $script:Root 'scripts\Initialize-Suite.ps1') once to start services, register integrations, and create Radarr/Sonarr root folders."
 }
 Write-Step "Installed $($script:SuiteConfig.bundle) bundle at $script:Root"
 if (-not $DryRun -and -not $NonInteractive) {

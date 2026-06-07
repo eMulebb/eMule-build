@@ -161,27 +161,46 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "'emulebb.exe'" in start_emulebb
     assert "profiles\\emulebb" in start_emulebb
     assert "function Test-EmuleRunning" in start_emulebb
-    assert "function Invoke-EmuleBootstrapFileDownload" in start_emulebb
-    assert "function Ensure-EmuleBootstrapFiles" in start_emulebb
-    assert "https://upd.emule-security.org/server.met" in start_emulebb
-    assert "https://upd.emule-security.org/nodes.dat" in start_emulebb
-    assert "$Name bootstrap file ready: $Destination" in start_emulebb
-    assert "eMuleBB can still start, but first public connection may require manual server/node updates" in start_emulebb
-    assert "function Show-EmuleLaunchReturnNotice" in start_emulebb
-    assert "return to this PowerShell window so setup can complete the app registrations" in start_emulebb
-    assert "Continuing in 6 seconds..." in start_emulebb
-    assert "Start-Sleep -Seconds 6" in start_emulebb
-    assert start_emulebb.index("Ensure-EmuleBootstrapFiles") < start_emulebb.index("Start-Process -FilePath $Emule")
-    assert start_emulebb.index("Ensure-EmuleBootstrapFiles") < start_emulebb.index("Show-EmuleLaunchReturnNotice")
-    assert start_emulebb.index("Show-EmuleLaunchReturnNotice") < start_emulebb.index("Start-Process -FilePath $Emule")
+    assert "Starting eMuleBB: $Emule" in start_emulebb
+    assert "function Invoke-EmuleBootstrapFileDownload" not in start_emulebb
+    assert "function Ensure-EmuleBootstrapFiles" not in start_emulebb
+    assert "return to this PowerShell window so setup can complete the app registrations" not in start_emulebb
+    assert "Continuing in 6 seconds..." not in start_emulebb
+    assert "Start-Sleep -Seconds 6" not in start_emulebb
     assert "eMuleBB executable is missing" in start_emulebb
     assert "eMuleBB could not be started from" in start_emulebb
     assert "eMuleBB did not stay running after launch" in start_emulebb
 
-    start_suite = (install_root / "scripts" / "Start-Suite.ps1").read_text(encoding="utf-8-sig")
+    runtime_start_suite = (install_root / "scripts" / "Start-Suite.ps1").read_text(encoding="utf-8-sig")
+    initialize_suite = (install_root / "scripts" / "Initialize-Suite.ps1").read_text(encoding="utf-8-sig")
+    assert "suite-config.json" in runtime_start_suite
+    assert "Start-eMuleBB.ps1" in runtime_start_suite
+    assert "function Initialize-AmutorrentConfig" not in runtime_start_suite
+    assert "Register-aMuTorrent.ps1') -Action Register" not in runtime_start_suite
+    assert "Register-Prowlarr.ps1') -Action Register" not in runtime_start_suite
+    assert "Register-ArrStack.ps1') -Action Register" not in runtime_start_suite
+    assert "/api/auth/status" not in runtime_start_suite
+    assert "Wait-Json" not in runtime_start_suite
+    assert "aMuTorrent config is missing" in runtime_start_suite
+    assert "Run scripts\\Initialize-Suite.ps1 once" in runtime_start_suite
+    assert "Start-ProcessIfMissing -Name 'aMuTorrent' -FilePath $node" in runtime_start_suite
+
+    start_suite = initialize_suite
     assert "suite-config.json" in start_suite
     assert "Start-eMuleBB.ps1" in start_suite
-    suite_launch = start_suite.index("& (Join-Path $Root 'scripts\\Start-eMuleBB.ps1')", start_suite.index("$EmuleKey ="))
+    assert "function Invoke-EmuleBootstrapFileDownload" in start_suite
+    assert "function Ensure-EmuleBootstrapFiles" in start_suite
+    assert "https://upd.emule-security.org/server.met" in start_suite
+    assert "https://upd.emule-security.org/nodes.dat" in start_suite
+    assert "$Name bootstrap file ready: $Destination" in start_suite
+    assert "eMuleBB can still start, but first public connection may require manual server/node updates" in start_suite
+    assert "function Show-SuiteInitializationLaunchNotice" in start_suite
+    assert "Keep this PowerShell window open until suite initialization finishes" in start_suite
+    assert "Continuing in 6 seconds..." in start_suite
+    assert "Start-Sleep -Seconds 6" in start_suite
+    assert "return to this PowerShell window so setup can complete the app registrations" not in start_suite
+    assert start_suite.index("Ensure-EmuleBootstrapFiles") < start_suite.index("Show-SuiteInitializationLaunchNotice")
+    assert start_suite.rindex("Show-SuiteInitializationLaunchNotice") < start_suite.rindex("& (Join-Path $Root 'scripts\\Start-eMuleBB.ps1')")
     assert "Show-EmuleLaunchReturnNotice" not in start_suite
     assert "function Initialize-AmutorrentConfig" in start_suite
     assert "$env:AMUTORRENT_DATA_DIR = Join-Path $Root 'data\\amutorrent'" in start_suite
@@ -313,6 +332,7 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "eMuleBB Suite stop request completed." in stop_suite
 
     for generated_script in (
+        "Initialize-Suite.ps1",
         "Start-eMuleBB.ps1",
         "Start-Suite.ps1",
         "Stop-Suite.ps1",
@@ -721,7 +741,7 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     assert "Radarr/Sonarr download client" in credentials
     assert f"Password: {first_keys['emulebb']}" in credentials
     assert "First-run setup" in credentials
-    assert "Run scripts\\Start-Suite.ps1 once before adding movies or series" in credentials
+    assert "Run scripts\\Initialize-Suite.ps1 once before adding movies or series if install-time startup was skipped" in credentials
     assert "press Enter to use the default Register option" in credentials
     credentials_html = (install_root / "credentials.html").read_text(encoding="utf-8-sig")
     assert "eMuleBB Suite Credentials" in credentials_html
@@ -730,7 +750,7 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     assert f"http://{suite_config['services']['emulebb']['clientHost']}:" in credentials_html
     assert 'target="_blank"' in credentials_html
     assert 'rel="noopener noreferrer"' in credentials_html
-    assert "run scripts\\Start-Suite.ps1 once before adding movies or series" in credentials_html
+    assert "run scripts\\Initialize-Suite.ps1 once before adding movies or series if install-time startup was skipped" in credentials_html
     assert "press Enter to use the default Register option" in credentials_html
     assert suite_password in credentials_html
     for key in first_keys.values():
@@ -1162,7 +1182,7 @@ def test_suite_installer_requires_hashed_pinned_dependencies() -> None:
     assert "$Name dependency download requires a SHA256 hash." in installer
     assert "function Get-DependencyDownloadRecoveryMessage" in installer
     assert "pass -DependencyManifest with reachable file paths or URLs and SHA256 hashes" in installer
-    assert "Failed to download $Url -> $Destination. $($_.Exception.Message) $(Get-DependencyDownloadRecoveryMessage)" in installer
+    assert "Failed to download $Url -> $Destination after $maxAttempts attempts. $message $(Get-DependencyDownloadRecoveryMessage)" in installer
     assert "Downloading $Name dependency $assetName" in installer
     assert "Verifying $Name dependency" in installer
     assert "Extracting $Name dependency" in installer
