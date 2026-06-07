@@ -1449,7 +1449,9 @@ def test_suite_installer_keeps_full_suite_service_binds_config_driven() -> None:
     assert "'hide.me'" in installer
     assert "X_LOCAL_IP" not in installer
     assert "Default local bind" not in installer
-    assert "Detected LAN/VPN bind" in installer
+    assert "Control services bind policy (eMuleBB REST, aMuTorrent, selected Arr services)" in installer
+    assert "Detected LAN/VPN bind for eMuleBB REST, aMuTorrent, and selected Arr services" in installer
+    assert "Bind address for eMuleBB REST, aMuTorrent, and selected Arr services (localhost, LAN/VPN IP, or other network address)" in installer
     assert "Non-loopback control-service bind detected" not in installer
     assert "Allow remote control-service bind" not in installer
     assert "Back to service binds" not in installer

@@ -1373,11 +1373,11 @@ function Invoke-InstallWizard {
             1 {
                 $defaultBind = Get-DefaultControlBindAddress
                 if ([string]::IsNullOrWhiteSpace($defaultBind)) {
-                    $choices = @('One custom bind address for all services', 'Per-service bind addresses')
-                    $choice = Read-WizardChoice -Prompt 'Control service bind policy' -Choices $choices -DefaultIndex 0
+                    $choices = @('One custom bind address for eMuleBB REST, aMuTorrent, and selected Arr services', 'Per-service bind addresses')
+                    $choice = Read-WizardChoice -Prompt 'Control services bind policy (eMuleBB REST, aMuTorrent, selected Arr services)' -Choices $choices -DefaultIndex 0
                     if ($choice -ge 0) { $choice++ }
                 } else {
-                    $choice = Read-WizardChoice -Prompt 'Control service bind policy' -Choices @("Detected LAN/VPN bind ($defaultBind)", 'One custom bind address for all services', 'Per-service bind addresses') -DefaultIndex 0
+                    $choice = Read-WizardChoice -Prompt 'Control services bind policy (eMuleBB REST, aMuTorrent, selected Arr services)' -Choices @("Detected LAN/VPN bind for eMuleBB REST, aMuTorrent, and selected Arr services ($defaultBind)", 'One custom bind address for eMuleBB REST, aMuTorrent, and selected Arr services', 'Per-service bind addresses') -DefaultIndex 0
                 }
                 if ($choice -lt 0) { $step--; continue }
                 if ($choice -eq 0) {
@@ -1385,7 +1385,7 @@ function Invoke-InstallWizard {
                         $Config.services[$serviceName].bindAddress = $defaultBind
                     }
                 } elseif ($choice -eq 1) {
-                    $bind = Read-WizardValue -Prompt 'Bind address for all control services' -Default $defaultBind
+                    $bind = Read-WizardValue -Prompt 'Bind address for eMuleBB REST, aMuTorrent, and selected Arr services (localhost, LAN/VPN IP, or other network address)' -Default $defaultBind
                     foreach ($serviceName in @(Get-SuiteServiceNames -Config $Config)) {
                         $Config.services[$serviceName].bindAddress = $bind
                     }
