@@ -193,12 +193,19 @@ def test_amutorrent_publish_release_workflow_uses_own_release_and_controller_ass
     assert "release_version:" in text
     assert "target_sha:" in text
     assert "build_ref:" in text
-    assert "amutorrent-v${RELEASE_VERSION}" in text
+    assert "amutorrent_version:" in text
+    assert "package_version:" in text
+    assert "amutorrent-v${amutorrent_version}-emulebb-v${PACKAGE_VERSION}" in text
     assert "^[0-9]+\\.[0-9]+\\.[0-9]+(-(rc|beta)\\.[0-9]+)?$" in text
     assert "^[0-9a-fA-F]{40}$" in text
+    assert "read_version(\"package.json\")" in text
+    assert "read_version(\"server/package.json\")" in text
+    assert '["git", "show", f"{target}:{path}"]' in text
+    assert "root_version != server_version" in text
     assert "gh release view" in text
     assert 'tag_type="$(git cat-file -t ' in text
     assert "git tag -a \"${TAG_NAME}\" \"${TARGET_SHA}\"" in text
+    assert "aMuTorrent ${AMUTORRENT_VERSION} for eMuleBB ${PACKAGE_VERSION}" in text
     assert "git push origin \"refs/tags/${TAG_NAME}\"" in text
     assert "--verify-tag" in text
     assert "--prerelease --latest=false" in text
@@ -210,6 +217,7 @@ def test_amutorrent_publish_release_workflow_uses_own_release_and_controller_ass
     assert 'node_version: "24"' in text
     assert "python -m emule_workspace package-amutorrent" in text
     assert "--release-version $packageVersion" in text
+    assert '$packageVersion = "${{ needs.prepare.outputs.package_version }}"' in text
     assert "emulebb-$packageVersion-amutorrent-x64.zip" in text
     assert "emulebb-$packageVersion-amutorrent-x64.manifest.json" in text
     assert "emulebb-$packageVersion-amutorrent-x64.sbom.spdx.json" in text
