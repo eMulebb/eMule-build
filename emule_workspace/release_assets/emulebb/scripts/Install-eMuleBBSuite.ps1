@@ -1770,21 +1770,22 @@ function Assert-FileHash {
     }
 }
 
-function Get-ArrDependencyCacheRoot {
-    return (Join-Path ([IO.Path]::GetTempPath()) 'emulebb-suite-arr-cache')
+function Get-DependencyCacheRoot {
+    param([string]$Kind)
+    return (Join-Path (Join-Path ([IO.Path]::GetTempPath()) 'emulebb-suite-cache') $Kind)
 }
 
-function Get-ArrDependencyCachePath {
-    param([string]$AssetName, [string]$ExpectedSha256)
-    return (Join-Path (Get-ArrDependencyCacheRoot) ("$($ExpectedSha256.ToLowerInvariant())-$AssetName"))
+function Get-DependencyCachePath {
+    param([string]$Kind, [string]$AssetName, [string]$ExpectedSha256)
+    return (Join-Path (Get-DependencyCacheRoot -Kind $Kind) ("$($ExpectedSha256.ToLowerInvariant())-$AssetName"))
 }
 
-function Restore-ArrDependencyCache {
-    param([string]$Name, [string]$AssetName, [string]$ExpectedSha256, [string]$Destination)
+function Restore-DependencyCache {
+    param([string]$Kind, [string]$Name, [string]$AssetName, [string]$ExpectedSha256, [string]$Destination)
     if ([string]::IsNullOrWhiteSpace($ExpectedSha256) -or $DryRun) {
         return $false
     }
-    $cachePath = Get-ArrDependencyCachePath -AssetName $AssetName -ExpectedSha256 $ExpectedSha256
+    $cachePath = Get-DependencyCachePath -Kind $Kind -AssetName $AssetName -ExpectedSha256 $ExpectedSha256
     if (-not (Test-Path -LiteralPath $cachePath)) {
         return $false
     }
@@ -1792,24 +1793,24 @@ function Restore-ArrDependencyCache {
         Assert-FileHash -Path $cachePath -ExpectedSha256 $ExpectedSha256
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Destination) | Out-Null
         Copy-Item -Force -LiteralPath $cachePath -Destination $Destination
-        Write-Step "Using cached $Name dependency $AssetName"
+        Write-Step "Using cached $Name $AssetName"
         return $true
     } catch {
-        Write-Warning "Ignoring stale cached $Name dependency $cachePath. $($_.Exception.Message)"
+        Write-Warning "Ignoring stale cached $Name $cachePath. $($_.Exception.Message)"
         Remove-Item -Force -LiteralPath $cachePath -ErrorAction SilentlyContinue
         return $false
     }
 }
 
-function Save-ArrDependencyCache {
-    param([string]$Name, [string]$AssetName, [string]$ExpectedSha256, [string]$Source)
+function Save-DependencyCache {
+    param([string]$Kind, [string]$Name, [string]$AssetName, [string]$ExpectedSha256, [string]$Source)
     if ([string]::IsNullOrWhiteSpace($ExpectedSha256) -or $DryRun) {
         return
     }
-    $cachePath = Get-ArrDependencyCachePath -AssetName $AssetName -ExpectedSha256 $ExpectedSha256
+    $cachePath = Get-DependencyCachePath -Kind $Kind -AssetName $AssetName -ExpectedSha256 $ExpectedSha256
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $cachePath) | Out-Null
     Copy-Item -Force -LiteralPath $Source -Destination $cachePath
-    Write-Step "Cached $Name dependency $AssetName"
+    Write-Step "Cached $Name $AssetName"
 }
 
 function Assert-RequiredSha256 {
@@ -2080,12 +2081,12 @@ function Install-ArrDependency {
     if ([string]::IsNullOrWhiteSpace($Spec.Sha256)) {
         throw "$Name dependency download requires a SHA256 hash. Use pinned dependencies or provide -DependencyManifest with sha256."
     }
-    if (-not (Restore-ArrDependencyCache -Name $Name -AssetName $assetName -ExpectedSha256 $Spec.Sha256 -Destination $archivePath)) {
+    if (-not (Restore-DependencyCache -Kind 'arr' -Name "$Name dependency" -AssetName $assetName -ExpectedSha256 $Spec.Sha256 -Destination $archivePath)) {
         Write-Step "Downloading $Name dependency $assetName"
         Invoke-Download -Url $assetUrl -Destination $archivePath
         Write-Step "Verifying $Name dependency"
         Assert-FileHash -Path $archivePath -ExpectedSha256 $Spec.Sha256
-        Save-ArrDependencyCache -Name $Name -AssetName $assetName -ExpectedSha256 $Spec.Sha256 -Source $archivePath
+        Save-DependencyCache -Kind 'arr' -Name "$Name dependency" -AssetName $assetName -ExpectedSha256 $Spec.Sha256 -Source $archivePath
     }
     Write-Step "Extracting $Name dependency"
     Expand-ZipSafe -Archive $archivePath -Destination $extractRoot
@@ -2950,10 +2951,13 @@ if (@($script:SuiteConfig.selectedApps) -contains 'amutorrent') {
     $nodeSpec = Load-NodeSpec -Payload $dependencyManifestPayload -Platform $script:SuiteConfig.platform
     $nodeArchive = Join-Path (Join-Path $script:Root 'downloads-cache') $nodeSpec.FileName
     $nodeUrl = if ([string]::IsNullOrWhiteSpace($nodeSpec.Url)) { "$nodeBase/$($nodeSpec.FileName)" } else { [string]$nodeSpec.Url }
-    Write-Step "Downloading Node runtime $($nodeSpec.FileName)"
-    Invoke-Download -Url $nodeUrl -Destination $nodeArchive
-    Write-Step "Verifying Node runtime"
-    Assert-FileHash -Path $nodeArchive -ExpectedSha256 $nodeSpec.Sha256
+    if (-not (Restore-DependencyCache -Kind 'node' -Name 'Node runtime' -AssetName $nodeSpec.FileName -ExpectedSha256 $nodeSpec.Sha256 -Destination $nodeArchive)) {
+        Write-Step "Downloading Node runtime $($nodeSpec.FileName)"
+        Invoke-Download -Url $nodeUrl -Destination $nodeArchive
+        Write-Step "Verifying Node runtime"
+        Assert-FileHash -Path $nodeArchive -ExpectedSha256 $nodeSpec.Sha256
+        Save-DependencyCache -Kind 'node' -Name 'Node runtime' -AssetName $nodeSpec.FileName -ExpectedSha256 $nodeSpec.Sha256 -Source $nodeArchive
+    }
     Write-Step "Extracting Node runtime"
     Expand-ZipSafe -Archive $nodeArchive -Destination (Join-Path $script:Root 'runtime\node')
 }
