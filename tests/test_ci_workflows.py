@@ -17,10 +17,21 @@ def _app_workflow(name: str) -> Path:
     return _workspace_root() / "workspaces" / "workspace" / "app" / "emulebb-main" / ".github" / "workflows" / name
 
 
+def _amutorrent_workflow(name: str) -> Path:
+    return _workspace_root() / "repos" / "amutorrent" / ".github" / "workflows" / name
+
+
 def _read_app_workflow(name: str) -> str:
     workflow = _app_workflow(name)
     if not workflow.is_file():
         pytest.skip(f"app workflow is not available in this checkout: {workflow}")
+    return workflow.read_text(encoding="utf-8")
+
+
+def _read_amutorrent_workflow(name: str) -> str:
+    workflow = _amutorrent_workflow(name)
+    if not workflow.is_file():
+        pytest.skip(f"aMuTorrent workflow is not available in this checkout: {workflow}")
     return workflow.read_text(encoding="utf-8")
 
 
@@ -136,3 +147,73 @@ def test_vs2026_v145_probe_exercises_native_build_without_smoke_or_package() -> 
     assert "test live-e2e" not in text
     assert "hyper-v" not in text.lower()
     assert "hyperv" not in text.lower()
+
+
+def test_emulebb_publish_release_workflow_builds_and_publishes_github_generated_assets() -> None:
+    text = _read_app_workflow("publish-release.yml")
+
+    assert "workflow_dispatch:" in text
+    assert "release_version:" in text
+    assert "target_sha:" in text
+    assert "build_ref:" in text
+    assert "emulebb-v${RELEASE_VERSION}" in text
+    assert "^[0-9]+\\.[0-9]+\\.[0-9]+(-(rc|beta)\\.[0-9]+)?$" in text
+    assert "^[0-9a-fA-F]{40}$" in text
+    assert "gh release view" in text
+    assert 'tag_type="$(git cat-file -t ' in text
+    assert "git tag -a \"${TAG_NAME}\" \"${TARGET_SHA}\"" in text
+    assert "git push origin \"refs/tags/${TAG_NAME}\"" in text
+    assert "--verify-tag" in text
+    assert "--prerelease --latest=false" in text
+    assert "--latest" in text
+    assert "uses: emulebb/emulebb-build/.github/workflows/reusable-workspace-command.yml@main" in text
+    assert "app_ref: ${{ needs.prepare.outputs.target_sha }}" in text
+    assert "build_ref: ${{ inputs.build_ref }}" in text
+    assert "runs_on: windows-2022" in text
+    assert "python -m emule_workspace package-release" in text
+    assert "--release-version $packageVersion" in text
+    assert "emulebb-$packageVersion-$assetArch.zip" in text
+    assert "emulebb-$packageVersion-$assetArch.manifest.json" in text
+    assert "emulebb-$packageVersion-$assetArch.sbom.spdx.json" in text
+    assert "emulebb-$packageVersion-diagnostics-$assetArch.zip" in text
+    assert "emulebb-$packageVersion-diagnostics-$assetArch.manifest.json" in text
+    assert "emulebb-$packageVersion-diagnostics-$assetArch.sbom.spdx.json" in text
+    assert "Bootstrap-eMuleBBSuite.ps1" in text
+    assert "Bootstrap-eMuleBBSuite.ps1.sha256" in text
+    assert "actions/attest@v4" in text
+    assert "gh attestation verify PATH_TO_ASSET -R ${GITHUB_REPOSITORY}" in text
+    assert "package-amutorrent" not in text
+    assert "emulebb-nightly-" not in text
+
+
+def test_amutorrent_publish_release_workflow_uses_own_release_and_controller_assets() -> None:
+    text = _read_amutorrent_workflow("publish-release.yml")
+
+    assert "workflow_dispatch:" in text
+    assert "release_version:" in text
+    assert "target_sha:" in text
+    assert "build_ref:" in text
+    assert "amutorrent-v${RELEASE_VERSION}" in text
+    assert "^[0-9]+\\.[0-9]+\\.[0-9]+(-(rc|beta)\\.[0-9]+)?$" in text
+    assert "^[0-9a-fA-F]{40}$" in text
+    assert "gh release view" in text
+    assert 'tag_type="$(git cat-file -t ' in text
+    assert "git tag -a \"${TAG_NAME}\" \"${TARGET_SHA}\"" in text
+    assert "git push origin \"refs/tags/${TAG_NAME}\"" in text
+    assert "--verify-tag" in text
+    assert "--prerelease --latest=false" in text
+    assert "--latest" in text
+    assert "uses: emulebb/emulebb-build/.github/workflows/reusable-workspace-command.yml@main" in text
+    assert "amutorrent_repository: ${{ github.repository }}" in text
+    assert "amutorrent_ref: ${{ needs.prepare.outputs.target_sha }}" in text
+    assert "build_ref: ${{ inputs.build_ref }}" in text
+    assert 'node_version: "24"' in text
+    assert "python -m emule_workspace package-amutorrent" in text
+    assert "--release-version $packageVersion" in text
+    assert "emulebb-$packageVersion-amutorrent-x64.zip" in text
+    assert "emulebb-$packageVersion-amutorrent-x64.manifest.json" in text
+    assert "emulebb-$packageVersion-amutorrent-x64.sbom.spdx.json" in text
+    assert "actions/attest@v4" in text
+    assert "gh attestation verify PATH_TO_ASSET -R ${GITHUB_REPOSITORY}" in text
+    assert "package-release" not in text
+    assert "amutorrent-nightly-" not in text
