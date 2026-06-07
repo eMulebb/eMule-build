@@ -999,6 +999,45 @@ def test_suite_installer_apps_all_arr_preset_selects_every_arr_app(tmp_path: Pat
         assert (install_root / "data" / app_name / "config.xml").is_file()
 
 
+def test_suite_installer_dry_run_summarizes_apps_language_and_ports(tmp_path: Path) -> None:
+    install_root = tmp_path / "suite"
+
+    completed = suite_install_fixtures.run_installer(
+        (Path.cwd() / INSTALLER).resolve(),
+        [
+            "-DryRun",
+            "-NonInteractive",
+            "-NoStart",
+            "-Force",
+            "-Bundle",
+            "Full",
+            "-Apps",
+            "all-arr",
+            "-Language",
+            "Italian",
+            "-InstallRoot",
+            str(install_root),
+        ],
+        cwd=Path.cwd(),
+    )
+
+    assert "Install summary" in completed.stdout
+    assert "Installs: eMuleBB, aMuTorrent, Prowlarr, Radarr, Sonarr, Lidarr, Readarr, Whisparr" in completed.stdout
+    assert "Language: Italian (content language preference: prefer)" in completed.stdout
+    assert "Selected contiguous service port block 49152-49159" in completed.stdout
+    for service_name, port in {
+        "emulebb": 49152,
+        "amutorrent": 49153,
+        "prowlarr": 49154,
+        "radarr": 49155,
+        "sonarr": 49156,
+        "lidarr": 49157,
+        "readarr": 49158,
+        "whisparr": 49159,
+    }.items():
+        assert re.search(rf"  {service_name}: [^:\r\n]+:{port}\b", completed.stdout)
+
+
 def test_suite_installer_imports_profile_config_only_once_and_preserves_refresh_profile(tmp_path: Path) -> None:
     release_root = tmp_path / "release"
     install_root = tmp_path / "suite"
