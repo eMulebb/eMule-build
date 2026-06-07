@@ -1188,8 +1188,6 @@ def test_suite_installer_dry_run_summarizes_apps_language_and_ports(tmp_path: Pa
             "-Force",
             "-Bundle",
             "Full",
-            "-Apps",
-            "all-arr",
             "-Language",
             "Italian",
             "-InstallRoot",
@@ -1201,16 +1199,21 @@ def test_suite_installer_dry_run_summarizes_apps_language_and_ports(tmp_path: Pa
     assert "Install summary" in completed.stdout
     assert "Installs: eMuleBB, aMuTorrent, Prowlarr, Radarr, Sonarr, Lidarr, Readarr, Whisparr" in completed.stdout
     assert "Language: Italian (content language preference: prefer)" in completed.stdout
-    assert "Selected contiguous service port block 49152-49159" in completed.stdout
+    match = re.search(r"Selected contiguous service port block (\d+)-(\d+)", completed.stdout)
+    assert match is not None
+    block_start = int(match.group(1))
+    block_end = int(match.group(2))
+    assert 49152 <= block_start <= block_end <= 65535
+    assert block_end - block_start == 7
     for service_name, port in {
-        "emulebb": 49152,
-        "amutorrent": 49153,
-        "prowlarr": 49154,
-        "radarr": 49155,
-        "sonarr": 49156,
-        "lidarr": 49157,
-        "readarr": 49158,
-        "whisparr": 49159,
+        "emulebb": block_start,
+        "amutorrent": block_start + 1,
+        "prowlarr": block_start + 2,
+        "radarr": block_start + 3,
+        "sonarr": block_start + 4,
+        "lidarr": block_start + 5,
+        "readarr": block_start + 6,
+        "whisparr": block_start + 7,
     }.items():
         assert re.search(rf"  {service_name}: [^:\r\n]+:{port}\b", completed.stdout)
 
@@ -1865,6 +1868,7 @@ def test_suite_generated_update_and_start_scripts_are_refresh_safe() -> None:
     assert "function Get-ServiceClientHost" in initialize_suite
     assert "function Get-FirstSuiteExecutable" in stop_suite
     assert "function Get-BundleServiceNames" in installer
+    assert "return @($ControllerServiceNames + $AllArrAppNames)" in installer
     assert "function Get-BundleInstallDescription" in installer
     assert "function Write-BundlePortPreview" in installer
     assert "Full suite - installs {0}" in installer

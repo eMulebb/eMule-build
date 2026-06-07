@@ -835,7 +835,7 @@ function Get-BundleServiceNames {
     if ($BundleName -eq 'Controller') {
         return $ControllerServiceNames
     }
-    return @($ControllerServiceNames + $DefaultArrAppNames)
+    return @($ControllerServiceNames + $AllArrAppNames)
 }
 
 function Resolve-SelectedApps {
