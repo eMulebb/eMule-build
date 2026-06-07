@@ -508,13 +508,23 @@ def test_suite_scripts_bundle_asset_is_hashed_next_to_release(tmp_path: Path) ->
     assert asset_path == release_root / "suite-scripts-0.7.3-rc.1.zip"
     assert manifest_path == release_root / "suite-scripts-0.7.3-rc.1.manifest.json"
     assert digest == hashlib.sha256(asset_path.read_bytes()).hexdigest()
-    assert json.loads(manifest_path.read_text(encoding="utf-8")) == {"sha256": digest}
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["schema"] == "emulebb.suite-scripts-manifest.v1"
+    assert manifest["version"] == "0.7.3-rc.1"
+    assert manifest["asset"] == asset_path.name
+    assert manifest["sha256"] == digest
     with zipfile.ZipFile(asset_path, "r") as archive:
         entry_names = set(archive.namelist())
-    assert entry_names == {
+    expected_entries = {
         f"eMuleBB/{relative_path}"
         for relative_path in (*release.EMULEBB_RUNTIME_SCRIPT_PATHS, *release.EMULEBB_CONFIG_ASSET_PATHS)
     }
+    assert entry_names == expected_entries
+    assert {entry["path"] for entry in manifest["entries"]} == expected_entries
+    for entry in manifest["entries"]:
+        source_path = package_root / entry["path"].removeprefix("eMuleBB/")
+        assert entry["sha256"] == hashlib.sha256(source_path.read_bytes()).hexdigest()
+        assert entry["bytes"] == source_path.stat().st_size
 
 
 def test_standalone_bootstrapper_asset_bakes_release_version(tmp_path: Path) -> None:
