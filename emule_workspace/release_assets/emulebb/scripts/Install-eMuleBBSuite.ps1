@@ -1670,6 +1670,7 @@ function Invoke-HttpDownload {
             $downloaded = [long]0
             $startedAt = Get-Date
             $nextHostReport = $startedAt
+            $lastStatusLength = 0
             do {
                 $read = $inputStream.Read($buffer, 0, $buffer.Length)
                 if ($read -le 0) {
@@ -1688,11 +1689,17 @@ function Invoke-HttpDownload {
                     Write-Progress -Activity $activity -Status $status
                 }
                 if ($now -ge $nextHostReport) {
-                    Write-Host "  $status"
+                    $line = "  $status"
+                    $padding = if ($lastStatusLength -gt $line.Length) { ' ' * ($lastStatusLength - $line.Length) } else { '' }
+                    Write-Host -NoNewline ("`r$line$padding")
+                    $lastStatusLength = $line.Length
                     $nextHostReport = $now.AddSeconds(1)
                 }
             } while ($true)
             Write-Progress -Activity $activity -Completed
+            if ($lastStatusLength -gt 0) {
+                Write-Host ''
+            }
             Write-Host ('  Downloaded {0}' -f (Format-DownloadSize -Bytes $downloaded))
         } finally {
             $outputStream.Dispose()

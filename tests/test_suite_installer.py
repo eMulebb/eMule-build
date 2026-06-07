@@ -1922,6 +1922,8 @@ def test_suite_generated_update_and_start_scripts_are_refresh_safe() -> None:
     assert "Write-Progress -Activity $activity -Status $status -PercentComplete $percent" in installer
     assert "$nextHostReport = $startedAt" in installer
     assert "$nextHostReport = $now.AddSeconds(1)" in installer
+    assert "Write-Host -NoNewline (\"`r$line$padding\")" in installer
+    assert 'Write-Host "  $status"' not in installer
     assert "({2}%, {3})" in installer
     assert "Downloaded {0}" in installer
     assert "$ProgressPreference = 'SilentlyContinue'" not in installer
@@ -1997,6 +1999,8 @@ def test_suite_bootstrapper_requires_emulebb_package_root() -> None:
     assert "Write-Progress -Activity $activity -Status $status -PercentComplete $percent" in bootstrapper
     assert "$nextHostReport = $startedAt" in bootstrapper
     assert "$nextHostReport = $now.AddSeconds(1)" in bootstrapper
+    assert "Write-Host -NoNewline (\"`r$line$padding\")" in bootstrapper
+    assert 'Write-Host "  $status"' not in bootstrapper
     assert "({2}%, {3})" in bootstrapper
     assert "Downloaded {0}" in bootstrapper
     assert "$ProgressPreference = 'SilentlyContinue'" not in bootstrapper
