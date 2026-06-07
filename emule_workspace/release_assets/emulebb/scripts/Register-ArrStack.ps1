@@ -34,12 +34,76 @@ $ArrTargetPorts = @{
     Readarr = 8787
     Whisparr = 6969
 }
-$ArrTargetIndexerCategories = @{
-    Radarr = @(2000)
-    Sonarr = @(5000)
-    Lidarr = @(3000)
-    Readarr = @(7000)
-    Whisparr = @(6000)
+$script:ArrTargetIndexerCategories = @{
+    radarr = @(2000)
+    sonarr = @(5000)
+    lidarr = @(3000)
+    readarr = @(7000)
+    whisparr = @(6000)
+}
+
+function Get-SuiteAppsManifestPath {
+    $candidates = @(
+        (Join-Path (Split-Path -Parent $PSScriptRoot) 'config\suite-apps.json'),
+        ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..\config\suite-apps.json')))
+    )
+    $seen = @{}
+    foreach ($candidate in $candidates) {
+        if ([string]::IsNullOrWhiteSpace($candidate) -or $seen.ContainsKey($candidate)) {
+            continue
+        }
+        $seen[$candidate] = $true
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            return $candidate
+        }
+    }
+    return ''
+}
+
+function ConvertTo-ArrIndexerCategoryMap {
+    param([object]$Payload)
+    $result = @{}
+    if ($null -eq $Payload -or $null -eq $Payload.PSObject.Properties['arrApps']) {
+        return $result
+    }
+    foreach ($entry in @($Payload.arrApps)) {
+        if ($null -eq $entry.PSObject.Properties['key'] -or $null -eq $entry.PSObject.Properties['indexerCategories']) {
+            continue
+        }
+        $key = ([string]$entry.key).ToLowerInvariant()
+        if ([string]::IsNullOrWhiteSpace($key)) {
+            continue
+        }
+        $categories = @()
+        foreach ($category in @($entry.indexerCategories)) {
+            if (-not [string]::IsNullOrWhiteSpace([string]$category)) {
+                $categories += [int]$category
+            }
+        }
+        if ($categories.Count -gt 0) {
+            $result[$key] = $categories
+        }
+    }
+    return $result
+}
+
+function Initialize-ArrIndexerCategories {
+    $manifestPath = Get-SuiteAppsManifestPath
+    if ([string]::IsNullOrWhiteSpace($manifestPath)) {
+        return
+    }
+    try {
+        $payload = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
+        if ($null -eq $payload.PSObject.Properties['schema'] -or [string]$payload.schema -ne 'emulebb.suite-apps.v1') {
+            throw "suite app manifest has an unsupported schema: $manifestPath"
+        }
+        $categories = ConvertTo-ArrIndexerCategoryMap -Payload $payload
+        foreach ($key in $categories.Keys) {
+            $script:ArrTargetIndexerCategories[$key] = $categories[$key]
+        }
+    } catch {
+        throw "Could not load Arr indexer categories from suite app manifest: $manifestPath. $($_.Exception.Message)"
+    }
 }
 
 function Normalize-ArgumentValue {
@@ -565,14 +629,20 @@ function Get-ArrCategoryName {
 
 function Get-ArrIndexerCategories {
     param([string]$Kind)
-    switch ($Kind.ToLowerInvariant()) {
-        'radarr' { return ,@(2000) }
-        'sonarr' { return ,@(5000) }
-        'lidarr' { return ,@(3000) }
-        'readarr' { return ,@(7000) }
-        'whisparr' { return ,@(6000) }
-        default { return ,@(5000) }
+    $key = $Kind.ToLowerInvariant()
+    if ($null -eq $script:ArrTargetIndexerCategories) {
+        $script:ArrTargetIndexerCategories = @{
+            radarr = @(2000)
+            sonarr = @(5000)
+            lidarr = @(3000)
+            readarr = @(7000)
+            whisparr = @(6000)
+        }
     }
+    if ($script:ArrTargetIndexerCategories.ContainsKey($key)) {
+        return ,@($script:ArrTargetIndexerCategories[$key])
+    }
+    return ,@(5000)
 }
 
 function Get-ArrCategoryRelativePath {
@@ -899,6 +969,8 @@ function Run-TargetWithRetry {
         }
     } while ($true)
 }
+
+Initialize-ArrIndexerCategories
 
 if ($SyncProwlarrOnly) {
     Write-Host 'eMuleBB Prowlarr Application Sync' -ForegroundColor Cyan

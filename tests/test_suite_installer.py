@@ -1504,6 +1504,11 @@ def test_suite_installer_uses_packaged_suite_apps_manifest() -> None:
     ]
     for app in arr_apps.values():
         assert len(app["dependency"]["sha256"]) == 64
+    assert arr_apps["radarr"]["indexerCategories"] == [2000]
+    assert arr_apps["sonarr"]["indexerCategories"] == [5000]
+    assert arr_apps["lidarr"]["indexerCategories"] == [3000]
+    assert arr_apps["readarr"]["indexerCategories"] == [7000]
+    assert arr_apps["whisparr"]["indexerCategories"] == [6000]
     assert "config\\suite-apps.json" in installer
     assert "function Initialize-SuiteAppMetadata" in installer
     assert "'suite-apps.json'" in installer
@@ -1567,6 +1572,9 @@ def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() 
     assert "function Get-ArrProwlarrIndexerName" in register_arr_stack
     assert "function Get-ExistingArrIndexers" in register_arr_stack
     assert "function Get-ArrIndexerCategories" in register_arr_stack
+    assert "function Initialize-ArrIndexerCategories" in register_arr_stack
+    assert "function ConvertTo-ArrIndexerCategoryMap" in register_arr_stack
+    assert "config\\suite-apps.json" in register_arr_stack
     assert "Prowlarr indexer '$Name' is not registered. Run Register-Prowlarr.ps1 first" in register_arr_stack
     assert "Prowlarr URL for indexer verification (example http://LAN-IP:9696)" in register_arr_stack
     assert "First-time setup or repair: press Enter to register. Choose U only to remove this Arr integration." in register_arr_stack
@@ -1574,6 +1582,7 @@ def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() 
     assert "/api/v3/indexer?forceSave=true" not in register_arr_stack
     assert "/api/v3/indexer/{0}?forceSave=true" not in register_arr_stack
     assert "Set-ProviderField -Provider $payload -Name 'syncCategories' -Value (Get-ArrIndexerCategories -Kind $Kind) -Optional" in register_arr_stack
+    assert "'radarr' { return ,@(2000) }" not in register_arr_stack
     assert "Read-RequiredSecretValue -Prompt 'Prowlarr API key' -Value $script:ProwlarrApiKey -Name 'ProwlarrApiKey'" in register_arr_stack
     assert "Read-RequiredSecretValue -Prompt 'eMuleBB API key' -Value $script:EmulebbApiKey -Name 'EmulebbApiKey'" in register_arr_stack
     assert "Read-RequiredSecretValue -Prompt \"$Target API key\" -Value $script:targetApiKey -Name (\"${Target}ApiKey\")" in register_arr_stack
