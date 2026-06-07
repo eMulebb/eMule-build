@@ -9,6 +9,9 @@ param(
     [ValidateSet('English', 'Spanish', 'Italian', 'Portuguese')]
     [string]$Language = 'English',
 
+    [ValidateSet('English', 'Spanish', 'Italian', 'Portuguese')]
+    [string]$UiLanguage,
+
     [ValidateRange(0, 65535)]
     [int]$PortBlockStart = 0,
 
@@ -869,6 +872,7 @@ $installerParams = [ordered]@{
     Platform = $resolvedPlatform
     Language = $Language
 }
+if ($PSBoundParameters.ContainsKey('UiLanguage')) { $installerParams['UiLanguage'] = $UiLanguage }
 if ($null -ne $Apps -and @($Apps).Count -gt 0) { $installerParams['Apps'] = $Apps }
 if ($PSBoundParameters.ContainsKey('PortBlockStart')) { $installerParams['PortBlockStart'] = $PortBlockStart }
 if (-not [string]::IsNullOrWhiteSpace($releaseBaseUrl)) { $installerParams['ReleaseBaseUrl'] = $releaseBaseUrl }

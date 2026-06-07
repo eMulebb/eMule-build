@@ -2916,6 +2916,8 @@ param(
     [string]$InstallRoot,
     [string]$Version,
     [string]$Platform,
+    [string]$Language,
+    [string]$UiLanguage,
     [string]$EmulebbPackageZip,
     [string]$EmulebbPackageManifest,
     [string]$AutomationExamplesZip,
@@ -2988,6 +2990,8 @@ param(
     bundle = $Bundle
     version = $Version
     platform = $Platform
+    language = $Language
+    uiLanguage = $UiLanguage
     emulebbPackageZip = $EmulebbPackageZip
     emulebbPackageManifest = $EmulebbPackageManifest
     amutorrentVersion = $AmutorrentVersion
@@ -3021,7 +3025,7 @@ function Invoke-RestMethod {{
 function Invoke-WebRequest {{
     throw 'Downloads should not be used for local package overrides.'
 }}
-& '{bootstrapper_path}' -Bundle Full -NoStart -EmulebbPackageZip '{package_zip.as_posix()}' -EmulebbPackageManifest '{package_manifest.as_posix()}' -AmutorrentPackageZip '{amutorrent_zip.as_posix()}' -AmutorrentPackageManifest '{amutorrent_manifest.as_posix()}' -DependencyManifest '{dependency_manifest.as_posix()}'
+& '{bootstrapper_path}' -Bundle Full -NoStart -Language Spanish -UiLanguage Italian -EmulebbPackageZip '{package_zip.as_posix()}' -EmulebbPackageManifest '{package_manifest.as_posix()}' -AmutorrentPackageZip '{amutorrent_zip.as_posix()}' -AmutorrentPackageManifest '{amutorrent_manifest.as_posix()}' -DependencyManifest '{dependency_manifest.as_posix()}'
 """
 
     completed = _run_powershell(["-Command", command], cwd=repo_root)
@@ -3032,6 +3036,8 @@ function Invoke-WebRequest {{
     assert captured_payload["bundle"] == "Full"
     assert captured_payload["version"] == "0.7.3-local.20260604"
     assert captured_payload["platform"] == "x64"
+    assert captured_payload["language"] == "Spanish"
+    assert captured_payload["uiLanguage"] == "Italian"
     assert Path(captured_payload["emulebbPackageZip"]) == package_zip
     assert Path(captured_payload["emulebbPackageManifest"]) == package_manifest
     assert captured_payload["amutorrentVersion"] == "0.7.3-local.20260604"
