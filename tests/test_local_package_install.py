@@ -78,7 +78,7 @@ def _write_suite_profile(target: Path, *, exe_payload: bytes = b"exe", executabl
     manifest_root.mkdir(parents=True, exist_ok=True)
     (app_root / executable_name).write_bytes(exe_payload)
     (app_root / Path(executable_name).with_suffix(".pdb").name).write_bytes(b"pdb")
-    symbols_dir = target / "symbols" / "emulebb-v0.7.3-rc.1" / "x64"
+    symbols_dir = target / "symbols" / "emulebb-v0.7.3-rc.2" / "x64"
     symbols_dir.mkdir(parents=True, exist_ok=True)
     (symbols_dir / Path(executable_name).with_suffix(".pdb").name).write_bytes(b"pdb")
     (target / "apps" / "aMuTorrent" / "server").mkdir(parents=True, exist_ok=True)
@@ -174,7 +174,7 @@ def test_local_package_install_deploys_artifacts_from_suite_profile(
     _write_live_wire(live_wire_path, target, import_profile_dir=str(import_profile))
     suite_install_fixtures.write_local_package_artifacts(
         layout.workspace_root,
-        version="0.7.3-rc.1",
+        version="0.7.3-rc.2",
     )
     installer_calls: list[suite_installer.SuiteInstallerOptions] = []
 
@@ -214,7 +214,7 @@ def test_local_package_install_deploys_artifacts_from_suite_profile(
     assert installer_calls[0].bundle == "Full"
     assert (target / "apps" / "eMuleBB" / "emulebb.exe").read_bytes() == b"exe"
     assert (target / "apps" / "aMuTorrent" / "server" / "server.js").is_file()
-    assert (target / "symbols" / "emulebb-v0.7.3-rc.1" / "x64" / "emulebb.pdb").read_bytes() == b"pdb"
+    assert (target / "symbols" / "emulebb-v0.7.3-rc.2" / "x64" / "emulebb.pdb").read_bytes() == b"pdb"
     assert (target / "apps" / "eMuleBB" / "emulebb.pdb").read_bytes() == b"pdb"
     assert not (target / "scripts" / "Update-LocalPackage.ps1").exists()
     assert not (target / "scripts" / "Capture-Dump.ps1").exists()
@@ -245,25 +245,25 @@ def test_local_package_install_can_select_diagnostics_package(
     layout = _layout(tmp_path)
     suite_install_fixtures.write_local_package_artifacts(
         layout.workspace_root,
-        version="0.7.3-rc.1",
+        version="0.7.3-rc.2",
         package_flavor="diagnostics",
     )
     suite_install_fixtures.write_local_package_artifacts(
         layout.workspace_root,
-        version="0.7.3-rc.1",
+        version="0.7.3-rc.2",
         package_flavor="standard",
     )
 
     artifacts = local_package_install.resolve_install_artifacts(
         layout,
         _workspace_options(tmp_path),
-        "0.7.3-rc.1",
+        "0.7.3-rc.2",
         package_flavor="diagnostics",
     )
 
     assert artifacts.package_flavor == "diagnostics"
-    assert artifacts.emule_zip.name == "emulebb-0.7.3-rc.1-diagnostics-x64.zip"
-    assert artifacts.emule_manifest.name == "emulebb-0.7.3-rc.1-diagnostics-x64.manifest.json"
+    assert artifacts.emule_zip.name == "emulebb-0.7.3-rc.2-diagnostics-x64.zip"
+    assert artifacts.emule_manifest.name == "emulebb-0.7.3-rc.2-diagnostics-x64.manifest.json"
     assert artifacts.package_exe.name == "emulebb-diagnostics.exe"
     assert artifacts.package_pdb.name == "emulebb-diagnostics.pdb"
     assert "\\diagnostics\\app\\emulebb-diagnostics.exe" in str(artifacts.package_exe)
@@ -282,7 +282,7 @@ def test_local_package_install_rejects_zip_exe_without_matching_package_build_ex
     _write_live_wire(live_wire_path, target)
     suite_install_fixtures.write_local_package_artifacts(
         layout.workspace_root,
-        version="0.7.3-rc.1",
+        version="0.7.3-rc.2",
         package_exe_payload=b"package-build-exe",
         zip_exe_payload=b"zip-exe",
     )
@@ -318,12 +318,12 @@ def test_local_package_install_rejects_stale_packaged_runtime_script(tmp_path: P
     source_script.write_text("#Requires -Version 5.1\nWrite-Host 'fresh'\n", encoding="utf-8", newline="\n")
     suite_install_fixtures.write_local_package_artifacts(
         layout.workspace_root,
-        version="0.7.3-rc.1",
+        version="0.7.3-rc.2",
         installer_payload=b"#Requires -Version 5.1\nWrite-Host 'stale'\n",
     )
 
     with pytest.raises(RuntimeError, match="stale runtime asset"):
-        local_package_install.resolve_install_artifacts(layout, _workspace_options(tmp_path), "0.7.3-rc.1")
+        local_package_install.resolve_install_artifacts(layout, _workspace_options(tmp_path), "0.7.3-rc.2")
 
 
 def test_load_local_install_config_requires_live_wire_object(tmp_path: Path) -> None:
@@ -404,7 +404,7 @@ def test_suite_installer_command_uses_full_bundle_and_existing_suite_config(tmp_
         installer_script=target / ".staging" / "Install-eMuleBBSuite.ps1",
     )
 
-    options = local_package_install.build_suite_installer_options(config, artifacts, "0.7.3-rc.1")
+    options = local_package_install.build_suite_installer_options(config, artifacts, "0.7.3-rc.2")
     command = [str(part) for part in suite_installer.build_suite_installer_invocation(
         powershell=Path("powershell.exe"),
         options=options,
@@ -456,7 +456,7 @@ def test_suite_installer_command_lets_amutorrent_inherit_control_bind_when_unset
         installer_script=target / ".staging" / "Install-eMuleBBSuite.ps1",
     )
 
-    options = local_package_install.build_suite_installer_options(config, artifacts, "0.7.3-rc.1")
+    options = local_package_install.build_suite_installer_options(config, artifacts, "0.7.3-rc.2")
     command = [str(part) for part in suite_installer.build_suite_installer_invocation(
         powershell=Path("powershell.exe"),
         options=options,
@@ -524,7 +524,7 @@ def test_materialize_test_local_install_uses_isolated_test_root(
     _write_live_wire(live_wire_path, operator_target, import_profile_dir=str(import_profile))
     suite_install_fixtures.write_local_package_artifacts(
         layout.workspace_root,
-        version="0.7.3-rc.1",
+        version="0.7.3-rc.2",
     )
     installer_calls: list[suite_installer.SuiteInstallerOptions] = []
 
@@ -598,7 +598,7 @@ def test_materialize_test_local_install_accepts_lan_bind_address(
     _write_live_wire(live_wire_path, tmp_path / "operator-install")
     suite_install_fixtures.write_local_package_artifacts(
         layout.workspace_root,
-        version="0.7.3-rc.1",
+        version="0.7.3-rc.2",
     )
     installer_calls: list[suite_installer.SuiteInstallerOptions] = []
     port_probe_hosts: list[str] = []

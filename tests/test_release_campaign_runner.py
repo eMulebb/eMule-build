@@ -229,10 +229,10 @@ def test_package_manifest_evidence_is_summarized_with_hashes(tmp_path: Path) -> 
     manifest.write_text(
         json.dumps(
             {
-                "asset": "emulebb-0.7.3-rc.1-x64.zip",
-                "assetPath": "emulebb-0.7.3-rc.1-x64.zip",
+                "asset": "emulebb-0.7.3-rc.2-x64.zip",
+                "assetPath": "emulebb-0.7.3-rc.2-x64.zip",
                 "sha256": "a" * 64,
-                "sbomPath": "emulebb-0.7.3-rc.1-x64.sbom.spdx.json",
+                "sbomPath": "emulebb-0.7.3-rc.2-x64.sbom.spdx.json",
                 "sbomSha256": "b" * 64,
             }
         ),
@@ -249,10 +249,10 @@ def test_package_manifest_evidence_is_summarized_with_hashes(tmp_path: Path) -> 
     )
 
     assert report["package"] == {
-        "asset": "emulebb-0.7.3-rc.1-x64.zip",
-        "assetPath": "emulebb-0.7.3-rc.1-x64.zip",
+        "asset": "emulebb-0.7.3-rc.2-x64.zip",
+        "assetPath": "emulebb-0.7.3-rc.2-x64.zip",
         "sha256": "a" * 64,
-        "sbomPath": "emulebb-0.7.3-rc.1-x64.sbom.spdx.json",
+        "sbomPath": "emulebb-0.7.3-rc.2-x64.sbom.spdx.json",
         "sbomSha256": "b" * 64,
     }
 
@@ -392,6 +392,56 @@ def test_campaign_execute_forwards_live_e2e_suite_selection(tmp_path: Path, monk
 
     assert calls == [
         ("default", ("live-process-monitor",), "default", True, "launch-scale", True, True, "0.7.4-rc.2", True, True)
+    ]
+
+
+def test_campaign_execute_forwards_package_release_versions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    layout = make_layout(tmp_path)
+    campaign = campaign_payload()
+    campaign["phases"][1]["scenarios"] = [
+        {
+            "id": "package-x64",
+            "command": "python -m emule_workspace package-release --platform x64 --release-version 0.7.3-rc.2 --clean",
+            "blocking": True,
+        },
+        {
+            "id": "package-amutorrent",
+            "command": "python -m emule_workspace package-amutorrent --platform x64 --release-version 0.7.3-rc.2 --clean",
+            "blocking": True,
+        },
+    ]
+    write_campaign(layout, campaign)
+    calls: list[tuple[str, str, str, bool]] = []
+
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "run_pre_test_cleanup",
+        lambda _layout: release_campaign_runner.CleanupRunSummary("routine", True, "passed", 0, 0, 0, {}),
+    )
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "create_release_package",
+        lambda _layout, workspace_options, options: calls.append(
+            ("package-release", workspace_options.platform, options.release_version, options.clean)
+        ),
+    )
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "create_amutorrent_package",
+        lambda _layout, workspace_options, options: calls.append(
+            ("package-amutorrent", workspace_options.platform, options.release_version, options.clean)
+        ),
+    )
+
+    release_campaign_runner.invoke_release_campaign(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path),
+        ReleaseCampaignOptions(campaign="test-campaign", phase="controller-surface", execute=True),
+    )
+
+    assert calls == [
+        ("package-release", "x64", "0.7.3-rc.2", True),
+        ("package-amutorrent", "x64", "0.7.3-rc.2", True),
     ]
 
 
@@ -556,7 +606,7 @@ def test_campaign_execute_dispatches_windows_vm_command(tmp_path: Path, monkeypa
             "id": "windows-vm",
             "command": (
                 "python -m emule_workspace test windows-vm --matrix win10,win11 "
-                "--profile hideme-live-wire --release-version 0.7.3-rc.1 --skip-build --keep-running "
+                "--profile hideme-live-wire --release-version 0.7.3-rc.2 --skip-build --keep-running "
                 "--fixture-size-bytes 4096 --local-swarm-mode execute"
             ),
             "blocking": True,
@@ -592,7 +642,7 @@ def test_campaign_execute_dispatches_windows_vm_command(tmp_path: Path, monkeypa
         ReleaseCampaignOptions(campaign="test-campaign", phase="controller-surface", execute=True),
     )
 
-    assert calls == [(("win10", "win11"), "hideme-live-wire", "0.7.3-rc.1", True, True, 4096, "execute")]
+    assert calls == [(("win10", "win11"), "hideme-live-wire", "0.7.3-rc.2", True, True, 4096, "execute")]
 
 
 def test_campaign_execute_dispatches_shared_campaign_scenario_local_mode(

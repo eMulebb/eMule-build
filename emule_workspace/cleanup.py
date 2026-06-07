@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from .config import CleanupOptions
+from .config import ACTIVE_EMULEBB_RELEASE_VERSION, CleanupOptions
 from .layout import WorkspaceLayout
 
 MEDIA_SUFFIXES = {
@@ -539,8 +539,9 @@ def _release_state_candidates(layout: WorkspaceLayout) -> list[CleanupCandidate]
     candidates: list[CleanupCandidate] = []
     if not root.is_dir():
         return candidates
+    active_release_state = f"emulebb-v{ACTIVE_EMULEBB_RELEASE_VERSION}"
     for child in root.iterdir():
-        if child.is_dir() and child.name not in {"emulebb-v0.7.3-rc.1"}:
+        if child.is_dir() and child.name != active_release_state:
             candidates.append(_directory_candidate(child, "release-state", "superseded release rehearsal state"))
     return candidates
 

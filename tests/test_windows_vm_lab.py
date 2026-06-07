@@ -442,6 +442,7 @@ def test_prepare_vm_lab_dry_run_plans_targets(tmp_path: Path) -> None:
     assert result["matrix"] == ["win10"]
     assert result["targets"][0]["vmName"] == "emulebb-win10-test"
     assert result["targets"][0]["checkpointName"] == "emulebb-clean"
+    assert result["targets"][0]["baselineReportPath"].endswith("state\\vm-lab\\prepare\\win10-baseline.json")
 
 
 def test_prepare_vm_target_script_skips_oobe_and_installs_efi_fallback() -> None:
@@ -503,11 +504,37 @@ def test_prepare_vm_target_script_installs_hide_me_and_lean_baseline() -> None:
     assert "[Diagnostics.Process]::Start" in script
     assert "Stop-Process -Force" in script
     assert windows_vm_lab.HIDE_ME_INSTALL_DIR == r"C:\Program Files (x86)\hide.me VPN"
+    assert "Set-OfflineLabUltraLeanBaseline -WindowsRoot $windowsRoot" in script
     assert "Set-LabLeanBaseline" in script
+    assert "Set-LabMinimalUiAndPrivacyBaseline" in script
+    assert "Disable-LabDefenderAndSecurityStack" in script
+    assert "Get-LabBaselineReport" in script
+    assert "baseline-report.json" in script
+    assert "Copy-Item -FromSession" in script
+    assert "Set-OfflineLabUltraLeanBaselineForVmVhd -VmName $payload.vmName -VhdPath $payload.vhdPath" in script
+    assert "Remove-VMHardDiskDrive" in script
+    assert "Add-VMHardDiskDrive" in script
     assert "Add-MpPreference -ExclusionPath" in script
     assert "DisableRealtimeMonitoring" in script
     assert "SysMain" in script
     assert "DoSvc" in script
+    assert "WdBoot" in script
+    assert "WdFilter" in script
+    assert "WdNisDrv" in script
+    assert "WpnService" in script
+    assert "WinDefend" in script
+    assert "WdNisSvc" in script
+    assert "SecurityHealthService" in script
+    assert "wscsvc" in script
+    assert "AppXSvc" in script
+    assert "ClipSVC" in script
+    assert "edgeupdate" in script
+    assert "edgeupdatem" in script
+    assert "diagnosticshub.standardcollector.service" in script
+    assert "WdiServiceHost" in script
+    assert "WdiSystemHost" in script
+    assert "TrkWks" in script
+    assert "SCardSvr" in script
     assert "Set-LabWindowsUpdateContainment" in script
     assert "NoAutoUpdate" in script
     assert "DoNotConnectToWindowsUpdateInternetLocations" in script
@@ -516,6 +543,12 @@ def test_prepare_vm_target_script_installs_hide_me_and_lean_baseline() -> None:
     assert "BITS" in script
     assert "UpdateOrchestrator" in script
     assert "Schedule Scan" in script
+    assert "KernelCeipTask" in script
+    assert "Microsoft-Windows-DiskDiagnosticDataCollector" in script
+    assert "PushToInstall" in script
+    assert "Windows Defender Scheduled Scan" in script
+    assert "MicrosoftEdgeUpdateTaskMachineCore" in script
+    assert "'RasMan'" not in script
 
 
 def test_prepare_vm_target_script_enables_autologin_no_lock_and_debloat() -> None:
@@ -531,6 +564,95 @@ def test_prepare_vm_target_script_enables_autologin_no_lock_and_debloat() -> Non
     assert "Remove-AppxProvisionedPackage" in script
     assert "XblAuthManager" in script
     assert "Spooler" in script
+
+
+def test_prepare_vm_target_script_disables_ads_tracking_and_visual_effects_but_keeps_font_smoothing() -> None:
+    script = windows_vm_lab._prepare_vm_target_script()
+
+    assert "DisableWindowsConsumerFeatures" in script
+    assert "DisableWindowsSpotlightFeatures" in script
+    assert "DisableThirdPartySuggestions" in script
+    assert "DisableAntiSpyware" in script
+    assert "DisableAntiVirus" in script
+    assert "DisableRealtimeMonitoring" in script
+    assert "DisableBehaviorMonitoring" in script
+    assert "DisableNotifications" in script
+    assert "HideSystray" in script
+    assert "RemoveWindowsStore" in script
+    assert "UpdateDefault" in script
+    assert "DisabledByGroupPolicy" in script
+    assert "AllowTelemetry" in script
+    assert "EnableActivityFeed" in script
+    assert "PublishUserActivities" in script
+    assert "UploadUserActivities" in script
+    assert "TailoredExperiencesWithDiagnosticDataEnabled" in script
+    assert "ContentDeliveryManager" in script
+    assert "SilentInstalledAppsEnabled" in script
+    assert "SubscribedContent-338389Enabled" in script
+    assert "AdvertisingInfo" in script
+    assert "BingSearchEnabled" in script
+    assert "AllowCortana" in script
+    assert "VisualFXSetting" in script
+    assert "TaskbarAnimations" in script
+    assert "ListviewAlphaSelect" in script
+    assert "ListviewShadow" in script
+    assert "EnableAeroPeek" in script
+    assert "EnableTransparency" in script
+    assert "DragFullWindows" in script
+    assert "MinAnimate" in script
+    assert "MenuShowDelay" in script
+    assert "Wallpaper" in script
+    assert "WallpaperStyle" in script
+    assert "TileWallpaper" in script
+    assert "FontSmoothing" in script
+    assert "FontSmoothingType" in script
+    assert "UpdatePerUserSystemParameters" in script
+
+
+def test_manual_vm_dry_run_plans_operator_session(tmp_path: Path) -> None:
+    layout = _layout(tmp_path)
+    config_path = layout.build_repo_root / "vm-lab.local.json"
+    _write_config(config_path)
+
+    result = windows_vm_lab.launch_manual_vm(
+        layout,
+        _workspace_options(tmp_path),
+        windows_vm_lab.VmManualOptions(
+            config_file=str(config_path),
+            matrix=("win11",),
+            release_version="0.7.3-rc.2",
+            skip_build=True,
+            install_root=r"C:\ManualLab",
+            dry_run=True,
+        ),
+    )
+
+    assert result["status"] == "planned"
+    assert result["matrix"] == ["win11"]
+    assert result["installRoot"] == r"C:\ManualLab"
+    assert result["targets"][0]["vmName"] == "emulebb-win11-test"
+    assert result["targets"][0]["guestIp"] == "192.168.251.11"
+    assert result["targets"][0]["reportDir"].endswith("win11")
+    assert (layout.workspace_root / "state" / "vm-lab" / "manual" / "latest" / "manual-session-result.json").is_file()
+
+
+def test_manual_vm_target_script_restores_installs_and_leaves_running() -> None:
+    script = windows_vm_lab._manual_vm_target_script()
+
+    assert "Restore-VMSnapshot" in script
+    assert "Start-VM" in script
+    assert "New-PSSession -VMName" in script
+    assert "Stop-VM" in script
+    assert "Copy-Item -ToSession" in script
+    assert "Expand-Archive" in script
+    assert "eMuleBB\\emulebb.exe" in script
+    assert "NetworkED2K=0" in script
+    assert "NetworkKademlia=0" in script
+    assert "EnableUPnP=0" in script
+    assert "eMuleBB Manual.lnk" in script
+    assert "manual-session.json" in script
+    assert "Copy-Item -FromSession" in script
+    assert "Restore-VMSnapshot -VMName" not in script
 
 
 def test_prepare_vm_target_script_installs_pwsh_in_guest() -> None:
@@ -724,7 +846,7 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
     )
     amule_daemon_exe = layout.workspace_root / "state" / "tools" / "amule" / "bin" / "amuled.exe"
     amule_control_exe = layout.workspace_root / "state" / "tools" / "amule" / "bin" / "amulecmd.exe"
-    release_asset_paths = windows_vm_lab._local_swarm_release_asset_paths(layout, "0.7.3-rc.1", "x64")
+    release_asset_paths = windows_vm_lab._local_swarm_release_asset_paths(layout, "0.7.3-rc.2", "x64")
     for path in (tracing_harness_exe, amule_daemon_exe, amule_control_exe):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("", encoding="utf-8")
@@ -755,7 +877,7 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
             local_swarm_release_asset_paths=release_asset_paths,
             local_swarm_dependency_asset_paths=[],
             local_swarm_node_archive_path=windows_vm_lab._local_swarm_node_archive_path(layout, "x64"),
-            release_version="0.7.3-rc.1",
+            release_version="0.7.3-rc.2",
             platform="x64",
             run_id="run",
             run_report_dir=tmp_path / "report",
@@ -799,7 +921,7 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
     assert "emule.exe" in captured[0]
     assert "amuled.exe" in captured[0]
     assert "amulecmd.exe" in captured[0]
-    assert "emulebb-0.7.3-rc.1-amutorrent-x64.zip" in captured[0]
+    assert "emulebb-0.7.3-rc.2-amutorrent-x64.zip" in captured[0]
     assert "repos\\\\amutorrent" not in captured[0]
     assert "REST-API-OPENAPI.yaml" in captured[0]
     assert "WebServerJsonSeams.h" in captured[0]
@@ -836,7 +958,7 @@ def test_windows_vm_profile_smoke_payload_stages_harness_for_plain_profiles(tmp_
         local_swarm_release_asset_paths=[],
         local_swarm_dependency_asset_paths=[],
         local_swarm_node_archive_path=None,
-        release_version="0.7.3-rc.1",
+        release_version="0.7.3-rc.2",
         platform="x64",
         run_id="run",
         run_report_dir=tmp_path / "report",

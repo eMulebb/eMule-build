@@ -35,7 +35,7 @@ class CoreRelease:
 def write_core_release(
     release_root: Path,
     *,
-    version: str = "0.7.3-rc.1",
+    version: str = "0.7.3-rc.2",
     arch: str = "x64",
     package_flavor: str = "standard",
     executable_name: str | None = None,

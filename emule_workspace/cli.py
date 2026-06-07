@@ -21,6 +21,7 @@ from .config import (
     AmutorrentEmulebbUiOptions,
     AmutorrentResilienceOptions,
     AmutorrentSessionOptions,
+    ACTIVE_EMULEBB_RELEASE_VERSION,
     BROAD_LIVE_E2E_PRE_RUN_CLEANUP_PROFILES,
     BuildClientsOptions,
     BuildTestsOptions,
@@ -75,9 +76,11 @@ from .test_runs import (
 )
 from .validation import validate_workspace
 from .windows_vm_lab import (
+    VmManualOptions,
     VmPrepareOptions,
     WindowsVmTestOptions,
     invoke_windows_vm_tests,
+    launch_manual_vm,
     parse_matrix,
     prepare_vm_lab,
 )
@@ -218,7 +221,7 @@ def _live_e2e_options(function: F) -> F:
     @click.option("--profile-resource-interval-seconds", default=2.0, show_default=True, type=float)
     @click.option("--live-wire-inputs-file", default=None, help="Runtime live-wire search input JSON.")
     @click.option("--materialize-test-install", is_flag=True, help="Materialize an installer-backed isolated test install before live E2E.")
-    @click.option("--materialize-test-install-release-version", default="0.7.3-rc.1", show_default=True)
+    @click.option("--materialize-test-install-release-version", default=ACTIVE_EMULEBB_RELEASE_VERSION, show_default=True)
     @click.option("--materialize-test-install-clean", is_flag=True, help="Clean package outputs before materializing the test install.")
     @click.option("--materialize-test-install-skip-build", is_flag=True, help="Reuse existing package artifacts when materializing the test install.")
     @click.option("--live-process-monitor-profile-dir", default=None, help="Existing profile directory for the live-process-monitor suite.")
@@ -875,7 +878,7 @@ def test_live_e2e(
     show_default=True,
     help="Windows VM test profile from emulebb-build-tests.",
 )
-@click.option("--release-version", default="0.7.3-rc.1", show_default=True)
+@click.option("--release-version", default=ACTIVE_EMULEBB_RELEASE_VERSION, show_default=True)
 @click.option("--skip-build", is_flag=True, help="Reuse an existing release package artifact.")
 @click.option("--keep-running", is_flag=True, help="Leave the guest running after the test for debugging.")
 @click.option("--dry-run", is_flag=True, help="Plan the VM test commands without changing VMs.")
@@ -918,7 +921,7 @@ def test_windows_vm(
 @_common_options
 @click.option("--scenario", required=True, help="Reusable campaign scenario key, id, or VM profile.")
 @click.option("--mode", type=click.Choice(["local", "vm"]), default="local", show_default=True)
-@click.option("--release-version", default="0.7.3-rc.1", show_default=True)
+@click.option("--release-version", default=ACTIVE_EMULEBB_RELEASE_VERSION, show_default=True)
 @click.option("--skip-build/--build", default=True, show_default=True, help="Reuse or rebuild the release package in VM mode.")
 @click.option("--dry-run", is_flag=True, help="Plan VM commands without changing VMs.")
 @click.option("--fixture-size-bytes", default=25 * 1024 * 1024, show_default=True, type=int)
@@ -966,7 +969,7 @@ def test_campaign_scenario(
 @click.option("--cycle-pause-seconds", default=0.0, show_default=True, type=float)
 @click.option("--dry-run", is_flag=True, help="Write the planned campaign matrix without running phases.")
 @click.option("--live-wire-inputs-file", default=None, help="Runtime live-wire JSON with local_package_install settings.")
-@click.option("--release-version", default="0.7.3-rc.1", show_default=True)
+@click.option("--release-version", default=ACTIVE_EMULEBB_RELEASE_VERSION, show_default=True)
 @click.option("--clean", is_flag=True, help="Clean package outputs before installer materialization.")
 @click.option("--skip-build", is_flag=True, help="Reuse existing package artifacts during installer materialization.")
 @click.option("--p2p-bind-interface-name", default="hide.me", show_default=True)
@@ -1383,7 +1386,7 @@ def full(
 @click.option("--require-signing", is_flag=True, help="Require configured Authenticode signing for release package files.")
 @click.option(
     "--release-version",
-    default="0.7.3-rc.1",
+    default=ACTIVE_EMULEBB_RELEASE_VERSION,
     show_default=True,
     help="Release version in MAJOR.MINOR.PATCH[-rc.N|-beta.N|-nightly.YYYYMMDD.SHA] form.",
 )
@@ -1438,12 +1441,55 @@ def vm_lab_prepare(
     )(workspace_options=workspace_options, layout=layout)
 
 
+@vm_lab.command("manual")
+@_common_options
+@click.option("--config-file", default=None, help="Ignored Windows VM lab JSON config. Defaults to vm-lab.local.json.")
+@click.option("--matrix", default="win10", show_default=True, help="Comma-separated Windows VM targets to leave running.")
+@click.option(
+    "--release-version",
+    default=ACTIVE_EMULEBB_RELEASE_VERSION,
+    show_default=True,
+    help="Release version in MAJOR.MINOR.PATCH[-rc.N|-beta.N|-nightly.YYYYMMDD.SHA] form.",
+)
+@click.option("--skip-build", is_flag=True, help="Use an existing release package instead of building one first.")
+@click.option("--install-root", default=r"C:\eMuleBBManual", show_default=True, help="Guest path for the manual install.")
+@click.option("--start-app", is_flag=True, help="Start eMuleBB after staging the manual profile.")
+@click.option("--dry-run", is_flag=True, help="Plan the manual VM launch commands without changing VMs.")
+def vm_lab_manual(
+    *,
+    config_file: str | None,
+    matrix: str,
+    release_version: str,
+    skip_build: bool,
+    install_root: str,
+    start_app: bool,
+    dry_run: bool,
+    workspace_options: WorkspaceOptions,
+    layout,
+) -> None:
+    """Restore prepared VM(s), install eMuleBB, and leave them running."""
+
+    manual_options = VmManualOptions(
+        config_file=config_file,
+        matrix=parse_matrix(matrix),
+        release_version=release_version,
+        skip_build=skip_build,
+        install_root=install_root,
+        start_app=start_app,
+        dry_run=dry_run,
+    )
+    _locked(
+        "vm-lab manual",
+        lambda **kwargs: launch_manual_vm(kwargs["layout"], kwargs["workspace_options"], manual_options),
+    )(workspace_options=workspace_options, layout=layout)
+
+
 @main.command("package-amutorrent")
 @_common_options
 @click.option("--clean", is_flag=True, help="Clean selected package build outputs before building.")
 @click.option(
     "--release-version",
-    default="0.7.3-rc.1",
+    default=ACTIVE_EMULEBB_RELEASE_VERSION,
     show_default=True,
     help="Release version in MAJOR.MINOR.PATCH[-rc.N|-beta.N|-nightly.YYYYMMDD.SHA] form.",
 )
@@ -1527,7 +1573,7 @@ def package_miniupnpc(
 )
 @click.option(
     "--release-version",
-    default="0.7.3-rc.1",
+    default=ACTIVE_EMULEBB_RELEASE_VERSION,
     show_default=True,
     help="Release version in MAJOR.MINOR.PATCH[-rc.N|-beta.N|-nightly.YYYYMMDD.SHA] form.",
 )

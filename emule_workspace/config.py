@@ -15,6 +15,7 @@ BuildPlatform = Literal["x64", "ARM64"]
 BuildOutputMode = Literal["Full", "Warnings", "ErrorsOnly"]
 PackageFlavor = Literal["standard", "diagnostics"]
 ClientBuildTarget = Literal["amule"]
+ACTIVE_EMULEBB_RELEASE_VERSION = "0.7.3-rc.2"
 LiveE2eProfile = Literal[
     "default",
     "multi-client-p2p",
@@ -125,7 +126,7 @@ class LiveE2eOptions(BaseModel):
     campaign_scenario_uses_local_swarm: bool = False
     skip_live_seed_refresh: bool = False
     materialize_test_install: bool = False
-    materialize_test_install_release_version: str = "0.7.3-rc.1"
+    materialize_test_install_release_version: str = ACTIVE_EMULEBB_RELEASE_VERSION
     materialize_test_install_clean: bool = False
     materialize_test_install_skip_build: bool = False
     live_process_monitor_profile_dir: str | None = None
@@ -236,7 +237,7 @@ class CampaignScenarioOptions(BaseModel):
 
     scenario: str
     mode: Literal["local", "vm"] = "local"
-    release_version: str = "0.7.3-rc.1"
+    release_version: str = ACTIVE_EMULEBB_RELEASE_VERSION
     skip_build: bool = True
     dry_run: bool = False
     fixture_size_bytes: int = 25 * 1024 * 1024
@@ -376,7 +377,7 @@ class ReleasePackageOptions(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    release_version: str = "0.7.3-rc.1"
+    release_version: str = ACTIVE_EMULEBB_RELEASE_VERSION
     clean: bool = False
     require_signing: bool = False
 
@@ -386,7 +387,7 @@ class AmutorrentPackageOptions(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    release_version: str = "0.7.3-rc.1"
+    release_version: str = ACTIVE_EMULEBB_RELEASE_VERSION
     clean: bool = False
 
 
@@ -413,7 +414,7 @@ class LocalPackageInstallOptions(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    release_version: str = "0.7.3-rc.1"
+    release_version: str = ACTIVE_EMULEBB_RELEASE_VERSION
     clean: bool = False
     skip_build: bool = False
     live_wire_inputs_file: str | None = None
@@ -431,7 +432,7 @@ class LocalHammerCampaignOptions(BaseModel):
     cycle_pause_seconds: float = 0.0
     dry_run: bool = False
     live_wire_inputs_file: str | None = None
-    release_version: str = "0.7.3-rc.1"
+    release_version: str = ACTIVE_EMULEBB_RELEASE_VERSION
     clean: bool = False
     skip_build: bool = False
     p2p_bind_interface_name: str = "hide.me"

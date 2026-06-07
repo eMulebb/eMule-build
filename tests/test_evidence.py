@@ -26,7 +26,7 @@ def test_heavy_evidence_index_classifies_large_state_roots(tmp_path: Path) -> No
 
 def test_heavy_evidence_index_write_uses_generated_state_file(tmp_path: Path) -> None:
     layout = make_layout(tmp_path)
-    write_file(layout.workspace_root / "state" / "release" / "emulebb-v0.7.3-rc.1" / "manifest.json", 2048)
+    write_file(layout.workspace_root / "state" / "release" / "emulebb-v0.7.3-rc.2" / "manifest.json", 2048)
 
     payload = write_heavy_evidence_index(layout, threshold_mb=0.001)
     index_path = layout.workspace_root / "state" / "heavy-evidence-index.json"

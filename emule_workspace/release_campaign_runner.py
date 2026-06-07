@@ -21,6 +21,7 @@ from .config import (
     AmutorrentEmulebbUiOptions,
     AmutorrentPackageOptions,
     AmutorrentResilienceOptions,
+    ACTIVE_EMULEBB_RELEASE_VERSION,
     CampaignScenarioOptions,
     CertificationOptions,
     CommunityCoverageOptions,
@@ -539,14 +540,20 @@ def _dispatch_workspace_command(
         create_release_package(
             layout,
             _workspace_options_from_tokens(workspace_options, tokens),
-            ReleasePackageOptions(),
+            ReleasePackageOptions(
+                release_version=_option_value(tokens, "--release-version") or ACTIVE_EMULEBB_RELEASE_VERSION,
+                clean="--clean" in tokens,
+            ),
         )
         return
     if tokens and tokens[0] == "package-amutorrent":
         create_amutorrent_package(
             layout,
             _workspace_options_from_tokens(workspace_options, tokens),
-            AmutorrentPackageOptions(),
+            AmutorrentPackageOptions(
+                release_version=_option_value(tokens, "--release-version") or ACTIVE_EMULEBB_RELEASE_VERSION,
+                clean="--clean" in tokens,
+            ),
         )
         return
     raise ValueError(f"Unsupported emule_workspace release campaign command: {' '.join(tokens)}")
@@ -577,7 +584,8 @@ def _live_options_from_tokens(campaign_options: ReleaseCampaignOptions, tokens: 
         pre_run_cleanup=False,
         fail_fast="--fail-fast" in tokens,
         materialize_test_install="--materialize-test-install" in tokens,
-        materialize_test_install_release_version=_option_value(tokens, "--materialize-test-install-release-version") or "0.7.3-rc.1",
+        materialize_test_install_release_version=_option_value(tokens, "--materialize-test-install-release-version")
+        or ACTIVE_EMULEBB_RELEASE_VERSION,
         materialize_test_install_clean="--materialize-test-install-clean" in tokens,
         materialize_test_install_skip_build="--materialize-test-install-skip-build" in tokens,
         live_wire_inputs_file=_option_value(tokens, "--live-wire-inputs-file") or campaign_options.live_wire_inputs_file,
@@ -663,7 +671,7 @@ def _windows_vm_options_from_tokens(tokens: list[str]) -> WindowsVmTestOptions:
         config_file=_option_value(tokens, "--config-file"),
         matrix=parse_matrix(_option_value(tokens, "--matrix") or None),
         profile=_option_value(tokens, "--profile") or "package-smoke",
-        release_version=_option_value(tokens, "--release-version") or "0.7.3-rc.1",
+        release_version=_option_value(tokens, "--release-version") or ACTIVE_EMULEBB_RELEASE_VERSION,
         skip_build="--skip-build" in tokens,
         keep_running="--keep-running" in tokens,
         dry_run="--dry-run" in tokens,
@@ -679,7 +687,7 @@ def _campaign_scenario_options_from_tokens(tokens: list[str]) -> CampaignScenari
     return CampaignScenarioOptions(
         scenario=scenario,
         mode=_option_value(tokens, "--mode") or "local",  # type: ignore[arg-type]
-        release_version=_option_value(tokens, "--release-version") or "0.7.3-rc.1",
+        release_version=_option_value(tokens, "--release-version") or ACTIVE_EMULEBB_RELEASE_VERSION,
         skip_build="--skip-build" in tokens,
         dry_run="--dry-run" in tokens,
         fixture_size_bytes=_option_int(tokens, "--fixture-size-bytes") or 25 * 1024 * 1024,
@@ -800,11 +808,11 @@ def _validate_workspace_command_tokens(tokens: list[str]) -> None:
         _amutorrent_resilience_options_from_tokens(campaign_options, tokens)
         return
     if tokens and tokens[0] == "package-release":
-        _validate_options(tokens[1:], value_options=_WORKSPACE_VALUE_OPTIONS, flag_options=set())
+        _validate_options(tokens[1:], value_options=_WORKSPACE_VALUE_OPTIONS | {"--release-version"}, flag_options={"--clean"})
         _workspace_options_from_tokens(workspace_options, tokens)
         return
     if tokens and tokens[0] == "package-amutorrent":
-        _validate_options(tokens[1:], value_options=_WORKSPACE_VALUE_OPTIONS, flag_options=set())
+        _validate_options(tokens[1:], value_options=_WORKSPACE_VALUE_OPTIONS | {"--release-version"}, flag_options={"--clean"})
         _workspace_options_from_tokens(workspace_options, tokens)
         return
     raise ValueError(f"Unsupported emule_workspace release campaign command: {' '.join(tokens)}")

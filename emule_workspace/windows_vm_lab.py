@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import urllib.parse
 import urllib.request
 import zipfile
@@ -19,7 +20,7 @@ from types import ModuleType
 from typing import Any, Sequence
 
 from .artifact_names import utc_run_id
-from .config import AmutorrentPackageOptions, ReleasePackageOptions, WorkspaceOptions
+from .config import ACTIVE_EMULEBB_RELEASE_VERSION, AmutorrentPackageOptions, ReleasePackageOptions, WorkspaceOptions
 from .layout import WorkspaceLayout, file_token
 from .release import create_amutorrent_package, create_release_package
 
@@ -141,13 +142,26 @@ class VmPrepareOptions:
 
 
 @dataclass(frozen=True)
+class VmManualOptions:
+    """Options for launching an operator-owned Windows VM session."""
+
+    config_file: str | None = None
+    matrix: tuple[str, ...] = ("win10",)
+    release_version: str = ACTIVE_EMULEBB_RELEASE_VERSION
+    skip_build: bool = False
+    install_root: str = r"C:\eMuleBBManual"
+    start_app: bool = False
+    dry_run: bool = False
+
+
+@dataclass(frozen=True)
 class WindowsVmTestOptions:
     """Options for running Windows VM package-smoke tests."""
 
     config_file: str | None = None
     matrix: tuple[str, ...] = SUPPORTED_TARGETS
     profile: str = "package-smoke"
-    release_version: str = "0.7.3-rc.1"
+    release_version: str = ACTIVE_EMULEBB_RELEASE_VERSION
     skip_build: bool = False
     keep_running: bool = False
     dry_run: bool = False
@@ -179,16 +193,32 @@ class PowerShellRunner:
         if self.dry_run:
             return "null" if capture_json else ""
         executable = shutil.which("powershell.exe") or shutil.which("powershell") or "powershell.exe"
-        command = [executable, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script]
-        completed = subprocess.run(
-            command,
-            cwd=str(self.cwd),
-            env=_powershell_subprocess_env(executable),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            check=False,
-        )
+        script_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                suffix=".ps1",
+                prefix="emulebb-vm-lab-",
+                dir=str(self.cwd),
+                encoding="utf-8",
+                newline="\n",
+                delete=False,
+            ) as handle:
+                handle.write(script)
+                script_path = Path(handle.name)
+            command = [executable, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script_path)]
+            completed = subprocess.run(
+                command,
+                cwd=str(self.cwd),
+                env=_powershell_subprocess_env(executable),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False,
+            )
+        finally:
+            if script_path is not None:
+                script_path.unlink(missing_ok=True)
         if completed.returncode != 0:
             tail = completed.stderr.strip() or completed.stdout.strip()
             raise RuntimeError(f"{label} failed with exit code {completed.returncode}.\n{tail}")
@@ -403,6 +433,72 @@ def prepare_vm_lab(layout: WorkspaceLayout, options: VmPrepareOptions) -> dict[s
         "targets": rows,
         "commandCount": len(runner.commands),
     }
+    print(json.dumps(result, indent=2))
+    return result
+
+
+def launch_manual_vm(
+    layout: WorkspaceLayout,
+    workspace_options: WorkspaceOptions,
+    options: VmManualOptions,
+) -> dict[str, object]:
+    """Restores prepared VM(s), stages eMuleBB, and leaves them running for manual use."""
+
+    if workspace_options.platform != "x64":
+        raise RuntimeError("vm-lab manual supports x64 packages only in v1.")
+    if workspace_options.configuration != "Release":
+        raise RuntimeError("vm-lab manual requires --config Release.")
+    config = load_vm_lab_config(layout, options.config_file)
+    matrix = parse_matrix(options.matrix)
+    runner = PowerShellRunner(cwd=layout.emule_workspace_root, dry_run=options.dry_run)
+    preflight_hyperv(config, runner=runner, require_password=not options.dry_run)
+    if not options.skip_build and not options.dry_run:
+        create_release_package(
+            layout,
+            workspace_options,
+            ReleasePackageOptions(release_version=options.release_version, clean=False, require_signing=False),
+        )
+    package_zip = _release_package_zip(layout, options.release_version, workspace_options.platform)
+    if not options.dry_run and not package_zip.is_file():
+        raise RuntimeError(f"Manual VM launch is missing release package: {package_zip}")
+    run_id = utc_run_id()
+    report_root = _vm_manual_report_root(layout)
+    run_report_dir = report_root / run_id
+    run_report_dir.mkdir(parents=True, exist_ok=True)
+    rows: list[dict[str, object]] = []
+    for key in matrix:
+        rows.append(
+            launch_manual_vm_target(
+                layout,
+                config,
+                config.targets[key],
+                package_zip=package_zip,
+                release_version=options.release_version,
+                run_id=run_id,
+                run_report_dir=run_report_dir,
+                install_root=options.install_root,
+                start_app=options.start_app,
+                runner=runner,
+            )
+        )
+    result = {
+        "schema": "emulebb.windows-vm-manual-result.v1",
+        "status": "planned" if options.dry_run else "passed",
+        "generatedAtUtc": _now_utc(),
+        "releaseVersion": options.release_version,
+        "platform": workspace_options.platform,
+        "configFile": str(config.config_path),
+        "packageZip": str(package_zip),
+        "matrix": list(matrix),
+        "dryRun": options.dry_run,
+        "installRoot": options.install_root,
+        "startApp": options.start_app,
+        "reportDir": str(run_report_dir),
+        "targets": rows,
+        "commandCount": len(runner.commands),
+    }
+    _write_json(run_report_dir / "manual-session-result.json", result)
+    _refresh_latest(run_report_dir, report_root / "latest")
     print(json.dumps(result, indent=2))
     return result
 
@@ -667,6 +763,7 @@ def prepare_vm_target(
     """Prepares one Hyper-V VM and its clean checkpoint."""
 
     vhd_path = _vm_image_root(layout) / f"{file_token(target.key)}.vhdx"
+    baseline_report_path = _vm_prepare_report_root(layout) / f"{file_token(target.key)}-baseline.json"
     provisioning_guest_ips = config.hyperv.provisioning_guest_ips or DEFAULT_PROVISIONING_GUEST_IPS
     provisioning_guest_ip = provisioning_guest_ips.get(target.key)
     if not provisioning_guest_ip:
@@ -725,6 +822,7 @@ def prepare_vm_target(
             "dotnetDesktopRuntimeX86Dir": DOTNET_DESKTOP_RUNTIME_X86_DIR,
             "vcRedistX64Path": str(vc_redist_x64),
             "vcRedistX64RuntimeDll": VC_REDIST_X64_RUNTIME_DLL,
+            "baselineReportPath": str(baseline_report_path),
         },
         _prepare_vm_target_script(),
     )
@@ -737,6 +835,70 @@ def prepare_vm_target(
         "isoPath": str(target.iso_path),
         "edition": target.edition,
         "checkpointName": config.hyperv.checkpoint_name,
+        "baselineReportPath": str(baseline_report_path),
+    }
+
+
+def launch_manual_vm_target(
+    layout: WorkspaceLayout,
+    config: VmLabConfig,
+    target: VmTargetSettings,
+    *,
+    package_zip: Path,
+    release_version: str,
+    run_id: str,
+    run_report_dir: Path,
+    install_root: str,
+    start_app: bool,
+    runner: PowerShellRunner,
+) -> dict[str, object]:
+    """Launches one restored VM as an operator-owned manual session."""
+
+    target_report_dir = run_report_dir / target.key
+    target_report_dir.mkdir(parents=True, exist_ok=True)
+    provisioning = _target_provisioning_payload(config, target.key)
+    if runner.dry_run:
+        return {
+            "target": target.key,
+            "vmName": target.vm_name,
+            "status": "planned",
+            "checkpointName": config.hyperv.checkpoint_name,
+            "guestIp": provisioning["guestIp"],
+            "installRoot": install_root,
+            "reportDir": str(target_report_dir),
+        }
+    script = _ps_with_payload(
+        {
+            "target": target.key,
+            "vmName": target.vm_name,
+            "switchName": config.hyperv.provisioning_switch_name,
+            "provisioning": provisioning,
+            "checkpointName": config.hyperv.checkpoint_name,
+            "username": config.guest.username,
+            "password": resolve_guest_password(config),
+            "packageZip": str(package_zip),
+            "releaseVersion": release_version,
+            "runId": run_id,
+            "hostReportDir": str(target_report_dir),
+            "installRoot": install_root,
+            "startApp": start_app,
+        },
+        _manual_vm_target_script(),
+    )
+    stdout = runner.run(script, label=f"manual Windows VM {target.key}", capture_json=True)
+    payload = _parse_json_output(stdout, f"manual Windows VM {target.key}")
+    _write_json(target_report_dir / f"{target.key}-manual-session.json", payload)
+    return {
+        "target": target.key,
+        "vmName": target.vm_name,
+        "status": payload.get("status", "failed"),
+        "checkpointName": config.hyperv.checkpoint_name,
+        "guestIp": payload.get("guestIp", provisioning["guestIp"]),
+        "installRoot": payload.get("installRoot", install_root),
+        "appExe": payload.get("appExe"),
+        "profileDir": payload.get("profileDir"),
+        "desktopShortcut": payload.get("desktopShortcut"),
+        "reportDir": str(target_report_dir),
     }
 
 
@@ -1561,6 +1723,10 @@ if ($vm) {
 if (Test-Path -LiteralPath $payload.vhdPath) {
   Remove-Item -LiteralPath $payload.vhdPath -Force
 }
+$vhdParent = Split-Path -Parent $payload.vhdPath
+$vhdStem = [IO.Path]::GetFileNameWithoutExtension($payload.vhdPath)
+Get-ChildItem -Path $vhdParent -Filter ($vhdStem + '_*.avhdx') -ErrorAction SilentlyContinue |
+  Remove-Item -Force -ErrorAction SilentlyContinue
 if (-not (Test-Path -LiteralPath $payload.isoPath)) {
   throw ('Windows ISO is missing: ' + $payload.isoPath)
 }
@@ -1608,6 +1774,192 @@ function Ensure-ProvisioningNatSwitch {
     New-NetNat -Name $NatName -InternalIPInterfaceAddressPrefix $NatPrefix | Out-Null
   }
 }
+
+function Set-OfflineRegistryDword {
+  param([string] $Path, [string] $Name, [int] $Value)
+  try {
+    New-Item -Path $Path -Force -ErrorAction SilentlyContinue | Out-Null
+    if (Test-Path -LiteralPath $Path) {
+      New-ItemProperty -Path $Path -Name $Name -PropertyType DWord -Value $Value -Force -ErrorAction SilentlyContinue | Out-Null
+    }
+  } catch {}
+}
+
+function Set-OfflineRegistryString {
+  param([string] $Path, [string] $Name, [string] $Value)
+  try {
+    New-Item -Path $Path -Force -ErrorAction SilentlyContinue | Out-Null
+    if (Test-Path -LiteralPath $Path) {
+      New-ItemProperty -Path $Path -Name $Name -PropertyType String -Value $Value -Force -ErrorAction SilentlyContinue | Out-Null
+    }
+  } catch {}
+}
+
+function Set-OfflineLabServiceDisabled {
+  param([string] $SystemHiveRoot, [string] $ServiceName)
+  foreach ($controlSet in Get-ChildItem -Path $SystemHiveRoot -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -match '^ControlSet\d+$' }) {
+    $servicePath = Join-Path $controlSet.PSPath ("Services\" + $ServiceName)
+    if (Test-Path -LiteralPath $servicePath) {
+      Set-OfflineRegistryDword -Path $servicePath -Name Start -Value 4
+      Set-OfflineRegistryDword -Path $servicePath -Name LaunchProtected -Value 0
+      Set-OfflineRegistryDword -Path $servicePath -Name DelayedAutoStart -Value 0
+    }
+  }
+}
+
+function Set-OfflineLabUltraLeanBaselineForVhd {
+  param([string] $VhdPath)
+  $mounted = $null
+  for ($attempt = 1; $attempt -le 30; $attempt++) {
+    try {
+      $mounted = Mount-VHD -Path $VhdPath -Passthru -ErrorAction Stop
+      break
+    } catch {
+      if ($attempt -eq 30) { throw }
+      Start-Sleep -Seconds 2
+    }
+  }
+  try {
+    $disk = $mounted | Get-Disk
+    $windowsRoot = $null
+    foreach ($partition in Get-Partition -DiskNumber $disk.Number -ErrorAction SilentlyContinue) {
+      $volume = $partition | Get-Volume -ErrorAction SilentlyContinue
+      if ($volume -and -not $volume.DriveLetter) {
+        try {
+          Add-PartitionAccessPath -DiskNumber $disk.Number -PartitionNumber $partition.PartitionNumber -AssignDriveLetter -ErrorAction Stop
+          $volume = $partition | Get-Volume -ErrorAction SilentlyContinue
+        } catch {}
+      }
+      if ($volume -and $volume.DriveLetter) {
+        $candidate = "$($volume.DriveLetter):"
+        if (Test-Path -LiteralPath (Join-Path $candidate 'Windows\System32\Config\SYSTEM')) {
+          $windowsRoot = $candidate
+          break
+        }
+      }
+    }
+    if (-not $windowsRoot) {
+      throw ('Could not find Windows root in VHD: ' + $VhdPath)
+    }
+    Set-OfflineLabUltraLeanBaseline -WindowsRoot $windowsRoot
+  } finally {
+    Dismount-VHD -Path $VhdPath
+  }
+}
+
+function Set-OfflineLabUltraLeanBaselineForVmVhd {
+  param([string] $VmName, [string] $VhdPath)
+  $allDrives = @(
+    Get-VMHardDiskDrive -VMName $VmName -ErrorAction Stop | ForEach-Object {
+      [pscustomobject]@{
+        Path = [string] $_.Path
+        ControllerType = $_.ControllerType
+        ControllerNumber = $_.ControllerNumber
+        ControllerLocation = $_.ControllerLocation
+      }
+    }
+  )
+  $drives = @(
+    $allDrives |
+      Where-Object { [string]::Equals($_.Path, $VhdPath, [StringComparison]::OrdinalIgnoreCase) }
+  )
+  if ($drives.Count -eq 0) {
+    $drives = $allDrives
+  }
+  if ($drives.Count -eq 0) {
+    Set-OfflineLabUltraLeanBaselineForVhd -VhdPath $VhdPath
+    return
+  }
+  foreach ($drive in $drives) {
+    Remove-VMHardDiskDrive -VMName $VmName -ControllerType $drive.ControllerType -ControllerNumber $drive.ControllerNumber -ControllerLocation $drive.ControllerLocation
+  }
+  try {
+    foreach ($drive in $drives) {
+      $drivePath = if ($drive.Path) { $drive.Path } else { $VhdPath }
+      Set-OfflineLabUltraLeanBaselineForVhd -VhdPath $drivePath
+    }
+  } finally {
+    foreach ($drive in $drives) {
+      $drivePath = if ($drive.Path) { $drive.Path } else { $VhdPath }
+      Add-VMHardDiskDrive -VMName $VmName -ControllerType $drive.ControllerType -ControllerNumber $drive.ControllerNumber -ControllerLocation $drive.ControllerLocation -Path $drivePath
+    }
+  }
+}
+
+function Set-OfflineLabUltraLeanBaseline {
+  param([string] $WindowsRoot)
+  $loadedHives = @()
+  function Mount-OfflineHive {
+    param([string] $Name, [string] $Path)
+    if (-not (Test-Path -LiteralPath $Path)) {
+      return $null
+    }
+    reg.exe load ("HKLM\" + $Name) $Path | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+      return $null
+    }
+    $script:loadedHives += $Name
+    return ("HKLM:\" + $Name)
+  }
+  try {
+    $software = Mount-OfflineHive -Name 'EMULEBB_OFFLINE_SOFTWARE' -Path (Join-Path $WindowsRoot 'Windows\System32\Config\SOFTWARE')
+    $system = Mount-OfflineHive -Name 'EMULEBB_OFFLINE_SYSTEM' -Path (Join-Path $WindowsRoot 'Windows\System32\Config\SYSTEM')
+    $defaultUser = Mount-OfflineHive -Name 'EMULEBB_OFFLINE_DEFAULT_USER' -Path (Join-Path $WindowsRoot 'Users\Default\NTUSER.DAT')
+    if ($software) {
+      Set-OfflineRegistryDword -Path (Join-Path $software 'Policies\Microsoft\Windows Defender') -Name DisableAntiSpyware -Value 1
+      Set-OfflineRegistryDword -Path (Join-Path $software 'Policies\Microsoft\Windows Defender') -Name DisableAntiVirus -Value 1
+      Set-OfflineRegistryDword -Path (Join-Path $software 'Policies\Microsoft\Windows Defender') -Name ServiceKeepAlive -Value 0
+      Set-OfflineRegistryDword -Path (Join-Path $software 'Policies\Microsoft\Windows Defender\Real-Time Protection') -Name DisableRealtimeMonitoring -Value 1
+      Set-OfflineRegistryDword -Path (Join-Path $software 'Policies\Microsoft\Windows Defender\Real-Time Protection') -Name DisableBehaviorMonitoring -Value 1
+      Set-OfflineRegistryDword -Path (Join-Path $software 'Policies\Microsoft\Windows Defender\Real-Time Protection') -Name DisableOnAccessProtection -Value 1
+      Set-OfflineRegistryDword -Path (Join-Path $software 'Policies\Microsoft\Windows Defender\Real-Time Protection') -Name DisableScanOnRealtimeEnable -Value 1
+      Set-OfflineRegistryDword -Path (Join-Path $software 'Policies\Microsoft\Windows Defender\Spynet') -Name SpynetReporting -Value 0
+      Set-OfflineRegistryDword -Path (Join-Path $software 'Policies\Microsoft\Windows Defender\Spynet') -Name SubmitSamplesConsent -Value 2
+      Set-OfflineRegistryDword -Path (Join-Path $software 'Policies\Microsoft\Windows Defender Security Center\Notifications') -Name DisableNotifications -Value 1
+      Set-OfflineRegistryDword -Path (Join-Path $software 'Policies\Microsoft\Windows Defender Security Center\Systray') -Name HideSystray -Value 1
+      Set-OfflineRegistryDword -Path (Join-Path $software 'Policies\Microsoft\Windows\CloudContent') -Name DisableWindowsConsumerFeatures -Value 1
+      Set-OfflineRegistryDword -Path (Join-Path $software 'Policies\Microsoft\Windows\CloudContent') -Name DisableWindowsSpotlightFeatures -Value 1
+      Set-OfflineRegistryDword -Path (Join-Path $software 'Policies\Microsoft\Windows\DataCollection') -Name AllowTelemetry -Value 0
+      Set-OfflineRegistryDword -Path (Join-Path $software 'Policies\Microsoft\Windows\AdvertisingInfo') -Name DisabledByGroupPolicy -Value 1
+      Set-OfflineRegistryDword -Path (Join-Path $software 'Policies\Microsoft\Windows\System') -Name EnableActivityFeed -Value 0
+      Set-OfflineRegistryDword -Path (Join-Path $software 'Policies\Microsoft\Windows\System') -Name PublishUserActivities -Value 0
+      Set-OfflineRegistryDword -Path (Join-Path $software 'Policies\Microsoft\Windows\System') -Name UploadUserActivities -Value 0
+      Set-OfflineRegistryDword -Path (Join-Path $software 'Policies\Microsoft\Windows\Windows Search') -Name AllowCortana -Value 0
+      Set-OfflineRegistryDword -Path (Join-Path $software 'Policies\Microsoft\WindowsStore') -Name AutoDownload -Value 2
+      Set-OfflineRegistryDword -Path (Join-Path $software 'Policies\Microsoft\WindowsStore') -Name RemoveWindowsStore -Value 1
+    }
+    if ($system) {
+      foreach ($serviceName in @(
+        'WdBoot', 'WdFilter', 'WdNisDrv', 'WinDefend', 'WdNisSvc',
+        'Sense', 'SecurityHealthService', 'wscsvc',
+        'AppXSvc', 'ClipSVC', 'InstallService', 'edgeupdate', 'edgeupdatem',
+        'DiagTrack', 'dmwappushservice', 'WerSvc', 'WSearch', 'SysMain',
+        'DoSvc', 'WaaSMedicSvc', 'UsoSvc', 'wuauserv', 'BITS',
+        'MapsBroker', 'RetailDemo', 'XblAuthManager', 'XblGameSave',
+        'XboxGipSvc', 'XboxNetApiSvc', 'WpnService', 'CDPSvc'
+      )) {
+        Set-OfflineLabServiceDisabled -SystemHiveRoot $system -ServiceName $serviceName
+      }
+    }
+    if ($defaultUser) {
+      Set-OfflineRegistryDword -Path (Join-Path $defaultUser 'Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo') -Name Enabled -Value 0
+      Set-OfflineRegistryDword -Path (Join-Path $defaultUser 'Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects') -Name VisualFXSetting -Value 2
+      Set-OfflineRegistryDword -Path (Join-Path $defaultUser 'Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced') -Name TaskbarAnimations -Value 0
+      Set-OfflineRegistryDword -Path (Join-Path $defaultUser 'Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager') -Name SilentInstalledAppsEnabled -Value 0
+      Set-OfflineRegistryString -Path (Join-Path $defaultUser 'Control Panel\Desktop') -Name Wallpaper -Value ''
+      Set-OfflineRegistryString -Path (Join-Path $defaultUser 'Control Panel\Desktop') -Name FontSmoothing -Value '2'
+      Set-OfflineRegistryDword -Path (Join-Path $defaultUser 'Control Panel\Desktop') -Name FontSmoothingType -Value 2
+      Set-OfflineRegistryString -Path (Join-Path $defaultUser 'Control Panel\Desktop\WindowMetrics') -Name MinAnimate -Value '0'
+    }
+  } finally {
+    [GC]::Collect()
+    [GC]::WaitForPendingFinalizers()
+    foreach ($name in @($loadedHives | Sort-Object -Descending)) {
+      reg.exe unload ("HKLM\" + $name) | Out-Null
+    }
+  }
+}
+
 $provisioningSwitchName = $payload.provisioningSwitchName
 if (-not $provisioningSwitchName) {
   $provisioningSwitchName = $payload.switchName
@@ -1711,6 +2063,7 @@ $unattend = @"
 </unattend>
 "@
   Set-Content -Path (Join-Path $unattendDir 'Unattend.xml') -Value $unattend -Encoding UTF8
+  Set-OfflineLabUltraLeanBaseline -WindowsRoot $windowsRoot
   New-Item -ItemType Directory -Force -Path "$efiRoot\EFI\Microsoft\Boot" | Out-Null
   New-Item -ItemType Directory -Force -Path "$efiRoot\EFI\Microsoft\Recovery" | Out-Null
   bcdboot.exe "$windowsRoot\Windows" /s $efiRoot /f UEFI | Out-Host
@@ -1799,6 +2152,35 @@ try {
     try { Disable-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName -ErrorAction Stop | Out-Null } catch {}
   }
 
+  function Set-LabRegistryDword {
+    param([string] $Path, [string] $Name, [int] $Value)
+    try {
+      New-Item -Path $Path -Force -ErrorAction SilentlyContinue | Out-Null
+      if (Test-Path -LiteralPath $Path) {
+        New-ItemProperty -Path $Path -Name $Name -PropertyType DWord -Value $Value -Force -ErrorAction SilentlyContinue | Out-Null
+      }
+    } catch {}
+  }
+
+  function Set-LabRegistryString {
+    param([string] $Path, [string] $Name, [string] $Value)
+    try {
+      New-Item -Path $Path -Force -ErrorAction SilentlyContinue | Out-Null
+      if (Test-Path -LiteralPath $Path) {
+        New-ItemProperty -Path $Path -Name $Name -PropertyType String -Value $Value -Force -ErrorAction SilentlyContinue | Out-Null
+      }
+    } catch {}
+  }
+
+  function Disable-LabService {
+    param([string] $ServiceName)
+    foreach ($service in Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
+      try { Stop-Service -Name $service.Name -Force -ErrorAction SilentlyContinue } catch {}
+      try { Set-Service -Name $service.Name -StartupType Disabled -ErrorAction Stop } catch {}
+      try { sc.exe config $service.Name start= disabled | Out-Null } catch {}
+    }
+  }
+
   function Set-LabWindowsUpdateContainment {
     foreach ($serviceName in @(
       'wuauserv', 'UsoSvc', 'BITS', 'InstallService', 'WaaSMedicSvc',
@@ -1838,6 +2220,7 @@ try {
     param([string] $PythonPath, [string] $HideMePath, [string] $Username, [string] $Password)
     Set-LabAutoLogin -Username $Username -Password $Password
     Set-LabNoLock
+    Set-LabMinimalUiAndPrivacyBaseline
     Remove-LabAppxBloat
     Set-LabWindowsUpdateContainment
     Add-LabDefenderExclusion -Path 'C:\eMuleBBVmTest'
@@ -1845,45 +2228,156 @@ try {
     Add-LabDefenderExclusion -Path $HideMePath
     try { Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction Stop } catch {}
     try { Set-MpPreference -DisableArchiveScanning $true -MAPSReporting Disabled -SubmitSamplesConsent NeverSend -ErrorAction Stop } catch {}
-    foreach ($serviceName in @(
+    Disable-LabDefenderAndSecurityStack
+    $leanServiceNames = @(
       'SysMain', 'WSearch', 'DiagTrack', 'DoSvc', 'WaaSMedicSvc', 'WerSvc',
       'RetailDemo', 'MapsBroker', 'lfsvc', 'WMPNetworkSvc', 'RemoteRegistry',
       'Fax', 'Spooler', 'BTAGService', 'bthserv', 'PhoneSvc', 'WalletService',
       'WbioSrvc', 'TabletInputService', 'XblAuthManager', 'XblGameSave',
       'XboxGipSvc', 'XboxNetApiSvc', 'dmwappushservice', 'PcaSvc',
       'CDPSvc', 'CDPUserSvc_*', 'PimIndexMaintenanceSvc_*', 'OneSyncSvc_*',
-      'UnistoreSvc_*', 'UserDataSvc_*', 'MessagingService_*'
-    )) {
-      foreach ($service in Get-Service -Name $serviceName -ErrorAction SilentlyContinue) {
-        try { Stop-Service -Name $service.Name -Force -ErrorAction SilentlyContinue } catch {}
-        try { Set-Service -Name $service.Name -StartupType Disabled -ErrorAction Stop } catch {}
-        try { sc.exe config $service.Name start= disabled | Out-Null } catch {}
-      }
+      'UnistoreSvc_*', 'UserDataSvc_*', 'MessagingService_*',
+      'WpnService', 'WpnUserService_*', 'diagnosticshub.standardcollector.service',
+      'DPS', 'DusmSvc', 'TrkWks', 'SCardSvr', 'SEMgrSvc', 'SensorService',
+      'SensrSvc', 'stisvc', 'icssvc', 'SharedAccess', 'RemoteAccess',
+      'RemoteAccessAutoConnectionManager', 'RasAuto',
+      'AppXSvc', 'ClipSVC', 'InstallService', 'edgeupdate', 'edgeupdatem',
+      'WdiServiceHost', 'WdiSystemHost', 'wercplsupport', 'shpamsvc'
+    )
+    foreach ($serviceName in $leanServiceNames) {
+      Disable-LabService -ServiceName $serviceName
     }
-    Disable-LabScheduledTask -TaskPath '\Microsoft\Windows\Application Experience\' -TaskName 'Microsoft Compatibility Appraiser'
-    Disable-LabScheduledTask -TaskPath '\Microsoft\Windows\Application Experience\' -TaskName 'ProgramDataUpdater'
-    Disable-LabScheduledTask -TaskPath '\Microsoft\Windows\Application Experience\' -TaskName 'StartupAppTask'
-    Disable-LabScheduledTask -TaskPath '\Microsoft\Windows\Autochk\' -TaskName 'Proxy'
-    Disable-LabScheduledTask -TaskPath '\Microsoft\Windows\Customer Experience Improvement Program\' -TaskName 'Consolidator'
-    Disable-LabScheduledTask -TaskPath '\Microsoft\Windows\Customer Experience Improvement Program\' -TaskName 'UsbCeip'
-    Disable-LabScheduledTask -TaskPath '\Microsoft\Windows\Windows Error Reporting\' -TaskName 'QueueReporting'
-    Disable-LabScheduledTask -TaskPath '\Microsoft\Windows\Maps\' -TaskName 'MapsToastTask'
-    Disable-LabScheduledTask -TaskPath '\Microsoft\Windows\Maps\' -TaskName 'MapsUpdateTask'
-    Disable-LabScheduledTask -TaskPath '\Microsoft\Windows\Feedback\Siuf\' -TaskName 'DmClient'
-    Disable-LabScheduledTask -TaskPath '\Microsoft\Windows\Feedback\Siuf\' -TaskName 'DmClientOnScenarioDownload'
+    foreach ($task in Get-LabLeanScheduledTasks) {
+      Disable-LabScheduledTask -TaskPath $task.Path -TaskName $task.Name
+    }
     try { powercfg.exe /hibernate off | Out-Null } catch {}
     try { powercfg.exe /setactive SCHEME_MIN | Out-Null } catch {}
     try { powercfg.exe /change monitor-timeout-ac 0 | Out-Null } catch {}
     try { powercfg.exe /change standby-timeout-ac 0 | Out-Null } catch {}
     try { powercfg.exe /change disk-timeout-ac 0 | Out-Null } catch {}
-    try {
-      New-Item -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' -Force | Out-Null
-      New-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' -Name DisableWindowsConsumerFeatures -PropertyType DWord -Value 1 -Force | Out-Null
-    } catch {}
-    try {
-      New-Item -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection' -Force | Out-Null
-      New-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection' -Name AllowTelemetry -PropertyType DWord -Value 0 -Force | Out-Null
-    } catch {}
+  }
+
+  function Disable-LabDefenderAndSecurityStack {
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender' -Name DisableAntiSpyware -Value 1
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender' -Name DisableAntiVirus -Value 1
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender' -Name ServiceKeepAlive -Value 0
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Real-Time Protection' -Name DisableRealtimeMonitoring -Value 1
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Real-Time Protection' -Name DisableBehaviorMonitoring -Value 1
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Real-Time Protection' -Name DisableOnAccessProtection -Value 1
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Real-Time Protection' -Name DisableScanOnRealtimeEnable -Value 1
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Spynet' -Name SpynetReporting -Value 0
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Spynet' -Name SubmitSamplesConsent -Value 2
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\Notifications' -Name DisableNotifications -Value 1
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\Systray' -Name HideSystray -Value 1
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer' -Name HideSCAHealth -Value 1
+    try { Get-Process -Name SecurityHealthSystray -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue } catch {}
+    try { Remove-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name SecurityHealth -ErrorAction SilentlyContinue } catch {}
+    foreach ($serviceName in @('WdBoot', 'WdFilter', 'WdNisDrv', 'WinDefend', 'WdNisSvc', 'Sense', 'SecurityHealthService', 'wscsvc')) {
+      Set-LabRegistryDword -Path ('HKLM:\SYSTEM\CurrentControlSet\Services\' + $serviceName) -Name Start -Value 4
+      Set-LabRegistryDword -Path ('HKLM:\SYSTEM\CurrentControlSet\Services\' + $serviceName) -Name LaunchProtected -Value 0
+      Disable-LabService -ServiceName $serviceName
+    }
+  }
+
+  function Get-LabLeanScheduledTasks {
+    return @(
+      @{ Path = '\Microsoft\Windows\Application Experience\'; Name = 'Microsoft Compatibility Appraiser' },
+      @{ Path = '\Microsoft\Windows\Application Experience\'; Name = 'PcaPatchDbTask' },
+      @{ Path = '\Microsoft\Windows\Application Experience\'; Name = 'ProgramDataUpdater' },
+      @{ Path = '\Microsoft\Windows\Application Experience\'; Name = 'StartupAppTask' },
+      @{ Path = '\Microsoft\Windows\Autochk\'; Name = 'Proxy' },
+      @{ Path = '\Microsoft\Windows\Customer Experience Improvement Program\'; Name = 'Consolidator' },
+      @{ Path = '\Microsoft\Windows\Customer Experience Improvement Program\'; Name = 'KernelCeipTask' },
+      @{ Path = '\Microsoft\Windows\Customer Experience Improvement Program\'; Name = 'UsbCeip' },
+      @{ Path = '\Microsoft\Windows\DiskDiagnostic\'; Name = 'Microsoft-Windows-DiskDiagnosticDataCollector' },
+      @{ Path = '\Microsoft\Windows\Feedback\Siuf\'; Name = 'DmClient' },
+      @{ Path = '\Microsoft\Windows\Feedback\Siuf\'; Name = 'DmClientOnScenarioDownload' },
+      @{ Path = '\Microsoft\Windows\Maps\'; Name = 'MapsToastTask' },
+      @{ Path = '\Microsoft\Windows\Maps\'; Name = 'MapsUpdateTask' },
+      @{ Path = '\Microsoft\Windows\PushToInstall\'; Name = 'LoginCheck' },
+      @{ Path = '\Microsoft\Windows\PushToInstall\'; Name = 'Registration' },
+      @{ Path = '\Microsoft\Windows\InstallService\'; Name = 'ScanForUpdates' },
+      @{ Path = '\Microsoft\Windows\InstallService\'; Name = 'ScanForUpdatesAsUser' },
+      @{ Path = '\Microsoft\Windows\InstallService\'; Name = 'SmartRetry' },
+      @{ Path = '\Microsoft\Windows\InstallService\'; Name = 'WakeUpAndContinueUpdates' },
+      @{ Path = '\Microsoft\Windows\InstallService\'; Name = 'WakeUpAndScanForUpdates' },
+      @{ Path = '\Microsoft\Windows\Shell\'; Name = 'FamilySafetyMonitor' },
+      @{ Path = '\Microsoft\Windows\Shell\'; Name = 'FamilySafetyRefreshTask' },
+      @{ Path = '\Microsoft\Windows\Windows Defender\'; Name = 'Windows Defender Cache Maintenance' },
+      @{ Path = '\Microsoft\Windows\Windows Defender\'; Name = 'Windows Defender Cleanup' },
+      @{ Path = '\Microsoft\Windows\Windows Defender\'; Name = 'Windows Defender Scheduled Scan' },
+      @{ Path = '\Microsoft\Windows\Windows Defender\'; Name = 'Windows Defender Verification' },
+      @{ Path = '\Microsoft\Windows\Windows Error Reporting\'; Name = 'QueueReporting' },
+      @{ Path = '\Microsoft\Windows\Maintenance\'; Name = 'WinSAT' },
+      @{ Path = '\Microsoft\EdgeUpdate\'; Name = 'MicrosoftEdgeUpdateTaskMachineCore' },
+      @{ Path = '\Microsoft\EdgeUpdate\'; Name = 'MicrosoftEdgeUpdateTaskMachineUA' }
+    )
+  }
+
+  function Set-LabMinimalUiAndPrivacyBaseline {
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' -Name DisableWindowsConsumerFeatures -Value 1
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' -Name DisableSoftLanding -Value 1
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' -Name DisableTailoredExperiencesWithDiagnosticData -Value 1
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' -Name DisableThirdPartySuggestions -Value 1
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' -Name DisableWindowsSpotlightFeatures -Value 1
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' -Name DisableConsumerAccountStateContent -Value 1
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AdvertisingInfo' -Name DisabledByGroupPolicy -Value 1
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection' -Name AllowTelemetry -Value 0
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System' -Name EnableActivityFeed -Value 0
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System' -Name PublishUserActivities -Value 0
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System' -Name UploadUserActivities -Value 0
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search' -Name AllowCortana -Value 0
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search' -Name AllowSearchToUseLocation -Value 0
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search' -Name DisableWebSearch -Value 1
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\WindowsInkWorkspace' -Name AllowSuggestedAppsInWindowsInkWorkspace -Value 0
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\WindowsStore' -Name AutoDownload -Value 2
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\WindowsStore' -Name RemoveWindowsStore -Value 1
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\EdgeUpdate' -Name UpdateDefault -Value 0
+    Set-LabRegistryDword -Path 'HKLM:\SOFTWARE\Policies\Microsoft\EdgeUpdate' -Name AutoUpdateCheckPeriodMinutes -Value 0
+
+    Set-LabRegistryDword -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo' -Name Enabled -Value 0
+    Set-LabRegistryDword -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Privacy' -Name TailoredExperiencesWithDiagnosticDataEnabled -Value 0
+    Set-LabRegistryDword -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Search' -Name BingSearchEnabled -Value 0
+    Set-LabRegistryDword -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Search' -Name CortanaConsent -Value 0
+    Set-LabRegistryDword -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects' -Name VisualFXSetting -Value 2
+    Set-LabRegistryDword -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name TaskbarAnimations -Value 0
+    Set-LabRegistryDword -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name ListviewAlphaSelect -Value 0
+    Set-LabRegistryDword -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name ListviewShadow -Value 0
+    Set-LabRegistryDword -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name ShowSyncProviderNotifications -Value 0
+    Set-LabRegistryDword -Path 'HKCU:\Software\Microsoft\Windows\DWM' -Name EnableAeroPeek -Value 0
+    Set-LabRegistryDword -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name EnableTransparency -Value 0
+
+    foreach ($name in @(
+      'ContentDeliveryAllowed',
+      'FeatureManagementEnabled',
+      'OemPreInstalledAppsEnabled',
+      'PreInstalledAppsEnabled',
+      'PreInstalledAppsEverEnabled',
+      'RotatingLockScreenEnabled',
+      'RotatingLockScreenOverlayEnabled',
+      'SilentInstalledAppsEnabled',
+      'SoftLandingEnabled',
+      'SystemPaneSuggestionsEnabled',
+      'SubscribedContent-310093Enabled',
+      'SubscribedContent-338387Enabled',
+      'SubscribedContent-338388Enabled',
+      'SubscribedContent-338389Enabled',
+      'SubscribedContent-338393Enabled',
+      'SubscribedContent-353694Enabled',
+      'SubscribedContent-353696Enabled'
+    )) {
+      Set-LabRegistryDword -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' -Name $name -Value 0
+    }
+
+    Set-LabRegistryString -Path 'HKCU:\Control Panel\Desktop' -Name DragFullWindows -Value '0'
+    Set-LabRegistryString -Path 'HKCU:\Control Panel\Desktop' -Name FontSmoothing -Value '2'
+    Set-LabRegistryDword -Path 'HKCU:\Control Panel\Desktop' -Name FontSmoothingType -Value 2
+    Set-LabRegistryString -Path 'HKCU:\Control Panel\Desktop' -Name MenuShowDelay -Value '0'
+    Set-LabRegistryString -Path 'HKCU:\Control Panel\Desktop' -Name Wallpaper -Value ''
+    Set-LabRegistryString -Path 'HKCU:\Control Panel\Desktop' -Name WallpaperStyle -Value '0'
+    Set-LabRegistryString -Path 'HKCU:\Control Panel\Desktop' -Name TileWallpaper -Value '0'
+    Set-LabRegistryString -Path 'HKCU:\Control Panel\Desktop\WindowMetrics' -Name MinAnimate -Value '0'
+    try { rundll32.exe user32.dll,UpdatePerUserSystemParameters 1, True | Out-Null } catch {}
   }
 
   function Set-LabAutoLogin {
@@ -1912,7 +2406,7 @@ try {
   }
 
   function Remove-LabAppxBloat {
-    $pattern = 'Xbox|Bing|Zune|Clipchamp|Teams|Solitaire|Todos|Weather|GetHelp|Getstarted|YourPhone|3DViewer|MixedReality|People|Skype|OfficeHub|FeedbackHub'
+    $pattern = 'Xbox|Bing|Zune|Clipchamp|Teams|Solitaire|Todos|Weather|GetHelp|Getstarted|YourPhone|3DViewer|MixedReality|People|Skype|OfficeHub|FeedbackHub|WindowsMaps|News|CommunicationsApps|OneConnect|Getstarted|MicrosoftOfficeHub|MicrosoftTeams'
     try {
       Get-AppxPackage -AllUsers | Where-Object { $_.Name -match $pattern } | ForEach-Object {
         try { Remove-AppxPackage -Package $_.PackageFullName -AllUsers -ErrorAction Stop } catch {}
@@ -1923,6 +2417,60 @@ try {
         try { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName -ErrorAction Stop | Out-Null } catch {}
       }
     } catch {}
+  }
+
+  function Get-LabBaselineReport {
+    $serviceNames = @(
+      'WinDefend', 'WdNisSvc', 'Sense', 'SecurityHealthService', 'wscsvc',
+      'AppXSvc', 'ClipSVC', 'InstallService', 'edgeupdate', 'edgeupdatem',
+      'SysMain', 'WSearch', 'DiagTrack', 'DoSvc', 'WaaSMedicSvc', 'WerSvc',
+      'RetailDemo', 'MapsBroker', 'WpnService', 'diagnosticshub.standardcollector.service',
+      'DPS', 'DusmSvc', 'TrkWks', 'Spooler', 'XblAuthManager', 'XboxNetApiSvc',
+      'dmwappushservice', 'PcaSvc'
+    )
+    $services = @()
+    foreach ($serviceName in $serviceNames) {
+      $services += Get-Service -Name $serviceName -ErrorAction SilentlyContinue |
+        Select-Object Name, Status, StartType
+    }
+    $tasks = @()
+    foreach ($task in Get-LabLeanScheduledTasks) {
+      $tasks += Get-ScheduledTask -TaskPath $task.Path -TaskName $task.Name -ErrorAction SilentlyContinue |
+        Select-Object TaskPath, TaskName, State
+    }
+    $registryChecks = [ordered]@{}
+    foreach ($item in @(
+      @{ Key = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent'; Name = 'DisableWindowsConsumerFeatures' },
+      @{ Key = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection'; Name = 'AllowTelemetry' },
+      @{ Key = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AdvertisingInfo'; Name = 'DisabledByGroupPolicy' },
+      @{ Key = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender'; Name = 'DisableAntiSpyware' },
+      @{ Key = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender'; Name = 'DisableAntiVirus' },
+      @{ Key = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\Systray'; Name = 'HideSystray' },
+      @{ Key = 'HKLM:\SOFTWARE\Policies\Microsoft\WindowsStore'; Name = 'RemoveWindowsStore' },
+      @{ Key = 'HKLM:\SOFTWARE\Policies\Microsoft\EdgeUpdate'; Name = 'UpdateDefault' },
+      @{ Key = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System'; Name = 'EnableActivityFeed' },
+      @{ Key = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search'; Name = 'AllowCortana' },
+      @{ Key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo'; Name = 'Enabled' },
+      @{ Key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'; Name = 'SilentInstalledAppsEnabled' },
+      @{ Key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects'; Name = 'VisualFXSetting' },
+      @{ Key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'; Name = 'TaskbarAnimations' },
+      @{ Key = 'HKCU:\Control Panel\Desktop'; Name = 'FontSmoothing' },
+      @{ Key = 'HKCU:\Control Panel\Desktop'; Name = 'Wallpaper' },
+      @{ Key = 'HKCU:\Control Panel\Desktop\WindowMetrics'; Name = 'MinAnimate' }
+    )) {
+      $value = $null
+      try { $value = (Get-ItemProperty -Path $item.Key -Name $item.Name -ErrorAction Stop).($item.Name) } catch {}
+      $registryChecks[($item.Key + '\' + $item.Name)] = $value
+    }
+    return [ordered]@{
+      schema = 'emulebb.windows-vm-guest-baseline.v1'
+      generatedAtUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+      computerName = $env:COMPUTERNAME
+      os = Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, BuildNumber
+      services = $services
+      scheduledTasks = $tasks
+      registry = $registryChecks
+    }
   }
 
   function Install-HideMe {
@@ -2060,13 +2608,175 @@ try {
   Install-DotNetDesktopRuntime -RuntimeDir $dotnetDesktopRuntimeX86Dir -InstallerPath 'C:\eMuleBBVmTest\dotnet-desktop-runtime-x86.exe'
   Install-HideMe -InstallDir $hideMeInstallDir -Username $guestUsername
   Set-LabLeanBaseline -PythonPath $pythonInstallDir -HideMePath $hideMeInstallDir -Username $guestUsername -Password $guestPassword
+  Get-LabBaselineReport | ConvertTo-Json -Depth 8 | Set-Content -Path 'C:\eMuleBBVmTest\baseline-report.json' -Encoding UTF8
   } -ArgumentList $payload.pythonInstallerSha256, $payload.pythonInstallDir, $payload.pythonLivePackages, $payload.playwrightBrowser, $payload.hideMeInstallDir, $payload.pwshInstallDir, $payload.dotnetDesktopRuntimeDir, $payload.dotnetDesktopRuntimeX86Dir, $payload.vcRedistX64RuntimeDll, $payload.username, $payload.password | Out-Null
+  if ($payload.baselineReportPath) {
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $payload.baselineReportPath) | Out-Null
+    Copy-Item -FromSession $session -Path 'C:\eMuleBBVmTest\baseline-report.json' -Destination $payload.baselineReportPath -Force
+  }
 }
 finally {
   if ($session) { Remove-PSSession $session }
 }
 Stop-VM -Name $payload.vmName -Force
+Set-OfflineLabUltraLeanBaselineForVmVhd -VmName $payload.vmName -VhdPath $payload.vhdPath
 Checkpoint-VM -Name $payload.vmName -SnapshotName $payload.checkpointName
+"""
+
+
+def _manual_vm_target_script() -> str:
+    return r"""
+$ErrorActionPreference = 'Stop'
+$secure = ConvertTo-SecureString $payload.password -AsPlainText -Force
+$credential = [pscredential]::new($payload.username, $secure)
+$vm = Get-VM -Name $payload.vmName -ErrorAction Stop
+if ($payload.switchName) {
+  Connect-VMNetworkAdapter -VMName $payload.vmName -SwitchName $payload.switchName | Out-Null
+}
+if ($vm.State -ne 'Off') {
+  Stop-VM -Name $payload.vmName -TurnOff -Force
+}
+$snapshot = Get-VMSnapshot -VMName $payload.vmName -Name $payload.checkpointName -ErrorAction Stop
+Restore-VMSnapshot -VMSnapshot $snapshot -Confirm:$false | Out-Null
+if ($payload.switchName) {
+  Connect-VMNetworkAdapter -VMName $payload.vmName -SwitchName $payload.switchName | Out-Null
+}
+Start-VM -Name $payload.vmName | Out-Null
+$deadline = (Get-Date).AddMinutes(10)
+$session = $null
+do {
+  Start-Sleep -Seconds 3
+  try {
+    $session = New-PSSession -VMName $payload.vmName -Credential $credential -ErrorAction Stop
+  } catch {
+    if ((Get-Date) -gt $deadline) { throw }
+  }
+} while (-not $session)
+try {
+  $guestResult = Invoke-Command -Session $session -ScriptBlock {
+    param($Provisioning, $InstallRoot, $ReleaseVersion, $StartApp)
+    $ErrorActionPreference = 'Stop'
+    $guestIp = [string] $Provisioning.guestIp
+    $prefixLength = [int] $Provisioning.prefixLength
+    $gateway = [string] $Provisioning.gateway
+    $dnsServers = @($Provisioning.dns | ForEach-Object { [string] $_ } | Where-Object { $_ })
+    $adapter = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Sort-Object InterfaceIndex | Select-Object -First 1
+    if (-not $adapter) {
+      $adapter = Get-NetAdapter | Sort-Object InterfaceIndex | Select-Object -First 1
+    }
+    if (-not $adapter) {
+      throw 'Manual VM session could not find a network adapter.'
+    }
+    if ($guestIp -and $gateway -and $dnsServers.Count -gt 0) {
+      Get-NetIPAddress -InterfaceIndex $adapter.InterfaceIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+        Remove-NetIPAddress -Confirm:$false -ErrorAction SilentlyContinue
+      Get-NetRoute -InterfaceIndex $adapter.InterfaceIndex -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue |
+        Remove-NetRoute -Confirm:$false -ErrorAction SilentlyContinue
+      New-NetIPAddress -InterfaceIndex $adapter.InterfaceIndex -IPAddress $guestIp -PrefixLength $prefixLength -DefaultGateway $gateway | Out-Null
+      Set-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -ServerAddresses $dnsServers
+    }
+    $packagesRoot = Join-Path $InstallRoot 'packages'
+    $expandedRoot = Join-Path $InstallRoot 'package'
+    $profileRoot = Join-Path $InstallRoot 'profile'
+    $configRoot = Join-Path $profileRoot 'config'
+    $incomingRoot = Join-Path $profileRoot 'incoming'
+    $tempRoot = Join-Path $profileRoot 'temp'
+    if (Test-Path -LiteralPath $InstallRoot) {
+      Remove-Item -LiteralPath $InstallRoot -Recurse -Force
+    }
+    New-Item -ItemType Directory -Force -Path $packagesRoot, $expandedRoot, $configRoot, $incomingRoot, $tempRoot | Out-Null
+    [ordered]@{
+      schema = 'emulebb.windows-vm-manual-guest-preinstall.v1'
+      releaseVersion = $ReleaseVersion
+      generatedAtUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+    } | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $InstallRoot 'manual-session.preinstall.json') -Encoding UTF8
+  } -ArgumentList $payload.provisioning, $payload.installRoot, $payload.releaseVersion, $payload.startApp
+  $guestZip = Invoke-Command -Session $session -ScriptBlock {
+    param($InstallRoot, $PackageFileName)
+    Join-Path (Join-Path $InstallRoot 'packages') $PackageFileName
+  } -ArgumentList $payload.installRoot, (Split-Path -Leaf $payload.packageZip)
+  Copy-Item -ToSession $session -Path $payload.packageZip -Destination $guestZip -Force
+  $guestResult = Invoke-Command -Session $session -ScriptBlock {
+    param($InstallRoot, $GuestZip, $ReleaseVersion, $StartApp)
+    $ErrorActionPreference = 'Stop'
+    $expandedRoot = Join-Path $InstallRoot 'package'
+    $profileRoot = Join-Path $InstallRoot 'profile'
+    $configRoot = Join-Path $profileRoot 'config'
+    $incomingRoot = Join-Path $profileRoot 'incoming'
+    $tempRoot = Join-Path $profileRoot 'temp'
+    Expand-Archive -LiteralPath $GuestZip -DestinationPath $expandedRoot -Force
+    $appRoot = Join-Path $expandedRoot 'eMuleBB'
+    $appExe = Join-Path $appRoot 'emulebb.exe'
+    if (-not (Test-Path -LiteralPath $appExe -PathType Leaf)) {
+      throw ('Manual VM package did not contain eMuleBB\emulebb.exe: ' + $GuestZip)
+    }
+    @"
+[eMule]
+ConfirmExit=0
+IncomingDir=$incomingRoot
+TempDir=$tempRoot
+BindAddr=
+BindInterface=
+NetworkED2K=0
+NetworkKademlia=0
+[WebServer]
+Enabled=1
+ApiKey=manual-vm-api-key
+Port=4711
+BindAddr=127.0.0.1
+UseHTTPS=0
+[UPnP]
+EnableUPnP=0
+"@ | Set-Content -Path (Join-Path $configRoot 'preferences.ini') -Encoding Unicode
+    $desktop = [Environment]::GetFolderPath('Desktop')
+    $shortcutPath = Join-Path $desktop 'eMuleBB Manual.lnk'
+    $rootShortcutPath = Join-Path $desktop 'eMuleBB Manual Root.lnk'
+    $shell = New-Object -ComObject WScript.Shell
+    $shortcut = $shell.CreateShortcut($shortcutPath)
+    $shortcut.TargetPath = $appExe
+    $shortcut.Arguments = '-ignoreinstances -c "' + $profileRoot + '"'
+    $shortcut.WorkingDirectory = $appRoot
+    $shortcut.Save()
+    $rootShortcut = $shell.CreateShortcut($rootShortcutPath)
+    $rootShortcut.TargetPath = 'explorer.exe'
+    $rootShortcut.Arguments = '"' + $InstallRoot + '"'
+    $rootShortcut.Save()
+    $processId = $null
+    if ($StartApp) {
+      $process = Start-Process -FilePath $appExe -ArgumentList @('-ignoreinstances', '-c', $profileRoot) -WorkingDirectory $appRoot -PassThru
+      $processId = $process.Id
+    }
+    $ipv4 = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+      Where-Object { $_.IPAddress -notlike '169.254.*' } |
+      Select-Object IPAddress, PrefixLength, InterfaceAlias
+    $result = [ordered]@{
+      schema = 'emulebb.windows-vm-manual-guest-session.v1'
+      status = 'passed'
+      generatedAtUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+      releaseVersion = $ReleaseVersion
+      computerName = $env:COMPUTERNAME
+      username = $env:USERNAME
+      guestIp = ($ipv4 | Select-Object -First 1).IPAddress
+      installRoot = $InstallRoot
+      packageZip = $GuestZip
+      appRoot = $appRoot
+      appExe = $appExe
+      profileDir = $profileRoot
+      desktopShortcut = $shortcutPath
+      rootShortcut = $rootShortcutPath
+      startedProcessId = $processId
+      ipv4 = $ipv4
+    }
+    $result | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $InstallRoot 'manual-session.json') -Encoding UTF8
+    $result
+  } -ArgumentList $payload.installRoot, $guestZip, $payload.releaseVersion, $payload.startApp
+  New-Item -ItemType Directory -Force -Path $payload.hostReportDir | Out-Null
+  Copy-Item -FromSession $session -Path (Join-Path $payload.installRoot 'manual-session.json') -Destination (Join-Path $payload.hostReportDir 'manual-session.json') -Force
+  $guestResult | ConvertTo-Json -Depth 8
+}
+finally {
+  if ($session) { Remove-PSSession $session }
+}
 """
 
 
@@ -2176,6 +2886,14 @@ def _ensure_local_swarm_node_archive(layout: WorkspaceLayout, platform: str) -> 
 
 def _vm_image_root(layout: WorkspaceLayout) -> Path:
     return layout.workspace_root / "state" / "vm-lab" / "images"
+
+
+def _vm_prepare_report_root(layout: WorkspaceLayout) -> Path:
+    return layout.workspace_root / "state" / "vm-lab" / "prepare"
+
+
+def _vm_manual_report_root(layout: WorkspaceLayout) -> Path:
+    return layout.workspace_root / "state" / "vm-lab" / "manual"
 
 
 def _windows_vm_report_root(layout: WorkspaceLayout) -> Path:

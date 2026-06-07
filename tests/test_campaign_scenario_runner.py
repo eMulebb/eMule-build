@@ -100,7 +100,7 @@ def test_campaign_scenario_local_mode_reuses_local_live_suites_and_tiered_swarm(
 ) -> None:
     layout = make_layout(tmp_path)
     write_campaign_scenario_catalog(layout)
-    calls: list[tuple[str, str, str, tuple[str, ...], str, bool, int, int, str, bool, bool]] = []
+    calls: list[tuple[str, str, str, tuple[str, ...], str, bool, bool, str, bool, int, int, str, bool, bool]] = []
 
     monkeypatch.setattr(
         campaign_scenario_runner,
@@ -114,6 +114,9 @@ def test_campaign_scenario_local_mode_reuses_local_live_suites_and_tiered_swarm(
                 options.suites,
                 options.test_network,
                 options.plan_only,
+                options.materialize_test_install,
+                options.materialize_test_install_release_version,
+                options.materialize_test_install_skip_build,
                 options.godzilla_total_client_count,
                 options.godzilla_amule_files,
                 options.godzilla_stage or "",
@@ -138,6 +141,9 @@ def test_campaign_scenario_local_mode_reuses_local_live_suites_and_tiered_swarm(
             ("local-ed2k-search-soak", "local-kad-swarm", "godzilla-local-swarm"),
             "default",
             False,
+            True,
+            "0.7.3-rc.2",
+            True,
             12,
             66,
             "launch-scale",
@@ -153,7 +159,7 @@ def test_campaign_scenario_local_mode_dispatches_all_reusable_catalog_rows(
 ) -> None:
     layout = make_layout(tmp_path)
     write_multi_campaign_scenario_catalog(layout)
-    calls: list[tuple[str, str, tuple[str, ...], str, bool]] = []
+    calls: list[tuple[str, str, tuple[str, ...], str, bool, bool, str, bool]] = []
 
     monkeypatch.setattr(
         campaign_scenario_runner,
@@ -165,6 +171,9 @@ def test_campaign_scenario_local_mode_dispatches_all_reusable_catalog_rows(
                 options.suites,
                 options.godzilla_stage or "",
                 options.admin_volume_fixtures,
+                options.materialize_test_install,
+                options.materialize_test_install_release_version,
+                options.materialize_test_install_skip_build,
             )
         ),
     )
@@ -188,12 +197,18 @@ def test_campaign_scenario_local_mode_dispatches_all_reusable_catalog_rows(
             ("command-line-smoke", "amutorrent-browser-smoke", "package-helper-integration", "godzilla-local-swarm"),
             "launch-scale",
             True,
+            True,
+            "0.7.3-rc.2",
+            True,
         ),
         (
             "multi-client-p2p",
             "default",
             ("amutorrent-local-ed2k-ui-live", "godzilla-local-swarm"),
             "launch-scale",
+            True,
+            True,
+            "0.7.3-rc.2",
             True,
         ),
         (
@@ -202,12 +217,18 @@ def test_campaign_scenario_local_mode_dispatches_all_reusable_catalog_rows(
             ("package-helper-integration", "godzilla-local-swarm"),
             "launch-scale",
             True,
+            True,
+            "0.7.3-rc.2",
+            True,
         ),
         (
             "multi-client-p2p",
             "default",
             ("local-ed2k-search-soak", "local-kad-swarm", "godzilla-local-swarm"),
             "launch-scale",
+            True,
+            True,
+            "0.7.3-rc.2",
             True,
         ),
     ]

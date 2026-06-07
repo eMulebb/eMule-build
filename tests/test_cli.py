@@ -236,6 +236,21 @@ def test_vm_lab_prepare_help_is_available() -> None:
     assert "--dry-run" in result.output
 
 
+def test_vm_lab_manual_help_is_available() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(cli.main, ["vm-lab", "manual", "--help"])
+
+    assert result.exit_code == 0
+    assert "--config-file" in result.output
+    assert "--matrix" in result.output
+    assert "--release-version" in result.output
+    assert "--skip-build" in result.output
+    assert "--install-root" in result.output
+    assert "--start-app" in result.output
+    assert "--dry-run" in result.output
+
+
 def test_overnight_local_hammer_help_exposes_campaign_options() -> None:
     runner = CliRunner()
 
