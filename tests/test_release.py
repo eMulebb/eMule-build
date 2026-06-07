@@ -416,6 +416,9 @@ def test_release_manifest_records_explicit_source_provenance(
         bootstrapper_asset_path=release_root / "Bootstrap-eMuleBBSuite.ps1",
         bootstrapper_hash_path=release_root / "Bootstrap-eMuleBBSuite.ps1.sha256",
         bootstrapper_hash="bootstrapper-sha",
+        suite_scripts_asset_path=release_root / "suite-scripts-0.7.3-rc.1.zip",
+        suite_scripts_manifest_path=release_root / "suite-scripts-0.7.3-rc.1.manifest.json",
+        suite_scripts_hash="suite-scripts-sha",
         signature_policy={"mode": "unsigned", "required": False, "signedFiles": []},
     )
 
@@ -441,6 +444,9 @@ def test_release_manifest_records_explicit_source_provenance(
     assert manifest["bootstrapperAsset"] == "Bootstrap-eMuleBBSuite.ps1"
     assert manifest["bootstrapperSha256"] == "bootstrapper-sha"
     assert manifest["bootstrapperSha256Path"] == "Bootstrap-eMuleBBSuite.ps1.sha256"
+    assert manifest["suiteScriptsAsset"] == "suite-scripts-0.7.3-rc.1.zip"
+    assert manifest["suiteScriptsManifest"] == "suite-scripts-0.7.3-rc.1.manifest.json"
+    assert manifest["suiteScriptsSha256"] == "suite-scripts-sha"
     assert manifest["signaturePolicy"] == {"mode": "unsigned", "required": False, "signedFiles": []}
     assert "eMuleBB/SBOM.spdx.json" in manifest["includedPaths"]
     assert "eMuleBB/scripts" in manifest["includedPaths"]
@@ -482,6 +488,30 @@ def test_standalone_bootstrapper_asset_is_hashed_next_to_release(tmp_path: Path)
     assert "[string]$Version = '0.7.3-rc.1'," in asset_path.read_text(encoding="utf-8")
     assert digest == hashlib.sha256(asset_path.read_bytes()).hexdigest()
     assert hash_path.read_text(encoding="ascii") == f"{digest}  Bootstrap-eMuleBBSuite.ps1\n"
+
+
+def test_suite_scripts_bundle_asset_is_hashed_next_to_release(tmp_path: Path) -> None:
+    package_root = tmp_path / "staging" / "eMuleBB"
+    release_root = tmp_path / "release"
+    for relative_path in release.EMULEBB_RUNTIME_SCRIPT_PATHS:
+        script_path = package_root / relative_path
+        script_path.parent.mkdir(parents=True, exist_ok=True)
+        script_path.write_text("#Requires -Version 5.1\n", encoding="utf-8")
+    release_root.mkdir(parents=True)
+
+    asset_path, manifest_path, digest = release._write_suite_scripts_bundle_asset(
+        package_root=package_root,
+        release_root=release_root,
+        release_version="0.7.3-rc.1",
+    )
+
+    assert asset_path == release_root / "suite-scripts-0.7.3-rc.1.zip"
+    assert manifest_path == release_root / "suite-scripts-0.7.3-rc.1.manifest.json"
+    assert digest == hashlib.sha256(asset_path.read_bytes()).hexdigest()
+    assert json.loads(manifest_path.read_text(encoding="utf-8")) == {"sha256": digest}
+    with zipfile.ZipFile(asset_path, "r") as archive:
+        entry_names = set(archive.namelist())
+    assert entry_names == {f"eMuleBB/{relative_path}" for relative_path in release.EMULEBB_RUNTIME_SCRIPT_PATHS}
 
 
 def test_standalone_bootstrapper_asset_bakes_release_version(tmp_path: Path) -> None:

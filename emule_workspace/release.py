@@ -353,6 +353,11 @@ def create_release_package(
             release_root=release_root,
             release_version=package_options.release_version,
         )
+        suite_scripts_asset_path, suite_scripts_manifest_path, suite_scripts_hash = _write_suite_scripts_bundle_asset(
+            package_root=package_root,
+            release_root=release_root,
+            release_version=package_options.release_version,
+        )
 
         if zip_path.exists():
             zip_path.unlink()
@@ -382,6 +387,9 @@ def create_release_package(
             bootstrapper_asset_path=bootstrapper_asset_path,
             bootstrapper_hash_path=bootstrapper_hash_path,
             bootstrapper_hash=bootstrapper_hash,
+            suite_scripts_asset_path=suite_scripts_asset_path,
+            suite_scripts_manifest_path=suite_scripts_manifest_path,
+            suite_scripts_hash=suite_scripts_hash,
             signature_policy=signature_policy,
             flavor=flavor,
         )
@@ -410,6 +418,9 @@ def _build_release_manifest(
     bootstrapper_asset_path: Path,
     bootstrapper_hash_path: Path,
     bootstrapper_hash: str,
+    suite_scripts_asset_path: Path,
+    suite_scripts_manifest_path: Path,
+    suite_scripts_hash: str,
     signature_policy: dict[str, object],
     flavor: ReleasePackageFlavorSpec = RELEASE_PACKAGE_FLAVORS[0],
 ) -> dict[str, object]:
@@ -435,6 +446,9 @@ def _build_release_manifest(
         "bootstrapperAsset": bootstrapper_asset_path.relative_to(release_root).as_posix(),
         "bootstrapperSha256": bootstrapper_hash,
         "bootstrapperSha256Path": bootstrapper_hash_path.relative_to(release_root).as_posix(),
+        "suiteScriptsAsset": suite_scripts_asset_path.relative_to(release_root).as_posix(),
+        "suiteScriptsSha256": suite_scripts_hash,
+        "suiteScriptsManifest": suite_scripts_manifest_path.relative_to(release_root).as_posix(),
         "signaturePolicy": signature_policy,
         "emulebbExeSha256": exe_hash,
         "languageDllCount": len(expected_language_dlls),
@@ -1202,6 +1216,30 @@ def _write_standalone_bootstrapper_asset(
     digest = _sha256(asset_path)
     hash_path.write_text(f"{digest}  {asset_path.name}\n", encoding="ascii", newline="\n")
     return asset_path, hash_path, digest
+
+
+def _write_suite_scripts_bundle_asset(
+    *,
+    package_root: Path,
+    release_root: Path,
+    release_version: str,
+) -> tuple[Path, Path, str]:
+    """Writes the suite control scripts as a separate hashed release asset."""
+
+    asset_path = release_root / f"suite-scripts-{release_version}.zip"
+    manifest_path = release_root / f"suite-scripts-{release_version}.manifest.json"
+    _assert_path_under_root(asset_path, release_root, "suite scripts asset")
+    _assert_path_under_root(manifest_path, release_root, "suite scripts manifest")
+    release_root.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(asset_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for relative_path in EMULEBB_RUNTIME_SCRIPT_PATHS:
+            source_path = package_root / relative_path
+            if not source_path.is_file():
+                raise RuntimeError(f"Cannot publish missing suite script: {source_path}")
+            archive.write(source_path, f"{EMULEBB_PACKAGE_ROOT_NAME}/{relative_path}")
+    digest = _sha256(asset_path)
+    manifest_path.write_text(json.dumps({"sha256": digest}, indent=2) + "\n", encoding="utf-8", newline="\n")
+    return asset_path, manifest_path, digest
 
 
 def _bake_bootstrapper_release_version(source_text: str, release_version: str) -> str:
