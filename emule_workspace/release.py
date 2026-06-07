@@ -99,6 +99,14 @@ EMULEBB_CONFIG_ASSET_PATHS = (
     "config/suite-apps.json",
     "config/suite-languages.json",
 )
+EMULEBB_AUTOMATION_EXAMPLE_PATHS = (
+    "automation/README.md",
+    "automation/Import-eMuleBBRestExample.ps1",
+    "automation/Get-eMuleBBStatus.ps1",
+    "automation/Set-eMuleBBLimits.ps1",
+    "automation/Search-eMuleBB.ps1",
+    "automation/Download-ReleaseGroup.ps1",
+)
 EMULEBB_SKIN_ASSET_PATHS = (
     "skins/emulebb-slate.eMuleSkin.ini",
     "skins/emulebb-graphite.eMuleSkin.ini",
@@ -118,6 +126,7 @@ EMULEBB_SKIN_ASSET_PATHS = (
     "skins/emulebb-phosphor-green.eMuleToolbar.kad02.bmp",
 )
 EMULEBB_RUNTIME_ASSET_PATHS = (*EMULEBB_RUNTIME_SCRIPT_PATHS, *EMULEBB_CONFIG_ASSET_PATHS, *EMULEBB_SKIN_ASSET_PATHS)
+EMULEBB_AUTOMATION_EXAMPLE_ASSET_ROOT_NAME = "emulebb_automation_examples"
 
 
 @dataclass(frozen=True)
@@ -360,6 +369,13 @@ def create_release_package(
             release_root=release_root,
             release_version=package_options.release_version,
         )
+        automation_examples_asset_path, automation_examples_manifest_path, automation_examples_hash = (
+            _write_automation_examples_asset(
+                build_repo_root=layout.build_repo_root,
+                release_root=release_root,
+                release_version=package_options.release_version,
+            )
+        )
 
         if zip_path.exists():
             zip_path.unlink()
@@ -393,6 +409,10 @@ def create_release_package(
             suite_scripts_manifest_path=suite_scripts_manifest_path,
             suite_scripts_hash=suite_scripts_hash,
             suite_scripts_manifest_hash=_sha256(suite_scripts_manifest_path),
+            automation_examples_asset_path=automation_examples_asset_path,
+            automation_examples_manifest_path=automation_examples_manifest_path,
+            automation_examples_hash=automation_examples_hash,
+            automation_examples_manifest_hash=_sha256(automation_examples_manifest_path),
             signature_policy=signature_policy,
             flavor=flavor,
         )
@@ -425,6 +445,10 @@ def _build_release_manifest(
     suite_scripts_manifest_path: Path,
     suite_scripts_hash: str,
     suite_scripts_manifest_hash: str,
+    automation_examples_asset_path: Path,
+    automation_examples_manifest_path: Path,
+    automation_examples_hash: str,
+    automation_examples_manifest_hash: str,
     signature_policy: dict[str, object],
     flavor: ReleasePackageFlavorSpec = RELEASE_PACKAGE_FLAVORS[0],
 ) -> dict[str, object]:
@@ -454,6 +478,10 @@ def _build_release_manifest(
         "suiteScriptsSha256": suite_scripts_hash,
         "suiteScriptsManifest": suite_scripts_manifest_path.relative_to(release_root).as_posix(),
         "suiteScriptsManifestSha256": suite_scripts_manifest_hash,
+        "automationExamplesAsset": automation_examples_asset_path.relative_to(release_root).as_posix(),
+        "automationExamplesSha256": automation_examples_hash,
+        "automationExamplesManifest": automation_examples_manifest_path.relative_to(release_root).as_posix(),
+        "automationExamplesManifestSha256": automation_examples_manifest_hash,
         "signaturePolicy": signature_policy,
         "emulebbExeSha256": exe_hash,
         "languageDllCount": len(expected_language_dlls),
@@ -1254,6 +1282,47 @@ def _write_suite_scripts_bundle_asset(
     digest = _sha256(asset_path)
     manifest = {
         "schema": "emulebb.suite-scripts-manifest.v1",
+        "version": release_version,
+        "asset": asset_path.name,
+        "sha256": digest,
+        "entries": manifest_entries,
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8", newline="\n")
+    return asset_path, manifest_path, digest
+
+
+def _write_automation_examples_asset(
+    *,
+    build_repo_root: Path,
+    release_root: Path,
+    release_version: str,
+) -> tuple[Path, Path, str]:
+    """Writes the REST automation examples as a separate hashed release asset."""
+
+    source_root = build_repo_root / "emule_workspace" / "release_assets" / EMULEBB_AUTOMATION_EXAMPLE_ASSET_ROOT_NAME
+    asset_path = release_root / f"automation-examples-{release_version}.zip"
+    manifest_path = release_root / f"automation-examples-{release_version}.manifest.json"
+    _assert_path_under_root(asset_path, release_root, "automation examples asset")
+    _assert_path_under_root(manifest_path, release_root, "automation examples manifest")
+    release_root.mkdir(parents=True, exist_ok=True)
+    manifest_entries = []
+    with zipfile.ZipFile(asset_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for relative_path in EMULEBB_AUTOMATION_EXAMPLE_PATHS:
+            source_path = source_root / relative_path
+            if not source_path.is_file():
+                raise RuntimeError(f"Cannot publish missing automation example asset: {source_path}")
+            entry_name = f"{EMULEBB_PACKAGE_ROOT_NAME}/examples/{relative_path}"
+            archive.write(source_path, entry_name)
+            manifest_entries.append(
+                {
+                    "path": entry_name,
+                    "sha256": _sha256(source_path),
+                    "bytes": source_path.stat().st_size,
+                }
+            )
+    digest = _sha256(asset_path)
+    manifest = {
+        "schema": "emulebb.automation-examples-manifest.v1",
         "version": release_version,
         "asset": asset_path.name,
         "sha256": digest,

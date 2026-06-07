@@ -18,7 +18,7 @@ from emule_workspace.layout import AppVariant
     "release_version",
     [
         "0.7.3",
-        "0.7.3-rc.1",
+        "0.7.3-rc.2",
         "0.7.3-beta.2",
         "0.7.3-nightly.20260524.ae562c1",
         "0.7.3-nightly.20260524.0123456789abcdef",
@@ -199,8 +199,8 @@ def test_package_build_disables_startup_profiling(
     monkeypatch.setattr(release, "ensure_app_dependency_artifacts", lambda _layout, _options, *, clean: None)
     monkeypatch.setattr(release, "app_property_overrides", lambda _layout, _platform: ("/p:DependencyRoot=test",))
     monkeypatch.setattr(release, "env_override", lambda _name: None)
-    package_app_output_root = tmp_path / "state" / "package-build" / "emulebb-v0.7.3-rc.1" / "x64" / "app"
-    package_app_intermediate_root = tmp_path / "state" / "package-build" / "emulebb-v0.7.3-rc.1" / "x64" / "app-obj"
+    package_app_output_root = tmp_path / "state" / "package-build" / "emulebb-v0.7.3-rc.2" / "x64" / "app"
+    package_app_intermediate_root = tmp_path / "state" / "package-build" / "emulebb-v0.7.3-rc.2" / "x64" / "app-obj"
     cfg_checks: list[Path] = []
 
     def fake_verify_app_control_flow_guard(*_args, **kwargs):
@@ -375,8 +375,8 @@ def test_release_manifest_records_explicit_source_provenance(
     build_root = tmp_path / "repos" / "emulebb-build"
     tests_root = tmp_path / "repos" / "emulebb-build-tests"
     tooling_root = tmp_path / "repos" / "emulebb-tooling"
-    release_root = tmp_path / "workspaces" / "workspace" / "state" / "release" / "emulebb-v0.7.3-rc.1"
-    zip_path = release_root / "emulebb-0.7.3-rc.1-x64.zip"
+    release_root = tmp_path / "workspaces" / "workspace" / "state" / "release" / "emulebb-v0.7.3-rc.2"
+    zip_path = release_root / "emulebb-0.7.3-rc.2-x64.zip"
     for path in (app_root, build_root, tests_root, tooling_root, release_root):
         path.mkdir(parents=True)
 
@@ -402,13 +402,13 @@ def test_release_manifest_records_explicit_source_provenance(
             tooling_repo_root=tooling_root,
         ),
         workspace_options=SimpleNamespace(configuration="Release", platform="x64"),
-        package_options=SimpleNamespace(release_version="0.7.3-rc.1"),
+        package_options=SimpleNamespace(release_version="0.7.3-rc.2"),
         app_variant=AppVariant(name="main", path=app_root, branch="main"),
         app_root=app_root,
         zip_path=zip_path,
         release_root=release_root,
         zip_hash="zip-sha",
-        sbom_path=release_root / "emulebb-0.7.3-rc.1-x64.sbom.spdx.json",
+        sbom_path=release_root / "emulebb-0.7.3-rc.2-x64.sbom.spdx.json",
         sbom_hash="sbom-sha",
         exe_hash="exe-sha",
         expected_language_dlls=("de_DE.dll", "fr_FR.dll"),
@@ -416,10 +416,14 @@ def test_release_manifest_records_explicit_source_provenance(
         bootstrapper_asset_path=release_root / "Bootstrap-eMuleBBSuite.ps1",
         bootstrapper_hash_path=release_root / "Bootstrap-eMuleBBSuite.ps1.sha256",
         bootstrapper_hash="bootstrapper-sha",
-        suite_scripts_asset_path=release_root / "suite-scripts-0.7.3-rc.1.zip",
-        suite_scripts_manifest_path=release_root / "suite-scripts-0.7.3-rc.1.manifest.json",
+        suite_scripts_asset_path=release_root / "suite-scripts-0.7.3-rc.2.zip",
+        suite_scripts_manifest_path=release_root / "suite-scripts-0.7.3-rc.2.manifest.json",
         suite_scripts_hash="suite-scripts-sha",
         suite_scripts_manifest_hash="suite-scripts-manifest-sha",
+        automation_examples_asset_path=release_root / "automation-examples-0.7.3-rc.2.zip",
+        automation_examples_manifest_path=release_root / "automation-examples-0.7.3-rc.2.manifest.json",
+        automation_examples_hash="automation-examples-sha",
+        automation_examples_manifest_hash="automation-examples-manifest-sha",
         signature_policy={"mode": "unsigned", "required": False, "signedFiles": []},
     )
 
@@ -440,15 +444,19 @@ def test_release_manifest_records_explicit_source_provenance(
     assert manifest["languageDlls"] == ["de_DE.dll", "fr_FR.dll"]
     assert manifest["packageFileSha256"] == {"eMuleBB/emulebb.exe": "exe-entry-sha"}
     assert manifest["sbomFormat"] == "SPDX-2.3 JSON"
-    assert manifest["sbomPath"] == "emulebb-0.7.3-rc.1-x64.sbom.spdx.json"
+    assert manifest["sbomPath"] == "emulebb-0.7.3-rc.2-x64.sbom.spdx.json"
     assert manifest["sbomSha256"] == "sbom-sha"
     assert manifest["bootstrapperAsset"] == "Bootstrap-eMuleBBSuite.ps1"
     assert manifest["bootstrapperSha256"] == "bootstrapper-sha"
     assert manifest["bootstrapperSha256Path"] == "Bootstrap-eMuleBBSuite.ps1.sha256"
-    assert manifest["suiteScriptsAsset"] == "suite-scripts-0.7.3-rc.1.zip"
-    assert manifest["suiteScriptsManifest"] == "suite-scripts-0.7.3-rc.1.manifest.json"
+    assert manifest["suiteScriptsAsset"] == "suite-scripts-0.7.3-rc.2.zip"
+    assert manifest["suiteScriptsManifest"] == "suite-scripts-0.7.3-rc.2.manifest.json"
     assert manifest["suiteScriptsSha256"] == "suite-scripts-sha"
     assert manifest["suiteScriptsManifestSha256"] == "suite-scripts-manifest-sha"
+    assert manifest["automationExamplesAsset"] == "automation-examples-0.7.3-rc.2.zip"
+    assert manifest["automationExamplesManifest"] == "automation-examples-0.7.3-rc.2.manifest.json"
+    assert manifest["automationExamplesSha256"] == "automation-examples-sha"
+    assert manifest["automationExamplesManifestSha256"] == "automation-examples-manifest-sha"
     assert manifest["signaturePolicy"] == {"mode": "unsigned", "required": False, "signedFiles": []}
     assert "eMuleBB/SBOM.spdx.json" in manifest["includedPaths"]
     assert "eMuleBB/scripts" in manifest["includedPaths"]
@@ -482,12 +490,12 @@ def test_standalone_bootstrapper_asset_is_hashed_next_to_release(tmp_path: Path)
     asset_path, hash_path, digest = release._write_standalone_bootstrapper_asset(
         package_root=package_root,
         release_root=release_root,
-        release_version="0.7.3-rc.1",
+        release_version="0.7.3-rc.2",
     )
 
     assert asset_path == release_root / "Bootstrap-eMuleBBSuite.ps1"
     assert hash_path == release_root / "Bootstrap-eMuleBBSuite.ps1.sha256"
-    assert "[string]$Version = '0.7.3-rc.1'," in asset_path.read_text(encoding="utf-8")
+    assert "[string]$Version = '0.7.3-rc.2'," in asset_path.read_text(encoding="utf-8")
     assert digest == hashlib.sha256(asset_path.read_bytes()).hexdigest()
     assert hash_path.read_text(encoding="ascii") == f"{digest}  Bootstrap-eMuleBBSuite.ps1\n"
 
@@ -504,15 +512,15 @@ def test_suite_scripts_bundle_asset_is_hashed_next_to_release(tmp_path: Path) ->
     asset_path, manifest_path, digest = release._write_suite_scripts_bundle_asset(
         package_root=package_root,
         release_root=release_root,
-        release_version="0.7.3-rc.1",
+        release_version="0.7.3-rc.2",
     )
 
-    assert asset_path == release_root / "suite-scripts-0.7.3-rc.1.zip"
-    assert manifest_path == release_root / "suite-scripts-0.7.3-rc.1.manifest.json"
+    assert asset_path == release_root / "suite-scripts-0.7.3-rc.2.zip"
+    assert manifest_path == release_root / "suite-scripts-0.7.3-rc.2.manifest.json"
     assert digest == hashlib.sha256(asset_path.read_bytes()).hexdigest()
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["schema"] == "emulebb.suite-scripts-manifest.v1"
-    assert manifest["version"] == "0.7.3-rc.1"
+    assert manifest["version"] == "0.7.3-rc.2"
     assert manifest["asset"] == asset_path.name
     assert manifest["sha256"] == digest
     with zipfile.ZipFile(asset_path, "r") as archive:
@@ -525,6 +533,41 @@ def test_suite_scripts_bundle_asset_is_hashed_next_to_release(tmp_path: Path) ->
     assert {entry["path"] for entry in manifest["entries"]} == expected_entries
     for entry in manifest["entries"]:
         source_path = package_root / entry["path"].removeprefix("eMuleBB/")
+        assert entry["sha256"] == hashlib.sha256(source_path.read_bytes()).hexdigest()
+        assert entry["bytes"] == source_path.stat().st_size
+
+
+def test_automation_examples_asset_is_hashed_next_to_release(tmp_path: Path) -> None:
+    build_root = tmp_path / "repos" / "emulebb-build"
+    release_root = tmp_path / "release"
+    source_root = build_root / "emule_workspace" / "release_assets" / release.EMULEBB_AUTOMATION_EXAMPLE_ASSET_ROOT_NAME
+    for relative_path in release.EMULEBB_AUTOMATION_EXAMPLE_PATHS:
+        asset_path = source_root / relative_path
+        asset_path.parent.mkdir(parents=True, exist_ok=True)
+        asset_path.write_text("#Requires -Version 5.1\n", encoding="utf-8")
+    release_root.mkdir(parents=True)
+
+    asset_path, manifest_path, digest = release._write_automation_examples_asset(
+        build_repo_root=build_root,
+        release_root=release_root,
+        release_version="0.7.3-rc.2",
+    )
+
+    assert asset_path == release_root / "automation-examples-0.7.3-rc.2.zip"
+    assert manifest_path == release_root / "automation-examples-0.7.3-rc.2.manifest.json"
+    assert digest == hashlib.sha256(asset_path.read_bytes()).hexdigest()
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["schema"] == "emulebb.automation-examples-manifest.v1"
+    assert manifest["version"] == "0.7.3-rc.2"
+    assert manifest["asset"] == asset_path.name
+    assert manifest["sha256"] == digest
+    with zipfile.ZipFile(asset_path, "r") as archive:
+        entry_names = set(archive.namelist())
+    expected_entries = {f"eMuleBB/examples/{relative_path}" for relative_path in release.EMULEBB_AUTOMATION_EXAMPLE_PATHS}
+    assert entry_names == expected_entries
+    assert {entry["path"] for entry in manifest["entries"]} == expected_entries
+    for entry in manifest["entries"]:
+        source_path = source_root / entry["path"].removeprefix("eMuleBB/examples/")
         assert entry["sha256"] == hashlib.sha256(source_path.read_bytes()).hexdigest()
         assert entry["bytes"] == source_path.stat().st_size
 
@@ -548,11 +591,11 @@ def test_standalone_bootstrapper_asset_bakes_release_version(tmp_path: Path) -> 
     asset_path, _hash_path, _digest = release._write_standalone_bootstrapper_asset(
         package_root=package_root,
         release_root=release_root,
-        release_version="0.7.3-rc.1",
+        release_version="0.7.3-rc.2",
     )
 
     text = asset_path.read_text(encoding="utf-8")
-    assert "[string]$Version = '0.7.3-rc.1'," in text
+    assert "[string]$Version = '0.7.3-rc.2'," in text
     assert "[string]$Platform = ''" in text
 
 
@@ -596,7 +639,7 @@ def test_release_signing_uses_signtool_for_authenticode_targets(
 
 
 def test_spdx_sbom_describes_staged_package_files_without_self_reference(tmp_path: Path) -> None:
-    release_root = tmp_path / "state" / "release" / "emulebb-v0.7.3-rc.1"
+    release_root = tmp_path / "state" / "release" / "emulebb-v0.7.3-rc.2"
     package_root = release_root / "staging" / "x64" / "eMuleBB"
     package_root.mkdir(parents=True)
     (package_root / "emulebb.exe").write_bytes(b"exe")
@@ -605,8 +648,8 @@ def test_spdx_sbom_describes_staged_package_files_without_self_reference(tmp_pat
     document = release._build_spdx_sbom(
         name="test sbom",
         namespace="https://example.invalid/sbom",
-        package_name="emulebb-0.7.3-rc.1-x64",
-        package_version="0.7.3-rc.1",
+        package_name="emulebb-0.7.3-rc.2-x64",
+        package_version="0.7.3-rc.2",
         package_license="GPL-2.0-or-later",
         package_comment="test package",
         package_root=package_root,
@@ -852,8 +895,8 @@ def test_amutorrent_manifest_records_runtime_policy_and_source_provenance(
     build_root = tmp_path / "repos" / "emulebb-build"
     tests_root = tmp_path / "repos" / "emulebb-build-tests"
     tooling_root = tmp_path / "repos" / "emulebb-tooling"
-    release_root = tmp_path / "state" / "release" / "emulebb-v0.7.3-rc.1"
-    zip_path = release_root / "emulebb-0.7.3-rc.1-amutorrent-arm64.zip"
+    release_root = tmp_path / "state" / "release" / "emulebb-v0.7.3-rc.2"
+    zip_path = release_root / "emulebb-0.7.3-rc.2-amutorrent-arm64.zip"
     for path in (amutorrent_root, build_root, tests_root, tooling_root, release_root):
         path.mkdir(parents=True)
     (amutorrent_root / "fork-delta.json").write_text(
@@ -893,12 +936,12 @@ def test_amutorrent_manifest_records_runtime_policy_and_source_provenance(
             tooling_repo_root=tooling_root,
         ),
         workspace_options=SimpleNamespace(configuration="Release", platform="ARM64"),
-        package_options=SimpleNamespace(release_version="0.7.3-rc.1"),
+        package_options=SimpleNamespace(release_version="0.7.3-rc.2"),
         amutorrent_root=amutorrent_root,
         zip_path=zip_path,
         release_root=release_root,
         zip_hash="zip-sha",
-        sbom_path=release_root / "emulebb-0.7.3-rc.1-amutorrent-arm64.sbom.spdx.json",
+        sbom_path=release_root / "emulebb-0.7.3-rc.2-amutorrent-arm64.sbom.spdx.json",
         sbom_hash="sbom-sha",
         package_file_hashes={"aMuTorrent/server/server.js": "server-sha"},
     )
@@ -920,7 +963,7 @@ def test_amutorrent_manifest_records_runtime_policy_and_source_provenance(
     }
     assert manifest["packageFileSha256"] == {"aMuTorrent/server/server.js": "server-sha"}
     assert manifest["sbomFormat"] == "SPDX-2.3 JSON"
-    assert manifest["sbomPath"] == "emulebb-0.7.3-rc.1-amutorrent-arm64.sbom.spdx.json"
+    assert manifest["sbomPath"] == "emulebb-0.7.3-rc.2-amutorrent-arm64.sbom.spdx.json"
     assert manifest["sbomSha256"] == "sbom-sha"
     assert "aMuTorrent/SBOM.spdx.json" in manifest["includedPaths"]
 
