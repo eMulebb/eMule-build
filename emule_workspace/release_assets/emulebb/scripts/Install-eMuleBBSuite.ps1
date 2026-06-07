@@ -21,6 +21,9 @@ param(
     [ValidateSet('English', 'Spanish', 'Italian', 'Portuguese')]
     [string]$Language = 'English',
 
+    [ValidateSet('English', 'Spanish', 'Italian', 'Portuguese')]
+    [string]$UiLanguage,
+
     [ValidateRange(0, 65535)]
     [int]$PortBlockStart = 0,
 
@@ -609,6 +612,7 @@ function New-SuiteConfig {
     $controlBind = Resolve-OptionalValue -Value $ControlBindAddress -Default (Get-DefaultControlBindAddress)
     $selectedApps = @(Resolve-SelectedApps -BundleName $Bundle -RequestedApps $Apps)
     $languagePreference = Resolve-LanguagePreference -Value $Language
+    $uiLanguagePreference = Resolve-LanguagePreference -Value (Resolve-OptionalValue -Value $UiLanguage -Default $Language)
     $resolvedVersion = $Version
     if (-not $script:InstallerBoundParameters.ContainsKey('Version')) {
         $inferredVersion = Get-LocalPackageVersionFromZipName -ZipPath $EmulebbPackageZip -PackageName 'eMuleBB'
@@ -629,9 +633,11 @@ function New-SuiteConfig {
         selectedApps = $selectedApps
         language = [ordered]@{
             name = [string]$languagePreference.DisplayName
-            emuleLanguageId = [int]$languagePreference.EmuleLanguageId
-            emuleLocale = [string]$languagePreference.EmuleLocale
-            arrUiLanguage = [string]$languagePreference.ArrUiLanguage
+            mediaLanguageName = [string]$languagePreference.DisplayName
+            uiLanguageName = [string]$uiLanguagePreference.DisplayName
+            emuleLanguageId = [int]$uiLanguagePreference.EmuleLanguageId
+            emuleLocale = [string]$uiLanguagePreference.EmuleLocale
+            arrUiLanguage = [string]$uiLanguagePreference.ArrUiLanguage
             arrContentLanguage = [string]$languagePreference.ArrContentLanguage
             arrContentLanguageMode = 'prefer'
         }
@@ -825,6 +831,24 @@ function Resolve-LanguagePreference {
         throw "Language must be English, Spanish, Italian, or Portuguese, not '$Value'."
     }
     return $languageOptions[$key]
+}
+
+function Set-MediaLanguagePreference {
+    param([hashtable]$Config, [string]$Value)
+    $pref = Resolve-LanguagePreference -Value $Value
+    $Config.language.name = [string]$pref.DisplayName
+    $Config.language.mediaLanguageName = [string]$pref.DisplayName
+    $Config.language.arrContentLanguage = [string]$pref.ArrContentLanguage
+    $Config.language.arrContentLanguageMode = 'prefer'
+}
+
+function Set-UiLanguagePreference {
+    param([hashtable]$Config, [string]$Value)
+    $pref = Resolve-LanguagePreference -Value $Value
+    $Config.language.uiLanguageName = [string]$pref.DisplayName
+    $Config.language.emuleLanguageId = [int]$pref.EmuleLanguageId
+    $Config.language.emuleLocale = [string]$pref.EmuleLocale
+    $Config.language.arrUiLanguage = [string]$pref.ArrUiLanguage
 }
 
 function Get-BundleServiceNames {
@@ -1096,7 +1120,8 @@ function Resolve-SuiteConfig {
     foreach ($entry in @(
         @('Bundle', { param($c, $v) $c.bundle = $v }),
         @('Apps', { param($c, $v) $c.selectedApps = @(Resolve-SelectedApps -BundleName ([string]$c.bundle) -RequestedApps $v) }),
-        @('Language', { param($c, $v) $pref = Resolve-LanguagePreference -Value $v; $c.language.name = [string]$pref.DisplayName; $c.language.emuleLanguageId = [int]$pref.EmuleLanguageId; $c.language.emuleLocale = [string]$pref.EmuleLocale; $c.language.arrUiLanguage = [string]$pref.ArrUiLanguage; $c.language.arrContentLanguage = [string]$pref.ArrContentLanguage; $c.language.arrContentLanguageMode = 'prefer' }),
+        @('Language', { param($c, $v) Set-MediaLanguagePreference -Config $c -Value $v; if (-not $script:InstallerBoundParameters.ContainsKey('UiLanguage')) { Set-UiLanguagePreference -Config $c -Value $v } }),
+        @('UiLanguage', { param($c, $v) Set-UiLanguagePreference -Config $c -Value $v }),
         @('PortBlockStart', { param($c, $v) $c.portBlockStart = [int]$v }),
         @('InstallRoot', { param($c, $v) $c.installRoot = $v }),
         @('Version', { param($c, $v) $c.version = $v }),
@@ -1175,11 +1200,20 @@ function Resolve-SuiteConfig {
         $pref = Resolve-LanguagePreference -Value 'English'
         $config.language = [ordered]@{
             name = [string]$pref.DisplayName
+            mediaLanguageName = [string]$pref.DisplayName
+            uiLanguageName = [string]$pref.DisplayName
             emuleLanguageId = [int]$pref.EmuleLanguageId
             emuleLocale = [string]$pref.EmuleLocale
             arrUiLanguage = [string]$pref.ArrUiLanguage
             arrContentLanguage = [string]$pref.ArrContentLanguage
             arrContentLanguageMode = 'prefer'
+        }
+    } else {
+        if (-not $config.language.Contains('mediaLanguageName')) {
+            $config.language.mediaLanguageName = Resolve-OptionalValue -Value ([string]$config.language.name) -Default ([string]$config.language.arrContentLanguage)
+        }
+        if (-not $config.language.Contains('uiLanguageName')) {
+            $config.language.uiLanguageName = Resolve-OptionalValue -Value ([string]$config.language.name) -Default ([string]$config.language.arrUiLanguage)
         }
     }
     if ($null -eq $config.portBlockStart) {
@@ -1433,16 +1467,17 @@ function Invoke-InstallWizard {
             }
             4 {
                 $languageNames = @('English', 'Spanish', 'Italian', 'Portuguese')
-                $defaultLanguageIndex = [Math]::Max(0, [Array]::IndexOf($languageNames, [string]$Config.language.name))
-                $choice = Read-WizardChoice -Prompt 'Language preference' -Choices $languageNames -DefaultIndex $defaultLanguageIndex
-                if ($choice -lt 0) { $step--; continue }
-                $pref = Resolve-LanguagePreference -Value $languageNames[$choice]
-                $Config.language.name = [string]$pref.DisplayName
-                $Config.language.emuleLanguageId = [int]$pref.EmuleLanguageId
-                $Config.language.emuleLocale = [string]$pref.EmuleLocale
-                $Config.language.arrUiLanguage = [string]$pref.ArrUiLanguage
-                $Config.language.arrContentLanguage = [string]$pref.ArrContentLanguage
-                $Config.language.arrContentLanguageMode = 'prefer'
+                $defaultMediaLanguageIndex = [Math]::Max(0, [Array]::IndexOf($languageNames, [string]$Config.language.mediaLanguageName))
+                $mediaChoice = Read-WizardChoice -Prompt 'Media language preference' -Choices $languageNames -DefaultIndex $defaultMediaLanguageIndex
+                if ($mediaChoice -lt 0) { $step--; continue }
+                Set-MediaLanguagePreference -Config $Config -Value $languageNames[$mediaChoice]
+                $defaultUiLanguageIndex = [Math]::Max(0, [Array]::IndexOf($languageNames, [string]$Config.language.uiLanguageName))
+                if ([string]::IsNullOrWhiteSpace([string]$Config.language.uiLanguageName)) {
+                    $defaultUiLanguageIndex = $mediaChoice
+                }
+                $uiChoice = Read-WizardChoice -Prompt 'UI language preference' -Choices $languageNames -DefaultIndex $defaultUiLanguageIndex
+                if ($uiChoice -lt 0) { continue }
+                Set-UiLanguagePreference -Config $Config -Value $languageNames[$uiChoice]
                 $step++
             }
             5 {
@@ -1489,7 +1524,8 @@ function Write-ConfigSummary {
     Write-Host 'Install summary'
     Write-Host "  Bundle: $($Config.bundle)"
     Write-Host ('  Installs: {0}' -f (Get-InstallDescription -ServiceNames @(Get-SuiteServiceNames -Config $Config)))
-    Write-Host "  Language: $($Config.language.name) (content language preference: prefer)"
+    Write-Host "  Media language: $($Config.language.mediaLanguageName) (content language preference: prefer)"
+    Write-Host "  UI language: $($Config.language.uiLanguageName) (applies to eMuleBB and Arr apps)"
     Write-Host "  Root: $($Config.installRoot)"
     Write-Host "  Version/platform: $($Config.version) / $($Config.platform)"
     foreach ($serviceName in @(Get-SuiteServiceNames -Config $Config)) {
@@ -2098,6 +2134,25 @@ function ConvertTo-XmlText {
     return [Security.SecurityElement]::Escape($Value)
 }
 
+function Get-ArrUiLanguageConfigValue {
+    param([string]$Name, [string]$Language)
+    $normalizedLanguage = $Language.ToLowerInvariant()
+    if ($Name.ToLowerInvariant() -eq 'prowlarr') {
+        switch ($normalizedLanguage) {
+            'spanish' { return 'es' }
+            'italian' { return 'it' }
+            'portuguese' { return 'pt' }
+            default { return 'en' }
+        }
+    }
+    switch ($normalizedLanguage) {
+        'spanish' { return '3' }
+        'italian' { return '5' }
+        'portuguese' { return '18' }
+        default { return '1' }
+    }
+}
+
 function Write-ArrConfig {
     param([string]$Name, [int]$Port, [string]$BindAddress, [string]$ApiKey, [string]$Username, [string]$Password, [string]$Language)
     $dataDir = Join-Path (Join-Path $script:Root 'data') $Name
@@ -2105,6 +2160,7 @@ function Write-ArrConfig {
         New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
         $safeUsername = ConvertTo-XmlText -Value $Username
         $safePassword = ConvertTo-XmlText -Value $Password
+        $safeLanguage = ConvertTo-XmlText -Value (Get-ArrUiLanguageConfigValue -Name $Name -Language $Language)
         @(
             '<Config>'
             '  <LogLevel>info</LogLevel>'
@@ -2113,7 +2169,7 @@ function Write-ArrConfig {
             "  <BindAddress>$BindAddress</BindAddress>"
             '  <EnableSsl>False</EnableSsl>'
             "  <ApiKey>$ApiKey</ApiKey>"
-            "  <UILanguage>$Language</UILanguage>"
+            "  <UILanguage>$safeLanguage</UILanguage>"
             '  <AuthenticationMethod>Forms</AuthenticationMethod>'
             '  <AuthenticationRequired>Enabled</AuthenticationRequired>'
             "  <Username>$safeUsername</Username>"
@@ -2510,7 +2566,8 @@ function Write-CredentialsFile {
     $lines.Add("Install root: $script:Root")
     $lines.Add("Bundle: $($Config.bundle)")
     $lines.Add('Selected apps: ' + (Get-InstallDescription -ServiceNames @(Get-SuiteServiceNames -Config $Config)))
-    $lines.Add("Language: $($Config.language.name)")
+    $lines.Add("Media language: $($Config.language.mediaLanguageName)")
+    $lines.Add("UI language: $($Config.language.uiLanguageName)")
     $lines.Add('')
     $lines.Add('Suite web login')
     $lines.Add("Username: $($Config.credentials.username)")
@@ -2594,7 +2651,8 @@ function Write-CredentialsFile {
     $safeBundle = ConvertTo-HtmlText -Value ([string]$Config.bundle)
     $safeVersion = ConvertTo-HtmlText -Value ([string]$Config.version)
     $safePlatform = ConvertTo-HtmlText -Value ([string]$Config.platform)
-    $safeLanguage = ConvertTo-HtmlText -Value ([string]$Config.language.name)
+    $safeMediaLanguage = ConvertTo-HtmlText -Value ([string]$Config.language.mediaLanguageName)
+    $safeUiLanguage = ConvertTo-HtmlText -Value ([string]$Config.language.uiLanguageName)
     $safeApps = ConvertTo-HtmlText -Value (Get-InstallDescription -ServiceNames @(Get-SuiteServiceNames -Config $Config))
     $cardsHtml = ($cards -join "`r`n")
     $html = @"
@@ -2624,7 +2682,7 @@ function Write-CredentialsFile {
 <body>
 <main>
   <h1>eMuleBB Suite Credentials</h1>
-  <p class="summary">Generated $generatedUtc. Bundle $safeBundle, version $safeVersion, platform $safePlatform. Language $safeLanguage. Apps: $safeApps. Install root: $safeRoot.</p>
+  <p class="summary">Generated $generatedUtc. Bundle $safeBundle, version $safeVersion, platform $safePlatform. Media language $safeMediaLanguage. UI language $safeUiLanguage. Apps: $safeApps. Install root: $safeRoot.</p>
   <div class="grid">
 $cardsHtml
   </div>
@@ -2864,6 +2922,8 @@ function Write-InstallManifest {
         selectedApps = @($Config.selectedApps)
         language = @{
             name = $Config.language.name
+            mediaLanguageName = $Config.language.mediaLanguageName
+            uiLanguageName = $Config.language.uiLanguageName
             emuleLanguageId = $Config.language.emuleLanguageId
             emuleLocale = $Config.language.emuleLocale
             arrUiLanguage = $Config.language.arrUiLanguage

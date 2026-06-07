@@ -282,7 +282,8 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "Set-ObjectProperty -Target $hostConfig -Name 'authenticationRequired' -Value 'enabled'" in start_suite
     assert "Set-ObjectProperty -Target $hostConfig -Name 'username' -Value ([string]$Config.credentials.username)" in start_suite
     assert "Set-ObjectProperty -Target $hostConfig -Name 'password' -Value ([string]$Config.credentials.password)" in start_suite
-    assert "Set-ObjectProperty -Target $hostConfig -Name 'uiLanguage' -Value $Language" in start_suite
+    assert "function Set-ArrUiLanguage" in start_suite
+    assert "Set-ObjectProperty -Target $uiConfig -Name 'uiLanguage' -Value (Get-ArrUiLanguageValue -Name $Name -Language $Language)" in start_suite
     assert "$hostConfig.authenticationMethod = 'forms'" not in start_suite
     assert "Set-ArrHostCredentials -Name $display" in start_suite
     assert "function Get-ExceptionMessage" in start_suite
@@ -1037,6 +1038,8 @@ def test_suite_installer_selected_arr_apps_and_language(tmp_path: Path) -> None:
             "lidarr,readarr",
             "-Language",
             "Portuguese",
+            "-UiLanguage",
+            "Italian",
             "-InstallRoot",
             str(install_root),
             "-ReleaseBaseUrl",
@@ -1053,19 +1056,23 @@ def test_suite_installer_selected_arr_apps_and_language(tmp_path: Path) -> None:
     assert service_ports == list(range(service_ports[0], service_ports[0] + len(service_ports)))
     assert 49152 <= service_ports[0] <= 65535
     assert suite_config["language"]["name"] == "Portuguese"
-    assert suite_config["language"]["emuleLanguageId"] == 2070
-    assert suite_config["language"]["emuleLocale"] == "pt_PT"
+    assert suite_config["language"]["mediaLanguageName"] == "Portuguese"
+    assert suite_config["language"]["uiLanguageName"] == "Italian"
+    assert suite_config["language"]["arrContentLanguage"] == "Portuguese"
+    assert suite_config["language"]["arrUiLanguage"] == "Italian"
+    assert suite_config["language"]["emuleLanguageId"] == 16
+    assert suite_config["language"]["emuleLocale"] == "it_IT"
     preferences = suite_install_fixtures.read_suite_preferences(install_root)
-    assert "Language=2070" in preferences
+    assert "Language=16" in preferences
     category_sections = _read_ini_sections(install_root / "profiles" / "emulebb" / "config" / "Category.ini")
     assert category_sections["General"]["Count"] == "3"
     category_titles = {section.get("Title") for section in category_sections.values()}
     assert "emulebb-prowlarr" in category_titles
     assert "emulebb-lidarr" in category_titles
     assert "emulebb-readarr" in category_titles
-    for app_name in ("prowlarr", "lidarr", "readarr"):
+    for app_name, ui_language in {"prowlarr": "it", "lidarr": "5", "readarr": "5"}.items():
         arr_config = (install_root / "data" / app_name / "config.xml").read_text(encoding="utf-8-sig")
-        assert "<UILanguage>Portuguese</UILanguage>" in arr_config
+        assert f"<UILanguage>{ui_language}</UILanguage>" in arr_config
     assert not (install_root / "data" / "radarr").exists()
     assert not (install_root / "data" / "sonarr").exists()
 
@@ -1215,7 +1222,8 @@ def test_suite_installer_dry_run_summarizes_apps_language_and_ports(tmp_path: Pa
 
     assert "Install summary" in completed.stdout
     assert "Installs: eMuleBB, aMuTorrent, Prowlarr, Radarr, Sonarr, Lidarr, Readarr, Whisparr" in completed.stdout
-    assert "Language: Italian (content language preference: prefer)" in completed.stdout
+    assert "Media language: Italian (content language preference: prefer)" in completed.stdout
+    assert "UI language: Italian (applies to eMuleBB and Arr apps)" in completed.stdout
     match = re.search(r"Selected contiguous service port block (\d+)-(\d+)", completed.stdout)
     assert match is not None
     block_start = int(match.group(1))
@@ -1719,6 +1727,7 @@ def test_suite_initializer_applies_arr_content_language_profiles() -> None:
     initialize_suite = script_path.read_text(encoding="utf-8")
 
     assert "function Set-ArrPreferredContentLanguage" in initialize_suite
+    assert "function Set-ArrUiLanguage" in initialize_suite
     assert "function Wait-ArrContentLanguage" in initialize_suite
     assert "function Find-ArrLanguage" in initialize_suite
     assert "'italian' { return @('Italian') }" in initialize_suite
@@ -1731,6 +1740,8 @@ def test_suite_initializer_applies_arr_content_language_profiles() -> None:
     assert 'Invoke-StepWithRetry -Name "$display content language preference"' in initialize_suite
     assert "Set-ArrPreferredContentLanguage -Name $display" in initialize_suite
     assert "-Language ([string]$Config.language.arrContentLanguage)" in initialize_suite
+    assert "Set-ArrUiLanguage -Name $display" in initialize_suite
+    assert "-Language ([string]$Config.language.arrUiLanguage)" in initialize_suite
     assert "$suiteAppsManifest = Join-Path $Root 'config\\suite-apps.json'" in initialize_suite
     assert "SuiteAppsManifest = $suiteAppsManifest" in initialize_suite
     assert "-SuiteAppsManifest $suiteAppsManifest" in initialize_suite

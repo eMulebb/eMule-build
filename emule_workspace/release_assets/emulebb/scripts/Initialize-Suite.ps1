@@ -247,7 +247,7 @@ function Initialize-AmutorrentConfig {
 }
 
 function Set-ArrHostCredentials {
-    param([string]$Name, [string]$Url, [string]$ApiPath, [string]$ApiKey, [string]$Language)
+    param([string]$Name, [string]$Url, [string]$ApiPath, [string]$ApiKey)
     $hostConfigUrl = "$Url/$ApiPath/config/host"
     $headers = @{ 'X-Api-Key' = $ApiKey }
     $hostConfig = Invoke-SuiteJsonApi -Name "$Name host config read" -Uri $hostConfigUrl -Headers $headers
@@ -256,10 +256,39 @@ function Set-ArrHostCredentials {
     Set-ObjectProperty -Target $hostConfig -Name 'username' -Value ([string]$Config.credentials.username)
     Set-ObjectProperty -Target $hostConfig -Name 'password' -Value ([string]$Config.credentials.password)
     Set-ObjectProperty -Target $hostConfig -Name 'passwordConfirmation' -Value ([string]$Config.credentials.password)
-    if (-not [string]::IsNullOrWhiteSpace($Language)) {
-        Set-ObjectProperty -Target $hostConfig -Name 'uiLanguage' -Value $Language
-    }
     [void](Invoke-SuiteJsonApi -Name "$Name web login update" -Uri $hostConfigUrl -Method 'PUT' -Headers $headers -Body $hostConfig)
+}
+
+function Get-ArrUiLanguageValue {
+    param([string]$Name, [string]$Language)
+    $normalizedLanguage = $Language.ToLowerInvariant()
+    if ($Name.ToLowerInvariant() -eq 'prowlarr') {
+        switch ($normalizedLanguage) {
+            'spanish' { return 'es' }
+            'italian' { return 'it' }
+            'portuguese' { return 'pt' }
+            default { return 'en' }
+        }
+    }
+    switch ($normalizedLanguage) {
+        'spanish' { return 3 }
+        'italian' { return 5 }
+        'portuguese' { return 18 }
+        default { return 1 }
+    }
+}
+
+function Set-ArrUiLanguage {
+    param([string]$Name, [string]$Url, [string]$ApiPath, [string]$ApiKey, [string]$Language)
+    if ([string]::IsNullOrWhiteSpace($Language)) {
+        return
+    }
+    $uiConfigUrl = "$Url/$ApiPath/config/ui"
+    $headers = @{ 'X-Api-Key' = $ApiKey }
+    $uiConfig = Invoke-SuiteJsonApi -Name "$Name UI config read" -Uri $uiConfigUrl -Headers $headers
+    Set-ObjectProperty -Target $uiConfig -Name 'uiLanguage' -Value (Get-ArrUiLanguageValue -Name $Name -Language $Language)
+    [void](Invoke-SuiteJsonApi -Name "$Name UI language update" -Uri $uiConfigUrl -Method 'PUT' -Headers $headers -Body $uiConfig)
+    Write-Host "$Name UI language set to $Language."
 }
 
 function Get-FirstObjectWithId {
@@ -489,7 +518,8 @@ if (@($selectedArr).Count -gt 0) {
         $apiPath = Get-ArrApiPath -Name $arrName
         Wait-Json -Name $display -Uri "$($arrUrls[$arrName])/$apiPath/system/status" -Headers @{ 'X-Api-Key' = [string]$Config.services.$arrName.apiKey }
         Invoke-StepWithRetry -Name "$display web login setup" -Operation {
-            Set-ArrHostCredentials -Name $display -Url $arrUrls[$arrName] -ApiPath $apiPath -ApiKey ([string]$Config.services.$arrName.apiKey) -Language ([string]$Config.language.arrUiLanguage)
+            Set-ArrHostCredentials -Name $display -Url $arrUrls[$arrName] -ApiPath $apiPath -ApiKey ([string]$Config.services.$arrName.apiKey)
+            Set-ArrUiLanguage -Name $display -Url $arrUrls[$arrName] -ApiPath $apiPath -ApiKey ([string]$Config.services.$arrName.apiKey) -Language ([string]$Config.language.arrUiLanguage)
         }
         $mediaRoot = Get-ArrMediaRoot -Name $arrName
         if (-not [string]::IsNullOrWhiteSpace($mediaRoot)) {
