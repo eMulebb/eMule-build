@@ -1481,6 +1481,22 @@ def test_suite_installer_uses_packaged_language_manifest() -> None:
     assert "$FallbackLanguageOptions" in installer
 
 
+def test_suite_initializer_applies_arr_content_language_profiles() -> None:
+    script_path = Path("emule_workspace/release_assets/emulebb/scripts/Initialize-Suite.ps1")
+    _assert_powershell_parse(Path.cwd() / script_path, cwd=Path.cwd())
+    initialize_suite = script_path.read_text(encoding="utf-8")
+
+    assert "function Set-ArrPreferredContentLanguage" in initialize_suite
+    assert '"$Url/$ApiPath/language"' in initialize_suite
+    assert '"$Url/$ApiPath/qualityprofile"' in initialize_suite
+    assert "$profile.language = $languageMatch" in initialize_suite
+    assert "$profile.languages = @($ordered)" in initialize_suite
+    assert '"$Url/$ApiPath/qualityprofile/$([int]$profile.id)"' in initialize_suite
+    assert 'Invoke-StepWithRetry -Name "$display content language preference"' in initialize_suite
+    assert "Set-ArrPreferredContentLanguage -Name $display" in initialize_suite
+    assert "-Language ([string]$Config.language.arrContentLanguage)" in initialize_suite
+
+
 def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() -> None:
     script_path = Path("emule_workspace/release_assets/emulebb/scripts/Register-ArrStack.ps1")
     _assert_powershell_parse(Path.cwd() / script_path, cwd=Path.cwd())
