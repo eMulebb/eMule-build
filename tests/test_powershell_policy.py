@@ -45,6 +45,30 @@ def test_basic_hygiene_accepts_emulebb_runtime_script_header(workspace_root: Pat
     assert issue is None
 
 
+def test_basic_hygiene_accepts_emulebb_automation_example_header(workspace_root: Path, tmp_path: Path) -> None:
+    policy_guards = _load_tooling_module(workspace_root, "policy_guards_under_test_examples", "ci/policy_guards.py")
+    repo_root = tmp_path / "emulebb-build"
+    script_path = (
+        repo_root
+        / "emule_workspace"
+        / "release_assets"
+        / "emulebb_automation_examples"
+        / "automation"
+        / "Get-eMuleBBStatus.ps1"
+    )
+    script_path.parent.mkdir(parents=True)
+    script_path.write_text("#Requires -Version 5.1\n", encoding="utf-8")
+
+    issue = policy_guards.test_powershell_version_header(
+        repo_root,
+        "emulebb-build",
+        "emule_workspace/release_assets/emulebb_automation_examples/automation/Get-eMuleBBStatus.ps1",
+        script_path,
+    )
+
+    assert issue is None
+
+
 def test_basic_hygiene_rejects_bad_emulebb_runtime_script_header(workspace_root: Path, tmp_path: Path) -> None:
     policy_guards = _load_tooling_module(workspace_root, "policy_guards_under_test_bad_header", "ci/policy_guards.py")
     repo_root = tmp_path / "emulebb-build"
@@ -106,6 +130,34 @@ def test_workspace_policy_accepts_allowed_emulebb_runtime_script(
     def fake_tracked_powershell_paths(repo_root: Path) -> tuple[str, ...]:
         if repo_root == build_root.resolve():
             return ("emule_workspace/release_assets/emulebb/scripts/Register-Prowlarr.ps1",)
+        return ()
+
+    monkeypatch.setattr(policy, "tracked_powershell_paths", fake_tracked_powershell_paths)
+
+    policy.audit_powershell_boundary(tmp_path)
+
+
+def test_workspace_policy_accepts_allowed_emulebb_automation_example(
+    workspace_root: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    policy = _load_tooling_module(workspace_root, "check_workspace_policy_under_test_example", "ci/check-workspace-policy.py")
+    build_root = tmp_path / "repos" / "emulebb-build"
+    script_path = (
+        build_root
+        / "emule_workspace"
+        / "release_assets"
+        / "emulebb_automation_examples"
+        / "automation"
+        / "Get-eMuleBBStatus.ps1"
+    )
+    script_path.parent.mkdir(parents=True)
+    script_path.write_text("#Requires -Version 5.1\n", encoding="utf-8")
+
+    def fake_tracked_powershell_paths(repo_root: Path) -> tuple[str, ...]:
+        if repo_root == build_root.resolve():
+            return ("emule_workspace/release_assets/emulebb_automation_examples/automation/Get-eMuleBBStatus.ps1",)
         return ()
 
     monkeypatch.setattr(policy, "tracked_powershell_paths", fake_tracked_powershell_paths)
