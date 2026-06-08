@@ -307,10 +307,8 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "Invoke-SuiteJsonApi -Name \"$Name root folder create\"" in start_suite
     assert "$Name metadata profile list" in start_suite
     assert "$Url/$ApiPath/metadataprofile" in start_suite
-    assert "name = $rootName" in start_suite
+    assert "name = 'eMuleBB Music'" in start_suite
     assert "'eMuleBB Music'" in start_suite
-    assert "'eMuleBB Books'" in start_suite
-    assert "[string]::Equals($Name, 'Readarr'" in start_suite
     assert "defaultQualityProfileId = [int]$profiles.QualityProfile.id" in start_suite
     assert "defaultMetadataProfileId = [int]$profiles.MetadataProfile.id" in start_suite
     assert "already configured as a root folder" in start_suite
@@ -318,7 +316,6 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert "'radarr' { return 'media\\movies' }" in start_suite
     assert "'sonarr' { return 'media\\series' }" in start_suite
     assert "'lidarr' { return 'media\\music' }" in start_suite
-    assert "'readarr' { return 'media\\books' }" in start_suite
     assert "'whisparr' { return 'media\\whisparr' }" in start_suite
     assert "Ensure-ArrRootFolder -Name $display" in start_suite
     assert "EmulebbCategoryPath = (Join-Path $Root \"downloads\\$arrName\")" in start_suite
@@ -902,7 +899,7 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     suite_config_path = install_root / "manifests" / "suite-config.json"
     suite_config = json.loads(suite_config_path.read_text(encoding="utf-8-sig"))
     assert suite_config["services"]["emulebb"]["clientHost"] == "127.0.0.1"
-    arr_service_names = ("prowlarr", "radarr", "sonarr", "lidarr", "readarr", "whisparr")
+    arr_service_names = ("prowlarr", "radarr", "sonarr", "lidarr")
     first_keys = {
         name: suite_config["services"][name]["apiKey"]
         for name in ("emulebb", *arr_service_names)
@@ -925,8 +922,6 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     assert list((install_root / "apps" / "radarr").rglob("Radarr.exe"))
     assert list((install_root / "apps" / "sonarr").rglob("Sonarr.exe"))
     assert list((install_root / "apps" / "lidarr").rglob("Lidarr.exe"))
-    assert list((install_root / "apps" / "readarr").rglob("Readarr.exe"))
-    assert list((install_root / "apps" / "whisparr").rglob("Whisparr.exe"))
     assert list((install_root / "apps" / "prowlarr").rglob("Prowlarr.Console.exe"))
     assert list((install_root / "apps" / "radarr").rglob("Radarr.Console.exe"))
     assert list((install_root / "apps" / "sonarr").rglob("Sonarr.Console.exe"))
@@ -945,7 +940,7 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     assert "MaxLogBuff=" not in preferences
     assert "LogFileFormat=" not in preferences
     category_sections = _read_ini_sections(install_root / "profiles" / "emulebb" / "config" / "Category.ini")
-    assert category_sections["General"]["Count"] == "6"
+    assert category_sections["General"]["Count"] == "4"
     categories_by_title = {
         section["Title"]: section
         for section in category_sections.values()
@@ -1035,7 +1030,7 @@ def test_suite_installer_selected_arr_apps_and_language(tmp_path: Path) -> None:
             "-Bundle",
             "Full",
             "-Apps",
-            "lidarr,readarr",
+            "lidarr",
             "-Language",
             "Portuguese",
             "-UiLanguage",
@@ -1051,7 +1046,7 @@ def test_suite_installer_selected_arr_apps_and_language(tmp_path: Path) -> None:
     )
 
     suite_config = suite_install_fixtures.read_suite_config(install_root)
-    assert suite_config["selectedApps"] == ["emulebb", "amutorrent", "prowlarr", "lidarr", "readarr"]
+    assert suite_config["selectedApps"] == ["emulebb", "amutorrent", "prowlarr", "lidarr"]
     service_ports = [suite_config["services"][name]["port"] for name in suite_config["selectedApps"]]
     assert service_ports == list(range(service_ports[0], service_ports[0] + len(service_ports)))
     assert 49152 <= service_ports[0] <= 65535
@@ -1065,12 +1060,11 @@ def test_suite_installer_selected_arr_apps_and_language(tmp_path: Path) -> None:
     preferences = suite_install_fixtures.read_suite_preferences(install_root)
     assert "Language=16" in preferences
     category_sections = _read_ini_sections(install_root / "profiles" / "emulebb" / "config" / "Category.ini")
-    assert category_sections["General"]["Count"] == "3"
+    assert category_sections["General"]["Count"] == "2"
     category_titles = {section.get("Title") for section in category_sections.values()}
     assert "emulebb-prowlarr" in category_titles
     assert "emulebb-lidarr" in category_titles
-    assert "emulebb-readarr" in category_titles
-    for app_name, ui_language in {"prowlarr": "it", "lidarr": "5", "readarr": "5"}.items():
+    for app_name, ui_language in {"prowlarr": "it", "lidarr": "5"}.items():
         arr_config = (install_root / "data" / app_name / "config.xml").read_text(encoding="utf-8-sig")
         assert f"<UILanguage>{ui_language}</UILanguage>" in arr_config
     assert not (install_root / "data" / "radarr").exists()
@@ -1193,10 +1187,9 @@ def test_suite_installer_apps_all_arr_preset_selects_every_arr_app(tmp_path: Pat
         "radarr",
         "sonarr",
         "lidarr",
-        "readarr",
         "whisparr",
     ]
-    for app_name in ("prowlarr", "radarr", "sonarr", "lidarr", "readarr", "whisparr"):
+    for app_name in ("prowlarr", "radarr", "sonarr", "lidarr", "whisparr"):
         assert (install_root / "data" / app_name / "config.xml").is_file()
 
 
@@ -1221,7 +1214,7 @@ def test_suite_installer_dry_run_summarizes_apps_language_and_ports(tmp_path: Pa
     )
 
     assert "Install summary" in completed.stdout
-    assert "Installs: eMuleBB, aMuTorrent, Prowlarr, Radarr, Sonarr, Lidarr, Readarr, Whisparr" in completed.stdout
+    assert "Installs: eMuleBB, aMuTorrent, Prowlarr, Radarr, Sonarr, Lidarr" in completed.stdout
     assert "Media language: Italian (content language preference: prefer)" in completed.stdout
     assert "UI language: Italian (applies to eMuleBB and Arr apps)" in completed.stdout
     match = re.search(r"Selected contiguous service port block (\d+)-(\d+)", completed.stdout)
@@ -1229,7 +1222,7 @@ def test_suite_installer_dry_run_summarizes_apps_language_and_ports(tmp_path: Pa
     block_start = int(match.group(1))
     block_end = int(match.group(2))
     assert 49152 <= block_start <= block_end <= 65535
-    assert block_end - block_start == 7
+    assert block_end - block_start == 5
     for service_name, port in {
         "emulebb": block_start,
         "amutorrent": block_start + 1,
@@ -1237,8 +1230,6 @@ def test_suite_installer_dry_run_summarizes_apps_language_and_ports(tmp_path: Pa
         "radarr": block_start + 3,
         "sonarr": block_start + 4,
         "lidarr": block_start + 5,
-        "readarr": block_start + 6,
-        "whisparr": block_start + 7,
     }.items():
         assert re.search(rf"  {service_name}: [^:\r\n]+:{port}\b", completed.stdout)
 
@@ -1480,7 +1471,7 @@ def test_suite_installer_keeps_full_suite_service_binds_config_driven() -> None:
     assert '"  <BindAddress>$BindAddress</BindAddress>"' in installer
     assert "Initialize-AmutorrentConfig -DataDir (Join-Path $Root 'data\\amutorrent') -BindAddress ([string]$Config.services.amutorrent.bindAddress)" in initialize_suite
     assert "Get-ServiceClientHost -ServiceName $Name -Service $Service" in initialize_suite
-    assert "foreach ($arrName in @('prowlarr', 'radarr', 'sonarr', 'lidarr', 'readarr', 'whisparr'))" in start_suite
+    assert "foreach ($arrName in @('prowlarr', 'radarr', 'sonarr', 'lidarr', 'whisparr'))" in start_suite
     assert "Start-ArrHost -Name ($arrName.Substring(0, 1).ToUpperInvariant() + $arrName.Substring(1))" in start_suite
     assert "clientHost = ''" in installer
     assert "Resolve-ServiceClientHost" in installer
@@ -1695,8 +1686,8 @@ def test_suite_installer_uses_packaged_suite_apps_manifest() -> None:
     assert payload["schema"] == "emulebb.suite-apps.v1"
     assert "function ConvertTo-SuiteAppManifest" in helper_text
     assert "function Read-SuiteAppManifest" in helper_text
-    assert set(arr_apps) == {"prowlarr", "radarr", "sonarr", "lidarr", "readarr", "whisparr"}
-    assert payload["defaultArrAppNames"] == ["prowlarr", "radarr", "sonarr"]
+    assert set(arr_apps) == {"prowlarr", "radarr", "sonarr", "lidarr", "whisparr"}
+    assert payload["defaultArrAppNames"] == ["prowlarr", "radarr", "sonarr", "lidarr"]
     assert payload["suiteServiceOrder"] == [
         "emulebb",
         "amutorrent",
@@ -1704,7 +1695,6 @@ def test_suite_installer_uses_packaged_suite_apps_manifest() -> None:
         "radarr",
         "sonarr",
         "lidarr",
-        "readarr",
         "whisparr",
     ]
     for app in arr_apps.values():
@@ -1712,7 +1702,6 @@ def test_suite_installer_uses_packaged_suite_apps_manifest() -> None:
     assert arr_apps["radarr"]["indexerCategories"] == [2000]
     assert arr_apps["sonarr"]["indexerCategories"] == [5000]
     assert arr_apps["lidarr"]["indexerCategories"] == [3000]
-    assert arr_apps["readarr"]["indexerCategories"] == [7000]
     assert arr_apps["whisparr"]["indexerCategories"] == [6000]
     assert "config\\suite-apps.json" in installer
     assert "Import-SuiteAppManifest.ps1" in installer
@@ -1759,7 +1748,6 @@ def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() 
     assert "Radarr = 7878" in register_arr_stack
     assert "Sonarr = 8989" in register_arr_stack
     assert "Lidarr = 8686" in register_arr_stack
-    assert "Readarr = 8787" in register_arr_stack
     assert "Whisparr = 6969" in register_arr_stack
     assert "[switch]$SkipProwlarrSync" in register_arr_stack
     assert "[switch]$SyncProwlarrOnly" in register_arr_stack
@@ -1913,7 +1901,7 @@ def test_suite_generated_update_and_start_scripts_are_refresh_safe() -> None:
     assert "function Get-ServiceClientHost" in initialize_suite
     assert "function Get-FirstSuiteExecutable" in stop_suite
     assert "function Get-BundleServiceNames" in installer
-    assert "return @($ControllerServiceNames + $AllArrAppNames)" in installer
+    assert "return @($ControllerServiceNames + $DefaultArrAppNames)" in installer
     assert "function Get-BundleInstallDescription" in installer
     assert "function Write-BundlePortPreview" in installer
     assert "Full suite - installs {0}" in installer

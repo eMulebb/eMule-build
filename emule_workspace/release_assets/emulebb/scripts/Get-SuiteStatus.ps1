@@ -21,7 +21,6 @@ $executableNames = @{
     radarr = 'Radarr.exe'
     sonarr = 'Sonarr.exe'
     lidarr = 'Lidarr.exe'
-    readarr = 'Readarr.exe'
     whisparr = 'Whisparr.exe'
 }
 $expectedExecutables = @()

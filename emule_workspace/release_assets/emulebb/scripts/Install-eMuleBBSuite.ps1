@@ -54,7 +54,6 @@ param(
     [string]$RadarrBindAddress,
     [string]$SonarrBindAddress,
     [string]$LidarrBindAddress,
-    [string]$ReadarrBindAddress,
     [string]$WhisparrBindAddress,
 
     [string]$SuiteUsername = 'admin',
@@ -72,8 +71,6 @@ param(
     [int]$SonarrPort = 0,
     [ValidateRange(0, 65535)]
     [int]$LidarrPort = 0,
-    [ValidateRange(0, 65535)]
-    [int]$ReadarrPort = 0,
     [ValidateRange(0, 65535)]
     [int]$WhisparrPort = 0,
 
@@ -115,9 +112,9 @@ $NodeVersion = 'v24.15.0'
 $MinimumNodeMajor = 24
 $CoreServiceNames = @('emulebb')
 $ControllerServiceNames = @('emulebb', 'amutorrent')
-$DefaultArrAppNames = @('prowlarr', 'radarr', 'sonarr')
-$AllArrAppNames = @('prowlarr', 'radarr', 'sonarr', 'lidarr', 'readarr', 'whisparr')
-$SuiteServiceOrder = @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr', 'lidarr', 'readarr', 'whisparr')
+$DefaultArrAppNames = @('prowlarr', 'radarr', 'sonarr', 'lidarr')
+$AllArrAppNames = @('prowlarr', 'radarr', 'sonarr', 'lidarr', 'whisparr')
+$SuiteServiceOrder = @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr', 'lidarr', 'whisparr')
 $FallbackLanguageOptions = @{
     english = @{
         DisplayName = 'English'
@@ -178,13 +175,6 @@ $ArrAppMetadata = @{
         DataDir = 'data\lidarr'
         MediaRoot = 'media\music'
     }
-    readarr = @{
-        DisplayName = 'Readarr'
-        Exe = 'Readarr.exe'
-        ApiPath = 'api/v1'
-        DataDir = 'data\readarr'
-        MediaRoot = 'media\books'
-    }
     whisparr = @{
         DisplayName = 'Whisparr'
         Exe = 'Whisparr.exe'
@@ -235,14 +225,6 @@ $PinnedDependencies = @{
         Exe = 'Lidarr.exe'
         Url = 'https://github.com/Lidarr/Lidarr/releases/download/v3.1.0.4875/Lidarr.master.3.1.0.4875.windows-core-x64.zip'
         Sha256 = '26f6da02a579aa84f49f2ececc27ad0d3a82760d3cd3b13fa4d99df7c6c12443'
-    }
-    readarr = @{
-        Repo = 'Readarr/Readarr'
-        Tag = 'v0.4.18.2805'
-        Pattern = 'windows(?:-core)?-x64\.zip$'
-        Exe = 'Readarr.exe'
-        Url = 'https://github.com/Readarr/Readarr/releases/download/v0.4.18.2805/Readarr.develop.0.4.18.2805.windows-core-x64.zip'
-        Sha256 = 'a0062093de475a588d1fc253488739be2d518b78f02849325a1392edb8e36eab'
     }
     whisparr = @{
         Repo = 'Whisparr/Whisparr'
@@ -688,7 +670,6 @@ function New-SuiteConfig {
             radarr = [ordered]@{ bindAddress = (Resolve-OptionalValue -Value $RadarrBindAddress -Default $controlBind); clientHost = ''; port = $RadarrPort; apiKey = '' }
             sonarr = [ordered]@{ bindAddress = (Resolve-OptionalValue -Value $SonarrBindAddress -Default $controlBind); clientHost = ''; port = $SonarrPort; apiKey = '' }
             lidarr = [ordered]@{ bindAddress = (Resolve-OptionalValue -Value $LidarrBindAddress -Default $controlBind); clientHost = ''; port = $LidarrPort; apiKey = '' }
-            readarr = [ordered]@{ bindAddress = (Resolve-OptionalValue -Value $ReadarrBindAddress -Default $controlBind); clientHost = ''; port = $ReadarrPort; apiKey = '' }
             whisparr = [ordered]@{ bindAddress = (Resolve-OptionalValue -Value $WhisparrBindAddress -Default $controlBind); clientHost = ''; port = $WhisparrPort; apiKey = '' }
         }
         p2p = [ordered]@{
@@ -859,7 +840,7 @@ function Get-BundleServiceNames {
     if ($BundleName -eq 'Controller') {
         return $ControllerServiceNames
     }
-    return @($ControllerServiceNames + $AllArrAppNames)
+    return @($ControllerServiceNames + $DefaultArrAppNames)
 }
 
 function Resolve-SelectedApps {
@@ -939,6 +920,21 @@ function Resolve-SelectedApps {
     return $ordered
 }
 
+function Normalize-SelectedAppList {
+    param([string]$BundleName, [object[]]$Names)
+    $supported = @()
+    foreach ($name in @($Names)) {
+        $normalized = (Resolve-OptionalValue -Value ([string]$name) -Default '').ToLowerInvariant()
+        if ($SuiteServiceOrder -contains $normalized) {
+            $supported += $normalized
+        }
+    }
+    if (@($supported).Count -eq 0) {
+        return @(Resolve-SelectedApps -BundleName $BundleName -RequestedApps @())
+    }
+    return @(Resolve-SelectedApps -BundleName $BundleName -RequestedApps $supported)
+}
+
 function Get-SuiteServiceNames {
     param([hashtable]$Config = $null)
     if ($null -ne $Config -and $null -ne $Config.selectedApps) {
@@ -966,7 +962,6 @@ function Get-ServiceDisplayName {
         'radarr' { return 'Radarr' }
         'sonarr' { return 'Sonarr' }
         'lidarr' { return 'Lidarr' }
-        'readarr' { return 'Readarr' }
         'whisparr' { return 'Whisparr' }
         default { return $ServiceName }
     }
@@ -1156,7 +1151,6 @@ function Resolve-SuiteConfig {
         @('RadarrBindAddress', { param($c, $v) $c.services.radarr.bindAddress = $v }),
         @('SonarrBindAddress', { param($c, $v) $c.services.sonarr.bindAddress = $v }),
         @('LidarrBindAddress', { param($c, $v) $c.services.lidarr.bindAddress = $v }),
-        @('ReadarrBindAddress', { param($c, $v) $c.services.readarr.bindAddress = $v }),
         @('WhisparrBindAddress', { param($c, $v) $c.services.whisparr.bindAddress = $v }),
         @('EmulebbPort', { param($c, $v) $c.services.emulebb.port = $v }),
         @('AmutorrentPort', { param($c, $v) $c.services.amutorrent.port = $v }),
@@ -1164,7 +1158,6 @@ function Resolve-SuiteConfig {
         @('RadarrPort', { param($c, $v) $c.services.radarr.port = $v }),
         @('SonarrPort', { param($c, $v) $c.services.sonarr.port = $v }),
         @('LidarrPort', { param($c, $v) $c.services.lidarr.port = $v }),
-        @('ReadarrPort', { param($c, $v) $c.services.readarr.port = $v }),
         @('WhisparrPort', { param($c, $v) $c.services.whisparr.port = $v }),
         @('P2PBindInterface', { param($c, $v) $c.p2p.bindInterface = $v })
     )) {
@@ -1178,6 +1171,8 @@ function Resolve-SuiteConfig {
     }
     if ($null -eq $config.selectedApps -or @($config.selectedApps).Count -eq 0) {
         $config.selectedApps = @(Resolve-SelectedApps -BundleName ([string]$config.bundle) -RequestedApps @())
+    } else {
+        $config.selectedApps = @(Normalize-SelectedAppList -BundleName ([string]$config.bundle) -Names @($config.selectedApps))
     }
     foreach ($serviceName in $SuiteServiceOrder) {
         if ($null -eq $config.services[$serviceName]) {
@@ -1336,7 +1331,7 @@ function Read-WizardChecklist {
                 continue
             }
             $item = $Items[$index - 1]
-            if ($item -eq 'prowlarr' -and ($selectedSet.ContainsKey('radarr') -or $selectedSet.ContainsKey('sonarr') -or $selectedSet.ContainsKey('lidarr') -or $selectedSet.ContainsKey('readarr') -or $selectedSet.ContainsKey('whisparr'))) {
+            if ($item -eq 'prowlarr' -and ($selectedSet.ContainsKey('radarr') -or $selectedSet.ContainsKey('sonarr') -or $selectedSet.ContainsKey('lidarr') -or $selectedSet.ContainsKey('whisparr'))) {
                 Write-Host 'Prowlarr stays selected while any media Arr app is selected.' -ForegroundColor Yellow
                 continue
             }
@@ -1347,7 +1342,7 @@ function Read-WizardChecklist {
             }
         }
         $hasMediaArr = $false
-        foreach ($item in @('radarr', 'sonarr', 'lidarr', 'readarr', 'whisparr')) {
+        foreach ($item in @('radarr', 'sonarr', 'lidarr', 'whisparr')) {
             if ($selectedSet.ContainsKey($item) -and $selectedSet[$item]) {
                 $hasMediaArr = $true
             }

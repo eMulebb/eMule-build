@@ -30,7 +30,6 @@ $serviceExecutables = @(
     (Get-FirstSuiteExecutable -RelativeRoot 'apps\Radarr' -FileName 'Radarr.exe'),
     (Get-FirstSuiteExecutable -RelativeRoot 'apps\Sonarr' -FileName 'Sonarr.exe'),
     (Get-FirstSuiteExecutable -RelativeRoot 'apps\Lidarr' -FileName 'Lidarr.exe'),
-    (Get-FirstSuiteExecutable -RelativeRoot 'apps\Readarr' -FileName 'Readarr.exe'),
     (Get-FirstSuiteExecutable -RelativeRoot 'apps\Whisparr' -FileName 'Whisparr.exe')
 )
 

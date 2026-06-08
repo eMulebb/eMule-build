@@ -64,7 +64,7 @@ function Start-ArrHost {
 
 $config = Read-SuiteConfig
 & (Join-Path $Root 'scripts\Start-eMuleBB.ps1')
-foreach ($arrName in @('prowlarr', 'radarr', 'sonarr', 'lidarr', 'readarr', 'whisparr')) {
+foreach ($arrName in @('prowlarr', 'radarr', 'sonarr', 'lidarr', 'whisparr')) {
     if (Test-SelectedApp -Config $config -Name $arrName) {
         Start-ArrHost -Name ($arrName.Substring(0, 1).ToUpperInvariant() + $arrName.Substring(1))
     }

@@ -106,13 +106,14 @@ The packaged suite installer supports non-interactive app and language selection
 ```powershell
 .\Bootstrap-eMuleBBSuite.ps1 -Apps none-arr -Language English
 .\Bootstrap-eMuleBBSuite.ps1 -Apps all-arr -Language Italian
-.\Bootstrap-eMuleBBSuite.ps1 -Apps lidarr,readarr -Language Portuguese
+.\Bootstrap-eMuleBBSuite.ps1 -Apps lidarr,whisparr -Language Portuguese
 ```
 
-`-Apps` also accepts individual apps (`radarr`, `sonarr`, `lidarr`, `readarr`,
+`-Apps` also accepts individual apps (`radarr`, `sonarr`, `lidarr`,
 `whisparr`) and presets (`default-arr`, `all-arr`, `none-arr`, `controller`,
-`all`). If a media Arr app is selected, Prowlarr and aMuTorrent are included
-automatically.
+`all`). Whisparr is explicit opt-in through `whisparr` or `all-arr`; the full
+suite default selects Prowlarr, Radarr, Sonarr, and Lidarr. If a media Arr app
+is selected, Prowlarr and aMuTorrent are included automatically.
 
 Release assets publish `suite-scripts-<version>.zip` and
 `suite-scripts-<version>.manifest.json` beside the normal package ZIPs. The

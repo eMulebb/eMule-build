@@ -14,8 +14,6 @@ param(
     [string]$SonarrApiKey,
     [string]$LidarrUrl,
     [string]$LidarrApiKey,
-    [string]$ReadarrUrl,
-    [string]$ReadarrApiKey,
     [string]$WhisparrUrl,
     [string]$WhisparrApiKey,
     [string]$SuiteAppsManifest,
@@ -28,19 +26,17 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Import-SuiteAppManifest.ps1')
-$ArrTargets = @('Radarr', 'Sonarr', 'Lidarr', 'Readarr', 'Whisparr')
+$ArrTargets = @('Radarr', 'Sonarr', 'Lidarr', 'Whisparr')
 $ArrTargetPorts = @{
     Radarr = 7878
     Sonarr = 8989
     Lidarr = 8686
-    Readarr = 8787
     Whisparr = 6969
 }
 $script:ArrTargetIndexerCategories = @{
     radarr = @(2000)
     sonarr = @(5000)
     lidarr = @(3000)
-    readarr = @(7000)
     whisparr = @(6000)
 }
 
@@ -160,22 +156,20 @@ function Read-TargetValue {
     param([string]$Value)
     if (-not [string]::IsNullOrWhiteSpace($Value)) {
         $normalized = $Value.Trim().ToLowerInvariant()
-        if ($normalized -eq 'readarr' -or $normalized -eq 're') { return 'Readarr' }
         if ($normalized -eq 'radarr' -or $normalized -eq 'r') { return 'Radarr' }
         if ($normalized -eq 'sonarr' -or $normalized -eq 's') { return 'Sonarr' }
         if ($normalized -eq 'lidarr' -or $normalized -eq 'l') { return 'Lidarr' }
         if ($normalized -eq 'whisparr' -or $normalized -eq 'w') { return 'Whisparr' }
-        throw "Target must be Radarr, Sonarr, Lidarr, Readarr, or Whisparr, not '$Value'."
+        throw "Target must be Radarr, Sonarr, Lidarr, or Whisparr, not '$Value'."
     }
     while ($true) {
-        $answer = Read-Host 'Target [R]adarr/[S]onarr/[L]idarr/Re[a]darr/[W]hisparr'
+        $answer = Read-Host 'Target [R]adarr/[S]onarr/[L]idarr/[W]hisparr'
         $normalized = $answer.Trim().ToLowerInvariant()
         if ($normalized.StartsWith('r')) { return 'Radarr' }
         if ($normalized.StartsWith('s')) { return 'Sonarr' }
         if ($normalized.StartsWith('l')) { return 'Lidarr' }
-        if ($normalized -eq 'a' -or $normalized -eq 'readarr') { return 'Readarr' }
         if ($normalized.StartsWith('w')) { return 'Whisparr' }
-        Write-Host 'Enter R, S, L, A, or W.' -ForegroundColor Yellow
+        Write-Host 'Enter R, S, L, or W.' -ForegroundColor Yellow
     }
 }
 
@@ -208,7 +202,6 @@ function Get-TargetUrlParameter {
         'Radarr' { return Normalize-ArgumentValue -Value $RadarrUrl }
         'Sonarr' { return Normalize-ArgumentValue -Value $SonarrUrl }
         'Lidarr' { return Normalize-ArgumentValue -Value $LidarrUrl }
-        'Readarr' { return Normalize-ArgumentValue -Value $ReadarrUrl }
         'Whisparr' { return Normalize-ArgumentValue -Value $WhisparrUrl }
     }
     return ''
@@ -220,7 +213,6 @@ function Get-TargetApiKeyParameter {
         'Radarr' { return Normalize-ArgumentValue -Value $RadarrApiKey }
         'Sonarr' { return Normalize-ArgumentValue -Value $SonarrApiKey }
         'Lidarr' { return Normalize-ArgumentValue -Value $LidarrApiKey }
-        'Readarr' { return Normalize-ArgumentValue -Value $ReadarrApiKey }
         'Whisparr' { return Normalize-ArgumentValue -Value $WhisparrApiKey }
     }
     return ''
@@ -403,7 +395,6 @@ function Get-ArrApiBasePath {
     param([string]$Kind)
     switch ($Kind.ToLowerInvariant()) {
         'lidarr' { return '/api/v1' }
-        'readarr' { return '/api/v1' }
         default { return '/api/v3' }
     }
 }
@@ -626,7 +617,6 @@ function Get-ArrIndexerCategories {
             radarr = @(2000)
             sonarr = @(5000)
             lidarr = @(3000)
-            readarr = @(7000)
             whisparr = @(6000)
         }
     }

@@ -24,7 +24,8 @@
   "defaultArrAppNames": [
     "prowlarr",
     "radarr",
-    "sonarr"
+    "sonarr",
+    "lidarr"
   ],
   "suiteServiceOrder": [
     "emulebb",
@@ -33,7 +34,6 @@
     "radarr",
     "sonarr",
     "lidarr",
-    "readarr",
     "whisparr"
   ],
   "arrApps": [
@@ -109,25 +109,6 @@
         "exe": "Lidarr.exe",
         "url": "https://github.com/Lidarr/Lidarr/releases/download/v3.1.0.4875/Lidarr.master.3.1.0.4875.windows-core-x64.zip",
         "sha256": "26f6da02a579aa84f49f2ececc27ad0d3a82760d3cd3b13fa4d99df7c6c12443"
-      }
-    },
-    {
-      "key": "readarr",
-      "displayName": "Readarr",
-      "exe": "Readarr.exe",
-      "apiPath": "api/v1",
-      "dataDir": "data\\readarr",
-      "mediaRoot": "media\\books",
-      "indexerCategories": [
-        7000
-      ],
-      "dependency": {
-        "repo": "Readarr/Readarr",
-        "tag": "v0.4.18.2805",
-        "assetPattern": "windows(?:-core)?-x64\\.zip$",
-        "exe": "Readarr.exe",
-        "url": "https://github.com/Readarr/Readarr/releases/download/v0.4.18.2805/Readarr.develop.0.4.18.2805.windows-core-x64.zip",
-        "sha256": "a0062093de475a588d1fc253488739be2d518b78f02849325a1392edb8e36eab"
       }
     },
     {

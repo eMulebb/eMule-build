@@ -191,20 +191,12 @@ def write_dependency_manifest(path: Path, dependency_root: Path) -> None:
         },
     )
     lidarr_zip = dependency_root / "lidarr.zip"
-    readarr_zip = dependency_root / "readarr.zip"
     whisparr_zip = dependency_root / "whisparr.zip"
     write_zip(
         lidarr_zip,
         {
             "Lidarr/Lidarr.exe": b"lidarr\n",
             "Lidarr/Lidarr.Console.exe": b"lidarr console\n",
-        },
-    )
-    write_zip(
-        readarr_zip,
-        {
-            "Readarr/Readarr.exe": b"readarr\n",
-            "Readarr/Readarr.Console.exe": b"readarr console\n",
         },
     )
     write_zip(
@@ -220,7 +212,6 @@ def write_dependency_manifest(path: Path, dependency_root: Path) -> None:
         "radarr": arr_dependency_spec(radarr_zip, "Radarr.exe"),
         "sonarr": arr_dependency_spec(sonarr_zip, "Sonarr.exe"),
         "lidarr": arr_dependency_spec(lidarr_zip, "Lidarr.exe"),
-        "readarr": arr_dependency_spec(readarr_zip, "Readarr.exe"),
         "whisparr": arr_dependency_spec(whisparr_zip, "Whisparr.exe"),
     }
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")

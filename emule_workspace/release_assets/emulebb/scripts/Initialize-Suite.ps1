@@ -346,12 +346,11 @@ function Ensure-ArrRootFolder {
     }
     try {
         $body = @{ path = $normalizedPath }
-        if ([string]::Equals($Name, 'Lidarr', [StringComparison]::OrdinalIgnoreCase) -or [string]::Equals($Name, 'Readarr', [StringComparison]::OrdinalIgnoreCase)) {
+        if ([string]::Equals($Name, 'Lidarr', [StringComparison]::OrdinalIgnoreCase)) {
             $profiles = Wait-ArrDefaultProfiles -Name $Name -Url $Url -ApiPath $ApiPath -Headers $headers -IncludeMetadata
-            $rootName = if ([string]::Equals($Name, 'Readarr', [StringComparison]::OrdinalIgnoreCase)) { 'eMuleBB Books' } else { 'eMuleBB Music' }
             $body = @{
                 path = $normalizedPath
-                name = $rootName
+                name = 'eMuleBB Music'
                 defaultQualityProfileId = [int]$profiles.QualityProfile.id
                 defaultMetadataProfileId = [int]$profiles.MetadataProfile.id
             }
@@ -472,7 +471,6 @@ function Get-ArrApiPath {
     switch ($Name) {
         'prowlarr' { return 'api/v1' }
         'lidarr' { return 'api/v1' }
-        'readarr' { return 'api/v1' }
         default { return 'api/v3' }
     }
 }
@@ -483,7 +481,6 @@ function Get-ArrMediaRoot {
         'radarr' { return 'media\movies' }
         'sonarr' { return 'media\series' }
         'lidarr' { return 'media\music' }
-        'readarr' { return 'media\books' }
         'whisparr' { return 'media\whisparr' }
         default { return '' }
     }
@@ -508,7 +505,7 @@ if (Test-SelectedApp -Config $Config -Name 'amutorrent') {
     }
 }
 
-$selectedArr = @(@($Config.selectedApps) | Where-Object { @('prowlarr', 'radarr', 'sonarr', 'lidarr', 'readarr', 'whisparr') -contains $_ })
+$selectedArr = @(@($Config.selectedApps) | Where-Object { @('prowlarr', 'radarr', 'sonarr', 'lidarr', 'whisparr') -contains $_ })
 if (@($selectedArr).Count -gt 0) {
     $arrUrls = @{}
     $suiteAppsManifest = Join-Path $Root 'config\suite-apps.json'

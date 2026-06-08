@@ -40,7 +40,6 @@ param(
     [string]$RadarrBindAddress,
     [string]$SonarrBindAddress,
     [string]$LidarrBindAddress,
-    [string]$ReadarrBindAddress,
     [string]$WhisparrBindAddress,
 
     [ValidateRange(0, 65535)]
@@ -55,8 +54,6 @@ param(
     [int]$SonarrPort = 0,
     [ValidateRange(0, 65535)]
     [int]$LidarrPort = 0,
-    [ValidateRange(0, 65535)]
-    [int]$ReadarrPort = 0,
     [ValidateRange(0, 65535)]
     [int]$WhisparrPort = 0,
 
@@ -913,7 +910,6 @@ if (-not [string]::IsNullOrWhiteSpace($ProwlarrBindAddress)) { $installerParams[
 if (-not [string]::IsNullOrWhiteSpace($RadarrBindAddress)) { $installerParams['RadarrBindAddress'] = $RadarrBindAddress }
 if (-not [string]::IsNullOrWhiteSpace($SonarrBindAddress)) { $installerParams['SonarrBindAddress'] = $SonarrBindAddress }
 if (-not [string]::IsNullOrWhiteSpace($LidarrBindAddress)) { $installerParams['LidarrBindAddress'] = $LidarrBindAddress }
-if (-not [string]::IsNullOrWhiteSpace($ReadarrBindAddress)) { $installerParams['ReadarrBindAddress'] = $ReadarrBindAddress }
 if (-not [string]::IsNullOrWhiteSpace($WhisparrBindAddress)) { $installerParams['WhisparrBindAddress'] = $WhisparrBindAddress }
 if ($PSBoundParameters.ContainsKey('EmulebbPort')) { $installerParams['EmulebbPort'] = $EmulebbPort }
 if ($PSBoundParameters.ContainsKey('AmutorrentPort')) { $installerParams['AmutorrentPort'] = $AmutorrentPort }
@@ -921,7 +917,6 @@ if ($PSBoundParameters.ContainsKey('ProwlarrPort')) { $installerParams['Prowlarr
 if ($PSBoundParameters.ContainsKey('RadarrPort')) { $installerParams['RadarrPort'] = $RadarrPort }
 if ($PSBoundParameters.ContainsKey('SonarrPort')) { $installerParams['SonarrPort'] = $SonarrPort }
 if ($PSBoundParameters.ContainsKey('LidarrPort')) { $installerParams['LidarrPort'] = $LidarrPort }
-if ($PSBoundParameters.ContainsKey('ReadarrPort')) { $installerParams['ReadarrPort'] = $ReadarrPort }
 if ($PSBoundParameters.ContainsKey('WhisparrPort')) { $installerParams['WhisparrPort'] = $WhisparrPort }
 if ($AllowRemoteServiceBind) { $installerParams['AllowRemoteServiceBind'] = $true }
 $displayArgs = @()
