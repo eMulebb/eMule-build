@@ -133,8 +133,12 @@ def build_apps(
     clean: bool,
     app_variant_names: tuple[str, ...],
     enable_startup_diagnostics: bool | None = None,
+    enable_diagnostics: bool = False,
 ) -> None:
     """Builds selected managed app variants."""
+
+    if enable_diagnostics and options.configuration != "Release":
+        raise RuntimeError("build app --diagnostics requires --config Release.")
 
     session = BuildSession(layout=layout, options=options, command_name="build app", clean=clean)
     try:
@@ -144,12 +148,17 @@ def build_apps(
         variants = selected_app_variants(layout, app_variant_names)
         for variant in variants:
             extra_properties = [*app_property_overrides(layout, options.platform)]
-            diagnostics_flags: dict[str, bool] = {}
+            diagnostics_flags: dict[str, bool] = (
+                {property_name: True for _env_name, property_name in DIAGNOSTIC_INSTRUMENTATION_ENV_FLAGS}
+                if enable_diagnostics
+                else {}
+            )
             for env_name, property_name in DIAGNOSTIC_INSTRUMENTATION_ENV_FLAGS:
-                value = env_override(env_name)
-                if env_name == "EMULEBB_ENABLE_STARTUP_DIAGNOSTICS" and enable_startup_diagnostics is not None:
+                if enable_diagnostics:
+                    enabled = True
+                elif env_name == "EMULEBB_ENABLE_STARTUP_DIAGNOSTICS" and enable_startup_diagnostics is not None:
                     enabled = enable_startup_diagnostics
-                elif value:
+                elif value := env_override(env_name):
                     enabled = enabled_from_env_value(value)
                 else:
                     continue
@@ -162,6 +171,7 @@ def build_apps(
             ):
                 local_executable_name = DIAGNOSTICS_APP_EXE_NAME
                 extra_properties.append(f"/p:TargetName={Path(DIAGNOSTICS_APP_EXE_NAME).stem}")
+            step_suffix = " diagnostics" if local_executable_name == DIAGNOSTICS_APP_EXE_NAME else ""
             override = env_override(layout.toolset_override_variable)
             if override:
                 extra_properties.append(f"/p:PlatformToolset={override}")
@@ -170,7 +180,7 @@ def build_apps(
                 project_path=variant.path / "srchybrid" / "emule.vcxproj",
                 extra_properties=extra_properties,
                 target=target,
-                step_name=f"APP {variant.name}",
+                step_name=f"APP {variant.name}{step_suffix}",
             )
             if variant.name == "main":
                 verify_app_control_flow_guard(
@@ -181,7 +191,7 @@ def build_apps(
                         options.platform,
                         executable_name=local_executable_name,
                     ),
-                    step_name=f"APP {variant.name} CFG",
+                    step_name=f"APP {variant.name}{step_suffix} CFG",
                 )
     finally:
         session.write_recap()

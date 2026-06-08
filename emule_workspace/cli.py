@@ -628,10 +628,16 @@ def build_libs(
 @_common_options
 @click.option("--clean", is_flag=True, help="Clean selected app outputs before building.")
 @click.option("--variant", "app_variants", multiple=True, help=APP_VARIANT_BUILD_HELP)
+@click.option(
+    "--diagnostics",
+    is_flag=True,
+    help="Build the Release diagnostics executable with all release instrumentation flags enabled.",
+)
 def build_app(
     *,
     clean: bool,
     app_variants: tuple[str, ...],
+    diagnostics: bool,
     workspace_options: WorkspaceOptions,
     layout,
 ) -> None:
@@ -644,6 +650,7 @@ def build_app(
             kwargs["workspace_options"],
             clean=clean,
             app_variant_names=app_variants,
+            enable_diagnostics=diagnostics,
         ),
     )(workspace_options=workspace_options, layout=layout)
 

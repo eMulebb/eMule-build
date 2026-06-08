@@ -87,6 +87,38 @@ def test_build_apps_honors_instrumentation_env_overrides(
     assert captured["cfg_binary_path"].name == "emulebb-diagnostics.exe"
 
 
+def test_build_apps_diagnostics_option_enables_all_release_instrumentation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("EMULEBB_ENABLE_PACKET_DIAGNOSTICS", "off")
+
+    captured = capture_build_apps_msbuild_call(tmp_path, monkeypatch, enable_diagnostics=True)
+
+    assert "/p:EnableStartupDiagnostics=true" in captured["extra_properties"]
+    assert "/p:EnableUploadSlotDiagnostics=true" in captured["extra_properties"]
+    assert "/p:EnableDownloadSlotDiagnostics=true" in captured["extra_properties"]
+    assert "/p:EnableBadPeerDiagnostics=true" in captured["extra_properties"]
+    assert "/p:EnablePacketDiagnostics=true" in captured["extra_properties"]
+    assert "/p:EnablePacketDiagnostics=false" not in captured["extra_properties"]
+    assert "/p:TargetName=emulebb-diagnostics" in captured["extra_properties"]
+    assert captured["cfg_binary_path"].name == "emulebb-diagnostics.exe"
+    assert captured["step_name"] == "APP main diagnostics"
+
+
+def test_build_apps_diagnostics_option_requires_release(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with pytest.raises(RuntimeError, match="--diagnostics requires --config Release"):
+        capture_build_apps_msbuild_call(
+            tmp_path,
+            monkeypatch,
+            configuration="Debug",
+            enable_diagnostics=True,
+        )
+
+
 def test_build_apps_can_disable_packet_diagnostics_env_override(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -158,6 +190,8 @@ def capture_build_apps_msbuild_call(
     monkeypatch: pytest.MonkeyPatch,
     *,
     enable_startup_diagnostics: bool | None = None,
+    enable_diagnostics: bool = False,
+    configuration: str = "Release",
 ) -> dict[str, object]:
     layout = make_layout(tmp_path, app_variants=True)
     captured: dict[str, object] = {}
@@ -179,10 +213,11 @@ def capture_build_apps_msbuild_call(
 
     build.build_apps(
         layout,
-        WorkspaceOptions(workspace_root=layout.emule_workspace_root, configuration="Release", platform="x64"),
+        WorkspaceOptions(workspace_root=layout.emule_workspace_root, configuration=configuration, platform="x64"),
         clean=False,
         app_variant_names=("main",),
         enable_startup_diagnostics=enable_startup_diagnostics,
+        enable_diagnostics=enable_diagnostics,
     )
 
     return captured

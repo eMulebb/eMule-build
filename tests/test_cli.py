@@ -39,6 +39,45 @@ def test_build_app_help_exposes_variant_selection() -> None:
     assert "--variant" in result.output
     assert "Configured app variant key" in result.output
     assert "--clean" in result.output
+    assert "--diagnostics" in result.output
+
+
+def test_build_app_diagnostics_flag_is_forwarded(tmp_path: Path, monkeypatch) -> None:
+    runner = CliRunner()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        cli,
+        "resolve_workspace_options",
+        lambda **_kwargs: cli.WorkspaceOptions(workspace_root=tmp_path),
+    )
+    monkeypatch.setattr(cli, "load_layout", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(cli, "_locked", lambda _command_name, function: function)
+    monkeypatch.setattr(
+        cli,
+        "invoke_build_apps",
+        lambda _layout, _workspace_options, **kwargs: captured.update(kwargs),
+    )
+
+    result = runner.invoke(
+        cli.main,
+        [
+            "build",
+            "app",
+            "--workspace-root",
+            str(tmp_path),
+            "--variant",
+            "main",
+            "--diagnostics",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured == {
+        "clean": False,
+        "app_variant_names": ("main",),
+        "enable_diagnostics": True,
+    }
 
 
 def test_build_libs_help_exposes_clean_option() -> None:
