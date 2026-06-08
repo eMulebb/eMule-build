@@ -56,14 +56,21 @@ def extract_packaged_installer(*, package_zip: Path, install_root: Path, release
     staging_root = install_root / ".staging" / f"installer-{release_version}-{_timestamp_for_path()}"
     _assert_under_root(staging_root, install_root, "installer staging path")
     installer_path = staging_root / "Install-eMuleBBSuite.ps1"
+    manifest_helper_path = staging_root / "Import-SuiteAppManifest.ps1"
     staging_root.mkdir(parents=True, exist_ok=True)
-    member_name = f"{EMULEBB_PACKAGE_ROOT_NAME}/scripts/Install-eMuleBBSuite.ps1"
+    installer_member_name = f"{EMULEBB_PACKAGE_ROOT_NAME}/scripts/Install-eMuleBBSuite.ps1"
+    manifest_helper_member_name = f"{EMULEBB_PACKAGE_ROOT_NAME}/scripts/Import-SuiteAppManifest.ps1"
     with zipfile.ZipFile(package_zip, "r") as archive:
         try:
-            data = archive.read(member_name)
+            installer_data = archive.read(installer_member_name)
         except KeyError as exc:
-            raise RuntimeError(f"Release package is missing {member_name}.") from exc
-    installer_path.write_bytes(data)
+            raise RuntimeError(f"Release package is missing {installer_member_name}.") from exc
+        try:
+            manifest_helper_data = archive.read(manifest_helper_member_name)
+        except KeyError as exc:
+            raise RuntimeError(f"Release package is missing {manifest_helper_member_name}.") from exc
+    installer_path.write_bytes(installer_data)
+    manifest_helper_path.write_bytes(manifest_helper_data)
     return installer_path
 
 

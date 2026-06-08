@@ -127,6 +127,29 @@ def _write_suite_profile(target: Path, *, exe_payload: bytes = b"exe", executabl
     )
 
 
+def test_packaged_installer_extraction_stages_manifest_helper(tmp_path: Path) -> None:
+    package_zip = tmp_path / "emulebb-0.7.3-rc.2-x64.zip"
+    install_root = tmp_path / "install"
+    installer_payload = b"#Requires -Version 5.1\n"
+    manifest_helper_payload = b"function Read-SuiteAppManifest {}\n"
+    suite_install_fixtures.write_zip(
+        package_zip,
+        {
+            "eMuleBB/scripts/Install-eMuleBBSuite.ps1": installer_payload,
+            "eMuleBB/scripts/Import-SuiteAppManifest.ps1": manifest_helper_payload,
+        },
+    )
+
+    installer_path = suite_installer.extract_packaged_installer(
+        package_zip=package_zip,
+        install_root=install_root,
+        release_version="0.7.3-rc.2",
+    )
+
+    assert installer_path.read_bytes() == installer_payload
+    assert (installer_path.parent / "Import-SuiteAppManifest.ps1").read_bytes() == manifest_helper_payload
+
+
 def _write_harness_seed(tests_repo_root: Path) -> Path:
     seed_config = tests_repo_root / "manifests" / "live-profile-seed" / "config"
     seed_config.mkdir(parents=True, exist_ok=True)
