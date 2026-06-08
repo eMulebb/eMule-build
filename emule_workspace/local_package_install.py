@@ -37,6 +37,8 @@ DEFAULT_REST_PORT = 4711
 DEFAULT_PROWLARR_PORT = 9696
 DEFAULT_RADARR_PORT = 7878
 DEFAULT_SONARR_PORT = 8989
+DEFAULT_LIDARR_PORT = 8686
+DEFAULT_WHISPARR_PORT = 6969
 DEFAULT_P2P_BIND_INTERFACE = "hide.me"
 RETIRED_LOCAL_INSTALL_FIELDS = ("profile_dir", "procdump_path")
 
@@ -55,6 +57,8 @@ class LocalInstallConfig:
     prowlarr_port: int
     radarr_port: int
     sonarr_port: int
+    lidarr_port: int
+    whisparr_port: int
     dependency_manifest: Path | None
     import_profile_dir: Path | None
     p2p_bind_interface: str
@@ -148,7 +152,15 @@ def materialize_test_local_install(
 
     base_config = load_local_install_config(layout, options.live_wire_inputs_file)
     lan_bind = (lan_bind_address or "").strip() or "127.0.0.1"
-    emulebb_port, amutorrent_port, prowlarr_port, radarr_port, sonarr_port = choose_free_tcp_ports(5, host=lan_bind)
+    (
+        emulebb_port,
+        amutorrent_port,
+        prowlarr_port,
+        radarr_port,
+        sonarr_port,
+        lidarr_port,
+        whisparr_port,
+    ) = choose_free_tcp_ports(7, host=lan_bind)
     test_config = replace(
         base_config,
         target_path=test_install_root(layout, run_id=run_id, suite_name=suite_name, client_id=client_id),
@@ -160,6 +172,8 @@ def materialize_test_local_install(
         prowlarr_port=prowlarr_port,
         radarr_port=radarr_port,
         sonarr_port=sonarr_port,
+        lidarr_port=lidarr_port,
+        whisparr_port=whisparr_port,
     )
     materialized = _materialize_local_install_from_config(layout, workspace_options, options, test_config)
     seed_config_dir = prepare_test_profile_seed(layout, materialized.profile_config_dir, test_config.target_path)
@@ -240,6 +254,8 @@ def load_local_install_config(layout: WorkspaceLayout, raw_inputs_path: str | No
         prowlarr_port=_optional_int(raw_config, "prowlarr_port", DEFAULT_PROWLARR_PORT),
         radarr_port=_optional_int(raw_config, "radarr_port", DEFAULT_RADARR_PORT),
         sonarr_port=_optional_int(raw_config, "sonarr_port", DEFAULT_SONARR_PORT),
+        lidarr_port=_optional_int(raw_config, "lidarr_port", DEFAULT_LIDARR_PORT),
+        whisparr_port=_optional_int(raw_config, "whisparr_port", DEFAULT_WHISPARR_PORT),
         dependency_manifest=_optional_nullable_path(raw_config, "dependency_manifest"),
         import_profile_dir=_optional_nullable_path(raw_config, "import_profile_dir"),
         p2p_bind_interface=_optional_string(raw_config, "p2p_bind_interface", DEFAULT_P2P_BIND_INTERFACE),
@@ -411,6 +427,8 @@ def build_suite_installer_options(
         prowlarr_port=config.prowlarr_port,
         radarr_port=config.radarr_port,
         sonarr_port=config.sonarr_port,
+        lidarr_port=config.lidarr_port,
+        whisparr_port=config.whisparr_port,
         dependency_manifest=config.dependency_manifest,
         import_profile_dir=config.import_profile_dir,
         emulebb_pdb_path=artifacts.package_pdb,

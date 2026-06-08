@@ -231,6 +231,8 @@ def test_local_package_install_deploys_artifacts_from_suite_profile(
     assert installer_calls[0].prowlarr_port == 9696
     assert installer_calls[0].radarr_port == 7878
     assert installer_calls[0].sonarr_port == 8989
+    assert installer_calls[0].lidarr_port == 8686
+    assert installer_calls[0].whisparr_port == 6969
     assert installer_calls[0].p2p_bind_interface == "hide.me"
     assert installer_calls[0].import_profile_dir == import_profile.resolve()
     assert installer_calls[0].emulebb_pdb_path.name == "emulebb.pdb"
@@ -446,6 +448,8 @@ def test_suite_installer_command_uses_full_bundle_and_existing_suite_config(tmp_
     assert command[command.index("-ProwlarrPort") + 1] == "9696"
     assert command[command.index("-RadarrPort") + 1] == "7878"
     assert command[command.index("-SonarrPort") + 1] == "8989"
+    assert command[command.index("-LidarrPort") + 1] == "8686"
+    assert command[command.index("-WhisparrPort") + 1] == "6969"
 
 
 def test_suite_installer_command_lets_amutorrent_inherit_control_bind_when_unset(tmp_path: Path) -> None:
@@ -561,7 +565,11 @@ def test_materialize_test_local_install_uses_isolated_test_root(
         )
 
     monkeypatch.setattr(local_package_install.suite_installer, "invoke_suite_installer", fake_invoke_suite_installer)
-    monkeypatch.setattr(local_package_install, "choose_free_tcp_ports", lambda count, host="127.0.0.1": (15111, 15112, 15113, 15114, 15115))
+    monkeypatch.setattr(
+        local_package_install,
+        "choose_free_tcp_ports",
+        lambda count, host="127.0.0.1": (15111, 15112, 15113, 15114, 15115, 15116, 15117),
+    )
 
     result = local_package_install.materialize_test_local_install(
         layout,
@@ -593,6 +601,8 @@ def test_materialize_test_local_install_uses_isolated_test_root(
     assert installer_calls[0].prowlarr_port == 15113
     assert installer_calls[0].radarr_port == 15114
     assert installer_calls[0].sonarr_port == 15115
+    assert installer_calls[0].lidarr_port == 15116
+    assert installer_calls[0].whisparr_port == 15117
     assert installer_calls[0].import_profile_dir == import_profile.resolve()
     assert not operator_target.exists()
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
@@ -637,7 +647,8 @@ def test_materialize_test_local_install_accepts_lan_bind_address(
 
     def fake_choose_free_tcp_ports(count: int, *, host: str = "127.0.0.1") -> tuple[int, ...]:
         port_probe_hosts.append(host)
-        return (15111, 15112, 15113, 15114, 15115)
+        assert count == 7
+        return (15111, 15112, 15113, 15114, 15115, 15116, 15117)
 
     monkeypatch.setattr(local_package_install.suite_installer, "invoke_suite_installer", fake_invoke_suite_installer)
     monkeypatch.setattr(local_package_install, "choose_free_tcp_ports", fake_choose_free_tcp_ports)

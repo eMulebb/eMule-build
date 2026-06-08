@@ -186,6 +186,24 @@ def test_emulebb_publish_release_workflow_builds_and_publishes_github_generated_
     assert "emulebb-nightly-" not in text
 
 
+def test_emulebb_nightly_workflow_publishes_standard_and_diagnostics_assets() -> None:
+    text = _read_app_workflow("nightly.yml")
+
+    assert "emulebb-nightly-${release_date}-${short_sha}" in text
+    assert "python -m emule_workspace package-release" in text
+    assert "--release-version $packageVersion" in text
+    assert "emulebb-$packageVersion-${{ matrix.asset_arch }}.zip" in text
+    assert "emulebb-$packageVersion-${{ matrix.asset_arch }}.manifest.json" in text
+    assert "emulebb-$packageVersion-${{ matrix.asset_arch }}.sbom.spdx.json" in text
+    assert "emulebb-$packageVersion-diagnostics-${{ matrix.asset_arch }}.zip" in text
+    assert "emulebb-$packageVersion-diagnostics-${{ matrix.asset_arch }}.manifest.json" in text
+    assert "emulebb-$packageVersion-diagnostics-${{ matrix.asset_arch }}.sbom.spdx.json" in text
+    assert "Nightly standard and diagnostics ZIP" in text
+    assert "Bootstrap-eMuleBBSuite.ps1" in text
+    assert "Bootstrap-eMuleBBSuite.ps1.sha256" in text
+    assert "actions/attest@v4" in text
+
+
 def test_amutorrent_publish_release_workflow_uses_own_release_and_controller_assets() -> None:
     text = _read_amutorrent_workflow("publish-release.yml")
 

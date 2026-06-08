@@ -32,6 +32,8 @@ class SuiteInstallerOptions:
     prowlarr_port: int
     radarr_port: int
     sonarr_port: int
+    lidarr_port: int
+    whisparr_port: int
     dependency_manifest: Path | None
     import_profile_dir: Path | None
     emulebb_pdb_path: Path | None
@@ -126,6 +128,10 @@ def build_suite_installer_invocation(*, powershell: Path, options: SuiteInstalle
         str(options.radarr_port),
         "-SonarrPort",
         str(options.sonarr_port),
+        "-LidarrPort",
+        str(options.lidarr_port),
+        "-WhisparrPort",
+        str(options.whisparr_port),
         "-P2PBindInterface",
         options.p2p_bind_interface,
     ]
