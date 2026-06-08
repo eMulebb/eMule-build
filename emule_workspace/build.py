@@ -139,6 +139,10 @@ def build_apps(
             if download_slot_instrumentation:
                 enabled = download_slot_instrumentation.strip().lower() not in {"0", "false", "no", "off"}
                 extra_properties.append(f"/p:EnableDownloadSlotInstrumentation={'true' if enabled else 'false'}")
+            bad_peer_instrumentation = env_override("EMULEBB_ENABLE_BAD_PEER_INSTRUMENTATION")
+            if bad_peer_instrumentation:
+                enabled = bad_peer_instrumentation.strip().lower() not in {"0", "false", "no", "off"}
+                extra_properties.append(f"/p:EnableBadPeerInstrumentation={'true' if enabled else 'false'}")
             packet_diagnostics = env_override("EMULEBB_ENABLE_PACKET_DIAGNOSTICS")
             if packet_diagnostics:
                 enabled = packet_diagnostics.strip().lower() not in {"0", "false", "no", "off"}

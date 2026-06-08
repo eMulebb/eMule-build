@@ -46,6 +46,10 @@ DOWNLOAD_SLOT_INSTRUMENTATION_BINARY_MARKERS = (
     b"DownloadSlotInstrumentation:",
     "DownloadSlotInstrumentation:".encode("utf-16le"),
 )
+BAD_PEER_INSTRUMENTATION_BINARY_MARKERS = (
+    b"BadPeerInstrumentation:",
+    "BadPeerInstrumentation:".encode("utf-16le"),
+)
 AMUTORRENT_NODE_VERSION = "v24.15.0"
 AMUTORRENT_NODE_ARCHIVES = {
     "x64": (
@@ -139,6 +143,7 @@ class ReleasePackageFlavorSpec:
     enable_packet_diagnostics: bool
     enable_upload_slot_instrumentation: bool
     enable_download_slot_instrumentation: bool
+    enable_bad_peer_instrumentation: bool
     executable_name: str
     diagnostic_features: tuple[str, ...] = ()
 
@@ -151,6 +156,7 @@ RELEASE_PACKAGE_FLAVORS = (
         enable_packet_diagnostics=False,
         enable_upload_slot_instrumentation=False,
         enable_download_slot_instrumentation=False,
+        enable_bad_peer_instrumentation=False,
         executable_name=APP_EXE_NAME,
     ),
     ReleasePackageFlavorSpec(
@@ -160,8 +166,10 @@ RELEASE_PACKAGE_FLAVORS = (
         enable_packet_diagnostics=True,
         enable_upload_slot_instrumentation=True,
         enable_download_slot_instrumentation=True,
+        enable_bad_peer_instrumentation=True,
         executable_name=DIAGNOSTICS_APP_EXE_NAME,
         diagnostic_features=(
+            "bad-peer-instrumentation",
             "download-slot-instrumentation",
             "packet-diagnostics",
             "startup-profiling",
@@ -966,6 +974,9 @@ def _build_package_app(
     extra_properties.append(
         f"/p:EnableDownloadSlotInstrumentation={'true' if flavor.enable_download_slot_instrumentation else 'false'}"
     )
+    extra_properties.append(
+        f"/p:EnableBadPeerInstrumentation={'true' if flavor.enable_bad_peer_instrumentation else 'false'}"
+    )
     if flavor.executable_name != APP_EXE_NAME:
         extra_properties.append(f"/p:TargetName={Path(flavor.executable_name).stem}")
     extra_properties.append(f"/p:OutDir={with_trailing_separator(package_app_output_root)}")
@@ -1728,6 +1739,14 @@ def _assert_release_binary_diagnostics(path: Path, flavor: ReleasePackageFlavorS
         description="download slot instrumentation support",
         enable_property="/p:EnableDownloadSlotInstrumentation=true",
         disable_property="/p:EnableDownloadSlotInstrumentation=false",
+    )
+    _assert_binary_marker_state(
+        path,
+        markers=BAD_PEER_INSTRUMENTATION_BINARY_MARKERS,
+        expected=flavor.enable_bad_peer_instrumentation,
+        description="bad-peer instrumentation support",
+        enable_property="/p:EnableBadPeerInstrumentation=true",
+        disable_property="/p:EnableBadPeerInstrumentation=false",
     )
 
 

@@ -72,12 +72,14 @@ def test_build_apps_honors_instrumentation_env_overrides(
 ) -> None:
     monkeypatch.setenv("EMULEBB_ENABLE_UPLOAD_SLOT_INSTRUMENTATION", "1")
     monkeypatch.setenv("EMULEBB_ENABLE_DOWNLOAD_SLOT_INSTRUMENTATION", "true")
+    monkeypatch.setenv("EMULEBB_ENABLE_BAD_PEER_INSTRUMENTATION", "yes")
     monkeypatch.setenv("EMULEBB_ENABLE_PACKET_DIAGNOSTICS", "on")
 
     captured = capture_build_apps_msbuild_call(tmp_path, monkeypatch)
 
     assert "/p:EnableUploadSlotInstrumentation=true" in captured["extra_properties"]
     assert "/p:EnableDownloadSlotInstrumentation=true" in captured["extra_properties"]
+    assert "/p:EnableBadPeerInstrumentation=true" in captured["extra_properties"]
     assert "/p:EnablePacketDiagnostics=true" in captured["extra_properties"]
 
 
