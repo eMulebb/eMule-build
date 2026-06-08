@@ -80,6 +80,58 @@ def test_build_app_diagnostics_flag_is_forwarded(tmp_path: Path, monkeypatch) ->
     }
 
 
+def test_analyze_diagnostic_logs_command_delegates_to_tests_repo(tmp_path: Path, monkeypatch) -> None:
+    runner = CliRunner()
+    captured: dict[str, object] = {}
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir()
+    tests_repo_root = tmp_path / "repos" / "emulebb-build-tests"
+    tests_repo_root.mkdir(parents=True)
+
+    class FakePython:
+        def command(self, args):
+            return ["python", *[str(arg) for arg in args]]
+
+    monkeypatch.setattr(
+        cli,
+        "resolve_workspace_options",
+        lambda **_kwargs: cli.WorkspaceOptions(workspace_root=tmp_path),
+    )
+    monkeypatch.setattr(cli, "load_layout", lambda *_args, **_kwargs: type("Layout", (), {"tests_repo_root": tests_repo_root})())
+    monkeypatch.setattr(cli, "_locked", lambda _command_name, function: function)
+    monkeypatch.setattr(cli, "get_python_invocation", lambda: FakePython())
+    monkeypatch.setattr(
+        cli,
+        "run_native",
+        lambda command, *, label, cwd: captured.update(command=command, label=label, cwd=cwd),
+    )
+
+    result = runner.invoke(
+        cli.main,
+        [
+            "analyze-diagnostic-logs",
+            "--workspace-root",
+            str(tmp_path),
+            "--logs-dir",
+            str(logs_dir),
+            "--window-minutes",
+            "7",
+            "--top",
+            "3",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["label"] == "diagnostic log analysis"
+    assert captured["cwd"] == tests_repo_root
+    command = captured["command"]
+    assert command[:2] == ["python", str(tests_repo_root / "scripts" / "analyze-diagnostic-logs.py")]
+    assert "--logs-dir" in command
+    assert str(logs_dir) in command
+    assert "--json" in command
+
+
 def test_build_libs_help_exposes_clean_option() -> None:
     runner = CliRunner()
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from functools import wraps
+from pathlib import Path
 from typing import Any, TypeVar
 
 import click
@@ -56,6 +57,7 @@ from .product_family import (
     print_product_family_toolchain,
     refresh_product_family_rebases,
 )
+from .process import get_python_invocation, run_native
 from .python_tests import invoke_python_tests
 from .release import create_amutorrent_package, create_release_package
 from .release_campaign_runner import invoke_release_campaign
@@ -600,6 +602,47 @@ def compare_command(*, preset_key: str | None, workspace_root: str | None) -> No
         run_compare(preset_key=preset_key, workspace_root=workspace_root)
     except Exception as exc:
         raise click.ClickException(str(exc)) from exc
+
+
+@main.command("analyze-diagnostic-logs")
+@_common_options
+@click.option(
+    "--logs-dir",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
+    required=True,
+    help="eMuleBB profile logs directory containing emulebb-diagnostics-*.log files.",
+)
+@click.option("--window-minutes", type=float, default=15.0, show_default=True, help="Bad-peer analysis window.")
+@click.option("--top", "top_count", type=int, default=12, show_default=True, help="Maximum rows per top list.")
+@click.option("--json", "json_output", is_flag=True, help="Write machine-readable JSON.")
+def analyze_diagnostic_logs_command(
+    *,
+    logs_dir: Path,
+    window_minutes: float,
+    top_count: int,
+    json_output: bool,
+    workspace_options: WorkspaceOptions,
+    layout,
+) -> None:
+    """Analyze eMuleBB diagnostics logs from one running or stopped profile."""
+
+    script_path = layout.tests_repo_root / "scripts" / "analyze-diagnostic-logs.py"
+    command = get_python_invocation().command(
+        [
+            script_path,
+            "--logs-dir",
+            logs_dir,
+            "--window-minutes",
+            str(window_minutes),
+            "--top",
+            str(top_count),
+            *(("--json",) if json_output else ()),
+        ]
+    )
+    _locked(
+        "analyze diagnostic logs",
+        lambda **kwargs: run_native(command, label="diagnostic log analysis", cwd=kwargs["layout"].tests_repo_root),
+    )(workspace_options=workspace_options, layout=layout)
 
 
 @main.group()
