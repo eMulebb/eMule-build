@@ -83,7 +83,7 @@ def test_live_e2e_rebuilds_workspace_app_with_startup_profiling_when_required(
     test_runs.invoke_live_e2e_suite(
         layout,
         WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
-        LiveE2eOptions(suites=("startup-profile",), startup_trace_mode="required"),
+        LiveE2eOptions(suites=("startup-diagnostics",), startup_trace_mode="required"),
     )
 
     assert captured["clean"] is False

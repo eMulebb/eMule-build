@@ -227,7 +227,7 @@ def test_fast_live_step_uses_critical_ui_and_rest_scope(tmp_path: Path, monkeypa
         "shared-files-ui",
         "config-stability-ui",
         "shared-hash-ui",
-        "startup-profile",
+        "startup-diagnostics",
         "shared-directories-rest",
         "rest-api",
     )

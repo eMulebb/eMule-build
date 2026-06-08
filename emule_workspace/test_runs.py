@@ -357,7 +357,7 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
         app_exe = materialized.app_exe
         profile_seed_config_dir = materialized.profile_seed_config_dir
         live_process_monitor_profile_dir = materialized.profile_dir
-    elif _live_e2e_requires_startup_profiled_workspace_build(live_options):
+    elif _live_e2e_requires_startup_diagnostics_workspace_build(live_options):
         build_apps(
             layout,
             options,
@@ -1172,8 +1172,8 @@ def _live_e2e_materialize_test_install(live_options: LiveE2eOptions) -> bool:
     return live_options.materialize_test_install or live_options.profile in INSTALLER_BACKED_LIVE_E2E_PROFILES
 
 
-def _live_e2e_requires_startup_profiled_workspace_build(live_options: LiveE2eOptions) -> bool:
-    """Returns whether workspace-app live E2E needs the startup profiling compile flag."""
+def _live_e2e_requires_startup_diagnostics_workspace_build(live_options: LiveE2eOptions) -> bool:
+    """Returns whether workspace-app live E2E needs the startup diagnostics compile flag."""
 
     return not live_options.plan_only and live_options.startup_trace_mode == "required"
 

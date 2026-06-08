@@ -348,7 +348,7 @@ def _fast_live_options(certification_options: CertificationOptions) -> LiveE2eOp
             "shared-files-ui",
             "config-stability-ui",
             "shared-hash-ui",
-            "startup-profile",
+            "startup-diagnostics",
             "shared-directories-rest",
             "rest-api",
         ),

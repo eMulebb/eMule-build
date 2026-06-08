@@ -674,7 +674,7 @@ def build_libs(
 @click.option(
     "--diagnostics",
     is_flag=True,
-    help="Build the Release diagnostics executable with all release instrumentation flags enabled.",
+    help="Build the Release diagnostics executable with all release diagnostics flags enabled.",
 )
 def build_app(
     *,

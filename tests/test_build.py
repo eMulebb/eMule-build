@@ -66,7 +66,7 @@ def test_build_apps_honors_startup_profiling_env_override(
     assert "/p:EnableStartupDiagnostics=false" in captured["extra_properties"]
 
 
-def test_build_apps_honors_instrumentation_env_overrides(
+def test_build_apps_honors_diagnostics_env_overrides(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -87,7 +87,7 @@ def test_build_apps_honors_instrumentation_env_overrides(
     assert captured["cfg_binary_path"].name == "emulebb-diagnostics.exe"
 
 
-def test_build_apps_diagnostics_option_enables_all_release_instrumentation(
+def test_build_apps_diagnostics_option_enables_all_release_diagnostics(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -131,7 +131,7 @@ def test_build_apps_can_disable_packet_diagnostics_env_override(
     assert "/p:TargetName=emulebb-diagnostics" not in captured["extra_properties"]
 
 
-def test_build_apps_keeps_standard_name_without_full_instrumentation(
+def test_build_apps_keeps_standard_name_without_full_diagnostics(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
