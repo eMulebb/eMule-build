@@ -64,7 +64,7 @@ def fake_network_context(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(test_runs, "resolve_workspace_network_context", resolve)
 
 
-def test_live_e2e_rebuilds_workspace_app_with_startup_profiling_when_required(
+def test_live_e2e_rebuilds_workspace_app_with_startup_diagnostics_when_required(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

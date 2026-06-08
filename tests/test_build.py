@@ -42,7 +42,7 @@ def test_build_libs_clean_release_x64_removes_generated_dependency_outputs(
     assert [kind for _repo, kind in removed] == ["zlib", "mbedtls"]
 
 
-def test_build_apps_forwards_startup_profiling_option(
+def test_build_apps_forwards_startup_diagnostics_option(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -55,7 +55,7 @@ def test_build_apps_forwards_startup_profiling_option(
     assert "/p:EnableStartupDiagnostics=true" in captured["extra_properties"]
 
 
-def test_build_apps_honors_startup_profiling_env_override(
+def test_build_apps_honors_startup_diagnostics_env_override(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

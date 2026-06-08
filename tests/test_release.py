@@ -185,7 +185,7 @@ def test_package_release_requires_main_app_source_branch(
         release._assert_release_source_branch(app_variant)
 
 
-def test_package_build_disables_startup_profiling(
+def test_package_build_disables_startup_diagnostics(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -269,7 +269,7 @@ def test_diagnostics_package_build_enables_diagnostic_features(
     assert captured["step_name"] == "APP main diagnostics package binary"
 
 
-def test_release_package_rejects_startup_profiling_binary_marker(tmp_path: Path) -> None:
+def test_release_package_rejects_startup_diagnostics_binary_marker(tmp_path: Path) -> None:
     exe_path = tmp_path / "emulebb.exe"
     exe_path.write_bytes(_pe_payload(0x8664) + "emulebb-diagnostics-startup.trace.json".encode("utf-16le"))
 
@@ -277,7 +277,7 @@ def test_release_package_rejects_startup_profiling_binary_marker(tmp_path: Path)
         release._assert_startup_diagnostics_not_compiled(exe_path)
 
 
-def test_release_package_accepts_binary_without_startup_profiling_marker(tmp_path: Path) -> None:
+def test_release_package_accepts_binary_without_startup_diagnostics_marker(tmp_path: Path) -> None:
     exe_path = tmp_path / "emulebb.exe"
     exe_path.write_bytes(_pe_payload(0x8664) + b"regular release payload")
 
