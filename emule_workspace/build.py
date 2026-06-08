@@ -26,6 +26,7 @@ DIAGNOSTIC_INSTRUMENTATION_ENV_FLAGS = (
     ("EMULEBB_ENABLE_UPLOAD_SLOT_DIAGNOSTICS", "EnableUploadSlotDiagnostics"),
     ("EMULEBB_ENABLE_DOWNLOAD_SLOT_DIAGNOSTICS", "EnableDownloadSlotDiagnostics"),
     ("EMULEBB_ENABLE_BAD_PEER_DIAGNOSTICS", "EnableBadPeerDiagnostics"),
+    ("EMULEBB_ENABLE_KAD_DIAGNOSTICS", "EnableKadDiagnostics"),
 )
 
 

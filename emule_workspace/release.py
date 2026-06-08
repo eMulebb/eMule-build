@@ -50,6 +50,10 @@ BAD_PEER_DIAGNOSTICS_BINARY_MARKERS = (
     b"emulebb-diagnostics-bad-peer.log",
     "emulebb-diagnostics-bad-peer.log".encode("utf-16le"),
 )
+KAD_DIAGNOSTICS_BINARY_MARKERS = (
+    b"emulebb-diagnostics-kad.log",
+    "emulebb-diagnostics-kad.log".encode("utf-16le"),
+)
 AMUTORRENT_NODE_VERSION = "v24.15.0"
 AMUTORRENT_NODE_ARCHIVES = {
     "x64": (
@@ -144,6 +148,7 @@ class ReleasePackageFlavorSpec:
     enable_upload_slot_diagnostics: bool
     enable_download_slot_diagnostics: bool
     enable_bad_peer_diagnostics: bool
+    enable_kad_diagnostics: bool
     executable_name: str
     diagnostic_features: tuple[str, ...] = ()
 
@@ -157,6 +162,7 @@ RELEASE_PACKAGE_FLAVORS = (
         enable_upload_slot_diagnostics=False,
         enable_download_slot_diagnostics=False,
         enable_bad_peer_diagnostics=False,
+        enable_kad_diagnostics=False,
         executable_name=APP_EXE_NAME,
     ),
     ReleasePackageFlavorSpec(
@@ -167,10 +173,12 @@ RELEASE_PACKAGE_FLAVORS = (
         enable_upload_slot_diagnostics=True,
         enable_download_slot_diagnostics=True,
         enable_bad_peer_diagnostics=True,
+        enable_kad_diagnostics=True,
         executable_name=DIAGNOSTICS_APP_EXE_NAME,
         diagnostic_features=(
             "bad-peer-diagnostics",
             "download-slot-diagnostics",
+            "kad-diagnostics",
             "packet-diagnostics",
             "startup-diagnostics",
             "upload-slot-diagnostics",
@@ -977,6 +985,7 @@ def _build_package_app(
     extra_properties.append(
         f"/p:EnableBadPeerDiagnostics={'true' if flavor.enable_bad_peer_diagnostics else 'false'}"
     )
+    extra_properties.append(f"/p:EnableKadDiagnostics={'true' if flavor.enable_kad_diagnostics else 'false'}")
     if flavor.executable_name != APP_EXE_NAME:
         extra_properties.append(f"/p:TargetName={Path(flavor.executable_name).stem}")
     extra_properties.append(f"/p:OutDir={with_trailing_separator(package_app_output_root)}")
@@ -1747,6 +1756,14 @@ def _assert_release_binary_diagnostics(path: Path, flavor: ReleasePackageFlavorS
         description="bad-peer diagnostics support",
         enable_property="/p:EnableBadPeerDiagnostics=true",
         disable_property="/p:EnableBadPeerDiagnostics=false",
+    )
+    _assert_binary_marker_state(
+        path,
+        markers=KAD_DIAGNOSTICS_BINARY_MARKERS,
+        expected=flavor.enable_kad_diagnostics,
+        description="Kad diagnostics support",
+        enable_property="/p:EnableKadDiagnostics=true",
+        disable_property="/p:EnableKadDiagnostics=false",
     )
 
 

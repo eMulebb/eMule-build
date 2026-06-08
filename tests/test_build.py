@@ -74,6 +74,7 @@ def test_build_apps_honors_diagnostics_env_overrides(
     monkeypatch.setenv("EMULEBB_ENABLE_UPLOAD_SLOT_DIAGNOSTICS", "1")
     monkeypatch.setenv("EMULEBB_ENABLE_DOWNLOAD_SLOT_DIAGNOSTICS", "true")
     monkeypatch.setenv("EMULEBB_ENABLE_BAD_PEER_DIAGNOSTICS", "yes")
+    monkeypatch.setenv("EMULEBB_ENABLE_KAD_DIAGNOSTICS", "yes")
     monkeypatch.setenv("EMULEBB_ENABLE_PACKET_DIAGNOSTICS", "on")
 
     captured = capture_build_apps_msbuild_call(tmp_path, monkeypatch)
@@ -82,6 +83,7 @@ def test_build_apps_honors_diagnostics_env_overrides(
     assert "/p:EnableUploadSlotDiagnostics=true" in captured["extra_properties"]
     assert "/p:EnableDownloadSlotDiagnostics=true" in captured["extra_properties"]
     assert "/p:EnableBadPeerDiagnostics=true" in captured["extra_properties"]
+    assert "/p:EnableKadDiagnostics=true" in captured["extra_properties"]
     assert "/p:EnablePacketDiagnostics=true" in captured["extra_properties"]
     assert "/p:TargetName=emulebb-diagnostics" in captured["extra_properties"]
     assert captured["cfg_binary_path"].name == "emulebb-diagnostics.exe"
@@ -99,6 +101,7 @@ def test_build_apps_diagnostics_option_enables_all_release_diagnostics(
     assert "/p:EnableUploadSlotDiagnostics=true" in captured["extra_properties"]
     assert "/p:EnableDownloadSlotDiagnostics=true" in captured["extra_properties"]
     assert "/p:EnableBadPeerDiagnostics=true" in captured["extra_properties"]
+    assert "/p:EnableKadDiagnostics=true" in captured["extra_properties"]
     assert "/p:EnablePacketDiagnostics=true" in captured["extra_properties"]
     assert "/p:EnablePacketDiagnostics=false" not in captured["extra_properties"]
     assert "/p:TargetName=emulebb-diagnostics" in captured["extra_properties"]

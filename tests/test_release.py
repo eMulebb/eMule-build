@@ -229,6 +229,7 @@ def test_package_build_disables_startup_diagnostics(
     assert "/p:EnableUploadSlotDiagnostics=false" in captured["extra_properties"]
     assert "/p:EnableDownloadSlotDiagnostics=false" in captured["extra_properties"]
     assert "/p:EnableBadPeerDiagnostics=false" in captured["extra_properties"]
+    assert "/p:EnableKadDiagnostics=false" in captured["extra_properties"]
     assert f"/p:OutDir={release.with_trailing_separator(package_app_output_root)}" in captured["extra_properties"]
     assert f"/p:IntDir={release.with_trailing_separator(package_app_intermediate_root)}" in captured["extra_properties"]
     assert cfg_checks == [package_app_output_root / "emulebb.exe"]
@@ -265,6 +266,7 @@ def test_diagnostics_package_build_enables_diagnostic_features(
     assert "/p:EnableUploadSlotDiagnostics=true" in captured["extra_properties"]
     assert "/p:EnableDownloadSlotDiagnostics=true" in captured["extra_properties"]
     assert "/p:EnableBadPeerDiagnostics=true" in captured["extra_properties"]
+    assert "/p:EnableKadDiagnostics=true" in captured["extra_properties"]
     assert "/p:TargetName=emulebb-diagnostics" in captured["extra_properties"]
     assert captured["step_name"] == "APP main diagnostics package binary"
 
@@ -293,6 +295,7 @@ def test_release_package_validates_diagnostics_markers(tmp_path: Path) -> None:
         + "emulebb-diagnostics-upload-slot.log".encode("utf-16le")
         + "emulebb-diagnostics-download-slot.log".encode("utf-16le")
         + b"emulebb-diagnostics-bad-peer.log"
+        + "emulebb-diagnostics-kad.log".encode("utf-16le")
     )
 
     release._assert_release_binary_diagnostics(exe_path, release.RELEASE_PACKAGE_FLAVORS[1])
@@ -324,6 +327,14 @@ def test_standard_release_package_rejects_bad_peer_diagnostics_marker(tmp_path: 
     exe_path.write_bytes(_pe_payload(0x8664) + b"emulebb-diagnostics-bad-peer.log")
 
     with pytest.raises(RuntimeError, match="bad-peer diagnostics support"):
+        release._assert_release_binary_diagnostics(exe_path, release.RELEASE_PACKAGE_FLAVORS[0])
+
+
+def test_standard_release_package_rejects_kad_diagnostics_marker(tmp_path: Path) -> None:
+    exe_path = tmp_path / "emulebb.exe"
+    exe_path.write_bytes(_pe_payload(0x8664) + b"emulebb-diagnostics-kad.log")
+
+    with pytest.raises(RuntimeError, match="Kad diagnostics support"):
         release._assert_release_binary_diagnostics(exe_path, release.RELEASE_PACKAGE_FLAVORS[0])
 
 
@@ -362,6 +373,21 @@ def test_diagnostics_release_package_requires_bad_peer_diagnostics_marker(tmp_pa
     )
 
     with pytest.raises(RuntimeError, match="bad-peer diagnostics support"):
+        release._assert_release_binary_diagnostics(exe_path, release.RELEASE_PACKAGE_FLAVORS[1])
+
+
+def test_diagnostics_release_package_requires_kad_diagnostics_marker(tmp_path: Path) -> None:
+    exe_path = tmp_path / "emulebb.exe"
+    exe_path.write_bytes(
+        _pe_payload(0x8664)
+        + b"emulebb-diagnostics-packet.log"
+        + "emulebb-diagnostics-startup.trace.json".encode("utf-16le")
+        + b"emulebb-diagnostics-upload-slot.log"
+        + b"emulebb-diagnostics-download-slot.log"
+        + b"emulebb-diagnostics-bad-peer.log"
+    )
+
+    with pytest.raises(RuntimeError, match="Kad diagnostics support"):
         release._assert_release_binary_diagnostics(exe_path, release.RELEASE_PACKAGE_FLAVORS[1])
 
 
