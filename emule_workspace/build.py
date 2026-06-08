@@ -20,6 +20,13 @@ from .toolchain import get_cmake_path, get_dumpbin_path, get_perl_path
 
 APP_EXE_NAME = "emulebb.exe"
 DIAGNOSTICS_APP_EXE_NAME = "emulebb-diagnostics.exe"
+DIAGNOSTIC_INSTRUMENTATION_ENV_FLAGS = (
+    ("EMULEBB_ENABLE_STARTUP_DIAGNOSTICS", "EnableStartupDiagnostics"),
+    ("EMULEBB_ENABLE_PACKET_DIAGNOSTICS", "EnablePacketDiagnostics"),
+    ("EMULEBB_ENABLE_UPLOAD_SLOT_DIAGNOSTICS", "EnableUploadSlotDiagnostics"),
+    ("EMULEBB_ENABLE_DOWNLOAD_SLOT_DIAGNOSTICS", "EnableDownloadSlotDiagnostics"),
+    ("EMULEBB_ENABLE_BAD_PEER_DIAGNOSTICS", "EnableBadPeerDiagnostics"),
+)
 
 
 def package_app_exe_name(package_flavor: str = "standard") -> str:
@@ -36,6 +43,12 @@ def app_pdb_name_for_exe(executable_name: str) -> str:
     """Returns the PDB file name matching one executable name."""
 
     return Path(executable_name).with_suffix(".pdb").name
+
+
+def enabled_from_env_value(value: str) -> bool:
+    """Returns whether a workspace boolean environment override is enabled."""
+
+    return value.strip().lower() not in {"0", "false", "no", "off"}
 
 
 def build_libs(layout: WorkspaceLayout, options: WorkspaceOptions, *, clean: bool) -> None:
@@ -119,7 +132,7 @@ def build_apps(
     *,
     clean: bool,
     app_variant_names: tuple[str, ...],
-    enable_startup_profiling: bool | None = None,
+    enable_startup_diagnostics: bool | None = None,
 ) -> None:
     """Builds selected managed app variants."""
 
@@ -131,28 +144,24 @@ def build_apps(
         variants = selected_app_variants(layout, app_variant_names)
         for variant in variants:
             extra_properties = [*app_property_overrides(layout, options.platform)]
-            upload_slot_instrumentation = env_override("EMULEBB_ENABLE_UPLOAD_SLOT_INSTRUMENTATION")
-            if upload_slot_instrumentation:
-                enabled = upload_slot_instrumentation.strip().lower() not in {"0", "false", "no", "off"}
-                extra_properties.append(f"/p:EnableUploadSlotInstrumentation={'true' if enabled else 'false'}")
-            download_slot_instrumentation = env_override("EMULEBB_ENABLE_DOWNLOAD_SLOT_INSTRUMENTATION")
-            if download_slot_instrumentation:
-                enabled = download_slot_instrumentation.strip().lower() not in {"0", "false", "no", "off"}
-                extra_properties.append(f"/p:EnableDownloadSlotInstrumentation={'true' if enabled else 'false'}")
-            bad_peer_instrumentation = env_override("EMULEBB_ENABLE_BAD_PEER_INSTRUMENTATION")
-            if bad_peer_instrumentation:
-                enabled = bad_peer_instrumentation.strip().lower() not in {"0", "false", "no", "off"}
-                extra_properties.append(f"/p:EnableBadPeerInstrumentation={'true' if enabled else 'false'}")
-            packet_diagnostics = env_override("EMULEBB_ENABLE_PACKET_DIAGNOSTICS")
-            if packet_diagnostics:
-                enabled = packet_diagnostics.strip().lower() not in {"0", "false", "no", "off"}
-                extra_properties.append(f"/p:EnablePacketDiagnostics={'true' if enabled else 'false'}")
-            startup_profiling = env_override("EMULEBB_ENABLE_STARTUP_PROFILING")
-            if enable_startup_profiling is not None:
-                extra_properties.append(f"/p:EnableStartupProfiling={'true' if enable_startup_profiling else 'false'}")
-            elif startup_profiling:
-                enabled = startup_profiling.strip().lower() not in {"0", "false", "no", "off"}
-                extra_properties.append(f"/p:EnableStartupProfiling={'true' if enabled else 'false'}")
+            diagnostics_flags: dict[str, bool] = {}
+            for env_name, property_name in DIAGNOSTIC_INSTRUMENTATION_ENV_FLAGS:
+                value = env_override(env_name)
+                if env_name == "EMULEBB_ENABLE_STARTUP_DIAGNOSTICS" and enable_startup_diagnostics is not None:
+                    enabled = enable_startup_diagnostics
+                elif value:
+                    enabled = enabled_from_env_value(value)
+                else:
+                    continue
+                diagnostics_flags[property_name] = enabled
+                extra_properties.append(f"/p:{property_name}={'true' if enabled else 'false'}")
+            local_executable_name = APP_EXE_NAME
+            if options.configuration == "Release" and all(
+                diagnostics_flags.get(property_name, False)
+                for _env_name, property_name in DIAGNOSTIC_INSTRUMENTATION_ENV_FLAGS
+            ):
+                local_executable_name = DIAGNOSTICS_APP_EXE_NAME
+                extra_properties.append(f"/p:TargetName={Path(DIAGNOSTICS_APP_EXE_NAME).stem}")
             override = env_override(layout.toolset_override_variable)
             if override:
                 extra_properties.append(f"/p:PlatformToolset={override}")
@@ -166,7 +175,12 @@ def build_apps(
             if variant.name == "main":
                 verify_app_control_flow_guard(
                     session,
-                    binary_path=app_binary_path(variant.path, options.configuration, options.platform),
+                    binary_path=app_binary_path(
+                        variant.path,
+                        options.configuration,
+                        options.platform,
+                        executable_name=local_executable_name,
+                    ),
                     step_name=f"APP {variant.name} CFG",
                 )
     finally:
@@ -580,10 +594,10 @@ def verify_app_control_flow_guard(session: BuildSession, *, binary_path: Path, s
         raise
 
 
-def app_binary_path(app_root: Path, configuration: str, platform: str) -> Path:
+def app_binary_path(app_root: Path, configuration: str, platform: str, *, executable_name: str = APP_EXE_NAME) -> Path:
     """Returns the built eMuleBB executable path."""
 
-    return app_root / "srchybrid" / platform / configuration / APP_EXE_NAME
+    return app_root / "srchybrid" / platform / configuration / executable_name
 
 
 def mbedtls_project_path(layout: WorkspaceLayout) -> Path:

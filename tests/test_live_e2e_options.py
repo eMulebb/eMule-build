@@ -88,7 +88,7 @@ def test_live_e2e_rebuilds_workspace_app_with_startup_profiling_when_required(
 
     assert captured["clean"] is False
     assert captured["app_variant_names"] == ("main",)
-    assert captured["enable_startup_profiling"] is True
+    assert captured["enable_startup_diagnostics"] is True
     assert "--startup-trace-mode" in captured["command"]
 
 

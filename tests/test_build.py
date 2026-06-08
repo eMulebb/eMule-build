@@ -49,38 +49,42 @@ def test_build_apps_forwards_startup_profiling_option(
     captured = capture_build_apps_msbuild_call(
         tmp_path,
         monkeypatch,
-        enable_startup_profiling=True,
+        enable_startup_diagnostics=True,
     )
 
-    assert "/p:EnableStartupProfiling=true" in captured["extra_properties"]
+    assert "/p:EnableStartupDiagnostics=true" in captured["extra_properties"]
 
 
 def test_build_apps_honors_startup_profiling_env_override(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("EMULEBB_ENABLE_STARTUP_PROFILING", "off")
+    monkeypatch.setenv("EMULEBB_ENABLE_STARTUP_DIAGNOSTICS", "off")
 
     captured = capture_build_apps_msbuild_call(tmp_path, monkeypatch)
 
-    assert "/p:EnableStartupProfiling=false" in captured["extra_properties"]
+    assert "/p:EnableStartupDiagnostics=false" in captured["extra_properties"]
 
 
 def test_build_apps_honors_instrumentation_env_overrides(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("EMULEBB_ENABLE_UPLOAD_SLOT_INSTRUMENTATION", "1")
-    monkeypatch.setenv("EMULEBB_ENABLE_DOWNLOAD_SLOT_INSTRUMENTATION", "true")
-    monkeypatch.setenv("EMULEBB_ENABLE_BAD_PEER_INSTRUMENTATION", "yes")
+    monkeypatch.setenv("EMULEBB_ENABLE_STARTUP_DIAGNOSTICS", "1")
+    monkeypatch.setenv("EMULEBB_ENABLE_UPLOAD_SLOT_DIAGNOSTICS", "1")
+    monkeypatch.setenv("EMULEBB_ENABLE_DOWNLOAD_SLOT_DIAGNOSTICS", "true")
+    monkeypatch.setenv("EMULEBB_ENABLE_BAD_PEER_DIAGNOSTICS", "yes")
     monkeypatch.setenv("EMULEBB_ENABLE_PACKET_DIAGNOSTICS", "on")
 
     captured = capture_build_apps_msbuild_call(tmp_path, monkeypatch)
 
-    assert "/p:EnableUploadSlotInstrumentation=true" in captured["extra_properties"]
-    assert "/p:EnableDownloadSlotInstrumentation=true" in captured["extra_properties"]
-    assert "/p:EnableBadPeerInstrumentation=true" in captured["extra_properties"]
+    assert "/p:EnableStartupDiagnostics=true" in captured["extra_properties"]
+    assert "/p:EnableUploadSlotDiagnostics=true" in captured["extra_properties"]
+    assert "/p:EnableDownloadSlotDiagnostics=true" in captured["extra_properties"]
+    assert "/p:EnableBadPeerDiagnostics=true" in captured["extra_properties"]
     assert "/p:EnablePacketDiagnostics=true" in captured["extra_properties"]
+    assert "/p:TargetName=emulebb-diagnostics" in captured["extra_properties"]
+    assert captured["cfg_binary_path"].name == "emulebb-diagnostics.exe"
 
 
 def test_build_apps_can_disable_packet_diagnostics_env_override(
@@ -92,6 +96,20 @@ def test_build_apps_can_disable_packet_diagnostics_env_override(
     captured = capture_build_apps_msbuild_call(tmp_path, monkeypatch)
 
     assert "/p:EnablePacketDiagnostics=false" in captured["extra_properties"]
+    assert "/p:TargetName=emulebb-diagnostics" not in captured["extra_properties"]
+
+
+def test_build_apps_keeps_standard_name_without_full_instrumentation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("EMULEBB_ENABLE_STARTUP_DIAGNOSTICS", "1")
+    monkeypatch.setenv("EMULEBB_ENABLE_PACKET_DIAGNOSTICS", "on")
+
+    captured = capture_build_apps_msbuild_call(tmp_path, monkeypatch)
+
+    assert "/p:TargetName=emulebb-diagnostics" not in captured["extra_properties"]
+    assert captured["cfg_binary_path"].name == "emulebb.exe"
 
 
 def capture_build_libs_msbuild_calls(
@@ -139,14 +157,18 @@ def capture_build_apps_msbuild_call(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     *,
-    enable_startup_profiling: bool | None = None,
+    enable_startup_diagnostics: bool | None = None,
 ) -> dict[str, object]:
     layout = make_layout(tmp_path, app_variants=True)
     captured: dict[str, object] = {}
 
     monkeypatch.setattr(build, "assert_app_layout", lambda _layout: None)
     monkeypatch.setattr(build, "ensure_app_dependency_artifacts", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(build, "verify_app_control_flow_guard", lambda *_args, **_kwargs: None)
+
+    def fake_verify_app_control_flow_guard(*_args, **kwargs):
+        captured["cfg_binary_path"] = kwargs["binary_path"]
+
+    monkeypatch.setattr(build, "verify_app_control_flow_guard", fake_verify_app_control_flow_guard)
 
     def fake_invoke_msbuild_project(*_args, **kwargs):
         captured["project_path"] = kwargs["project_path"]
@@ -160,7 +182,7 @@ def capture_build_apps_msbuild_call(
         WorkspaceOptions(workspace_root=layout.emule_workspace_root, configuration="Release", platform="x64"),
         clean=False,
         app_variant_names=("main",),
-        enable_startup_profiling=enable_startup_profiling,
+        enable_startup_diagnostics=enable_startup_diagnostics,
     )
 
     return captured

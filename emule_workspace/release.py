@@ -30,25 +30,25 @@ from .layout import AppVariant, WorkspaceLayout
 from .msbuild import env_override, invoke_msbuild_project
 
 PE_MACHINES = {"x64": 0x8664, "ARM64": 0xAA64}
-STARTUP_PROFILING_BINARY_MARKERS = (
-    b"startup-profile.trace.json",
-    "startup-profile.trace.json".encode("utf-16le"),
+STARTUP_DIAGNOSTICS_BINARY_MARKERS = (
+    b"emulebb-diagnostics-startup.trace.json",
+    "emulebb-diagnostics-startup.trace.json".encode("utf-16le"),
 )
 PACKET_DIAGNOSTICS_BINARY_MARKERS = (
-    b"emulebb-packet-diagnostics.log",
-    "emulebb-packet-diagnostics.log".encode("utf-16le"),
+    b"emulebb-diagnostics-packet.log",
+    "emulebb-diagnostics-packet.log".encode("utf-16le"),
 )
-UPLOAD_SLOT_INSTRUMENTATION_BINARY_MARKERS = (
-    b"UploadSlotInstrumentation:",
-    "UploadSlotInstrumentation:".encode("utf-16le"),
+UPLOAD_SLOT_DIAGNOSTICS_BINARY_MARKERS = (
+    b"emulebb-diagnostics-upload-slot.log",
+    "emulebb-diagnostics-upload-slot.log".encode("utf-16le"),
 )
-DOWNLOAD_SLOT_INSTRUMENTATION_BINARY_MARKERS = (
-    b"DownloadSlotInstrumentation:",
-    "DownloadSlotInstrumentation:".encode("utf-16le"),
+DOWNLOAD_SLOT_DIAGNOSTICS_BINARY_MARKERS = (
+    b"emulebb-diagnostics-download-slot.log",
+    "emulebb-diagnostics-download-slot.log".encode("utf-16le"),
 )
-BAD_PEER_INSTRUMENTATION_BINARY_MARKERS = (
-    b"BadPeerInstrumentation:",
-    "BadPeerInstrumentation:".encode("utf-16le"),
+BAD_PEER_DIAGNOSTICS_BINARY_MARKERS = (
+    b"emulebb-diagnostics-bad-peer.log",
+    "emulebb-diagnostics-bad-peer.log".encode("utf-16le"),
 )
 AMUTORRENT_NODE_VERSION = "v24.15.0"
 AMUTORRENT_NODE_ARCHIVES = {
@@ -139,11 +139,11 @@ class ReleasePackageFlavorSpec:
 
     name: str
     asset_suffix: str
-    enable_startup_profiling: bool
+    enable_startup_diagnostics: bool
     enable_packet_diagnostics: bool
-    enable_upload_slot_instrumentation: bool
-    enable_download_slot_instrumentation: bool
-    enable_bad_peer_instrumentation: bool
+    enable_upload_slot_diagnostics: bool
+    enable_download_slot_diagnostics: bool
+    enable_bad_peer_diagnostics: bool
     executable_name: str
     diagnostic_features: tuple[str, ...] = ()
 
@@ -152,28 +152,28 @@ RELEASE_PACKAGE_FLAVORS = (
     ReleasePackageFlavorSpec(
         name="standard",
         asset_suffix="",
-        enable_startup_profiling=False,
+        enable_startup_diagnostics=False,
         enable_packet_diagnostics=False,
-        enable_upload_slot_instrumentation=False,
-        enable_download_slot_instrumentation=False,
-        enable_bad_peer_instrumentation=False,
+        enable_upload_slot_diagnostics=False,
+        enable_download_slot_diagnostics=False,
+        enable_bad_peer_diagnostics=False,
         executable_name=APP_EXE_NAME,
     ),
     ReleasePackageFlavorSpec(
         name="diagnostics",
         asset_suffix="-diagnostics",
-        enable_startup_profiling=True,
+        enable_startup_diagnostics=True,
         enable_packet_diagnostics=True,
-        enable_upload_slot_instrumentation=True,
-        enable_download_slot_instrumentation=True,
-        enable_bad_peer_instrumentation=True,
+        enable_upload_slot_diagnostics=True,
+        enable_download_slot_diagnostics=True,
+        enable_bad_peer_diagnostics=True,
         executable_name=DIAGNOSTICS_APP_EXE_NAME,
         diagnostic_features=(
-            "bad-peer-instrumentation",
-            "download-slot-instrumentation",
+            "bad-peer-diagnostics",
+            "download-slot-diagnostics",
             "packet-diagnostics",
-            "startup-profiling",
-            "upload-slot-instrumentation",
+            "startup-diagnostics",
+            "upload-slot-diagnostics",
         ),
     ),
 )
@@ -966,16 +966,16 @@ def _build_package_app(
     target = "Rebuild" if clean else "Build"
     ensure_app_dependency_artifacts(session.layout, session.options, clean=clean)
     extra_properties = [*app_property_overrides(session.layout, session.options.platform)]
-    extra_properties.append(f"/p:EnableStartupProfiling={'true' if flavor.enable_startup_profiling else 'false'}")
+    extra_properties.append(f"/p:EnableStartupDiagnostics={'true' if flavor.enable_startup_diagnostics else 'false'}")
     extra_properties.append(f"/p:EnablePacketDiagnostics={'true' if flavor.enable_packet_diagnostics else 'false'}")
     extra_properties.append(
-        f"/p:EnableUploadSlotInstrumentation={'true' if flavor.enable_upload_slot_instrumentation else 'false'}"
+        f"/p:EnableUploadSlotDiagnostics={'true' if flavor.enable_upload_slot_diagnostics else 'false'}"
     )
     extra_properties.append(
-        f"/p:EnableDownloadSlotInstrumentation={'true' if flavor.enable_download_slot_instrumentation else 'false'}"
+        f"/p:EnableDownloadSlotDiagnostics={'true' if flavor.enable_download_slot_diagnostics else 'false'}"
     )
     extra_properties.append(
-        f"/p:EnableBadPeerInstrumentation={'true' if flavor.enable_bad_peer_instrumentation else 'false'}"
+        f"/p:EnableBadPeerDiagnostics={'true' if flavor.enable_bad_peer_diagnostics else 'false'}"
     )
     if flavor.executable_name != APP_EXE_NAME:
         extra_properties.append(f"/p:TargetName={Path(flavor.executable_name).stem}")
@@ -1710,11 +1710,11 @@ def _assert_release_binary_diagnostics(path: Path, flavor: ReleasePackageFlavorS
 
     _assert_binary_marker_state(
         path,
-        markers=STARTUP_PROFILING_BINARY_MARKERS,
-        expected=flavor.enable_startup_profiling,
-        description="startup profiling support",
-        enable_property="/p:EnableStartupProfiling=true",
-        disable_property="/p:EnableStartupProfiling=false",
+        markers=STARTUP_DIAGNOSTICS_BINARY_MARKERS,
+        expected=flavor.enable_startup_diagnostics,
+        description="startup diagnostics support",
+        enable_property="/p:EnableStartupDiagnostics=true",
+        disable_property="/p:EnableStartupDiagnostics=false",
     )
     _assert_binary_marker_state(
         path,
@@ -1726,27 +1726,27 @@ def _assert_release_binary_diagnostics(path: Path, flavor: ReleasePackageFlavorS
     )
     _assert_binary_marker_state(
         path,
-        markers=UPLOAD_SLOT_INSTRUMENTATION_BINARY_MARKERS,
-        expected=flavor.enable_upload_slot_instrumentation,
-        description="upload slot instrumentation support",
-        enable_property="/p:EnableUploadSlotInstrumentation=true",
-        disable_property="/p:EnableUploadSlotInstrumentation=false",
+        markers=UPLOAD_SLOT_DIAGNOSTICS_BINARY_MARKERS,
+        expected=flavor.enable_upload_slot_diagnostics,
+        description="upload slot diagnostics support",
+        enable_property="/p:EnableUploadSlotDiagnostics=true",
+        disable_property="/p:EnableUploadSlotDiagnostics=false",
     )
     _assert_binary_marker_state(
         path,
-        markers=DOWNLOAD_SLOT_INSTRUMENTATION_BINARY_MARKERS,
-        expected=flavor.enable_download_slot_instrumentation,
-        description="download slot instrumentation support",
-        enable_property="/p:EnableDownloadSlotInstrumentation=true",
-        disable_property="/p:EnableDownloadSlotInstrumentation=false",
+        markers=DOWNLOAD_SLOT_DIAGNOSTICS_BINARY_MARKERS,
+        expected=flavor.enable_download_slot_diagnostics,
+        description="download slot diagnostics support",
+        enable_property="/p:EnableDownloadSlotDiagnostics=true",
+        disable_property="/p:EnableDownloadSlotDiagnostics=false",
     )
     _assert_binary_marker_state(
         path,
-        markers=BAD_PEER_INSTRUMENTATION_BINARY_MARKERS,
-        expected=flavor.enable_bad_peer_instrumentation,
-        description="bad-peer instrumentation support",
-        enable_property="/p:EnableBadPeerInstrumentation=true",
-        disable_property="/p:EnableBadPeerInstrumentation=false",
+        markers=BAD_PEER_DIAGNOSTICS_BINARY_MARKERS,
+        expected=flavor.enable_bad_peer_diagnostics,
+        description="bad-peer diagnostics support",
+        enable_property="/p:EnableBadPeerDiagnostics=true",
+        disable_property="/p:EnableBadPeerDiagnostics=false",
     )
 
 
@@ -1775,16 +1775,16 @@ def _assert_binary_marker_state(
         )
 
 
-def _assert_startup_profiling_not_compiled(path: Path) -> None:
-    """Rejects standard release package binaries that still include startup profiling support."""
+def _assert_startup_diagnostics_not_compiled(path: Path) -> None:
+    """Rejects standard release package binaries that still include startup diagnostics support."""
 
     _assert_binary_marker_state(
         path,
-        markers=STARTUP_PROFILING_BINARY_MARKERS,
+        markers=STARTUP_DIAGNOSTICS_BINARY_MARKERS,
         expected=False,
-        description="startup profiling support",
-        enable_property="/p:EnableStartupProfiling=true",
-        disable_property="/p:EnableStartupProfiling=false",
+        description="startup diagnostics support",
+        enable_property="/p:EnableStartupDiagnostics=true",
+        disable_property="/p:EnableStartupDiagnostics=false",
     )
 
 

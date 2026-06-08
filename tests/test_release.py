@@ -224,11 +224,11 @@ def test_package_build_disables_startup_profiling(
     assert captured["project_path"] == app_root / "srchybrid" / "emule.vcxproj"
     assert captured["target"] == "Rebuild"
     assert "/p:DependencyRoot=test" in captured["extra_properties"]
-    assert "/p:EnableStartupProfiling=false" in captured["extra_properties"]
+    assert "/p:EnableStartupDiagnostics=false" in captured["extra_properties"]
     assert "/p:EnablePacketDiagnostics=false" in captured["extra_properties"]
-    assert "/p:EnableUploadSlotInstrumentation=false" in captured["extra_properties"]
-    assert "/p:EnableDownloadSlotInstrumentation=false" in captured["extra_properties"]
-    assert "/p:EnableBadPeerInstrumentation=false" in captured["extra_properties"]
+    assert "/p:EnableUploadSlotDiagnostics=false" in captured["extra_properties"]
+    assert "/p:EnableDownloadSlotDiagnostics=false" in captured["extra_properties"]
+    assert "/p:EnableBadPeerDiagnostics=false" in captured["extra_properties"]
     assert f"/p:OutDir={release.with_trailing_separator(package_app_output_root)}" in captured["extra_properties"]
     assert f"/p:IntDir={release.with_trailing_separator(package_app_intermediate_root)}" in captured["extra_properties"]
     assert cfg_checks == [package_app_output_root / "emulebb.exe"]
@@ -260,39 +260,39 @@ def test_diagnostics_package_build_enables_diagnostic_features(
         clean=False,
     )
 
-    assert "/p:EnableStartupProfiling=true" in captured["extra_properties"]
+    assert "/p:EnableStartupDiagnostics=true" in captured["extra_properties"]
     assert "/p:EnablePacketDiagnostics=true" in captured["extra_properties"]
-    assert "/p:EnableUploadSlotInstrumentation=true" in captured["extra_properties"]
-    assert "/p:EnableDownloadSlotInstrumentation=true" in captured["extra_properties"]
-    assert "/p:EnableBadPeerInstrumentation=true" in captured["extra_properties"]
+    assert "/p:EnableUploadSlotDiagnostics=true" in captured["extra_properties"]
+    assert "/p:EnableDownloadSlotDiagnostics=true" in captured["extra_properties"]
+    assert "/p:EnableBadPeerDiagnostics=true" in captured["extra_properties"]
     assert "/p:TargetName=emulebb-diagnostics" in captured["extra_properties"]
     assert captured["step_name"] == "APP main diagnostics package binary"
 
 
 def test_release_package_rejects_startup_profiling_binary_marker(tmp_path: Path) -> None:
     exe_path = tmp_path / "emulebb.exe"
-    exe_path.write_bytes(_pe_payload(0x8664) + "startup-profile.trace.json".encode("utf-16le"))
+    exe_path.write_bytes(_pe_payload(0x8664) + "emulebb-diagnostics-startup.trace.json".encode("utf-16le"))
 
-    with pytest.raises(RuntimeError, match="startup profiling support"):
-        release._assert_startup_profiling_not_compiled(exe_path)
+    with pytest.raises(RuntimeError, match="startup diagnostics support"):
+        release._assert_startup_diagnostics_not_compiled(exe_path)
 
 
 def test_release_package_accepts_binary_without_startup_profiling_marker(tmp_path: Path) -> None:
     exe_path = tmp_path / "emulebb.exe"
     exe_path.write_bytes(_pe_payload(0x8664) + b"regular release payload")
 
-    release._assert_startup_profiling_not_compiled(exe_path)
+    release._assert_startup_diagnostics_not_compiled(exe_path)
 
 
 def test_release_package_validates_diagnostics_markers(tmp_path: Path) -> None:
     exe_path = tmp_path / "emulebb.exe"
     exe_path.write_bytes(
         _pe_payload(0x8664)
-        + "startup-profile.trace.json".encode("utf-16le")
-        + b"emulebb-packet-diagnostics.log"
-        + "UploadSlotInstrumentation:".encode("utf-16le")
-        + "DownloadSlotInstrumentation:".encode("utf-16le")
-        + b"BadPeerInstrumentation:"
+        + "emulebb-diagnostics-startup.trace.json".encode("utf-16le")
+        + b"emulebb-diagnostics-packet.log"
+        + "emulebb-diagnostics-upload-slot.log".encode("utf-16le")
+        + "emulebb-diagnostics-download-slot.log".encode("utf-16le")
+        + b"emulebb-diagnostics-bad-peer.log"
     )
 
     release._assert_release_binary_diagnostics(exe_path, release.RELEASE_PACKAGE_FLAVORS[1])
@@ -300,68 +300,68 @@ def test_release_package_validates_diagnostics_markers(tmp_path: Path) -> None:
 
 def test_standard_release_package_rejects_packet_diagnostics_marker(tmp_path: Path) -> None:
     exe_path = tmp_path / "emulebb.exe"
-    exe_path.write_bytes(_pe_payload(0x8664) + b"emulebb-packet-diagnostics.log")
+    exe_path.write_bytes(_pe_payload(0x8664) + b"emulebb-diagnostics-packet.log")
 
     with pytest.raises(RuntimeError, match="packet diagnostics support"):
         release._assert_release_binary_diagnostics(exe_path, release.RELEASE_PACKAGE_FLAVORS[0])
 
 
-def test_standard_release_package_rejects_slot_instrumentation_markers(tmp_path: Path) -> None:
+def test_standard_release_package_rejects_slot_diagnostics_markers(tmp_path: Path) -> None:
     exe_path = tmp_path / "emulebb.exe"
-    exe_path.write_bytes(_pe_payload(0x8664) + b"UploadSlotInstrumentation:")
+    exe_path.write_bytes(_pe_payload(0x8664) + b"emulebb-diagnostics-upload-slot.log")
 
-    with pytest.raises(RuntimeError, match="upload slot instrumentation support"):
+    with pytest.raises(RuntimeError, match="upload slot diagnostics support"):
         release._assert_release_binary_diagnostics(exe_path, release.RELEASE_PACKAGE_FLAVORS[0])
 
-    exe_path.write_bytes(_pe_payload(0x8664) + b"DownloadSlotInstrumentation:")
+    exe_path.write_bytes(_pe_payload(0x8664) + b"emulebb-diagnostics-download-slot.log")
 
-    with pytest.raises(RuntimeError, match="download slot instrumentation support"):
+    with pytest.raises(RuntimeError, match="download slot diagnostics support"):
         release._assert_release_binary_diagnostics(exe_path, release.RELEASE_PACKAGE_FLAVORS[0])
 
 
-def test_standard_release_package_rejects_bad_peer_instrumentation_marker(tmp_path: Path) -> None:
+def test_standard_release_package_rejects_bad_peer_diagnostics_marker(tmp_path: Path) -> None:
     exe_path = tmp_path / "emulebb.exe"
-    exe_path.write_bytes(_pe_payload(0x8664) + b"BadPeerInstrumentation:")
+    exe_path.write_bytes(_pe_payload(0x8664) + b"emulebb-diagnostics-bad-peer.log")
 
-    with pytest.raises(RuntimeError, match="bad-peer instrumentation support"):
+    with pytest.raises(RuntimeError, match="bad-peer diagnostics support"):
         release._assert_release_binary_diagnostics(exe_path, release.RELEASE_PACKAGE_FLAVORS[0])
 
 
-def test_diagnostics_release_package_requires_slot_instrumentation_markers(tmp_path: Path) -> None:
+def test_diagnostics_release_package_requires_slot_diagnostics_markers(tmp_path: Path) -> None:
     exe_path = tmp_path / "emulebb.exe"
     exe_path.write_bytes(
         _pe_payload(0x8664)
-        + b"emulebb-packet-diagnostics.log"
-        + "startup-profile.trace.json".encode("utf-16le")
-        + b"BadPeerInstrumentation:"
+        + b"emulebb-diagnostics-packet.log"
+        + "emulebb-diagnostics-startup.trace.json".encode("utf-16le")
+        + b"emulebb-diagnostics-bad-peer.log"
     )
 
-    with pytest.raises(RuntimeError, match="upload slot instrumentation support"):
+    with pytest.raises(RuntimeError, match="upload slot diagnostics support"):
         release._assert_release_binary_diagnostics(exe_path, release.RELEASE_PACKAGE_FLAVORS[1])
 
     exe_path.write_bytes(
         _pe_payload(0x8664)
-        + b"emulebb-packet-diagnostics.log"
-        + "startup-profile.trace.json".encode("utf-16le")
-        + b"UploadSlotInstrumentation:"
-        + b"BadPeerInstrumentation:"
+        + b"emulebb-diagnostics-packet.log"
+        + "emulebb-diagnostics-startup.trace.json".encode("utf-16le")
+        + b"emulebb-diagnostics-upload-slot.log"
+        + b"emulebb-diagnostics-bad-peer.log"
     )
 
-    with pytest.raises(RuntimeError, match="download slot instrumentation support"):
+    with pytest.raises(RuntimeError, match="download slot diagnostics support"):
         release._assert_release_binary_diagnostics(exe_path, release.RELEASE_PACKAGE_FLAVORS[1])
 
 
-def test_diagnostics_release_package_requires_bad_peer_instrumentation_marker(tmp_path: Path) -> None:
+def test_diagnostics_release_package_requires_bad_peer_diagnostics_marker(tmp_path: Path) -> None:
     exe_path = tmp_path / "emulebb.exe"
     exe_path.write_bytes(
         _pe_payload(0x8664)
-        + b"emulebb-packet-diagnostics.log"
-        + "startup-profile.trace.json".encode("utf-16le")
-        + b"UploadSlotInstrumentation:"
-        + b"DownloadSlotInstrumentation:"
+        + b"emulebb-diagnostics-packet.log"
+        + "emulebb-diagnostics-startup.trace.json".encode("utf-16le")
+        + b"emulebb-diagnostics-upload-slot.log"
+        + b"emulebb-diagnostics-download-slot.log"
     )
 
-    with pytest.raises(RuntimeError, match="bad-peer instrumentation support"):
+    with pytest.raises(RuntimeError, match="bad-peer diagnostics support"):
         release._assert_release_binary_diagnostics(exe_path, release.RELEASE_PACKAGE_FLAVORS[1])
 
 

@@ -363,7 +363,7 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
             options,
             clean=False,
             app_variant_names=(layout.test_targets.test_run_variant,),
-            enable_startup_profiling=True,
+            enable_startup_diagnostics=True,
         )
     if live_options.live_process_monitor_profile_dir:
         live_process_monitor_profile_dir = Path(
