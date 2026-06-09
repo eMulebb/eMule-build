@@ -533,6 +533,11 @@ def _build_output_candidates(layout: WorkspaceLayout) -> list[CleanupCandidate]:
     package_build = _output_root(layout) / "packages" / "build"
     if package_build.is_dir():
         candidates.append(_directory_candidate(package_build, "build-output", "release package app build output"))
+    output_builds = _output_root(layout) / "builds"
+    if output_builds.is_dir():
+        for child in sorted(output_builds.iterdir()):
+            if child.is_dir():
+                candidates.append(_directory_candidate(child, "build-output", "canonical workspace build output"))
     candidates.extend(_third_party_dependency_build_candidates(layout))
     third_party_builds = getattr(layout, "output_third_party_build_root", None)
     if isinstance(third_party_builds, Path) and third_party_builds.is_dir():

@@ -53,6 +53,8 @@ def test_package_build_outputs_are_explicit_build_output_cleanup(tmp_path: Path)
     layout = make_layout(tmp_path)
     package_build_output = write_file(layout.output_root / "packages" / "build" / "emulebb-v0.7.3-rc.2" / "x64" / "app" / "emulebb.exe", 10)
     canonical_third_party_output = write_file(layout.output_root / "builds" / "third_party" / "emulebb-zlib" / "x64" / "Release" / "zlib.lib", 10)
+    amule_output = write_file(layout.output_root / "builds" / "amule" / "windows-x64" / "src" / "amuled.exe", 10)
+    native_test_output = write_file(layout.output_root / "builds" / "tests" / "tag" / "x64" / "Release" / "bin" / "emule-tests.exe", 10)
 
     routine_candidates = plan_cleanup(layout, CleanupOptions())
     build_candidates = plan_cleanup(layout, CleanupOptions(include_build_outputs=True))
@@ -60,6 +62,8 @@ def test_package_build_outputs_are_explicit_build_output_cleanup(tmp_path: Path)
     assert package_build_output.parents[3] not in {candidate.path for candidate in routine_candidates}
     assert package_build_output.parents[3] in {candidate.path for candidate in build_candidates}
     assert canonical_third_party_output.parents[3] in {candidate.path for candidate in build_candidates}
+    assert amule_output.parents[2] in {candidate.path for candidate in build_candidates}
+    assert native_test_output.parents[4] in {candidate.path for candidate in build_candidates}
 
 
 def test_third_party_dependency_outputs_are_explicit_build_output_cleanup(tmp_path: Path) -> None:
