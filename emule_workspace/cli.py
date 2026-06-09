@@ -40,6 +40,7 @@ from .config import (
     ReleaseCampaignOptions,
     VariantComparisonOptions,
     WorkspaceOptions,
+    resolve_required_workspace_roots,
     resolve_workspace_options,
 )
 from .campaign_scenario_runner import invoke_campaign_scenario
@@ -96,7 +97,6 @@ BASELINE_VARIANT_HELP = f"{APP_VARIANT_HELP} Defaults to the workspace baseline 
 
 
 def _common_options(function: F) -> F:
-    @click.option("--workspace-root", envvar="EMULEBB_WORKSPACE_ROOT", help="Canonical EMULEBB_WORKSPACE_ROOT.")
     @click.option("--workspace-name", default=None, help="Workspace name. Defaults to build manifest value.")
     @click.option("--config", "configuration", type=click.Choice(["Debug", "Release"]), default="Release", show_default=True)
     @click.option("--platform", type=click.Choice(["x64", "ARM64"]), default="x64", show_default=True)
@@ -110,7 +110,6 @@ def _common_options(function: F) -> F:
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         try:
             workspace_options = resolve_workspace_options(
-                workspace_root=kwargs.pop("workspace_root"),
                 workspace_name=kwargs.pop("workspace_name"),
                 configuration=kwargs.pop("configuration"),
                 platform=kwargs.pop("platform"),
@@ -350,15 +349,15 @@ def main() -> None:
 
 
 @main.command()
-@click.option("--workspace-root", default=None, help="Canonical EMULEBB_WORKSPACE_ROOT. Defaults from repos/emulebb-build layout.")
 @click.option("--workspace-name", default=None, help="Workspace name. Defaults to canonical topology.")
 @click.option("--artifacts-seed-root", default=None, help="Optional third-party artifact seed root.")
-def materialize(*, workspace_root: str | None, workspace_name: str | None, artifacts_seed_root: str | None) -> None:
+def materialize(*, workspace_name: str | None, artifacts_seed_root: str | None) -> None:
     """Materialize a new canonical workspace around this emulebb-build clone."""
 
     try:
+        workspace_root, _output_root = resolve_required_workspace_roots()
         materialize_workspace(
-            workspace_root=workspace_root,
+            workspace_root=str(workspace_root),
             workspace_name=workspace_name,
             artifacts_seed_root=artifacts_seed_root,
         )
@@ -367,15 +366,15 @@ def materialize(*, workspace_root: str | None, workspace_name: str | None, artif
 
 
 @main.command()
-@click.option("--workspace-root", envvar="EMULEBB_WORKSPACE_ROOT", default=None, help="Canonical EMULEBB_WORKSPACE_ROOT.")
 @click.option("--workspace-name", default=None, help="Workspace name. Defaults to canonical topology.")
 @click.option("--artifacts-seed-root", default=None, help="Optional third-party artifact seed root.")
-def sync(*, workspace_root: str | None, workspace_name: str | None, artifacts_seed_root: str | None) -> None:
+def sync(*, workspace_name: str | None, artifacts_seed_root: str | None) -> None:
     """Synchronize setup-owned workspace state."""
 
     try:
+        workspace_root, _output_root = resolve_required_workspace_roots()
         sync_workspace(
-            workspace_root=workspace_root,
+            workspace_root=str(workspace_root),
             workspace_name=workspace_name,
             artifacts_seed_root=artifacts_seed_root,
         )
@@ -570,36 +569,36 @@ def workspace_status(*, workspace_options: WorkspaceOptions, layout) -> None:
 
 
 @main.command("status")
-@click.option("--workspace-root", envvar="EMULEBB_WORKSPACE_ROOT", default=None, help="Canonical EMULEBB_WORKSPACE_ROOT.")
-def materialization_status(*, workspace_root: str | None) -> None:
+def materialization_status() -> None:
     """Report setup-managed repository status."""
 
     try:
-        write_materialization_status(workspace_root=workspace_root)
+        workspace_root, _output_root = resolve_required_workspace_roots()
+        write_materialization_status(workspace_root=str(workspace_root))
     except Exception as exc:
         raise click.ClickException(str(exc)) from exc
 
 
 @main.command("dep-updates")
-@click.option("--workspace-root", envvar="EMULEBB_WORKSPACE_ROOT", default=None, help="Canonical EMULEBB_WORKSPACE_ROOT.")
 @click.option("--workspace-name", default=None, help="Workspace name. Defaults to canonical topology.")
-def dep_updates(*, workspace_root: str | None, workspace_name: str | None) -> None:
+def dep_updates(*, workspace_name: str | None) -> None:
     """Report advisory third-party dependency updates."""
 
     try:
-        write_dependency_update_report(workspace_root=workspace_root, workspace_name=workspace_name)
+        workspace_root, _output_root = resolve_required_workspace_roots()
+        write_dependency_update_report(workspace_root=str(workspace_root), workspace_name=workspace_name)
     except Exception as exc:
         raise click.ClickException(str(exc)) from exc
 
 
 @main.command("compare")
 @click.argument("preset_key", required=False)
-@click.option("--workspace-root", envvar="EMULEBB_WORKSPACE_ROOT", default=None, help="Canonical EMULEBB_WORKSPACE_ROOT.")
-def compare_command(*, preset_key: str | None, workspace_root: str | None) -> None:
+def compare_command(*, preset_key: str | None) -> None:
     """Show or launch WinMerge comparison presets."""
 
     try:
-        run_compare(preset_key=preset_key, workspace_root=workspace_root)
+        workspace_root, _output_root = resolve_required_workspace_roots()
+        run_compare(preset_key=preset_key, workspace_root=str(workspace_root))
     except Exception as exc:
         raise click.ClickException(str(exc)) from exc
 

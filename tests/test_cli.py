@@ -10,10 +10,27 @@ from emule_workspace import cli
 def test_cli_requires_workspace_root() -> None:
     runner = CliRunner()
 
-    result = runner.invoke(cli.main, ["env-check"], env={"EMULEBB_WORKSPACE_ROOT": ""})
+    result = runner.invoke(
+        cli.main,
+        ["env-check"],
+        env={"EMULEBB_WORKSPACE_ROOT": "", "EMULEBB_WORKSPACE_OUTPUT_ROOT": ""},
+    )
 
     assert result.exit_code != 0
-    assert "EMULEBB_WORKSPACE_ROOT or --workspace-root is required" in result.output
+    assert "EMULEBB_WORKSPACE_ROOT is required" in result.output
+
+
+def test_cli_requires_workspace_output_root(tmp_path: Path) -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli.main,
+        ["env-check"],
+        env={"EMULEBB_WORKSPACE_ROOT": str(tmp_path), "EMULEBB_WORKSPACE_OUTPUT_ROOT": ""},
+    )
+
+    assert result.exit_code != 0
+    assert "EMULEBB_WORKSPACE_OUTPUT_ROOT is required" in result.output
 
 
 def test_build_tests_help_exposes_clean_architecture_command() -> None:
@@ -64,8 +81,6 @@ def test_build_app_diagnostics_flag_is_forwarded(tmp_path: Path, monkeypatch) ->
         [
             "build",
             "app",
-            "--workspace-root",
-            str(tmp_path),
             "--variant",
             "main",
             "--diagnostics",
@@ -110,8 +125,6 @@ def test_analyze_diagnostic_logs_command_delegates_to_tests_repo(tmp_path: Path,
         cli.main,
         [
             "analyze-diagnostic-logs",
-            "--workspace-root",
-            str(tmp_path),
             "--logs-dir",
             str(logs_dir),
             "--window-minutes",
@@ -222,8 +235,6 @@ def test_live_e2e_command_defaults_model_options(tmp_path: Path, monkeypatch) ->
         [
             "test",
             "live-e2e",
-            "--workspace-root",
-            str(tmp_path),
             "--suite",
             "command-line-smoke",
         ],
@@ -259,8 +270,6 @@ def test_live_e2e_command_accepts_plan_only(tmp_path: Path, monkeypatch) -> None
         [
             "test",
             "live-e2e",
-            "--workspace-root",
-            str(tmp_path),
             "--suite",
             "command-line-smoke",
             "--plan-only",
@@ -584,7 +593,8 @@ def test_sync_help_exposes_bootstrap_options() -> None:
     result = runner.invoke(cli.main, ["sync", "--help"])
 
     assert result.exit_code == 0
-    assert "--workspace-root" in result.output
+    assert "--artifacts-seed-root" in result.output
+    assert "--workspace-root" not in result.output
 
 
 def test_setup_status_help_is_available() -> None:
@@ -617,7 +627,14 @@ def test_compare_help_is_available() -> None:
 def test_sync_rejects_workspace_root_outside_current_build_clone(tmp_path: Path) -> None:
     runner = CliRunner()
 
-    result = runner.invoke(cli.main, ["sync", "--workspace-root", str(tmp_path)])
+    result = runner.invoke(
+        cli.main,
+        ["sync"],
+        env={
+            "EMULEBB_WORKSPACE_ROOT": str(tmp_path),
+            "EMULEBB_WORKSPACE_OUTPUT_ROOT": str(tmp_path.parent / "emulebb-output"),
+        },
+    )
 
     assert result.exit_code != 0
     assert "repos\\emulebb-build" in result.output

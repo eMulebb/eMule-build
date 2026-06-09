@@ -16,6 +16,8 @@ BuildOutputMode = Literal["Full", "Warnings", "ErrorsOnly"]
 PackageFlavor = Literal["standard", "diagnostics"]
 ClientBuildTarget = Literal["amule"]
 ACTIVE_EMULEBB_RELEASE_VERSION = "0.7.3-rc.2"
+WORKSPACE_ROOT_ENV = "EMULEBB_WORKSPACE_ROOT"
+WORKSPACE_OUTPUT_ROOT_ENV = "EMULEBB_WORKSPACE_OUTPUT_ROOT"
 LiveE2eProfile = Literal[
     "default",
     "multi-client-p2p",
@@ -463,7 +465,6 @@ class CleanupOptions(BaseModel):
 
 def resolve_workspace_options(
     *,
-    workspace_root: str | None,
     workspace_name: str | None,
     configuration: str,
     platform: str,
@@ -471,13 +472,34 @@ def resolve_workspace_options(
 ) -> WorkspaceOptions:
     """Builds common workspace options from Click values and environment."""
 
-    resolved_root = workspace_root or os.environ.get("EMULEBB_WORKSPACE_ROOT")
-    if not resolved_root:
-        raise ValueError("EMULEBB_WORKSPACE_ROOT or --workspace-root is required.")
+    resolved_root, _output_root = resolve_required_workspace_roots()
     return WorkspaceOptions(
-        workspace_root=Path(resolved_root),
+        workspace_root=resolved_root,
         workspace_name=workspace_name or "workspace",
         configuration=configuration,
         platform=platform,
         build_output_mode=build_output_mode,
     )
+
+
+def resolve_required_workspace_roots() -> tuple[Path, Path]:
+    """Resolves and validates the mandatory workspace and output roots."""
+
+    workspace_root_value = os.environ.get(WORKSPACE_ROOT_ENV, "").strip()
+    output_root_value = os.environ.get(WORKSPACE_OUTPUT_ROOT_ENV, "").strip()
+    if not workspace_root_value:
+        raise ValueError(f"{WORKSPACE_ROOT_ENV} is required.")
+    if not output_root_value:
+        raise ValueError(f"{WORKSPACE_OUTPUT_ROOT_ENV} is required.")
+
+    workspace_root = Path(workspace_root_value).expanduser().resolve()
+    output_root = Path(output_root_value).expanduser().resolve()
+    if _path_is_relative_to(output_root, workspace_root):
+        raise ValueError(f"{WORKSPACE_OUTPUT_ROOT_ENV} must be outside {WORKSPACE_ROOT_ENV}: {output_root}")
+    return workspace_root, output_root
+
+
+def _path_is_relative_to(path: Path, root: Path) -> bool:
+    path_text = str(path.resolve()).casefold().rstrip("\\/")
+    root_text = str(root.resolve()).casefold().rstrip("\\/")
+    return path_text == root_text or path_text.startswith(root_text + "\\") or path_text.startswith(root_text + "/")
