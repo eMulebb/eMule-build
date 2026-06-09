@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .artifact_audit import audit_workspace_artifacts, print_artifact_audit
 from .git import git_output, repo_branch, repo_status_lines, test_app_branch_allowed
 from .layout import WorkspaceLayout
 from .materialize import ROOT_AGENTS_CONTENT
@@ -177,6 +178,15 @@ def assert_required_test_helpers(layout: WorkspaceLayout) -> None:
             raise RuntimeError(f"Missing required test helper: {path}")
 
 
+def assert_no_workspace_generated_artifacts(layout: WorkspaceLayout) -> None:
+    """Fails when generated outputs are present under repos or workspaces."""
+
+    findings = audit_workspace_artifacts(layout)
+    print_artifact_audit(layout, findings)
+    if findings:
+        raise RuntimeError("Generated artifacts found under repos or workspaces. Move them under EMULEBB_WORKSPACE_OUTPUT_ROOT.")
+
+
 def ensure_canonical_app_anchor(layout: WorkspaceLayout) -> None:
     """Ensures the canonical app anchor is clean and detached at origin/main."""
 
@@ -244,6 +254,7 @@ def validate_workspace(
     ensure_canonical_app_anchor(layout)
     run_policy_audits(layout)
     assert_required_test_helpers(layout)
+    assert_no_workspace_generated_artifacts(layout)
     if include_product_family:
         validate_product_family_repos(layout, tier=product_family_tier)
     print("Workspace validation passed.")

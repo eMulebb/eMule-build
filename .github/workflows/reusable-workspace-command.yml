@@ -175,6 +175,15 @@ jobs:
           $env:PYTHONPATH = Join-Path $env:EMULEBB_WORKSPACE_ROOT "repos\emulebb-build"
           ${{ inputs.command }}
 
+      - name: Audit workspace artifacts
+        shell: pwsh
+        working-directory: repos/emulebb-build
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          $env:PYTHONPATH = Join-Path $env:EMULEBB_WORKSPACE_ROOT "repos\emulebb-build"
+          python -m emule_workspace audit-artifacts
+
       - name: Upload failure artifacts
         if: ${{ failure() && inputs.failure_artifact_name != '' && inputs.failure_artifact_path != '' }}
         uses: actions/upload-artifact@v4

@@ -43,6 +43,7 @@ def test_reusable_workspace_command_owns_materialized_ci_setup() -> None:
     assert "EMULEBB_WORKSPACE_ROOT: ${{ github.workspace }}" in text
     assert r"EMULEBB_WORKSPACE_OUTPUT_ROOT: ${{ runner.temp }}\emulebb-output" in text
     assert "python -m emule_workspace materialize" in text
+    assert "python -m emule_workspace audit-artifacts" in text
     assert "materialize --workspace-root" not in text
     assert (
         "python -m pip install \"click>=8.1\" \"pydantic>=2.0\" \"jinja2>=3\" "

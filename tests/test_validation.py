@@ -153,6 +153,23 @@ def test_required_workspace_paths_include_topology_managed_repos(
         validation.assert_required_workspace_paths(layout)
 
 
+def test_validation_artifact_audit_accepts_clean_workspace(tmp_path: Path) -> None:
+    (tmp_path / "repos" / "amutorrent" / "server").mkdir(parents=True)
+    layout = SimpleNamespace(emule_workspace_root=tmp_path)
+
+    validation.assert_no_workspace_generated_artifacts(layout)
+
+
+def test_validation_artifact_audit_rejects_repo_local_generated_outputs(tmp_path: Path) -> None:
+    generated_file = tmp_path / "repos" / "amutorrent" / "server" / "node_modules" / "express" / "package.json"
+    generated_file.parent.mkdir(parents=True)
+    generated_file.write_text("{}\n", encoding="utf-8")
+    layout = SimpleNamespace(emule_workspace_root=tmp_path)
+
+    with pytest.raises(RuntimeError, match="EMULEBB_WORKSPACE_OUTPUT_ROOT"):
+        validation.assert_no_workspace_generated_artifacts(layout)
+
+
 def test_product_family_validation_runs_repo_native_checks(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
