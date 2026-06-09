@@ -37,6 +37,7 @@ def test_workspace_manifest_uses_json_contract_shape() -> None:
     assert "emuleai" not in manifest["workspace"]["repos"]
     assert manifest["workspace"]["repos"]["pages"] == "..\\..\\repos\\emulebb-pages"
     assert manifest["workspace"]["repos"]["org_profile"] == "..\\..\\repos\\emulebb-org-profile"
+    assert manifest["workspace"]["repos"]["emulebb_rust"] == "..\\..\\repos\\emulebb-rust"
     assert manifest["workspace"]["repos"]["p2p_overlord_agents"] == "..\\..\\repos\\p2p-overlord-agents"
     assert manifest["workspace"]["repos"]["p2p_overlord_be"] == "..\\..\\repos\\p2p-overlord-be"
     assert manifest["workspace"]["repos"]["p2p_overlord_tooling"] == "..\\..\\repos\\p2p-overlord-tooling"
@@ -67,6 +68,8 @@ def test_repo_role_manifest_describes_workspace_repositories() -> None:
     repos = {repo["name"]: repo for repo in manifest["repos"]}
     assert repos["emulebb-build"]["role"] == "workspace-orchestration"
     assert repos["emulebb-tooling"]["group"] == "workspace"
+    assert repos["emulebb-rust"]["role"] == "headless-rust-client"
+    assert repos["emulebb-rust"]["group"] == "product-family"
     assert repos["p2p-overlord-be"]["role"] == "p2p-overlord-suite"
     assert repos["p2p-overlord-tooling"]["role"] == "p2p-overlord-test-tooling"
     assert repos["goed2k-server"]["role"] == "local-ed2k-test-server"
@@ -124,6 +127,15 @@ def test_canonical_topology_materializes_client_references_in_active_and_analysi
     )
 
 
+def test_canonical_topology_materializes_emulebb_rust_under_repos() -> None:
+    repos = {repo.name: repo for repo in canonical_topology().repos}
+
+    rust = repos["emulebb-rust"]
+    assert rust.url == "https://github.com/emulebb/emulebb-rust.git"
+    assert rust.relative_path == "repos\\emulebb-rust"
+    assert rust.branch == "main"
+
+
 def test_canonical_topology_materializes_p2p_overlord_product_family_repos() -> None:
     repos = {repo.name: repo for repo in canonical_topology().repos}
 
@@ -171,6 +183,7 @@ def test_get_app_variant_error_lists_keys_paths_and_branches(tmp_path: Path) -> 
         tooling_repo_root=tmp_path / "repos" / "emulebb-tooling",
         ed2k_server_repo_root=tmp_path / "repos" / "goed2k-server",
         amule_repo_root=tmp_path / "repos" / "amule",
+        emulebb_rust_repo_root=tmp_path / "repos" / "emulebb-rust",
         seed_repo_path=tmp_path / "repos" / "emulebb",
         seed_repo_branch="main",
         dependencies=(),
@@ -207,6 +220,7 @@ def test_build_log_directory_uses_output_root_when_configured(tmp_path: Path) ->
         tooling_repo_root=tmp_path / "repos" / "emulebb-tooling",
         ed2k_server_repo_root=tmp_path / "repos" / "goed2k-server",
         amule_repo_root=tmp_path / "repos" / "amule",
+        emulebb_rust_repo_root=tmp_path / "repos" / "emulebb-rust",
         seed_repo_path=tmp_path / "repos" / "emulebb",
         seed_repo_branch="main",
         dependencies=(),
@@ -232,6 +246,7 @@ def test_generated_output_roots_require_output_root(tmp_path: Path) -> None:
         tooling_repo_root=tmp_path / "repos" / "emulebb-tooling",
         ed2k_server_repo_root=tmp_path / "repos" / "goed2k-server",
         amule_repo_root=tmp_path / "repos" / "amule",
+        emulebb_rust_repo_root=tmp_path / "repos" / "emulebb-rust",
         seed_repo_path=tmp_path / "repos" / "emulebb",
         seed_repo_branch="main",
         dependencies=(),
@@ -256,6 +271,7 @@ def test_layout_exposes_generated_output_subroots_and_child_environment(tmp_path
         tooling_repo_root=tmp_path / "repos" / "emulebb-tooling",
         ed2k_server_repo_root=tmp_path / "repos" / "goed2k-server",
         amule_repo_root=tmp_path / "repos" / "amule",
+        emulebb_rust_repo_root=tmp_path / "repos" / "emulebb-rust",
         seed_repo_path=tmp_path / "repos" / "emulebb",
         seed_repo_branch="main",
         dependencies=(),

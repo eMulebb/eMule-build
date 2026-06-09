@@ -56,6 +56,7 @@ class WorkspaceLayout:
     app_variants: tuple[AppVariant, ...]
     test_targets: TestTargets
     toolset_override_variable: str
+    emulebb_rust_repo_root: Path | None = None
     p2p_overlord_agents_repo_root: Path | None = None
     p2p_overlord_be_repo_root: Path | None = None
     p2p_overlord_tooling_repo_root: Path | None = None
@@ -236,6 +237,7 @@ def load_layout(emule_workspace_root: Path, workspace_name: str | None = None, *
         tooling_repo_root=_resolve_workspace_manifest_path(workspace_root, repos["tooling"]),
         ed2k_server_repo_root=_resolve_workspace_manifest_path(workspace_root, repos["ed2k_server"]),
         amule_repo_root=_resolve_workspace_manifest_path(workspace_root, repos["amule"]),
+        emulebb_rust_repo_root=_resolve_workspace_manifest_path(workspace_root, repos["emulebb_rust"]),
         p2p_overlord_agents_repo_root=_resolve_workspace_manifest_path(workspace_root, repos["p2p_overlord_agents"]),
         p2p_overlord_be_repo_root=_resolve_workspace_manifest_path(workspace_root, repos["p2p_overlord_be"]),
         p2p_overlord_tooling_repo_root=_resolve_workspace_manifest_path(workspace_root, repos["p2p_overlord_tooling"]),

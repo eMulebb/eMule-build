@@ -88,6 +88,7 @@ def test_third_party_dependency_outputs_are_explicit_build_output_cleanup(tmp_pa
 
 def test_product_family_outputs_are_explicit_cleanup(tmp_path: Path) -> None:
     layout = make_layout(tmp_path)
+    rust_target = write_file(layout.emulebb_rust_repo_root / "target" / "debug" / "emulebb-rust.exe", 10)
     coordinator_modules = write_file(
         layout.p2p_overlord_be_repo_root / "overlord-be-coordinator" / "node_modules" / "pkg" / "index.js",
         10,
@@ -102,6 +103,8 @@ def test_product_family_outputs_are_explicit_cleanup(tmp_path: Path) -> None:
     product_candidates = plan_cleanup(layout, CleanupOptions(include_product_family_outputs=True))
     deep_candidates = plan_cleanup(layout, CleanupOptions(profile="deep"))
 
+    assert rust_target.parents[1] not in {candidate.path for candidate in routine_candidates}
+    assert rust_target.parents[1] in {candidate.path for candidate in product_candidates}
     assert coordinator_modules.parents[1] not in {candidate.path for candidate in routine_candidates}
     assert coordinator_modules.parents[1] in {candidate.path for candidate in product_candidates}
     assert amutorrent_dist.parent in {candidate.path for candidate in product_candidates}
@@ -253,6 +256,7 @@ def make_layout(tmp_path: Path):
         tooling_repo_root=tmp_path / "repos" / "emulebb-tooling",
         app_variants=(),
         dependencies=(),
+        emulebb_rust_repo_root=tmp_path / "repos" / "emulebb-rust",
         p2p_overlord_agents_repo_root=tmp_path / "repos" / "p2p-overlord-agents",
         p2p_overlord_be_repo_root=tmp_path / "repos" / "p2p-overlord-be",
         output_third_party_build_root=tmp_path / "output" / "builds" / "third_party",

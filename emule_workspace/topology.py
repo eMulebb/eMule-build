@@ -162,6 +162,7 @@ class WorkspaceManifestRepos(BaseModel):
     amule: str
     pages: str
     org_profile: str
+    emulebb_rust: str
     p2p_overlord_agents: str
     p2p_overlord_be: str
     p2p_overlord_tooling: str
@@ -250,6 +251,7 @@ def build_workspace_manifest(topology: WorkspaceTopology, workspace_name: str | 
                 "amule": _workspace_relative_repo_path(repo_by_name["amule"]),
                 "pages": _workspace_relative_repo_path(repo_by_name["emulebb-pages"]),
                 "org_profile": _workspace_relative_repo_path(repo_by_name["emulebb-org-profile"]),
+                "emulebb_rust": _workspace_relative_repo_path(repo_by_name["emulebb-rust"]),
                 "p2p_overlord_agents": _workspace_relative_repo_path(repo_by_name["p2p-overlord-agents"]),
                 "p2p_overlord_be": _workspace_relative_repo_path(repo_by_name["p2p-overlord-be"]),
                 "p2p_overlord_tooling": _workspace_relative_repo_path(repo_by_name["p2p-overlord-tooling"]),
@@ -334,6 +336,7 @@ def _repo_role(repo: ManagedRepo) -> str:
         "amule": "optional-client-build",
         "emulebb-pages": "public-docs-site",
         "emulebb-org-profile": "public-org-profile",
+        "emulebb-rust": "headless-rust-client",
         "p2p-overlord-agents": "p2p-overlord-suite",
         "p2p-overlord-be": "p2p-overlord-suite",
         "p2p-overlord-tooling": "p2p-overlord-test-tooling",
@@ -425,6 +428,12 @@ def canonical_topology() -> WorkspaceTopology:
                 name="emulebb-org-profile",
                 url="https://github.com/emulebb/.github.git",
                 relative_path="repos\\emulebb-org-profile",
+                branch="main",
+            ),
+            ManagedRepo(
+                name="emulebb-rust",
+                url="https://github.com/emulebb/emulebb-rust.git",
+                relative_path="repos\\emulebb-rust",
                 branch="main",
             ),
             ManagedRepo(

@@ -157,12 +157,16 @@ def refresh_product_family_rebases(layout: WorkspaceLayout) -> list[ProductFamil
 def prepare_product_family_repos(layout: WorkspaceLayout) -> None:
     """Fetches or installs repo-native dependencies for optional product-family repos."""
 
-    agents_root = layout.p2p_overlord_agents_repo_root
-    if agents_root is not None and (agents_root / "Cargo.toml").is_file():
+    cargo: str | None = None
+    for label, root in _rust_product_family_roots(layout):
+        if root is None or not (root / "Cargo.toml").is_file():
+            continue
+        if cargo is None:
+            cargo = _required_product_family_command(("cargo.exe", "cargo"), "Rust cargo")
         run_native(
-            [_required_product_family_command(("cargo.exe", "cargo"), "Rust cargo"), "fetch"],
-            label="p2p-overlord-agents cargo fetch",
-            cwd=agents_root,
+            [cargo, "fetch"],
+            label=f"{label} cargo fetch",
+            cwd=root,
         )
 
     coordinator_root = _coordinator_root(layout)
@@ -190,13 +194,16 @@ def validate_product_family_repos(layout: WorkspaceLayout, *, tier: ProductFamil
     if tier not in ("quick", "quality", "full"):
         raise ValueError(f"Unsupported product-family validation tier: {tier}")
 
-    agents_root = layout.p2p_overlord_agents_repo_root
-    if agents_root is not None and agents_root.is_dir():
-        cargo = _required_product_family_command(("cargo.exe", "cargo"), "Rust cargo")
+    cargo: str | None = None
+    for label, root in _rust_product_family_roots(layout):
+        if root is None or not root.is_dir():
+            continue
+        if cargo is None:
+            cargo = _required_product_family_command(("cargo.exe", "cargo"), "Rust cargo")
         run_native(
             [cargo, "fmt", "--all", "--check"],
-            label="p2p-overlord-agents cargo fmt",
-            cwd=agents_root,
+            label=f"{label} cargo fmt",
+            cwd=root,
         )
         if tier == "full":
             run_native(
@@ -218,13 +225,13 @@ def validate_product_family_repos(layout: WorkspaceLayout, *, tier: ProductFamil
                     "-W",
                     "clippy::cognitive_complexity",
                 ],
-                label="p2p-overlord-agents cargo clippy",
-                cwd=agents_root,
+                label=f"{label} cargo clippy",
+                cwd=root,
             )
             run_native(
                 [cargo, "test", "--workspace", "--all-targets", "--all-features"],
-                label="p2p-overlord-agents cargo test",
-                cwd=agents_root,
+                label=f"{label} cargo test",
+                cwd=root,
             )
 
     coordinator_root = _coordinator_root(layout)
@@ -285,6 +292,13 @@ def print_product_family_toolchain(payload: dict[str, Any]) -> None:
 def _coordinator_root(layout: WorkspaceLayout) -> Path | None:
     be_root = layout.p2p_overlord_be_repo_root
     return be_root / "overlord-be-coordinator" if be_root is not None else None
+
+
+def _rust_product_family_roots(layout: WorkspaceLayout) -> tuple[tuple[str, Path | None], ...]:
+    return (
+        ("emulebb-rust", getattr(layout, "emulebb_rust_repo_root", None)),
+        ("p2p-overlord-agents", getattr(layout, "p2p_overlord_agents_repo_root", None)),
+    )
 
 
 def _refresh_rebased_repo(repo: ProductFamilyRebaseRepo) -> ProductFamilyRebaseRefresh:
