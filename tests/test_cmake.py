@@ -120,4 +120,5 @@ def make_layout(tmp_path: Path) -> WorkspaceLayout:
         app_variants=(),
         test_targets=LayoutTestTargets(test_build_variant="main", test_run_variant="main", baseline_variant="community"),
         toolset_override_variable="EMULEBB_VS_PLATFORM_TOOLSET",
+        output_root=emule_workspace_root / "output",
     )

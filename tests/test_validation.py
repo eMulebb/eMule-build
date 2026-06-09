@@ -30,6 +30,10 @@ def test_policy_audits_receive_workspace_root_through_environment(
         emule_workspace_root=tmp_path,
         output_build_root=output_root / "builds",
         tooling_repo_root=tooling_root,
+        subprocess_environment=lambda: {
+            "EMULEBB_WORKSPACE_ROOT": tmp_path,
+            "EMULEBB_WORKSPACE_OUTPUT_ROOT": output_root,
+        },
     )
 
     validation.run_policy_audits(layout)

@@ -30,6 +30,7 @@ def make_layout(tmp_path: Path) -> WorkspaceLayout:
         app_variants=(AppVariant(name="main", path=app_root, branch="main"),),
         test_targets=LayoutTestTargets(test_build_variant="main", test_run_variant="main", baseline_variant="community"),
         toolset_override_variable="",
+        output_root=emule_workspace_root / "output",
     )
 
 
@@ -50,7 +51,8 @@ def test_amutorrent_resilience_forwards_live_options(tmp_path: Path, monkeypatch
     monkeypatch.setattr(test_runs, "run_native", fake_run_native)
     monkeypatch.setattr(test_runs, "ensure_split_tunnel_apps", lambda paths, **_kwargs: {"enabled": False})
     monkeypatch.setenv(network_context.VPN_IP_ENV, "10.8.0.4")
-    monkeypatch.setenv(network_context.LAN_IP_ENV, "192.0.2.11")
+    monkeypatch.setenv(network_context.LAN_IP_ENV, "192.168.56.11")
+    monkeypatch.setenv(network_context.X_LOCAL_IP_ENV, "192.168.56.11")
 
     test_runs.invoke_amutorrent_resilience(
         layout,
@@ -78,8 +80,8 @@ def test_amutorrent_resilience_forwards_live_options(tmp_path: Path, monkeypatch
     assert option_values(command, "--search-observation-timeout-seconds") == ["33.0"]
     assert option_values(command, "--reconnect-timeout-seconds") == ["44.0"]
     assert option_values(command, "--p2p-bind-interface-name") == ["hide.me"]
-    assert option_values(command, "--lan-bind-addr") == ["192.0.2.11"]
-    assert captured["env"]["X_LOCAL_IP"] == "192.0.2.11"
+    assert option_values(command, "--lan-bind-addr") == ["192.168.56.11"]
+    assert captured["env"]["X_LOCAL_IP"] == "192.168.56.11"
     assert "--keep-artifacts" in command
 
 
@@ -93,7 +95,8 @@ def test_amutorrent_resilience_omits_optional_inputs_by_default(tmp_path: Path, 
     monkeypatch.setattr(test_runs, "run_native", fake_run_native)
     monkeypatch.setattr(test_runs, "ensure_split_tunnel_apps", lambda paths, **_kwargs: {"enabled": False})
     monkeypatch.setenv(network_context.VPN_IP_ENV, "10.8.0.4")
-    monkeypatch.setenv(network_context.LAN_IP_ENV, "192.0.2.11")
+    monkeypatch.setenv(network_context.LAN_IP_ENV, "192.168.56.11")
+    monkeypatch.setenv(network_context.X_LOCAL_IP_ENV, "192.168.56.11")
 
     test_runs.invoke_amutorrent_resilience(
         layout,
@@ -105,5 +108,5 @@ def test_amutorrent_resilience_omits_optional_inputs_by_default(tmp_path: Path, 
     assert isinstance(command, list)
     assert "--live-wire-inputs-file" not in command
     assert option_values(command, "--rest-webserver-scheme") == ["https"]
-    assert option_values(command, "--lan-bind-addr") == ["192.0.2.11"]
+    assert option_values(command, "--lan-bind-addr") == ["192.168.56.11"]
     assert "--keep-artifacts" not in command
