@@ -81,6 +81,7 @@ jobs:
     timeout-minutes: ${{ inputs.timeout_minutes }}
     env:
       EMULEBB_WORKSPACE_ROOT: ${{ github.workspace }}
+      EMULEBB_WORKSPACE_OUTPUT_ROOT: ${{ runner.temp }}\emulebb-output
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
     steps:
@@ -108,7 +109,7 @@ jobs:
         working-directory: repos/emulebb-build
         run: |
           $ErrorActionPreference = "Stop"
-          python -m emule_workspace materialize --workspace-root $env:EMULEBB_WORKSPACE_ROOT
+          python -m emule_workspace materialize
 
       - name: Align requested source refs
         shell: pwsh
