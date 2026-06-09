@@ -10,6 +10,7 @@ from typing import Any, TypeVar
 import click
 
 from .build_tests import invoke_build_tests
+from .artifact_audit import audit_workspace_artifacts, print_artifact_audit
 from .build import build_apps as invoke_build_apps
 from .build import build_clients as invoke_build_clients
 from .build import build_libs as invoke_build_libs
@@ -529,6 +530,21 @@ def cleanup(
         workspace_options=workspace_options,
         layout=layout,
     )
+
+
+@main.command("audit-artifacts")
+@_common_options
+def audit_artifacts(*, workspace_options: WorkspaceOptions, layout) -> None:
+    """Fail when generated build artifacts are present below repos or workspaces."""
+
+    def run(**kwargs):
+        target_layout = kwargs["layout"]
+        findings = audit_workspace_artifacts(target_layout)
+        print_artifact_audit(target_layout, findings)
+        if findings:
+            raise click.ClickException("Generated build artifacts remain below repos or workspaces.")
+
+    _locked("audit-artifacts", run)(workspace_options=workspace_options, layout=layout)
 
 
 @main.command("evidence-index")
