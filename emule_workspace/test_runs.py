@@ -37,6 +37,7 @@ from .process import get_python_invocation, run_native
 
 MATERIALIZED_ARR_SERVICE_WAIT_SECONDS = 120.0
 MATERIALIZED_ARR_SERVICE_POLL_SECONDS = 1.0
+TRACING_HARNESS_EXE_NAMES = ("emule.exe", APP_EXE_NAME)
 
 
 @dataclass(frozen=True)
@@ -371,10 +372,12 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
         live_process_monitor_profile_dir = Path(
             _resolve_workspace_path_argument(layout, live_options.live_process_monitor_profile_dir)
         )
+    resolved_app_exe = _resolve_live_e2e_app_exe(layout, app_root, app_exe, options)
+    resolved_client2_app_exe = _resolve_live_e2e_client2_app_exe(layout, options)
     _ensure_hide_me_split_tunnel_for_live(
         test_network=live_options.test_network,
         p2p_bind_interface_name=live_options.p2p_bind_interface_name,
-        app_exe=_resolve_live_e2e_app_exe(layout, app_root, app_exe, options),
+        app_exe=resolved_app_exe,
     )
     network_env = _test_network_env(
         layout,
@@ -478,8 +481,12 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
     ]
     if app_exe is not None:
         args.extend(["--app-exe", app_exe])
+    elif resolved_app_exe is not None:
+        args.extend(["--app-exe", resolved_app_exe])
     if profile_seed_config_dir is not None:
         args.extend(["--profile-seed-dir", profile_seed_config_dir])
+    if resolved_client2_app_exe is not None:
+        args.extend(["--client2-app-exe", resolved_client2_app_exe])
     if live_process_monitor_profile_dir is not None:
         args.extend(["--live-process-monitor-profile-dir", live_process_monitor_profile_dir])
     _append_optional_flag(args, live_options.profile_cpu, "--profile-cpu")
@@ -1225,6 +1232,26 @@ def _resolve_live_e2e_app_exe(
         options.platform,
         executable_name=APP_EXE_NAME,
     )
+
+
+def _resolve_live_e2e_client2_app_exe(layout: WorkspaceLayout, options: WorkspaceOptions) -> Path | None:
+    """Returns the built tracing-harness executable when staged under the output root."""
+
+    try:
+        variant = layout.get_app_variant("tracing-harness")
+    except RuntimeError:
+        return None
+    for executable_name in TRACING_HARNESS_EXE_NAMES:
+        candidate = app_build_binary_path(
+            layout,
+            variant.name,
+            options.configuration,
+            options.platform,
+            executable_name=executable_name,
+        )
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def _resolve_workspace_argument(layout: WorkspaceLayout, value: str) -> str:
