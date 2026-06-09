@@ -31,7 +31,7 @@ def write_heavy_evidence_index(layout: WorkspaceLayout, *, threshold_mb: float) 
     """Writes and returns the heavy generated-evidence index."""
 
     payload = build_heavy_evidence_index(layout, threshold_mb=threshold_mb)
-    write_json(layout.workspace_root / "state" / HEAVY_EVIDENCE_INDEX_NAME, payload)
+    write_json(_output_root(layout) / "reports" / HEAVY_EVIDENCE_INDEX_NAME, payload)
     return payload
 
 
@@ -75,44 +75,31 @@ def print_heavy_evidence_index(layout: WorkspaceLayout, payload: dict[str, Any])
 
 
 def _candidate_entries(layout: WorkspaceLayout) -> list[EvidenceEntry]:
-    state_root = layout.workspace_root / "state"
+    output_root = _output_root(layout)
     roots: list[tuple[Path, str, str]] = []
     known_root_names = {
-        "test-reports",
-        "test-artifacts",
-        "diagnostics",
-        "crash-evidence",
-        "startup-progress-diagnostics",
+        "reports",
+        "artifacts",
         "release",
-        "certification",
-        "release-campaign-runs",
         "preserved-evidence",
-        "overnight-campaigns",
-        "package-build",
-        "build-logs",
+        "packages",
+        "logs",
         "symbols",
         "throwaway-vhd",
         "tools",
     }
-    if state_root.is_dir():
+    if output_root.is_dir():
         for root_name, tier, category in (
-            ("test-reports", "campaign-proof", "test-report"),
-            ("test-artifacts", "campaign-proof", "test-artifact"),
-            ("diagnostics", "debug-profile", "diagnostic"),
-            ("crash-evidence", "debug-profile", "crash-evidence"),
-            ("startup-progress-diagnostics", "debug-profile", "diagnostic"),
+            ("artifacts", "campaign-proof", "test-artifact"),
             ("release", "release-proof", "release"),
-            ("certification", "release-proof", "certification"),
-            ("release-campaign-runs", "release-proof", "release-campaign"),
             ("preserved-evidence", "release-proof", "preserved-evidence"),
-            ("overnight-campaigns", "campaign-proof", "overnight-campaign"),
-            ("package-build", "campaign-proof", "package-build"),
-            ("build-logs", "campaign-proof", "build-log"),
+            ("packages/build", "campaign-proof", "package-build"),
+            ("logs/builds", "campaign-proof", "build-log"),
             ("symbols", "campaign-proof", "symbols"),
             ("throwaway-vhd", "scratch", "throwaway-vhd"),
             ("tools", "scratch", "tools"),
         ):
-            root = state_root / root_name
+            root = output_root / root_name
             if not root.is_dir():
                 continue
             children = [child for child in root.iterdir() if child.is_dir()]
@@ -121,16 +108,34 @@ def _candidate_entries(layout: WorkspaceLayout) -> list[EvidenceEntry]:
             else:
                 roots.append((root, tier, category))
 
-        for child in state_root.iterdir():
+        reports_root = output_root / "reports"
+        if reports_root.is_dir():
+            for child in reports_root.iterdir():
+                if child.is_dir():
+                    roots.append((child, *_report_child_tier_and_category(child.name)))
+
+        for child in output_root.iterdir():
             if not child.is_dir() or child.name in known_root_names:
                 continue
-            roots.append((child, "scratch", "unclassified-state"))
+            roots.append((child, "scratch", "unclassified-output"))
 
     legacy_reports_root = layout.tests_repo_root / "reports"
     if legacy_reports_root.is_dir():
         roots.extend((child, "legacy-generated", "legacy-test-report") for child in legacy_reports_root.iterdir() if child.is_dir())
 
     return [_entry_from_directory(path, tier, category) for path, tier, category in roots]
+
+
+def _report_child_tier_and_category(name: str) -> tuple[str, str]:
+    if name == "certification":
+        return "release-proof", "certification"
+    if name == "release-campaign-runs":
+        return "release-proof", "release-campaign"
+    if name == "overnight-campaigns":
+        return "campaign-proof", "overnight-campaign"
+    if name in {"diagnostics", "crash-evidence", "startup-progress-diagnostics"}:
+        return "debug-profile", "diagnostic"
+    return "campaign-proof", "test-report"
 
 
 def _entry_from_directory(path: Path, tier: str, category: str) -> EvidenceEntry:
@@ -195,6 +200,13 @@ def _workspace_relative(layout: WorkspaceLayout, path: Path) -> str:
         return str(path.resolve().relative_to(layout.emule_workspace_root.resolve()))
     except ValueError:
         return str(path)
+
+
+def _output_root(layout: WorkspaceLayout) -> Path:
+    output_root = getattr(layout, "output_root", None)
+    if output_root is not None:
+        return Path(output_root)
+    return layout.workspace_root / "state"
 
 
 def _format_bytes(value: int) -> str:

@@ -20,7 +20,7 @@ def make_layout(tmp_path: Path) -> WorkspaceLayout:
     app_root = workspace_root / "app" / "emulebb-main"
     for path in (
         tests_repo_root / "manifests" / "release-campaigns",
-        workspace_root / "state" / "test-reports",
+        output_root / "reports",
         app_root,
         emule_workspace_root / "repos" / "emulebb-build",
         emule_workspace_root / "repos" / "emulebb-tooling" / "ci",

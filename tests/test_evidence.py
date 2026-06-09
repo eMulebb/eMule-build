@@ -7,29 +7,29 @@ from types import SimpleNamespace
 from emule_workspace.evidence import build_heavy_evidence_index, write_heavy_evidence_index
 
 
-def test_heavy_evidence_index_classifies_large_state_roots(tmp_path: Path) -> None:
+def test_heavy_evidence_index_classifies_large_output_roots(tmp_path: Path) -> None:
     layout = make_layout(tmp_path)
-    write_file(layout.workspace_root / "state" / "test-reports" / "live-e2e-suite" / "payload.dmp", 2048)
-    write_file(layout.workspace_root / "state" / "diagnostics" / "pid-100" / "cpu.etl", 2048)
-    write_file(layout.workspace_root / "state" / "notes" / "scratch.txt", 2048)
-    write_file(layout.workspace_root / "state" / "test-reports" / "tiny" / "result.json", 16)
+    write_file(layout.output_root / "reports" / "live-e2e-suite" / "payload.dmp", 2048)
+    write_file(layout.output_root / "reports" / "diagnostics" / "pid-100" / "cpu.etl", 2048)
+    write_file(layout.output_root / "notes" / "scratch.txt", 2048)
+    write_file(layout.output_root / "reports" / "tiny" / "result.json", 16)
 
     payload = build_heavy_evidence_index(layout, threshold_mb=0.001)
     entries = {entry["path"]: entry for entry in payload["entries"]}
 
-    assert entries["workspaces\\workspace\\state\\test-reports\\live-e2e-suite"]["tier"] == "campaign-proof"
-    assert entries["workspaces\\workspace\\state\\diagnostics\\pid-100"]["tier"] == "debug-profile"
-    assert entries["workspaces\\workspace\\state\\notes"]["tier"] == "scratch"
-    assert "workspaces\\workspace\\state\\test-reports\\tiny" not in entries
+    assert entries["output\\reports\\live-e2e-suite"]["tier"] == "campaign-proof"
+    assert entries["output\\reports\\diagnostics"]["tier"] == "debug-profile"
+    assert entries["output\\notes"]["tier"] == "scratch"
+    assert "output\\reports\\tiny" not in entries
     assert payload["totals"]["entries"] == 3
 
 
-def test_heavy_evidence_index_write_uses_generated_state_file(tmp_path: Path) -> None:
+def test_heavy_evidence_index_write_uses_output_report_file(tmp_path: Path) -> None:
     layout = make_layout(tmp_path)
-    write_file(layout.workspace_root / "state" / "release" / "emulebb-v0.7.3-rc.2" / "manifest.json", 2048)
+    write_file(layout.output_root / "release" / "emulebb-v0.7.3-rc.2" / "manifest.json", 2048)
 
     payload = write_heavy_evidence_index(layout, threshold_mb=0.001)
-    index_path = layout.workspace_root / "state" / "heavy-evidence-index.json"
+    index_path = layout.output_root / "reports" / "heavy-evidence-index.json"
 
     assert index_path.is_file()
     written = json.loads(index_path.read_text(encoding="utf-8"))
@@ -40,15 +40,15 @@ def test_heavy_evidence_index_write_uses_generated_state_file(tmp_path: Path) ->
 
 def test_heavy_evidence_index_marks_latest_aliases(tmp_path: Path) -> None:
     layout = make_layout(tmp_path)
-    write_file(layout.workspace_root / "state" / "test-reports" / "resource-ui-smoke" / "result.json", 2048)
-    write_file(layout.workspace_root / "state" / "test-reports" / "resource-ui-smoke-latest" / "result.json", 2048)
+    write_file(layout.output_root / "reports" / "resource-ui-smoke" / "result.json", 2048)
+    write_file(layout.output_root / "reports" / "resource-ui-smoke-latest" / "result.json", 2048)
 
     payload = build_heavy_evidence_index(layout, threshold_mb=0.001)
     entries = {entry["path"]: entry for entry in payload["entries"]}
-    latest = entries["workspaces\\workspace\\state\\test-reports\\resource-ui-smoke-latest"]
+    latest = entries["output\\reports\\resource-ui-smoke-latest"]
 
     assert latest["latest_alias"] == {
-        "base_path": "workspaces\\workspace\\state\\test-reports\\resource-ui-smoke",
+        "base_path": "output\\reports\\resource-ui-smoke",
         "base_exists": True,
     }
 
@@ -74,6 +74,7 @@ def write_file(path: Path, size: int) -> Path:
 def make_layout(tmp_path: Path):
     return SimpleNamespace(
         emule_workspace_root=tmp_path,
+        output_root=tmp_path / "output",
         workspace_name="workspace",
         workspace_root=tmp_path / "workspaces" / "workspace",
         tests_repo_root=tmp_path / "repos" / "emulebb-build-tests",

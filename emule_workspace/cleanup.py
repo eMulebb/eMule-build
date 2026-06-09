@@ -40,12 +40,14 @@ REPORT_PAYLOAD_DIRECTORY_NAMES = {
 MAX_DIRECTORY_SIZE_SCAN_FILES = 2000
 PROFILING_ARTIFACT_NAME_MARKERS = (
     "cpu",
+    "crash",
     "diagnostic",
     "dump",
     "live-monitor",
     "memory-profile",
     "pageheap",
     "process-monitor",
+    "startup-progress",
     "umdh",
 )
 
@@ -160,7 +162,7 @@ def plan_cleanup(layout: WorkspaceLayout, options: CleanupOptions) -> list[Clean
 
 
 def _path_anomaly_candidates(layout: WorkspaceLayout) -> list[CleanupCandidate]:
-    root = layout.workspace_root / "state"
+    root = _output_root(layout)
     if not root.is_dir():
         return []
     candidates: list[CleanupCandidate] = []
@@ -220,6 +222,8 @@ def _test_artifact_candidates(layout: WorkspaceLayout, options: CleanupOptions, 
         return []
     candidates: list[CleanupCandidate] = []
     for suite_dir in _child_directories(root):
+        if suite_dir.name == "arr-acquisition":
+            continue
         for run_dir in _child_directories(suite_dir):
             if run_dir.stat().st_mtime >= cutoff.timestamp():
                 continue
@@ -275,6 +279,8 @@ def _report_payload_candidates_for_root(
     if not reports_root.is_dir():
         return candidates
     for family in _child_directories(reports_root):
+        if _skip_generic_report_family(family.name, options):
+            continue
         scopes = [family]
         for run_dir in _child_directories(family):
             scopes.extend([run_dir, *_child_directories(run_dir)])
@@ -348,6 +354,8 @@ def _old_report_run_candidates(layout: WorkspaceLayout, options: CleanupOptions,
         return candidates
     for family in reports_root.iterdir():
         if not family.is_dir() or family.name.endswith("-latest"):
+            continue
+        if _skip_generic_report_family(family.name, options):
             continue
         for run_dir in family.iterdir():
             if not run_dir.is_dir() or run_dir.name == "latest" or run_dir.stat().st_mtime >= cutoff.timestamp():
@@ -427,11 +435,11 @@ def _old_legacy_report_root_file_candidates(reports_root: Path, options: Cleanup
 
 
 def _test_artifacts_root(layout: WorkspaceLayout) -> Path:
-    return layout.workspace_root / "state" / TEST_ARTIFACTS_DIR_NAME
+    return _output_root(layout) / "artifacts"
 
 
 def _test_reports_root(layout: WorkspaceLayout) -> Path:
-    return layout.workspace_root / "state" / TEST_REPORTS_DIR_NAME
+    return _output_root(layout) / "reports"
 
 
 def _legacy_test_reports_root(layout: WorkspaceLayout) -> Path:
@@ -439,7 +447,7 @@ def _legacy_test_reports_root(layout: WorkspaceLayout) -> Path:
 
 
 def _arr_acquisition_candidates(layout: WorkspaceLayout, options: CleanupOptions, now: datetime) -> list[CleanupCandidate]:
-    root = layout.workspace_root / "state" / "arr-acquisition"
+    root = _output_root(layout) / "artifacts" / "arr-acquisition"
     cutoff = now - timedelta(hours=options.arr_acquisition_retention_hours)
     candidates: list[CleanupCandidate] = []
     if not root.is_dir():
@@ -460,7 +468,7 @@ def _arr_acquisition_candidates(layout: WorkspaceLayout, options: CleanupOptions
 
 
 def _build_log_candidates(layout: WorkspaceLayout, options: CleanupOptions, now: datetime) -> list[CleanupCandidate]:
-    root = layout.workspace_root / "state" / "build-logs"
+    root = _output_root(layout) / "logs" / "builds"
     cutoff = now - timedelta(days=options.build_log_retention_days)
     if not root.is_dir():
         return []
@@ -522,7 +530,7 @@ def _build_output_candidates(layout: WorkspaceLayout) -> list[CleanupCandidate]:
     tests_build = layout.tests_repo_root / "build"
     if tests_build.is_dir():
         candidates.append(_directory_candidate(tests_build, "build-output", "native test build output"))
-    package_build = layout.workspace_root / "state" / "package-build"
+    package_build = _output_root(layout) / "packages" / "build"
     if package_build.is_dir():
         candidates.append(_directory_candidate(package_build, "build-output", "release package app build output"))
     for dependency in layout.dependencies:
@@ -535,7 +543,7 @@ def _build_output_candidates(layout: WorkspaceLayout) -> list[CleanupCandidate]:
 
 
 def _release_state_candidates(layout: WorkspaceLayout) -> list[CleanupCandidate]:
-    root = layout.workspace_root / "state" / "release"
+    root = _output_root(layout) / "release"
     candidates: list[CleanupCandidate] = []
     if not root.is_dir():
         return candidates
@@ -586,9 +594,9 @@ def _legacy_root_log_candidates(layout: WorkspaceLayout) -> list[CleanupCandidat
 
 def _profiling_artifact_candidates(layout: WorkspaceLayout, options: CleanupOptions, now: datetime) -> list[CleanupCandidate]:
     candidates: list[CleanupCandidate] = []
-    state_root = layout.workspace_root / "state"
+    output_root = _output_root(layout)
     cutoff = now - timedelta(hours=options.report_payload_retention_hours)
-    for path in _child_directories(state_root / "diagnostics"):
+    for path in _child_directories(output_root / "reports" / "diagnostics"):
         if path.stat().st_mtime < cutoff.timestamp():
             candidates.append(
                 _directory_candidate(
@@ -598,7 +606,7 @@ def _profiling_artifact_candidates(layout: WorkspaceLayout, options: CleanupOpti
                 )
             )
     for name in ("crash-evidence", "live-process-monitor-launch", "startup-progress-diagnostics"):
-        root = state_root / name
+        root = output_root / "reports" / name
         for path in _child_directories(root):
             if path.stat().st_mtime < cutoff.timestamp():
                 candidates.append(
@@ -618,7 +626,8 @@ def _profiling_artifact_candidates(layout: WorkspaceLayout, options: CleanupOpti
             )
         )
     for root_name in ("test-reports", "test-artifacts"):
-        for path in _child_directories(state_root / root_name):
+        root = _test_reports_root(layout) if root_name == "test-reports" else _test_artifacts_root(layout)
+        for path in _child_directories(root):
             if not _is_profiling_artifact_name(path.name):
                 continue
             candidates.extend(
@@ -647,11 +656,22 @@ def _is_profiling_artifact_name(name: str) -> bool:
     return any(marker in normalized for marker in PROFILING_ARTIFACT_NAME_MARKERS)
 
 
+def _skip_generic_report_family(name: str, options: CleanupOptions) -> bool:
+    return not options.include_profiling_artifacts and _is_profiling_artifact_name(name)
+
+
 def _optional_root(layout: WorkspaceLayout, attribute: str) -> Path:
     value = getattr(layout, attribute, None)
     if value is None:
         return layout.emule_workspace_root / "__missing__" / attribute
     return Path(value)
+
+
+def _output_root(layout: WorkspaceLayout) -> Path:
+    output_root = getattr(layout, "output_root", None)
+    if output_root is not None:
+        return Path(output_root)
+    return layout.workspace_root / "state"
 
 
 def _child_directories(path: Path) -> list[Path]:

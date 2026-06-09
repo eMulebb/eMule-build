@@ -11,14 +11,14 @@ from emule_workspace.config import CleanupOptions
 
 def test_routine_cleanup_selects_old_generated_artifacts(tmp_path: Path) -> None:
     layout = make_layout(tmp_path)
-    old_payload = write_file(layout.workspace_root / "state" / "test-reports" / "rest-api-smoke" / "20260501-run" / "temp" / "001.part", 10)
-    recent_payload = write_file(layout.workspace_root / "state" / "test-reports" / "rest-api-smoke" / "latest" / "temp" / "001.part", 10)
-    old_build_log = write_file(layout.workspace_root / "state" / "build-logs" / "20260401T120000Z-build-app" / "build-result.json", 10)
-    old_arr_output = write_file(layout.workspace_root / "state" / "arr-acquisition" / "radarr" / "movie.mkv", 10)
-    old_live_artifact = write_file(layout.workspace_root / "state" / "test-artifacts" / "live-e2e-suite" / "20260501T120000Z-emulebb-main-release-pid100" / "live-e2e-suite-result.json", 10)
-    recent_live_artifact = write_file(layout.workspace_root / "state" / "test-artifacts" / "live-e2e-suite" / "20260521T120000Z-emulebb-main-release-pid100" / "live-e2e-suite-result.json", 10)
+    old_payload = write_file(layout.output_root / "reports" / "rest-api-smoke" / "20260501-run" / "temp" / "001.part", 10)
+    recent_payload = write_file(layout.output_root / "reports" / "rest-api-smoke" / "latest" / "temp" / "001.part", 10)
+    old_build_log = write_file(layout.output_root / "logs" / "builds" / "20260401T120000Z-build-app" / "build-result.json", 10)
+    old_arr_output = write_file(layout.output_root / "artifacts" / "arr-acquisition" / "radarr" / "movie.mkv", 10)
+    old_live_artifact = write_file(layout.output_root / "artifacts" / "live-e2e-suite" / "20260501T120000Z-emulebb-main-release-pid100" / "live-e2e-suite-result.json", 10)
+    recent_live_artifact = write_file(layout.output_root / "artifacts" / "live-e2e-suite" / "20260521T120000Z-emulebb-main-release-pid100" / "live-e2e-suite-result.json", 10)
     cache_file = write_file(layout.build_repo_root / ".pytest_cache" / "README.md", 10)
-    release_rehearsal = write_file(layout.workspace_root / "state" / "release" / "emulebb-v1.0.1" / "package.zip", 10)
+    release_rehearsal = write_file(layout.output_root / "release" / "emulebb-v1.0.1" / "package.zip", 10)
     for path in (old_payload, old_build_log, old_arr_output, old_live_artifact, cache_file, release_rehearsal):
         make_old(path, tmp_path)
 
@@ -39,8 +39,8 @@ def test_routine_cleanup_selects_old_generated_artifacts(tmp_path: Path) -> None
 
 def test_release_state_cleanup_is_explicit(tmp_path: Path) -> None:
     layout = make_layout(tmp_path)
-    current_release = write_file(layout.workspace_root / "state" / "release" / "emulebb-v0.7.3-rc.2" / "package.zip", 10)
-    rehearsal_release = write_file(layout.workspace_root / "state" / "release" / "emulebb-v1.0.1" / "package.zip", 10)
+    current_release = write_file(layout.output_root / "release" / "emulebb-v0.7.3-rc.2" / "package.zip", 10)
+    rehearsal_release = write_file(layout.output_root / "release" / "emulebb-v1.0.1" / "package.zip", 10)
 
     candidates = plan_cleanup(layout, CleanupOptions(include_release_state=True))
     candidate_paths = {candidate.path for candidate in candidates}
@@ -51,7 +51,7 @@ def test_release_state_cleanup_is_explicit(tmp_path: Path) -> None:
 
 def test_package_build_outputs_are_explicit_build_output_cleanup(tmp_path: Path) -> None:
     layout = make_layout(tmp_path)
-    package_build_output = write_file(layout.workspace_root / "state" / "package-build" / "emulebb-v0.7.3-rc.2" / "x64" / "app" / "emulebb.exe", 10)
+    package_build_output = write_file(layout.output_root / "packages" / "build" / "emulebb-v0.7.3-rc.2" / "x64" / "app" / "emulebb.exe", 10)
 
     routine_candidates = plan_cleanup(layout, CleanupOptions())
     build_candidates = plan_cleanup(layout, CleanupOptions(include_build_outputs=True))
@@ -99,11 +99,11 @@ def test_root_legacy_state_and_logs_are_explicit_cleanup(tmp_path: Path) -> None
 
 def test_profiling_artifacts_are_routine_cleanup_with_retention(tmp_path: Path) -> None:
     layout = make_layout(tmp_path)
-    diagnostic_dump = write_file(layout.workspace_root / "state" / "diagnostics" / "pid-100-cpu-spikes" / "sample.dmp", 10)
-    recent_diagnostic_dump = write_file(layout.workspace_root / "state" / "diagnostics" / "pid-200-cpu-spikes" / "sample.dmp", 10)
-    pageheap_report = write_file(layout.workspace_root / "state" / "test-reports" / "real-live-pageheap" / "trace.etl", 10)
-    normal_report = write_file(layout.workspace_root / "state" / "test-reports" / "live-e2e-suite" / "result.json", 10)
-    crash_evidence = write_file(layout.workspace_root / "state" / "crash-evidence" / "crash.dmp", 10)
+    diagnostic_dump = write_file(layout.output_root / "reports" / "diagnostics" / "pid-100-cpu-spikes" / "sample.dmp", 10)
+    recent_diagnostic_dump = write_file(layout.output_root / "reports" / "diagnostics" / "pid-200-cpu-spikes" / "sample.dmp", 10)
+    pageheap_report = write_file(layout.output_root / "reports" / "real-live-pageheap" / "trace.etl", 10)
+    normal_report = write_file(layout.output_root / "reports" / "live-e2e-suite" / "result.json", 10)
+    crash_evidence = write_file(layout.output_root / "reports" / "crash-evidence" / "crash.dmp", 10)
     for path in (diagnostic_dump, pageheap_report, crash_evidence):
         make_old(path, tmp_path)
 
@@ -149,16 +149,15 @@ def test_legacy_build_test_reports_are_routine_cleanup(tmp_path: Path) -> None:
 def test_cleanup_selects_generated_state_paths_with_trailing_space_or_dot(tmp_path: Path) -> None:
     layout = make_layout(tmp_path)
     trailing_space_dir = (
-        layout.workspace_root
-        / "state"
-        / "test-reports"
+        layout.output_root
+        / "reports"
         / "shared-directories-rest"
         / "latest"
         / "shared-rest-exact-names. "
     )
     trailing_space_dir.parent.mkdir(parents=True)
     os.mkdir("\\\\?\\" + str(trailing_space_dir))
-    trailing_dot_file = layout.workspace_root / "state" / "test-artifacts" / "suite" / "run" / "result."
+    trailing_dot_file = layout.output_root / "artifacts" / "suite" / "run" / "result."
     trailing_dot_file.parent.mkdir(parents=True)
     with open("\\\\?\\" + str(trailing_dot_file), "wb") as stream:
         stream.write(b"x" * 10)
@@ -177,7 +176,7 @@ def test_cleanup_selects_generated_state_paths_with_trailing_space_or_dot(tmp_pa
 
 def test_delete_candidate_uses_windows_long_path_prefix(tmp_path: Path, monkeypatch) -> None:
     layout = make_layout(tmp_path)
-    edge_path = layout.workspace_root / "state" / "test-reports" / "shared-directories-rest" / "20260501-run" / "shared-rest-exact-names. "
+    edge_path = layout.output_root / "reports" / "shared-directories-rest" / "20260501-run" / "shared-rest-exact-names. "
     candidate = cleanup.CleanupCandidate(edge_path, "directory", "report-run", "windows path edge case", 10, 1)
     removed_paths: list[str] = []
 
@@ -210,6 +209,7 @@ def make_layout(tmp_path: Path):
     workspace_root = tmp_path / "workspaces" / "workspace"
     return SimpleNamespace(
         emule_workspace_root=tmp_path,
+        output_root=tmp_path / "output",
         workspace_root=workspace_root,
         build_repo_root=tmp_path / "repos" / "emulebb-build",
         tests_repo_root=tmp_path / "repos" / "emulebb-build-tests",
