@@ -123,6 +123,8 @@ def build_libs(layout: WorkspaceLayout, options: WorkspaceOptions, *, clean: boo
             target=target,
             step_name="DEP mbedtls",
         )
+        stage_app_dependency_artifacts(layout, options.configuration, options.platform)
+        prune_repo_local_dependency_outputs(layout)
     finally:
         session.write_recap()
 
@@ -493,18 +495,16 @@ def missing_app_dependency_artifacts(layout: WorkspaceLayout, configuration: str
 def app_dependency_artifacts(layout: WorkspaceLayout, configuration: str, platform: str) -> tuple[tuple[str, Path], ...]:
     """Returns required dependency library outputs for app builds."""
 
-    third_party = layout.resolve_workspace_path("repos/third_party")
-    mbedtls_root = mbedtls_library_root(layout, platform)
     return (
-        ("cryptopp", third_party / "emulebb-cryptopp" / platform / "Output" / configuration / "cryptlib.lib"),
-        ("id3lib", third_party / "emulebb-id3lib" / "libprj" / platform / configuration / "id3lib.lib"),
-        ("miniupnp", third_party / "emulebb-miniupnp" / "miniupnpc" / "msvc" / platform / configuration / "miniupnpc.lib"),
-        ("libpcpnatpmp", libpcpnatpmp_library_path(layout, configuration, platform)),
-        ("ResizableLib", third_party / "emulebb-resizablelib" / "ResizableLib" / platform / configuration / "ResizableLib.lib"),
-        ("zlib", third_party / "emulebb-zlib" / "contrib" / "vstudio" / "vc" / platform / configuration / "zlib.lib"),
-        ("mbedtls", mbedtls_root / configuration / "mbedtls.lib"),
-        ("mbedx509", mbedtls_root / configuration / "mbedx509.lib"),
-        ("tfpsacrypto", mbedtls_root.parent / "tf-psa-crypto" / "core" / configuration / "tfpsacrypto.lib"),
+        ("cryptopp", dependency_library_path(layout, "cryptopp", configuration, platform, "cryptlib.lib")),
+        ("id3lib", dependency_library_path(layout, "id3lib", configuration, platform, "id3lib.lib")),
+        ("miniupnp", dependency_library_path(layout, "miniupnp", configuration, platform, "miniupnpc.lib")),
+        ("libpcpnatpmp", dependency_library_path(layout, "libpcpnatpmp", configuration, platform, "pcpnatpmp.lib")),
+        ("ResizableLib", dependency_library_path(layout, "ResizableLib", configuration, platform, "ResizableLib.lib")),
+        ("zlib", dependency_library_path(layout, "zlib", configuration, platform, "zlib.lib")),
+        ("mbedtls", dependency_library_path(layout, "mbedtls", configuration, platform, "mbedtls.lib")),
+        ("mbedx509", dependency_library_path(layout, "mbedtls", configuration, platform, "mbedx509.lib")),
+        ("tfpsacrypto", dependency_library_path(layout, "mbedtls", configuration, platform, "tfpsacrypto.lib")),
     )
 
 
@@ -515,15 +515,21 @@ def app_property_overrides(layout: WorkspaceLayout, platform: str) -> tuple[str,
     return (
         f"/p:WorkspaceRoot={with_trailing_separator(layout.emule_workspace_root)}",
         f"/p:CryptoPpRoot={with_trailing_separator(third_party / 'emulebb-cryptopp')}",
+        f"/p:CryptoPpLibRoot={with_trailing_separator(dependency_library_root(layout, 'cryptopp', '$(Configuration)', platform))}",
         f"/p:Id3libRoot={with_trailing_separator(third_party / 'emulebb-id3lib')}",
+        f"/p:Id3libLibRoot={with_trailing_separator(dependency_library_root(layout, 'id3lib', '$(Configuration)', platform))}",
         f"/p:MbedTlsRoot={with_trailing_separator(third_party / 'emulebb-mbedtls')}",
-        f"/p:MbedTlsLibRoot={with_trailing_separator(mbedtls_library_root(layout, platform))}",
+        f"/p:MbedTlsLibRoot={with_trailing_separator(dependency_library_root(layout, 'mbedtls', '$(Configuration)', platform))}",
+        f"/p:MbedTlsCryptoLibRoot={with_trailing_separator(dependency_library_root(layout, 'mbedtls', '$(Configuration)', platform))}",
         f"/p:MiniUpnpRoot={with_trailing_separator(third_party / 'emulebb-miniupnp')}",
+        f"/p:MiniUpnpLibRoot={with_trailing_separator(dependency_library_root(layout, 'miniupnp', '$(Configuration)', platform))}",
         f"/p:NlohmannJsonRoot={with_trailing_separator(third_party / 'emulebb-nlohmann-json' / 'single_include')}",
         f"/p:PcpNatPmpRoot={with_trailing_separator(third_party / 'emulebb-libpcpnatpmp')}",
-        f"/p:PcpNatPmpLibRoot={with_trailing_separator(libpcpnatpmp_build_root(layout, platform) / 'lib')}",
+        f"/p:PcpNatPmpLibRoot={with_trailing_separator(dependency_library_root(layout, 'libpcpnatpmp', '$(Configuration)', platform))}",
         f"/p:ResizableLibRoot={with_trailing_separator(third_party / 'emulebb-resizablelib')}",
+        f"/p:ResizableLibLibRoot={with_trailing_separator(dependency_library_root(layout, 'ResizableLib', '$(Configuration)', platform))}",
         f"/p:ZlibRoot={with_trailing_separator(third_party / 'emulebb-zlib')}",
+        f"/p:ZlibLibRoot={with_trailing_separator(dependency_library_root(layout, 'zlib', '$(Configuration)', platform))}",
     )
 
 
@@ -687,13 +693,148 @@ def mbedtls_library_root(layout: WorkspaceLayout, platform: str) -> Path:
 def libpcpnatpmp_build_root(layout: WorkspaceLayout, platform: str) -> Path:
     """Returns the libpcpnatpmp CMake build root."""
 
-    return layout.resolve_workspace_path("repos/third_party/emulebb-libpcpnatpmp") / f"cmake-build-{platform.lower()}"
+    return layout.output_third_party_build_root / "libpcpnatpmp" / platform / "cmake-build"
 
 
 def libpcpnatpmp_library_path(layout: WorkspaceLayout, configuration: str, platform: str) -> Path:
     """Returns the libpcpnatpmp static library path."""
 
     return libpcpnatpmp_build_root(layout, platform) / "lib" / configuration / "pcpnatpmp.lib"
+
+
+def dependency_library_root(layout: WorkspaceLayout, dependency: str, configuration: str, platform: str) -> Path:
+    """Returns the canonical staged library root for one dependency."""
+
+    return layout.output_third_party_build_root / dependency / platform / configuration
+
+
+def dependency_library_path(
+    layout: WorkspaceLayout,
+    dependency: str,
+    configuration: str,
+    platform: str,
+    file_name: str,
+) -> Path:
+    """Returns one canonical staged dependency library path."""
+
+    return dependency_library_root(layout, dependency, configuration, platform) / file_name
+
+
+def stage_app_dependency_artifacts(layout: WorkspaceLayout, configuration: str, platform: str) -> None:
+    """Copies dependency libraries from native build layouts into the canonical contract."""
+
+    missing: list[str] = []
+    for name, source_path, destination_path in staged_dependency_artifact_map(layout, configuration, platform):
+        if not source_path.is_file():
+            missing.append(f"{name}: {source_path}")
+            continue
+        destination_path.parent.mkdir(parents=True, exist_ok=True)
+        if source_path.resolve() != destination_path.resolve():
+            shutil.copy2(source_path, destination_path)
+    if missing:
+        raise RuntimeError(
+            f"Cannot stage dependency outputs for {configuration}|{platform}; missing native outputs:\n"
+            + "\n".join(missing)
+        )
+
+
+def staged_dependency_artifact_map(layout: WorkspaceLayout, configuration: str, platform: str) -> tuple[tuple[str, Path, Path], ...]:
+    """Returns native dependency output paths and their canonical staged paths."""
+
+    third_party = layout.resolve_workspace_path("repos/third_party")
+    mbedtls_root = mbedtls_library_root(layout, platform)
+    tfpsa_configured = mbedtls_root.parent / "tf-psa-crypto" / "core" / configuration / "tfpsacrypto.lib"
+    tfpsa_flat = mbedtls_root / "tfpsacrypto.lib"
+    tfpsa_source = tfpsa_configured if tfpsa_configured.is_file() else tfpsa_flat
+    return (
+        (
+            "cryptopp",
+            third_party / "emulebb-cryptopp" / platform / "Output" / configuration / "cryptlib.lib",
+            dependency_library_path(layout, "cryptopp", configuration, platform, "cryptlib.lib"),
+        ),
+        (
+            "id3lib",
+            third_party / "emulebb-id3lib" / "libprj" / platform / configuration / "id3lib.lib",
+            dependency_library_path(layout, "id3lib", configuration, platform, "id3lib.lib"),
+        ),
+        (
+            "miniupnp",
+            third_party / "emulebb-miniupnp" / "miniupnpc" / "msvc" / platform / configuration / "miniupnpc.lib",
+            dependency_library_path(layout, "miniupnp", configuration, platform, "miniupnpc.lib"),
+        ),
+        (
+            "libpcpnatpmp",
+            libpcpnatpmp_library_path(layout, configuration, platform),
+            dependency_library_path(layout, "libpcpnatpmp", configuration, platform, "pcpnatpmp.lib"),
+        ),
+        (
+            "ResizableLib",
+            third_party / "emulebb-resizablelib" / "ResizableLib" / platform / configuration / "ResizableLib.lib",
+            dependency_library_path(layout, "ResizableLib", configuration, platform, "ResizableLib.lib"),
+        ),
+        (
+            "zlib",
+            third_party / "emulebb-zlib" / "contrib" / "vstudio" / "vc" / platform / configuration / "zlib.lib",
+            dependency_library_path(layout, "zlib", configuration, platform, "zlib.lib"),
+        ),
+        (
+            "mbedtls",
+            mbedtls_root / configuration / "mbedtls.lib",
+            dependency_library_path(layout, "mbedtls", configuration, platform, "mbedtls.lib"),
+        ),
+        (
+            "mbedx509",
+            mbedtls_root / configuration / "mbedx509.lib",
+            dependency_library_path(layout, "mbedtls", configuration, platform, "mbedx509.lib"),
+        ),
+        (
+            "tfpsacrypto",
+            tfpsa_source,
+            dependency_library_path(layout, "mbedtls", configuration, platform, "tfpsacrypto.lib"),
+        ),
+    )
+
+
+def prune_repo_local_dependency_outputs(layout: WorkspaceLayout) -> None:
+    """Removes known repo-local dependency outputs after canonical staging."""
+
+    for path in repo_local_dependency_output_paths(layout):
+        if path.is_dir():
+            shutil.rmtree(path)
+        elif path.is_file():
+            path.unlink()
+
+
+def repo_local_dependency_output_paths(layout: WorkspaceLayout) -> tuple[Path, ...]:
+    """Returns known dependency build outputs that must not survive orchestration."""
+
+    third_party = layout.resolve_workspace_path("repos/third_party")
+    return (
+        third_party / "emulebb-cryptopp" / "x64",
+        third_party / "emulebb-cryptopp" / "ARM64",
+        third_party / "emulebb-cryptopp" / "adhoc.cpp",
+        third_party / "emulebb-cryptopp" / "adhoc.cpp.copied",
+        third_party / "emulebb-id3lib" / "libprj" / "x64",
+        third_party / "emulebb-id3lib" / "libprj" / "ARM64",
+        third_party / "emulebb-id3lib" / "libprj" / "id3lib",
+        third_party / "emulebb-libpcpnatpmp" / "cmake-build-x64",
+        third_party / "emulebb-libpcpnatpmp" / "cmake-build-arm64",
+        third_party / "emulebb-mbedtls" / "visualc" / "VS2017-x64",
+        third_party / "emulebb-mbedtls" / "visualc" / "VS2017-ARM64",
+        third_party / "emulebb-mbedtls" / "visualc" / "VS2017" / "x64",
+        third_party / "emulebb-mbedtls" / "visualc" / "VS2017" / "ARM64",
+        third_party / "emulebb-miniupnp" / "miniupnpc" / "msvc" / "x64",
+        third_party / "emulebb-miniupnp" / "miniupnpc" / "msvc" / "ARM64",
+        third_party / "emulebb-miniupnp" / "miniupnpc" / "miniupnpcstrings.h",
+        third_party / "emulebb-miniupnp" / "miniupnpc" / "rc_version.h",
+        third_party / "emulebb-resizablelib" / "ResizableLib" / "x64",
+        third_party / "emulebb-resizablelib" / "ResizableLib" / "ARM64",
+        third_party / "emulebb-zlib" / "cmake-build-x64",
+        third_party / "emulebb-zlib" / "cmake-build-ARM64",
+        third_party / "emulebb-zlib" / "contrib" / "vstudio" / "vc" / "x64",
+        third_party / "emulebb-zlib" / "contrib" / "vstudio" / "vc" / "ARM64",
+        third_party / "emulebb-zlib" / "contrib" / "vstudio" / "vc" / "zlib",
+    )
 
 
 def with_trailing_separator(path: Path) -> str:

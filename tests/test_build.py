@@ -55,6 +55,44 @@ def test_build_apps_forwards_startup_diagnostics_option(
     assert "/p:EnableStartupDiagnostics=true" in captured["extra_properties"]
 
 
+def test_build_apps_uses_output_root_dependency_lib_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured = capture_build_apps_msbuild_call(tmp_path, monkeypatch)
+    properties = captured["extra_properties"]
+    output_root = tmp_path / "emulebb-output" / "builds" / "third_party"
+
+    assert f"/p:CryptoPpLibRoot={build.with_trailing_separator(output_root / 'cryptopp' / 'x64' / '$(Configuration)')}" in properties
+    assert f"/p:Id3libLibRoot={build.with_trailing_separator(output_root / 'id3lib' / 'x64' / '$(Configuration)')}" in properties
+    assert f"/p:MbedTlsLibRoot={build.with_trailing_separator(output_root / 'mbedtls' / 'x64' / '$(Configuration)')}" in properties
+    assert f"/p:MbedTlsCryptoLibRoot={build.with_trailing_separator(output_root / 'mbedtls' / 'x64' / '$(Configuration)')}" in properties
+    assert f"/p:MiniUpnpLibRoot={build.with_trailing_separator(output_root / 'miniupnp' / 'x64' / '$(Configuration)')}" in properties
+    assert f"/p:PcpNatPmpLibRoot={build.with_trailing_separator(output_root / 'libpcpnatpmp' / 'x64' / '$(Configuration)')}" in properties
+    assert f"/p:ResizableLibLibRoot={build.with_trailing_separator(output_root / 'ResizableLib' / 'x64' / '$(Configuration)')}" in properties
+    assert f"/p:ZlibLibRoot={build.with_trailing_separator(output_root / 'zlib' / 'x64' / '$(Configuration)')}" in properties
+
+
+def test_stage_app_dependency_artifacts_copies_native_outputs_to_output_root(tmp_path: Path) -> None:
+    layout = make_layout(tmp_path)
+    for _name, source_path, _destination_path in build.staged_dependency_artifact_map(layout, "Release", "x64"):
+        source_path.parent.mkdir(parents=True, exist_ok=True)
+        source_path.write_bytes(source_path.name.encode("utf-8"))
+
+    build.stage_app_dependency_artifacts(layout, "Release", "x64")
+
+    artifacts = dict(build.app_dependency_artifacts(layout, "Release", "x64"))
+    assert artifacts["cryptopp"].read_bytes() == b"cryptlib.lib"
+    assert artifacts["id3lib"].read_bytes() == b"id3lib.lib"
+    assert artifacts["miniupnp"].read_bytes() == b"miniupnpc.lib"
+    assert artifacts["libpcpnatpmp"].read_bytes() == b"pcpnatpmp.lib"
+    assert artifacts["ResizableLib"].read_bytes() == b"ResizableLib.lib"
+    assert artifacts["zlib"].read_bytes() == b"zlib.lib"
+    assert artifacts["mbedtls"].read_bytes() == b"mbedtls.lib"
+    assert artifacts["mbedx509"].read_bytes() == b"mbedx509.lib"
+    assert artifacts["tfpsacrypto"].read_bytes() == b"tfpsacrypto.lib"
+
+
 def test_build_apps_honors_startup_diagnostics_env_override(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -165,6 +203,8 @@ def capture_build_libs_msbuild_calls(
     monkeypatch.setattr(build, "get_perl_path", lambda: Path("perl.exe"))
     monkeypatch.setattr(build, "invoke_cmake_dependency_build", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(build, "ensure_arm64_override_targets", lambda _layout: None)
+    monkeypatch.setattr(build, "stage_app_dependency_artifacts", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(build, "prune_repo_local_dependency_outputs", lambda _layout: None)
     if removed_generated is not None:
         monkeypatch.setattr(
             build,
