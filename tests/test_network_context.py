@@ -33,6 +33,7 @@ def test_default_context_auto_resolves_lan_and_writes_json(tmp_path, monkeypatch
 
     context = network_context.resolve_workspace_network_context(
         workspace_root=tmp_path,
+        output_root=tmp_path / "output",
         test_network="default",
     )
 
@@ -42,6 +43,7 @@ def test_default_context_auto_resolves_lan_and_writes_json(tmp_path, monkeypatch
     assert context.lan.ip_address == "192.168.1.42"
     assert context.vpn is None
     assert context.context_path.is_file()
+    assert context.context_path.parent == tmp_path / "output" / "reports" / "network-context"
     payload = json.loads(context.context_path.read_text(encoding="utf-8"))
     assert payload["schemaVersion"] == "emulebb.test-network-context.v1"
     assert payload["lan"]["ip_address"] == "192.168.1.42"
@@ -56,6 +58,7 @@ def test_lan_explicit_ip_takes_precedence(tmp_path, monkeypatch: pytest.MonkeyPa
 
     context = network_context.resolve_workspace_network_context(
         workspace_root=tmp_path,
+        output_root=tmp_path / "output",
         test_network="lan",
     )
 
@@ -72,6 +75,7 @@ def test_lan_uses_x_local_ip_when_harness_lan_ip_is_unset(tmp_path, monkeypatch:
 
     context = network_context.resolve_workspace_network_context(
         workspace_root=tmp_path,
+        output_root=tmp_path / "output",
         test_network="lan",
     )
 
@@ -137,6 +141,7 @@ def test_vpn_context_uses_explicit_ip_and_maps_overlord_env(tmp_path, monkeypatc
 
     context = network_context.resolve_workspace_network_context(
         workspace_root=tmp_path,
+        output_root=tmp_path / "output",
         test_network="vpn",
     )
 

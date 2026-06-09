@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .config import resolve_required_workspace_roots
 from .git import repo_branch, repo_head
 from .materialize import resolve_setup_workspace_root
 from .process import find_tool, run_captured
@@ -52,13 +53,14 @@ def write_dependency_update_report(*, workspace_root: str | None = None, workspa
     """Writes advisory dependency update artifacts for setup-managed third-party repos."""
 
     root = resolve_setup_workspace_root(workspace_root)
+    _workspace_root, output_root_value = resolve_required_workspace_roots()
     topology = canonical_topology()
     resolved_workspace_name = workspace_name or topology.default_workspace_name
     workspace_path = root / "workspaces" / resolved_workspace_name
     if not workspace_path.is_dir():
         raise RuntimeError(f"Workspace root is missing: {workspace_path}. Run materialize or sync first.")
     entries = [_dependency_update_entry(repo) for repo in topology.third_party_repos]
-    output_root = workspace_path / "state" / "dep-updates"
+    output_root = output_root_value / "reports" / "dep-updates"
     output_root.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     report_path = output_root / f"{stamp}-dep-updates.json"

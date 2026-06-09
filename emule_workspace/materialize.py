@@ -9,6 +9,7 @@ import stat
 import sys
 from pathlib import Path
 
+from .config import resolve_required_workspace_roots
 from .layout import build_repo_root
 from .process import find_tool, run_captured, run_native
 from .topology import (
@@ -362,7 +363,8 @@ def overlay_seed_artifacts(root: Path, topology: WorkspaceTopology, seed_root: s
     resolved_seed_root = Path(seed_root).expanduser().resolve()
     if not resolved_seed_root.is_dir():
         raise RuntimeError(f"Artifacts seed root '{resolved_seed_root}' does not exist.")
-    overlay_state_path = root / "workspaces" / workspace_name / "state" / "artifact-seed-overlays.json"
+    _workspace_root, output_root = resolve_required_workspace_roots()
+    overlay_state_path = output_root / "artifacts" / "materialize" / workspace_name / "artifact-seed-overlays.json"
     previous = load_seed_overlay_state(overlay_state_path)
     current: dict[str, list[str]] = {}
     for repo in topology.third_party_repos:

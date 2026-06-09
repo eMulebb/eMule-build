@@ -97,6 +97,7 @@ def utc_file_stamp() -> str:
 def resolve_workspace_network_context(
     *,
     workspace_root: Path,
+    output_root: Path,
     test_network: TestNetwork,
     vpn_interface_name: str | None = None,
     require_vpn: bool = False,
@@ -113,8 +114,8 @@ def resolve_workspace_network_context(
         vpn = resolve_vpn_interface(vpn_interface_name=vpn_interface_name)
 
     context_path = (
-        workspace_root.resolve()
-        / "state"
+        output_root.resolve()
+        / "reports"
         / "network-context"
         / f"{utc_file_stamp()}-{os.getpid()}-{resolved_test_network}.json"
     )

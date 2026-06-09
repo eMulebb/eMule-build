@@ -1185,6 +1185,7 @@ def _pre_materialize_lan_bind_address(
         return None
     context = resolve_workspace_network_context(
         workspace_root=layout.workspace_root,
+        output_root=layout.output_build_root.parent,
         test_network="lan",
         require_lan=True,
     )
@@ -1252,6 +1253,7 @@ def _test_network_env(
 
     context = resolve_workspace_network_context(
         workspace_root=layout.workspace_root,
+        output_root=layout.output_build_root.parent,
         test_network=test_network,
         vpn_interface_name=vpn_interface_name,
         require_vpn=require_vpn,

@@ -57,7 +57,7 @@ def test_optional_missing_branch_leaves_checkout_unchanged(tmp_path: Path, monke
     assert calls == []
 
 
-def test_seed_overlay_tracks_and_removes_stale_seed_files(tmp_path: Path) -> None:
+def test_seed_overlay_tracks_and_removes_stale_seed_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     topology = WorkspaceTopology(
         root_directories=(),
         app_repo=AppRepo(name="emulebb", url="https://example.invalid/emulebb.git", relative_path="repos\\emulebb", branch="main"),
@@ -73,6 +73,9 @@ def test_seed_overlay_tracks_and_removes_stale_seed_files(tmp_path: Path) -> Non
         ),
     )
     root = tmp_path / "workspace"
+    output_root = tmp_path / "output"
+    monkeypatch.setenv("EMULEBB_WORKSPACE_ROOT", str(root))
+    monkeypatch.setenv("EMULEBB_WORKSPACE_OUTPUT_ROOT", str(output_root))
     seed_root = tmp_path / "seed"
     source = seed_root / "eMule-demo-lib"
     destination = root / "repos" / "third_party" / "eMule-demo-lib"
@@ -86,6 +89,8 @@ def test_seed_overlay_tracks_and_removes_stale_seed_files(tmp_path: Path) -> Non
     materialize.overlay_seed_artifacts(root, topology, str(seed_root), "workspace")
 
     assert (destination / "bin" / "seed.dll").read_text(encoding="utf-8") == "one\n"
+    assert (output_root / "artifacts" / "materialize" / "workspace" / "artifact-seed-overlays.json").is_file()
+    assert not (root / "workspaces" / "workspace" / "state" / "artifact-seed-overlays.json").exists()
     source_file.unlink()
     replacement_file = source / "include" / "seed.h"
     replacement_file.parent.mkdir(parents=True)

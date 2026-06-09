@@ -53,10 +53,10 @@ def fake_network_context(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("X_LOCAL_IP", raising=False)
     monkeypatch.setattr(test_runs, "build_apps", lambda *_args, **_kwargs: None)
 
-    def resolve(*, workspace_root, test_network, vpn_interface_name=None, require_vpn=False, require_lan=False):
+    def resolve(*, workspace_root, output_root, test_network, vpn_interface_name=None, require_vpn=False, require_lan=False):
         values = {
             "EMULEBB_TEST_NETWORK": test_network,
-            "EMULEBB_TEST_NETWORK_CONTEXT_JSON": str(Path(workspace_root) / "state" / "network-context" / "fake.json"),
+            "EMULEBB_TEST_NETWORK_CONTEXT_JSON": str(Path(output_root) / "reports" / "network-context" / "fake.json"),
         }
         if require_lan:
             values["EMULEBB_TEST_LAN_IP_RESOLVED"] = "192.0.2.11"
@@ -623,11 +623,11 @@ def test_live_e2e_materialized_vpn_uses_lan_bind(tmp_path: Path, monkeypatch) ->
         assert Path(paths[0]).name == "emulebb.exe"
         return {"enabled": True, "changed": True, "restart": {"requested": True, "vpn_ipv4": "10.8.0.9"}}
 
-    def fake_resolve(*, workspace_root, test_network, vpn_interface_name=None, require_vpn=False, require_lan=False):
+    def fake_resolve(*, workspace_root, output_root, test_network, vpn_interface_name=None, require_vpn=False, require_lan=False):
         events.append(f"resolve:{test_network}")
         values = {
             "EMULEBB_TEST_NETWORK": test_network,
-            "EMULEBB_TEST_NETWORK_CONTEXT_JSON": str(Path(workspace_root) / "state" / "network-context" / f"{test_network}.json"),
+            "EMULEBB_TEST_NETWORK_CONTEXT_JSON": str(Path(output_root) / "reports" / "network-context" / f"{test_network}.json"),
         }
         if require_lan:
             values["EMULEBB_TEST_LAN_IP_RESOLVED"] = "192.0.2.11"
