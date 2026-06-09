@@ -399,7 +399,8 @@ def test_package_language_resources_rebuild_serializes_msbuild(
     language_solution = app_root / "srchybrid" / "lang" / "lang.sln"
     language_solution.parent.mkdir(parents=True)
     language_solution.write_text("solution\n", encoding="utf-8")
-    captured: dict[str, object] = {}
+    (language_solution.parent / "de_DE.vcxproj").write_text("project\n", encoding="utf-8")
+    captured: list[dict[str, object]] = []
     session = SimpleNamespace(
         layout=SimpleNamespace(toolset_override_variable="EMULEBB_TEST_TOOLSET"),
         options=SimpleNamespace(configuration="Release", platform="x64"),
@@ -408,16 +409,23 @@ def test_package_language_resources_rebuild_serializes_msbuild(
     monkeypatch.setattr(release, "_default_platform_toolset_property", lambda _layout: "/p:PlatformToolset=vTest")
 
     def fake_invoke_msbuild_project(*_args, **kwargs):
-        captured.update(kwargs)
+        captured.append(kwargs)
 
     monkeypatch.setattr(release, "invoke_msbuild_project", fake_invoke_msbuild_project)
 
-    release._build_language_resources(session, app_root, clean=True)
+    language_build_root = tmp_path / "output" / "packages" / "build" / "emulebb-v0.7.3-rc.2" / "x64" / "language"
 
-    assert captured["project_path"] == language_solution
-    assert captured["configuration"] == "Dynamic"
-    assert captured["target"] == "Rebuild"
-    assert captured["max_cpu_count"] == 1
+    release._build_language_resources(session, app_root, clean=True, language_build_root=language_build_root)
+
+    assert len(captured) == 1
+    assert captured[0]["project_path"] == language_solution.parent / "de_DE.vcxproj"
+    assert captured[0]["configuration"] == "Dynamic"
+    assert captured[0]["target"] == "Rebuild"
+    assert captured[0]["max_cpu_count"] == 1
+    assert f"/p:OutDir={release.with_trailing_separator(language_build_root / 'bin')}" in captured[0]["extra_properties"]
+    assert f"/p:IntDir={release.with_trailing_separator(language_build_root / 'obj' / 'de_DE')}" in captured[0]["extra_properties"]
+    assert "/p:PostBuildEventUseInBuild=false" in captured[0]["extra_properties"]
+    assert (language_build_root / "obj" / "de_DE").is_dir()
 
 
 def test_release_manifest_records_explicit_source_provenance(
@@ -527,6 +535,19 @@ def test_expected_language_dlls_uses_release_language_manifest(tmp_path: Path) -
     )
 
     assert release._expected_language_dlls(tooling_root) == ("de_DE.dll", "fr_FR.dll")
+
+
+def test_copy_language_dlls_excludes_linker_byproducts(tmp_path: Path) -> None:
+    source_path = tmp_path / "language" / "bin"
+    destination_path = tmp_path / "package" / "lang"
+    source_path.mkdir(parents=True)
+    (source_path / "de_DE.dll").write_bytes(b"dll")
+    (source_path / "de_DE.pdb").write_bytes(b"pdb")
+
+    release._copy_language_dlls(source_path, destination_path, ("de_DE.dll",))
+
+    assert (destination_path / "de_DE.dll").read_bytes() == b"dll"
+    assert not (destination_path / "de_DE.pdb").exists()
 
 
 def test_standalone_bootstrapper_asset_is_hashed_next_to_release(tmp_path: Path) -> None:

@@ -312,12 +312,13 @@ def create_release_package(
                 package_app_intermediate_root=package_build_root / "app-obj",
                 clean=package_options.clean,
             )
-        _build_language_resources(session, app_root, package_options.clean)
+        language_build_root = _package_language_build_root(layout, package_options, workspace_options.platform)
+        _build_language_resources(session, app_root, package_options.clean, language_build_root)
     finally:
         session.write_recap()
 
     expected_language_dlls = _expected_language_dlls(layout.tooling_repo_root)
-    lang_path = _package_language_path(app_root, workspace_options.platform, expected_language_dlls)
+    lang_path = _package_language_path(language_build_root / "bin", workspace_options.platform, expected_language_dlls)
     if not lang_path.exists():
         raise RuntimeError(f"Cannot package missing release runtime path: {lang_path}")
 
@@ -342,7 +343,7 @@ def create_release_package(
             shutil.rmtree(staging_root)
         package_root.mkdir(parents=True, exist_ok=True)
         shutil.copy2(exe_path, package_root / flavor.executable_name)
-        _copy_directory_contents(lang_path, package_root / "lang")
+        _copy_language_dlls(lang_path, package_root / "lang", expected_language_dlls)
         _write_package_readme(package_root, package_options.release_version, workspace_options.platform, flavor=flavor)
         _write_package_release_notes(package_root, package_options.release_version)
         _write_package_license_notice(package_root)
@@ -962,6 +963,22 @@ def _package_build_root(
     )
 
 
+def _package_language_build_root(
+    layout: WorkspaceLayout,
+    package_options: ReleasePackageOptions,
+    platform: str,
+) -> Path:
+    """Returns the package-only language DLL build output root."""
+
+    return (
+        layout.output_packages_root
+        / "build"
+        / f"emulebb-v{package_options.release_version}"
+        / _release_asset_arch(platform)
+        / "language"
+    )
+
+
 def _release_asset_stem(release_version: str, asset_arch: str, flavor: ReleasePackageFlavorSpec) -> str:
     """Returns the file stem for one eMuleBB release package flavor."""
 
@@ -1013,21 +1030,37 @@ def _build_package_app(
     )
 
 
-def _build_language_resources(session: BuildSession, app_root: Path, clean: bool) -> None:
+def _build_language_resources(session: BuildSession, app_root: Path, clean: bool, language_build_root: Path) -> None:
     language_solution = app_root / "srchybrid" / "lang" / "lang.sln"
     if not language_solution.is_file():
         raise RuntimeError(f"Cannot build missing language solution: {language_solution}")
     target = "Rebuild" if clean else "Build"
-    invoke_msbuild_project(
-        session,
-        project_path=language_solution,
-        configuration="Dynamic",
-        platform=session.options.platform,
-        extra_properties=(_default_platform_toolset_property(session.layout),),
-        max_cpu_count=1,
-        target=target,
-        step_name="APP main language resources",
-    )
+    if clean and language_build_root.exists():
+        shutil.rmtree(language_build_root)
+    output_root = language_build_root / "bin"
+    intermediate_root = language_build_root / "obj"
+    language_projects = sorted(language_solution.parent.glob("*.vcxproj"))
+    if not language_projects:
+        raise RuntimeError(f"Cannot build release languages without project files under: {language_solution.parent}")
+    output_root.mkdir(parents=True, exist_ok=True)
+    for project_path in language_projects:
+        project_intermediate_root = intermediate_root / project_path.stem
+        project_intermediate_root.mkdir(parents=True, exist_ok=True)
+        invoke_msbuild_project(
+            session,
+            project_path=project_path,
+            configuration="Dynamic",
+            platform=session.options.platform,
+            extra_properties=(
+                _default_platform_toolset_property(session.layout),
+                f"/p:OutDir={with_trailing_separator(output_root)}",
+                f"/p:IntDir={with_trailing_separator(project_intermediate_root)}",
+                "/p:PostBuildEventUseInBuild=false",
+            ),
+            max_cpu_count=1,
+            target=target,
+            step_name=f"APP main language {project_path.stem}",
+        )
 
 
 def _default_platform_toolset_property(layout: WorkspaceLayout) -> str:
@@ -1154,8 +1187,7 @@ def _expected_language_dlls(tooling_repo_root: Path) -> tuple[str, ...]:
     return tuple(sorted(dlls))
 
 
-def _package_language_path(app_root: Path, platform: str, expected_language_dlls: tuple[str, ...]) -> Path:
-    lang_path = app_root / "srchybrid" / platform / "lang"
+def _package_language_path(lang_path: Path, platform: str, expected_language_dlls: tuple[str, ...]) -> Path:
     if not lang_path.is_dir():
         raise RuntimeError(f"Cannot package missing built language DLLs: {lang_path}")
     missing = [dll for dll in expected_language_dlls if not (lang_path / dll).is_file()]
@@ -1167,6 +1199,14 @@ def _package_language_path(app_root: Path, platform: str, expected_language_dlls
     for dll in expected_language_dlls:
         _assert_pe_machine(lang_path / dll, platform)
     return lang_path
+
+
+def _copy_language_dlls(lang_path: Path, destination_path: Path, expected_language_dlls: tuple[str, ...]) -> None:
+    """Copies only release-manifest language DLLs from a build output directory."""
+
+    destination_path.mkdir(parents=True, exist_ok=True)
+    for dll in expected_language_dlls:
+        shutil.copy2(lang_path / dll, destination_path / dll)
 
 
 def _copy_package_file(source_path: Path, package_root: Path, relative_destination_path: Path) -> None:
