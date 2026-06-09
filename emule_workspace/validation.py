@@ -221,10 +221,7 @@ def run_policy_audits(layout: WorkspaceLayout) -> None:
             python.command([audit_path, audit_name]),
             label=label,
             cwd=layout.emule_workspace_root,
-            env={
-                "EMULEBB_WORKSPACE_ROOT": layout.emule_workspace_root,
-                "EMULEBB_WORKSPACE_OUTPUT_ROOT": layout.output_build_root.parent,
-            },
+            env=layout.subprocess_environment(),
         )
 
 

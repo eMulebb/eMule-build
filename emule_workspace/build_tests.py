@@ -48,10 +48,7 @@ def invoke_build_tests(
         python.command(args),
         label=f"build-emule-tests {workspace_options.configuration}/{workspace_options.platform}",
         cwd=layout.emule_workspace_root,
-        env={
-            "EMULEBB_WORKSPACE_ROOT": layout.emule_workspace_root,
-            "EMULEBB_WORKSPACE_OUTPUT_ROOT": layout.output_build_root.parent,
-        },
+        env=layout.subprocess_environment(),
     )
     print(f"Text log: {log_directory / f'{token}-{suffix}.log'}")
     print(f"Binary log: {log_directory / f'{token}-{suffix}.binlog'}")

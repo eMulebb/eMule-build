@@ -457,10 +457,7 @@ def _dispatch_supported_command(
             python.command([layout.emule_workspace_root / tokens[1]]),
             label="release clean worktree provenance",
             cwd=layout.emule_workspace_root,
-            env={
-                "EMULEBB_WORKSPACE_ROOT": layout.emule_workspace_root,
-                "EMULEBB_WORKSPACE_OUTPUT_ROOT": layout.output_build_root.parent,
-            },
+            env=layout.subprocess_environment(),
         )
         return
     raise ValueError(f"Unsupported release campaign command: {command}")

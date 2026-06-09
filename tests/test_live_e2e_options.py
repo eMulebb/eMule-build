@@ -1709,7 +1709,4 @@ def test_release_campaign_report_forwards_campaign_phase_and_json_options(tmp_pa
     assert "--workspace-root" not in command
     assert "--workspace-state-root" not in command
     assert "--json" in command
-    assert captured["env"] == {
-        "EMULEBB_WORKSPACE_ROOT": layout.emule_workspace_root,
-        "EMULEBB_WORKSPACE_OUTPUT_ROOT": layout.output_build_root.parent,
-    }
+    assert captured["env"] == layout.subprocess_environment()

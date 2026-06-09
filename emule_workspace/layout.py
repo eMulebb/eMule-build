@@ -150,6 +150,27 @@ class WorkspaceLayout:
 
         return self._resolved_output_root() / "tools"
 
+    @property
+    def output_third_party_build_root(self) -> Path:
+        """Returns the root for generated third-party dependency builds."""
+
+        return self.output_build_root / "third_party"
+
+    @property
+    def output_rust_target_root(self) -> Path:
+        """Returns the canonical Cargo target directory for orchestrated Rust builds."""
+
+        return self.output_build_root / "rust" / "target"
+
+    def subprocess_environment(self) -> dict[str, Path]:
+        """Returns common environment roots passed to child workspace processes."""
+
+        return {
+            "EMULEBB_WORKSPACE_ROOT": self.emule_workspace_root,
+            "EMULEBB_WORKSPACE_OUTPUT_ROOT": self._resolved_output_root(),
+            "CARGO_TARGET_DIR": self.output_rust_target_root,
+        }
+
     def _resolved_output_root(self) -> Path:
         """Returns the configured output root, with a legacy fallback for direct unit fixtures."""
 

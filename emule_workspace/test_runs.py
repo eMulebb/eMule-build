@@ -1073,10 +1073,7 @@ def _append_optional_flag(args: list, enabled: bool, flag: str) -> None:
 def _workspace_env(layout: WorkspaceLayout) -> dict[str, Path]:
     """Returns the mandatory root environment passed to child test scripts."""
 
-    return {
-        "EMULEBB_WORKSPACE_ROOT": layout.emule_workspace_root,
-        "EMULEBB_WORKSPACE_OUTPUT_ROOT": layout.output_build_root.parent,
-    }
+    return layout.subprocess_environment()
 
 
 def _append_lan_bind_addr(args: list[str | Path | float], env: dict[str, str]) -> None:
@@ -1264,11 +1261,7 @@ def _test_network_env(
     lan_bind_address = _lan_bind_address_from_env(context_env)
     if lan_bind_address:
         context_env.setdefault("X_LOCAL_IP", lan_bind_address)
-    return {
-        "EMULEBB_WORKSPACE_ROOT": str(layout.emule_workspace_root),
-        "EMULEBB_WORKSPACE_OUTPUT_ROOT": str(layout.output_build_root.parent),
-        **context_env,
-    }
+    return {**{key: str(value) for key, value in layout.subprocess_environment().items()}, **context_env}
 
 
 def _lan_bind_address_from_env(env: dict[str, str]) -> str | None:
