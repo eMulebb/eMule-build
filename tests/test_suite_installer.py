@@ -837,6 +837,62 @@ def test_suite_installer_full_can_use_separate_amutorrent_release_base(tmp_path:
     assert suite_config["amutorrentVersion"] == amutorrent_version
 
 
+def test_suite_installer_controller_skips_arr_and_media_tools_by_default(tmp_path: Path) -> None:
+    release_root = tmp_path / "release"
+    dependency_root = tmp_path / "dependencies"
+    install_root = tmp_path / "suite"
+    dependency_manifest = tmp_path / "dependency-manifest.json"
+    version = "0.7.3-rc.2"
+    amutorrent_zip = release_root / f"emulebb-{version}-amutorrent-x64.zip"
+    amutorrent_manifest = release_root / f"emulebb-{version}-amutorrent-x64.manifest.json"
+
+    suite_install_fixtures.write_core_release(release_root, version=version)
+    suite_install_fixtures.write_zip(amutorrent_zip, {"aMuTorrent/server/server.js": b"server\n"})
+    _write_manifest(amutorrent_manifest, amutorrent_zip)
+    suite_install_fixtures.write_dependency_manifest(dependency_manifest, dependency_root)
+
+    repo_root = Path.cwd()
+    suite_install_fixtures.run_installer(
+        (repo_root / INSTALLER).resolve(),
+        [
+            "-NonInteractive",
+            "-NoStart",
+            "-Force",
+            "-Bundle",
+            "Controller",
+            "-InstallRoot",
+            str(install_root),
+            "-ReleaseBaseUrl",
+            release_root.as_uri(),
+            "-DependencyManifest",
+            str(dependency_manifest),
+            "-ControlBindAddress",
+            "127.0.0.1",
+        ],
+        cwd=repo_root,
+    )
+
+    suite_config = suite_install_fixtures.read_suite_config(install_root)
+    assert suite_config["bundle"] == "Controller"
+    assert suite_config["selectedApps"] == ["emulebb", "amutorrent"]
+    assert (install_root / "apps" / "eMuleBB" / "emulebb.exe").is_file()
+    assert (install_root / "apps" / "aMuTorrent" / "server" / "server.js").is_file()
+    for app_name in ("prowlarr", "radarr", "sonarr", "lidarr", "whisparr"):
+        assert not (install_root / "apps" / app_name).exists()
+        assert not (install_root / "data" / app_name / "config.xml").exists()
+    assert suite_config["optionalTools"]["install"] is False
+    assert suite_config["optionalTools"]["mpcHc"]["installed"] is False
+    assert suite_config["optionalTools"]["ffmpeg"]["installed"] is False
+    assert suite_config["optionalTools"]["mediainfo"]["installed"] is False
+    assert not (install_root / "apps" / "MPC-HC").exists()
+    assert not (install_root / "tools" / "ffmpeg").exists()
+    assert not (install_root / "tools" / "mediainfo").exists()
+    preferences = suite_install_fixtures.read_suite_preferences(install_root)
+    assert "VideoPlayer=" not in preferences
+    assert "VideoThumbnailFfmpegPath=" not in preferences
+    assert "MediaInfo_MediaInfoDllPath=" not in preferences
+
+
 def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_preserves_keys(tmp_path: Path) -> None:
     release_root = tmp_path / "release"
     dependency_root = tmp_path / "dependencies"
@@ -883,6 +939,7 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
         "127.0.0.1",
         "-DependencyManifest",
         str(dependency_manifest),
+        "-InstallMediaTools",
         "-P2PBindInterface",
         "hide.me",
     ]
@@ -932,6 +989,7 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     assert ffmpeg_path.is_file()
     assert (install_root / "tools" / "ffmpeg" / "ffmpeg-8.1.1-essentials_build" / "bin" / "ffprobe.exe").is_file()
     assert mediainfo_path.is_file()
+    assert suite_config["optionalTools"]["install"] is True
     assert suite_config["optionalTools"]["mpcHc"]["installed"] is True
     assert Path(suite_config["optionalTools"]["mpcHc"]["path"]) == mpc_hc_path
     assert suite_config["optionalTools"]["ffmpeg"]["installed"] is True
@@ -1232,6 +1290,7 @@ def test_suite_installer_dry_run_summarizes_apps_language_and_ports(tmp_path: Pa
 
     assert "Install summary" in completed.stdout
     assert "Installs: eMuleBB, aMuTorrent, Prowlarr, Radarr, Sonarr, Lidarr" in completed.stdout
+    assert "Isolation: portable under the suite root; existing Arr apps, media tools, PATH entries, and system software are not modified" in completed.stdout
     assert "Media language: Italian (content language preference: prefer)" in completed.stdout
     assert "UI language: Italian (applies to eMuleBB and Arr apps)" in completed.stdout
     match = re.search(r"Selected contiguous service port block (\d+)-(\d+)", completed.stdout)
@@ -1685,6 +1744,17 @@ def test_suite_installer_requires_hashed_pinned_dependencies() -> None:
     assert "Verifying optional $($Spec.DisplayName) dependency" in installer
     assert "Extracting optional $($Spec.DisplayName) dependency" in installer
     assert "Write-Warning \"$($spec.DisplayName) is optional and was not installed." in installer
+    assert "[switch]$InstallMediaTools" in installer
+    assert "[switch]$NoMediaTools" in installer
+    assert "Use either -InstallMediaTools or -NoMediaTools, not both." in installer
+    assert "Optional media tools" in installer
+    assert "All selected components are installed in portable mode under the suite install root." in installer
+    assert "Existing Arr apps, media tools, PATH entries, and system software are not modified." in installer
+    assert "Download and install portable MPC-HC, ffmpeg, and MediaInfo under the suite path" in installer
+    assert "Isolation: portable under the suite root; existing Arr apps, media tools, PATH entries, and system software are not modified" in installer
+    assert "Optional media tools skipped" in installer
+    assert installer.index("Read-WizardChecklist -Prompt 'Arr apps'") < installer.index("Read-WizardChoice -Prompt 'Optional media tools'")
+    assert installer.index("Read-WizardChoice -Prompt 'Optional media tools'") < installer.index("Read-WizardValue -Prompt 'Install root'")
 
 
 def test_suite_installer_uses_packaged_language_manifest() -> None:
@@ -2025,6 +2095,10 @@ def test_suite_bootstrapper_requires_emulebb_package_root() -> None:
     assert "SuiteScriptsZip" in bootstrapper
     assert "SuiteScriptsManifest" in bootstrapper
     assert "NoSuiteScriptsBundle" in bootstrapper
+    assert "[switch]$InstallMediaTools" in bootstrapper
+    assert "[switch]$NoMediaTools" in bootstrapper
+    assert "$installerParams['InstallMediaTools'] = $true" in bootstrapper
+    assert "$installerParams['NoMediaTools'] = $true" in bootstrapper
     assert "AllowSuiteScriptsVersionMismatch" in bootstrapper
     assert "function Get-SuiteScriptsBundleVersion" in bootstrapper
     assert "function Assert-SuiteScriptsBundleVersion" in bootstrapper

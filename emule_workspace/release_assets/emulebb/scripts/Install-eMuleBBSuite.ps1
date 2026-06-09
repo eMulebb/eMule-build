@@ -81,6 +81,8 @@ param(
     [switch]$DryRun,
     [switch]$Force,
     [switch]$NoStart,
+    [switch]$InstallMediaTools,
+    [switch]$NoMediaTools,
     [switch]$KeepDownloads
 )
 
@@ -102,6 +104,9 @@ Enable-Tls12
 
 if ($Bundle -like '-*') {
     throw "Install-eMuleBBSuite.ps1 was invoked with positional parameter strings. Call it with named parameters, for example -Bundle Full, not an argv string array."
+}
+if ($InstallMediaTools -and $NoMediaTools) {
+    throw 'Use either -InstallMediaTools or -NoMediaTools, not both.'
 }
 $script:InstallerBoundParameters = $PSBoundParameters
 . (Join-Path $PSScriptRoot 'Import-SuiteAppManifest.ps1')
@@ -695,6 +700,7 @@ function New-SuiteConfig {
             emulebbPdbPath = $EmulebbPdbPath
         }
         optionalTools = [ordered]@{
+            install = [bool]$InstallMediaTools
             mpcHc = [ordered]@{ installed = $false; path = '' }
             ffmpeg = [ordered]@{ installed = $false; path = '' }
             mediainfo = [ordered]@{ installed = $false; path = '' }
@@ -1207,6 +1213,23 @@ function Resolve-SuiteConfig {
     if ($script:InstallerBoundParameters.ContainsKey('AllowRemoteServiceBind')) {
         $config.allowRemoteServiceBind = [bool]$AllowRemoteServiceBind
     }
+    if ($null -eq $config.optionalTools) {
+        $config.optionalTools = [ordered]@{
+            install = $false
+            mpcHc = [ordered]@{ installed = $false; path = '' }
+            ffmpeg = [ordered]@{ installed = $false; path = '' }
+            mediainfo = [ordered]@{ installed = $false; path = '' }
+        }
+    }
+    if (-not $config.optionalTools.Contains('install')) {
+        $config.optionalTools.install = $false
+    }
+    if ($script:InstallerBoundParameters.ContainsKey('InstallMediaTools')) {
+        $config.optionalTools.install = $true
+    }
+    if ($script:InstallerBoundParameters.ContainsKey('NoMediaTools')) {
+        $config.optionalTools.install = $false
+    }
     if ($null -eq $config.selectedApps -or @($config.selectedApps).Count -eq 0) {
         $config.selectedApps = @(Resolve-SelectedApps -BundleName ([string]$config.bundle) -RequestedApps @())
     } else {
@@ -1419,6 +1442,8 @@ function Invoke-InstallWizard {
     while ($step -lt 7) {
         switch ($step) {
             0 {
+                Write-Host ''
+                Write-Host 'All selected components are installed in portable mode under the suite install root. Existing Arr apps, media tools, PATH entries, and system software are not modified.'
                 $bundleChoices = @(
                     ('Full suite - installs {0}' -f (Get-BundleInstallDescription -BundleName 'Full')),
                     ('Controller only - installs {0}' -f (Get-BundleInstallDescription -BundleName 'Controller')),
@@ -1433,6 +1458,9 @@ function Invoke-InstallWizard {
                     if ($null -eq $selectedArr) { $step = [Math]::Max(0, $step - 1); continue }
                     $Config.selectedApps = @(Resolve-SelectedApps -BundleName ([string]$Config.bundle) -RequestedApps @($ControllerServiceNames + $selectedArr))
                 }
+                $mediaToolsChoice = Read-WizardChoice -Prompt 'Optional media tools' -Choices @('Skip media tools', 'Download and install portable MPC-HC, ffmpeg, and MediaInfo under the suite path') -DefaultIndex $(if ([bool]$Config.optionalTools.install) { 1 } else { 0 })
+                if ($mediaToolsChoice -lt 0) { continue }
+                $Config.optionalTools.install = ($mediaToolsChoice -eq 1)
                 Write-BundlePortPreview -Config $Config
                 $Config.installRoot = Read-WizardValue -Prompt 'Install root' -Default $Config.installRoot
                 $step++
@@ -1557,6 +1585,7 @@ function Write-ConfigSummary {
     Write-Host 'Install summary'
     Write-Host "  Bundle: $($Config.bundle)"
     Write-Host ('  Installs: {0}' -f (Get-InstallDescription -ServiceNames @(Get-SuiteServiceNames -Config $Config)))
+    Write-Host '  Isolation: portable under the suite root; existing Arr apps, media tools, PATH entries, and system software are not modified'
     Write-Host "  Media language: $($Config.language.mediaLanguageName) (content language preference: prefer)"
     Write-Host "  UI language: $($Config.language.uiLanguageName) (applies to eMuleBB and Arr apps)"
     Write-Host "  Root: $($Config.installRoot)"
@@ -1574,6 +1603,8 @@ function Write-ConfigSummary {
     if (-not [string]::IsNullOrWhiteSpace($Config.importProfileDir)) {
         Write-Host "  Import profile: $($Config.importProfileDir)"
     }
+    $mediaToolsText = if ([bool]$Config.optionalTools.install) { 'Install MPC-HC, ffmpeg, and MediaInfo' } else { 'Skip' }
+    Write-Host "  Optional media tools: $mediaToolsText"
 }
 
 function Get-LocalIPv4Addresses {
@@ -1669,10 +1700,14 @@ function Assert-SuiteConfig {
     }
     if ($null -eq $Config.optionalTools) {
         $Config.optionalTools = [ordered]@{
+            install = $false
             mpcHc = [ordered]@{ installed = $false; path = '' }
             ffmpeg = [ordered]@{ installed = $false; path = '' }
             mediainfo = [ordered]@{ installed = $false; path = '' }
         }
+    }
+    if (-not $Config.optionalTools.Contains('install')) {
+        $Config.optionalTools.install = $false
     }
     if ([string]::IsNullOrWhiteSpace($Config.credentials.username) -or $Config.credentials.username -notmatch '^[a-zA-Z0-9_]{3,32}$') {
         throw "SuiteUsername must be 3-32 characters and contain only letters, numbers, or underscores: $($Config.credentials.username)"
@@ -2308,6 +2343,10 @@ function Install-OptionalToolDependency {
 
 function Install-OptionalMediaTools {
     param([hashtable]$Config, [object]$DependencyManifestPayload)
+    if (-not [bool]$Config.optionalTools.install) {
+        Write-Step 'Optional media tools skipped'
+        return
+    }
     $toolSpecs = Load-MediaToolDependencies -Payload $DependencyManifestPayload
     $configKeys = @{
         'mpc-hc' = 'mpcHc'
@@ -3172,6 +3211,7 @@ function Write-InstallManifest {
             installed = -not [string]::IsNullOrWhiteSpace([string]$Config.automationExamples.zip)
         }
         optionalTools = @{
+            install = [bool]$Config.optionalTools.install
             mpcHc = @{
                 installed = [bool]$Config.optionalTools.mpcHc.installed
                 path = [string]$Config.optionalTools.mpcHc.path

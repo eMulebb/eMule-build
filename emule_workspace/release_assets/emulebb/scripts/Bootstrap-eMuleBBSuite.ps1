@@ -61,6 +61,8 @@ param(
     [switch]$AllowRemoteServiceBind,
     [switch]$NonInteractive,
     [switch]$NoStart,
+    [switch]$InstallMediaTools,
+    [switch]$NoMediaTools,
     [switch]$NoSuiteScriptsBundle,
     [switch]$AllowSuiteScriptsVersionMismatch,
     [switch]$Force,
@@ -83,6 +85,10 @@ function Enable-Tls12 {
 }
 
 Enable-Tls12
+
+if ($InstallMediaTools -and $NoMediaTools) {
+    throw 'Use either -InstallMediaTools or -NoMediaTools, not both.'
+}
 
 $Repository = 'emulebb/emulebb'
 $AmutorrentRepository = 'emulebb/amutorrent'
@@ -887,6 +893,8 @@ if ($effectiveBundle -ne 'Core') {
 }
 if ($NonInteractive) { $installerParams['NonInteractive'] = $true }
 if ($NoStart) { $installerParams['NoStart'] = $true }
+if ($InstallMediaTools) { $installerParams['InstallMediaTools'] = $true }
+if ($NoMediaTools) { $installerParams['NoMediaTools'] = $true }
 if ($Force) { $installerParams['Force'] = $true }
 if ($KeepDownloads) { $installerParams['KeepDownloads'] = $true }
 if (-not [string]::IsNullOrWhiteSpace($P2PBindInterface)) { $installerParams['P2PBindInterface'] = $P2PBindInterface }
