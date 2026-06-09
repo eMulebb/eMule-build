@@ -10,9 +10,12 @@ from emule_workspace import local_hammer_campaign
 
 
 def _layout(tmp_path: Path) -> SimpleNamespace:
+    output_root = tmp_path.parent / f"{tmp_path.name}-output"
     return SimpleNamespace(
         emule_workspace_root=tmp_path,
         workspace_root=tmp_path / "workspaces" / "workspace",
+        output_reports_root=output_root / "reports",
+        output_tmp_root=output_root / "tmp",
         build_repo_root=tmp_path / "repos" / "emulebb-build",
         tests_repo_root=tmp_path / "repos" / "emulebb-build-tests",
     )
@@ -25,6 +28,7 @@ def _workspace_options(tmp_path: Path) -> WorkspaceOptions:
         configuration="Release",
         platform="x64",
         build_output_mode="ErrorsOnly",
+        output_root=tmp_path.parent / f"{tmp_path.name}-output",
     )
 
 
@@ -68,13 +72,7 @@ def test_dry_run_writes_planned_campaign_report(tmp_path: Path) -> None:
 
     local_hammer_campaign.invoke_local_hammer_campaign(layout, _workspace_options(tmp_path), options)
 
-    latest = (
-        layout.workspace_root
-        / "state"
-        / "hammer-campaign-runs"
-        / "latest"
-        / "local-hammer-campaign-result.json"
-    )
+    latest = layout.output_reports_root / "hammer-campaign-runs" / "latest" / "local-hammer-campaign-result.json"
     payload = json.loads(latest.read_text(encoding="utf-8"))
     assert payload["schema"] == local_hammer_campaign.REPORT_SCHEMA
     assert payload["status"] == "planned"
@@ -91,7 +89,7 @@ def test_refresh_repeatability_requires_second_profile_import_skip(tmp_path: Pat
     def fake_materialize(*args, **kwargs) -> MaterializedLocalInstall:
         nonlocal calls
         calls += 1
-        target = layout.workspace_root / "state" / "test-installs" / "run" / "refresh-repeatability" / "primary"
+        target = layout.output_tmp_root / "test-installs" / "run" / "refresh-repeatability" / "primary"
         app_root = target / "apps" / "eMuleBB"
         profile_config = target / "profiles" / "emulebb" / "config"
         seed_config = target / "harness-profile-seed" / "config"

@@ -71,7 +71,7 @@ def invoke_local_hammer_campaign(
 
     report_dir = _new_report_dir(layout)
     report_dir.mkdir(parents=True, exist_ok=False)
-    latest_dir = layout.workspace_root / "state" / "hammer-campaign-runs" / "latest"
+    latest_dir = layout.output_reports_root / "hammer-campaign-runs" / "latest"
     started_at = datetime.now(timezone.utc)
     deadline = _resolve_deadline(campaign_options)
     phases = build_hammer_phase_plan(campaign_options)
@@ -552,7 +552,7 @@ def _latest_report_paths(layout: WorkspaceLayout) -> list[Path]:
 
 
 def _recent_test_installs(layout: WorkspaceLayout) -> list[Path]:
-    installs_root = layout.workspace_root / "state" / "test-installs"
+    installs_root = layout.output_tmp_root / "test-installs"
     if not installs_root.is_dir():
         return []
     return sorted((path for path in installs_root.iterdir() if path.is_dir()), key=lambda path: path.stat().st_mtime, reverse=True)[:10]
@@ -593,11 +593,11 @@ def _aggregate_status(results: list[HammerPhaseResult], *, dry_run: bool) -> str
 
 
 def _new_report_dir(layout: WorkspaceLayout) -> Path:
-    return layout.workspace_root / "state" / "hammer-campaign-runs" / f"{utc_run_id()}-{CAMPAIGN_ID}"
+    return layout.output_reports_root / "hammer-campaign-runs" / f"{utc_run_id()}-{CAMPAIGN_ID}"
 
 
 def _test_reports_root(layout: WorkspaceLayout) -> Path:
-    return layout.workspace_root / "state" / "test-reports"
+    return layout.output_reports_root
 
 
 def _report_directory_snapshot(reports_root: Path) -> dict[Path, float]:

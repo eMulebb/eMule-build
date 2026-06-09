@@ -137,7 +137,7 @@ def invoke_test_runs(layout: WorkspaceLayout, options: WorkspaceOptions) -> None
         ),
         label="native coverage",
         cwd=layout.emule_workspace_root,
-        env={"EMULEBB_WORKSPACE_ROOT": layout.emule_workspace_root},
+        env=_workspace_env(layout),
     )
     invoke_live_diff_runs(layout, options, VariantComparisonOptions())
 
@@ -202,7 +202,7 @@ def invoke_live_diff_runs(
         ),
         label=f"live diff {test_run_variant} vs {baseline_variant}",
         cwd=layout.emule_workspace_root,
-        env={"EMULEBB_WORKSPACE_ROOT": layout.emule_workspace_root},
+        env=_workspace_env(layout),
     )
 
 
@@ -236,7 +236,7 @@ def invoke_protocol_parity(
         ),
         label=f"protocol surface diff {test_run_variant} vs {baseline_variant}",
         cwd=layout.emule_workspace_root,
-        env={"EMULEBB_WORKSPACE_ROOT": layout.emule_workspace_root},
+        env=_workspace_env(layout),
     )
     run_native(
         python.command(
@@ -248,7 +248,7 @@ def invoke_protocol_parity(
         ),
         label="protocol oracle golden validation",
         cwd=layout.emule_workspace_root,
-        env={"EMULEBB_WORKSPACE_ROOT": layout.emule_workspace_root},
+        env=_workspace_env(layout),
     )
     run_native(
         python.command(
@@ -274,7 +274,7 @@ def invoke_protocol_parity(
         ),
         label=f"protocol parity live diff {test_run_variant} vs {baseline_variant}",
         cwd=layout.emule_workspace_root,
-        env={"EMULEBB_WORKSPACE_ROOT": layout.emule_workspace_root},
+        env=_workspace_env(layout),
     )
 
 
@@ -316,7 +316,7 @@ def invoke_community_core_coverage(
         ),
         label=f"community core coverage {test_run_variant} vs {baseline_variant}",
         cwd=layout.emule_workspace_root,
-        env={"EMULEBB_WORKSPACE_ROOT": layout.emule_workspace_root},
+        env=_workspace_env(layout),
     )
 
 
@@ -812,7 +812,7 @@ def invoke_release_campaign_report(
         python.command(args),
         label="release campaign report",
         cwd=layout.emule_workspace_root,
-        env={"EMULEBB_WORKSPACE_ROOT": layout.emule_workspace_root},
+        env=_workspace_env(layout),
     )
 
 
@@ -844,7 +844,7 @@ def invoke_amutorrent_interactive_session(
         python.command(args),
         label="aMuTorrent interactive session",
         cwd=layout.emule_workspace_root,
-        env={"EMULEBB_WORKSPACE_ROOT": layout.emule_workspace_root},
+        env=_workspace_env(layout),
     )
 
 
@@ -1092,6 +1092,15 @@ def _append_optional_flag(args: list, enabled: bool, flag: str) -> None:
         args.append(flag)
 
 
+def _workspace_env(layout: WorkspaceLayout) -> dict[str, Path]:
+    """Returns the mandatory root environment passed to child test scripts."""
+
+    return {
+        "EMULEBB_WORKSPACE_ROOT": layout.emule_workspace_root,
+        "EMULEBB_WORKSPACE_OUTPUT_ROOT": layout.output_build_root.parent,
+    }
+
+
 def _append_lan_bind_addr(args: list[str | Path | float], env: dict[str, str]) -> None:
     lan_bind_address = _lan_bind_address_from_env(env)
     if lan_bind_address:
@@ -1108,7 +1117,7 @@ def _run_live_native(
 ) -> None:
     retried_after_upnp_restart = False
     while True:
-        completed = run_native(command, label=label, cwd=cwd, env=env, allow_failure=True)
+        completed = run_native(command, label=label, cwd=cwd, env={**_workspace_env(layout), **env}, allow_failure=True)
         if int(getattr(completed, "returncode", 0) or 0) == 0:
             return
 
@@ -1281,6 +1290,7 @@ def _test_network_env(
         context_env.setdefault("X_LOCAL_IP", lan_bind_address)
     return {
         "EMULEBB_WORKSPACE_ROOT": str(layout.emule_workspace_root),
+        "EMULEBB_WORKSPACE_OUTPUT_ROOT": str(layout.output_build_root.parent),
         **context_env,
     }
 

@@ -25,7 +25,12 @@ def test_policy_audits_receive_workspace_root_through_environment(
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr(validation, "run_native", fake_run_native)
-    layout = SimpleNamespace(emule_workspace_root=tmp_path, tooling_repo_root=tooling_root)
+    output_root = tmp_path.parent / f"{tmp_path.name}-output"
+    layout = SimpleNamespace(
+        emule_workspace_root=tmp_path,
+        output_build_root=output_root / "builds",
+        tooling_repo_root=tooling_root,
+    )
 
     validation.run_policy_audits(layout)
 
@@ -34,7 +39,10 @@ def test_policy_audits_receive_workspace_root_through_environment(
         assert "-EmuleWorkspaceRoot" not in call["command"]
         assert "pwsh" not in call["command"]
         assert call["command"][-2] == str(audit_path)
-        assert call["env"] == {"EMULEBB_WORKSPACE_ROOT": tmp_path}
+        assert call["env"] == {
+            "EMULEBB_WORKSPACE_ROOT": tmp_path,
+            "EMULEBB_WORKSPACE_OUTPUT_ROOT": output_root,
+        }
 
 
 def test_validation_reanchors_clean_canonical_app_anchor(

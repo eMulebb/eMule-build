@@ -38,6 +38,7 @@ def make_layout(tmp_path: Path) -> WorkspaceLayout:
         app_variants=(AppVariant(name="main", path=app_root, branch="main"),),
         test_targets=LayoutTestTargets(test_build_variant="main", test_run_variant="main", baseline_variant="community"),
         toolset_override_variable="",
+        output_root=emule_workspace_root.parent / f"{emule_workspace_root.name}-output",
     )
 
 
@@ -521,7 +522,7 @@ def test_live_e2e_can_run_against_materialized_installer_test_install(tmp_path: 
                 lan_bind_address=lan_bind_address,
             )
         )
-        install_root = tmp_path / "workspaces" / "workspace" / "state" / "test-installs" / "run" / "live-e2e-suite" / "main"
+        install_root = layout.output_tmp_root / "test-installs" / "run" / "live-e2e-suite" / "main"
         manifests = install_root / "manifests"
         manifests.mkdir(parents=True)
         (manifests / "suite-config.json").write_text(
@@ -573,7 +574,7 @@ def test_live_e2e_can_run_against_materialized_installer_test_install(tmp_path: 
     assert call.client_id == "main"
     assert call.lan_bind_address is None
     assert call.run_id.endswith("-pid" + str(os.getpid()))
-    install_root = call.layout.workspace_root / "state" / "test-installs" / "run" / "live-e2e-suite" / "main"
+    install_root = call.layout.output_tmp_root / "test-installs" / "run" / "live-e2e-suite" / "main"
     assert option_values(command, "--app-root") == [str(install_root / "apps" / "eMuleBB")]
     assert option_values(command, "--app-exe") == [
         str(install_root / "apps" / "eMuleBB" / "emulebb.exe")
@@ -603,7 +604,7 @@ def test_live_e2e_materialized_vpn_uses_lan_bind(tmp_path: Path, monkeypatch) ->
     def fake_materialize(layout, workspace_options, install_options, *, run_id, suite_name, client_id, lan_bind_address=None):
         events.append("materialize")
         materialize_calls.append(SimpleNamespace(lan_bind_address=lan_bind_address))
-        install_root = tmp_path / "workspaces" / "workspace" / "state" / "test-installs" / "run" / "live-e2e-suite" / "main"
+        install_root = layout.output_tmp_root / "test-installs" / "run" / "live-e2e-suite" / "main"
         app_exe = install_root / "apps" / "eMuleBB" / "emulebb.exe"
         app_exe.parent.mkdir(parents=True)
         app_exe.write_bytes(b"exe")
@@ -680,7 +681,7 @@ def test_live_e2e_installer_controller_surface_profile_materializes_by_default(t
 
     def fake_materialize(layout, workspace_options, install_options, *, run_id, suite_name, client_id, lan_bind_address=None):
         materialize_calls.append(SimpleNamespace(lan_bind_address=lan_bind_address))
-        install_root = tmp_path / "workspaces" / "workspace" / "state" / "test-installs" / "run" / "live-e2e-suite" / "main"
+        install_root = layout.output_tmp_root / "test-installs" / "run" / "live-e2e-suite" / "main"
         app_exe = install_root / "apps" / "eMuleBB" / "emulebb.exe"
         app_exe.parent.mkdir(parents=True)
         app_exe.write_bytes(b"exe")
@@ -738,7 +739,7 @@ def test_live_e2e_installer_controller_surface_soak_materializes_by_default(tmp_
 
     def fake_materialize(layout, workspace_options, install_options, *, run_id, suite_name, client_id, lan_bind_address=None):
         materialize_calls.append(SimpleNamespace(lan_bind_address=lan_bind_address))
-        install_root = tmp_path / "workspaces" / "workspace" / "state" / "test-installs" / "run" / "live-e2e-suite" / "main"
+        install_root = layout.output_tmp_root / "test-installs" / "run" / "live-e2e-suite" / "main"
         app_exe = install_root / "apps" / "eMuleBB" / "emulebb.exe"
         app_exe.parent.mkdir(parents=True)
         app_exe.write_bytes(b"exe")
@@ -841,7 +842,7 @@ def test_live_e2e_starts_materialized_arr_services_for_arr_suites(tmp_path: Path
         captured["env"] = dict(env or {})
 
     def fake_materialize(layout, workspace_options, install_options, *, run_id, suite_name, client_id, lan_bind_address=None):
-        install_root = tmp_path / "workspaces" / "workspace" / "state" / "test-installs" / "run" / "live-e2e-suite" / "main"
+        install_root = layout.output_tmp_root / "test-installs" / "run" / "live-e2e-suite" / "main"
         manifests = install_root / "manifests"
         manifests.mkdir(parents=True)
         (manifests / "suite-config.json").write_text(
@@ -906,7 +907,7 @@ def test_live_e2e_does_not_start_materialized_arr_services_for_non_arr_suites(tm
         captured["command"] = list(command)
 
     def fake_materialize(layout, workspace_options, install_options, *, run_id, suite_name, client_id, lan_bind_address=None):
-        install_root = tmp_path / "workspaces" / "workspace" / "state" / "test-installs" / "run" / "live-e2e-suite" / "main"
+        install_root = layout.output_tmp_root / "test-installs" / "run" / "live-e2e-suite" / "main"
         return SimpleNamespace(
             target_path=install_root,
             app_root=install_root / "apps" / "eMuleBB",
@@ -1055,7 +1056,7 @@ def test_live_e2e_registers_materialized_exe_for_developer_hide_me_split_tunnel(
         captured["command"] = list(command)
 
     def fake_materialize(layout_arg, workspace_options, install_options, *, run_id, suite_name, client_id, lan_bind_address=None):
-        install_root = tmp_path / "workspaces" / "workspace" / "state" / "test-installs" / run_id / suite_name / client_id
+        install_root = layout.output_tmp_root / "test-installs" / run_id / suite_name / client_id
         app_exe = install_root / "apps" / "eMuleBB" / "emulebb.exe"
         seed_config = install_root / "harness-profile-seed" / "config"
         profile_dir = install_root / "profiles" / "emulebb"
@@ -1128,7 +1129,7 @@ def test_live_e2e_hide_me_registration_updates_only_whitelist_for_materialized_e
 
     def fake_materialize(layout_arg, workspace_options, install_options, *, run_id, suite_name, client_id, lan_bind_address=None):
         events.append("materialize")
-        install_root = tmp_path / "workspaces" / "workspace" / "state" / "test-installs" / run_id / suite_name / client_id
+        install_root = layout.output_tmp_root / "test-installs" / run_id / suite_name / client_id
         app_exe = install_root / "apps" / "eMuleBB" / "emulebb.exe"
         app_exe.parent.mkdir(parents=True)
         app_exe.write_bytes(b"exe")
@@ -1707,4 +1708,7 @@ def test_release_campaign_report_forwards_campaign_phase_and_json_options(tmp_pa
     assert option_values(command, "--test-repo-root") == [str(layout.tests_repo_root)]
     assert option_values(command, "--workspace-state-root") == [str(layout.workspace_root / "state")]
     assert "--json" in command
-    assert captured["env"] == {"EMULEBB_WORKSPACE_ROOT": layout.emule_workspace_root}
+    assert captured["env"] == {
+        "EMULEBB_WORKSPACE_ROOT": layout.emule_workspace_root,
+        "EMULEBB_WORKSPACE_OUTPUT_ROOT": layout.output_build_root.parent,
+    }

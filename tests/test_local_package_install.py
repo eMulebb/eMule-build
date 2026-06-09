@@ -57,6 +57,7 @@ def _layout(tmp_path: Path) -> SimpleNamespace:
         workspace_root=tmp_path / "workspaces" / "workspace",
         output_release_root=output_root / "release",
         output_packages_root=output_root / "packages",
+        output_tmp_root=output_root / "tmp",
         build_repo_root=tmp_path / "repos" / "emulebb-build",
         tests_repo_root=tmp_path / "repos" / "emulebb-build-tests",
     )
@@ -528,10 +529,7 @@ def test_test_install_root_is_scoped_by_run_suite_and_client(tmp_path: Path) -> 
     )
 
     assert first == (
-        tmp_path
-        / "workspaces"
-        / "workspace"
-        / "state"
+        layout.output_tmp_root
         / "test-installs"
         / "20260529T120000Z-run"
         / "godzilla-local-swarm"
@@ -585,8 +583,7 @@ def test_materialize_test_local_install_uses_isolated_test_root(
     )
 
     expected_target = (
-        layout.workspace_root
-        / "state"
+        layout.output_tmp_root
         / "test-installs"
         / "20260529T120000Z-run"
         / "godzilla-local-swarm"

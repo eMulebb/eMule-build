@@ -395,8 +395,7 @@ def test_install_root(
     """Returns the isolated suite install root for one parallel test client."""
 
     return (
-        layout.workspace_root
-        / "state"
+        layout.output_tmp_root
         / TEST_INSTALLS_DIR_NAME
         / file_token(run_id)
         / file_token(suite_name)
