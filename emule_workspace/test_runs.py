@@ -27,7 +27,7 @@ from .config import (
     VariantComparisonOptions,
     WorkspaceOptions,
 )
-from .build import build_apps
+from .build import APP_EXE_NAME, app_build_binary_path, build_apps
 from .cleanup import run_pre_test_cleanup
 from .hide_me_split_tunnel import ensure_split_tunnel_apps, restart_hide_me_after_upnp_failure_if_requested
 from .layout import WorkspaceLayout, get_test_build_tag
@@ -372,7 +372,7 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
     _ensure_hide_me_split_tunnel_for_live(
         test_network=live_options.test_network,
         p2p_bind_interface_name=live_options.p2p_bind_interface_name,
-        app_exe=_resolve_live_e2e_app_exe(app_root, app_exe, options),
+        app_exe=_resolve_live_e2e_app_exe(layout, app_root, app_exe, options),
     )
     network_env = _test_network_env(
         layout,
@@ -920,7 +920,7 @@ def invoke_amutorrent_clean_startup(
     _ensure_hide_me_split_tunnel_for_live(
         test_network=clean_options.test_network,
         p2p_bind_interface_name=clean_options.p2p_bind_interface_name,
-        app_exe=_resolve_live_e2e_app_exe(app_root, None, options),
+        app_exe=_resolve_live_e2e_app_exe(layout, app_root, None, options),
     )
     script_path = layout.tests_repo_root / "scripts" / "amutorrent-clean-startup.py"
     if not script_path.is_file():
@@ -979,7 +979,7 @@ def invoke_amutorrent_resilience(
     _ensure_hide_me_split_tunnel_for_live(
         test_network=resilience_options.test_network,
         p2p_bind_interface_name=resilience_options.p2p_bind_interface_name,
-        app_exe=_resolve_live_e2e_app_exe(app_root, None, options),
+        app_exe=_resolve_live_e2e_app_exe(layout, app_root, None, options),
     )
     script_path = layout.tests_repo_root / "scripts" / "amutorrent-resilience-live.py"
     if not script_path.is_file():
@@ -1040,7 +1040,7 @@ def invoke_amutorrent_emulebb_ui(
     _ensure_hide_me_split_tunnel_for_live(
         test_network=ui_options.test_network,
         p2p_bind_interface_name=ui_options.p2p_bind_interface_name,
-        app_exe=_resolve_live_e2e_app_exe(app_root, None, options),
+        app_exe=_resolve_live_e2e_app_exe(layout, app_root, None, options),
     )
     script_path = layout.tests_repo_root / "scripts" / "amutorrent-emulebb-ui-live.py"
     if not script_path.is_file():
@@ -1214,12 +1214,26 @@ def _live_e2e_test_install_run_id() -> str:
     return f"{stamp}-pid{os.getpid()}"
 
 
-def _resolve_live_e2e_app_exe(app_root: Path, app_exe: Path | None, options: WorkspaceOptions) -> Path:
+def _resolve_live_e2e_app_exe(
+    layout: WorkspaceLayout,
+    app_root: Path,
+    app_exe: Path | None,
+    options: WorkspaceOptions,
+) -> Path:
     """Returns the eMuleBB executable path used by live E2E runners."""
 
     if app_exe is not None:
         return app_exe
-    return app_root / "srchybrid" / options.platform / options.configuration / "emulebb.exe"
+    variant = next((candidate for candidate in layout.app_variants if candidate.path.resolve() == app_root.resolve()), None)
+    if variant is None:
+        raise RuntimeError(f"Cannot map app root to a configured variant: {app_root}")
+    return app_build_binary_path(
+        layout,
+        variant.name,
+        options.configuration,
+        options.platform,
+        executable_name=APP_EXE_NAME,
+    )
 
 
 def _resolve_workspace_argument(layout: WorkspaceLayout, value: str) -> str:

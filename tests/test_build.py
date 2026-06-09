@@ -87,6 +87,8 @@ def test_build_apps_honors_diagnostics_env_overrides(
     assert "/p:EnablePacketDiagnostics=true" in captured["extra_properties"]
     assert "/p:TargetName=emulebb-diagnostics" in captured["extra_properties"]
     assert captured["cfg_binary_path"].name == "emulebb-diagnostics.exe"
+    assert f"/p:OutDir={build.with_trailing_separator(tmp_path / 'emulebb-output' / 'builds' / 'app' / 'main' / 'x64' / 'Release' / 'diagnostics' / 'bin')}" in captured["extra_properties"]
+    assert f"/p:IntDir={build.with_trailing_separator(tmp_path / 'emulebb-output' / 'builds' / 'app' / 'main' / 'x64' / 'Release' / 'diagnostics' / 'obj')}" in captured["extra_properties"]
 
 
 def test_build_apps_diagnostics_option_enables_all_release_diagnostics(
@@ -145,6 +147,8 @@ def test_build_apps_keeps_standard_name_without_full_diagnostics(
 
     assert "/p:TargetName=emulebb-diagnostics" not in captured["extra_properties"]
     assert captured["cfg_binary_path"].name == "emulebb.exe"
+    assert f"/p:OutDir={build.with_trailing_separator(tmp_path / 'emulebb-output' / 'builds' / 'app' / 'main' / 'x64' / 'Release' / 'standard' / 'bin')}" in captured["extra_properties"]
+    assert f"/p:IntDir={build.with_trailing_separator(tmp_path / 'emulebb-output' / 'builds' / 'app' / 'main' / 'x64' / 'Release' / 'standard' / 'obj')}" in captured["extra_properties"]
 
 
 def capture_build_libs_msbuild_calls(
@@ -245,4 +249,5 @@ def make_layout(tmp_path: Path, *, app_variants: bool = False) -> WorkspaceLayou
         app_variants=(AppVariant(name="main", path=app_root, branch="main"),) if app_variants else (),
         test_targets=LayoutTestTargets(test_build_variant="main", test_run_variant="main", baseline_variant="community"),
         toolset_override_variable="EMULEBB_VS_PLATFORM_TOOLSET",
+        output_root=tmp_path / "emulebb-output",
     )

@@ -13,7 +13,7 @@ from .build_state import BuildSession
 from .cmake import invoke_cmake_dependency_build, remove_tree_if_present, static_msvc_runtime_cmake_arguments
 from .config import BuildClientsOptions, WorkspaceOptions
 from .git import repo_branch, test_app_branch_allowed
-from .layout import WorkspaceLayout
+from .layout import WorkspaceLayout, file_token
 from .msbuild import env_override, invoke_msbuild_project
 from .process import find_tool
 from .toolchain import get_cmake_path, get_dumpbin_path, get_perl_path
@@ -176,6 +176,15 @@ def build_apps(
             override = env_override(layout.toolset_override_variable)
             if override:
                 extra_properties.append(f"/p:PlatformToolset={override}")
+            build_output_root = app_build_output_root(
+                layout,
+                variant.name,
+                options.configuration,
+                options.platform,
+                executable_name=local_executable_name,
+            )
+            extra_properties.append(f"/p:OutDir={with_trailing_separator(build_output_root / 'bin')}")
+            extra_properties.append(f"/p:IntDir={with_trailing_separator(build_output_root / 'obj')}")
             invoke_msbuild_project(
                 session,
                 project_path=variant.path / "srchybrid" / "emule.vcxproj",
@@ -186,8 +195,9 @@ def build_apps(
             if variant.name == "main":
                 verify_app_control_flow_guard(
                     session,
-                    binary_path=app_binary_path(
-                        variant.path,
+                    binary_path=app_build_binary_path(
+                        layout,
+                        variant.name,
                         options.configuration,
                         options.platform,
                         executable_name=local_executable_name,
@@ -567,8 +577,7 @@ def ensure_arm64_override_targets(layout: WorkspaceLayout) -> None:
 def verify_app_control_flow_guard(session: BuildSession, *, binary_path: Path, step_name: str) -> None:
     """Verifies Control Flow Guard metadata in a built app executable."""
 
-    relative_binary = binary_path.resolve().relative_to(session.layout.emule_workspace_root)
-    log_path = session.log_directory / f"{str(relative_binary.with_suffix('')).replace('\\', '-')}-cfg.log"
+    log_path = session.log_directory / f"{file_token(str(binary_path.resolve().with_suffix('')))}-cfg.log"
     started_at = time.monotonic()
     try:
         if not binary_path.is_file():
@@ -609,6 +618,39 @@ def app_binary_path(app_root: Path, configuration: str, platform: str, *, execut
     """Returns the built eMuleBB executable path."""
 
     return app_root / "srchybrid" / platform / configuration / executable_name
+
+
+def app_build_output_root(
+    layout: WorkspaceLayout,
+    variant_name: str,
+    configuration: str,
+    platform: str,
+    *,
+    executable_name: str = APP_EXE_NAME,
+) -> Path:
+    """Returns the external routine app build root for one variant and flavor."""
+
+    flavor = "diagnostics" if executable_name == DIAGNOSTICS_APP_EXE_NAME else "standard"
+    return layout.output_build_root / "app" / variant_name / platform / configuration / flavor
+
+
+def app_build_binary_path(
+    layout: WorkspaceLayout,
+    variant_name: str,
+    configuration: str,
+    platform: str,
+    *,
+    executable_name: str = APP_EXE_NAME,
+) -> Path:
+    """Returns the external routine app executable path."""
+
+    return app_build_output_root(
+        layout,
+        variant_name,
+        configuration,
+        platform,
+        executable_name=executable_name,
+    ) / "bin" / executable_name
 
 
 def mbedtls_project_path(layout: WorkspaceLayout) -> Path:
