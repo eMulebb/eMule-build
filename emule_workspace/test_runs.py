@@ -1121,7 +1121,7 @@ def _run_live_native(
         if int(getattr(completed, "returncode", 0) or 0) == 0:
             return
 
-        failure_text = _recent_live_failure_text(layout.workspace_root)
+        failure_text = _recent_live_failure_text(layout)
         restart = (
             {"requested": False, "skipped": "UPnP recovery retry already used"}
             if retried_after_upnp_restart
@@ -1133,11 +1133,9 @@ def _run_live_native(
         raise RuntimeError(f"{label} failed with exit code {completed.returncode}.")
 
 
-def _recent_live_failure_text(workspace_root: Path) -> str:
-    state_root = workspace_root / "state"
+def _recent_live_failure_text(layout: WorkspaceLayout) -> str:
     candidates: list[Path] = []
-    for relative_root in ("test-reports", "test-artifacts"):
-        root = state_root / relative_root
+    for root in (layout.output_reports_root, layout.output_artifacts_root):
         if root.is_dir():
             candidates.extend(path for path in root.rglob("*.json") if path.is_file())
             candidates.extend(path for path in root.rglob("emulebb*.log") if path.is_file())

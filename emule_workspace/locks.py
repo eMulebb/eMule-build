@@ -29,7 +29,7 @@ class WorkspaceLock:
     def metadata_path(self) -> Path:
         """Returns the active lock metadata path."""
 
-        return self.layout.workspace_root / "state" / "active-command-lock.json"
+        return self.layout.output_tmp_root / "active-command-lock.json"
 
     def acquire(self) -> bool:
         """Attempts to acquire the workspace lock without waiting."""
