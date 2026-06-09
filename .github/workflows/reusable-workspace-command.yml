@@ -81,10 +81,17 @@ jobs:
     timeout-minutes: ${{ inputs.timeout_minutes }}
     env:
       EMULEBB_WORKSPACE_ROOT: ${{ github.workspace }}
-      EMULEBB_WORKSPACE_OUTPUT_ROOT: ${{ runner.temp }}\emulebb-output
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
     steps:
+      - name: Set workspace output root
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $outputRoot = Join-Path $env:RUNNER_TEMP "emulebb-output"
+          New-Item -ItemType Directory -Force -Path $outputRoot | Out-Null
+          "EMULEBB_WORKSPACE_OUTPUT_ROOT=$outputRoot" | Add-Content -LiteralPath $env:GITHUB_ENV
+
       - name: Checkout build orchestration
         uses: actions/checkout@v6
         with:
@@ -184,12 +191,86 @@ jobs:
           $env:PYTHONPATH = Join-Path $env:EMULEBB_WORKSPACE_ROOT "repos\emulebb-build"
           python -m emule_workspace audit-artifacts
 
+      - name: Resolve artifact upload paths
+        id: artifact_paths
+        if: ${{ always() }}
+        shell: pwsh
+        env:
+          ARTIFACT_PATH_INPUT: ${{ inputs.artifact_path }}
+          FAILURE_ARTIFACT_PATH_INPUT: ${{ inputs.failure_artifact_path }}
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          function Resolve-ArtifactPathInput {
+            param([string]$RawInput)
+
+            if ([string]::IsNullOrWhiteSpace($RawInput)) {
+              return @()
+            }
+
+            $outputChildren = @(
+              "artifacts",
+              "builds",
+              "cache",
+              "logs",
+              "packages",
+              "profiles",
+              "release",
+              "reports",
+              "tmp",
+              "tools"
+            )
+
+            $resolved = New-Object System.Collections.Generic.List[string]
+            foreach ($line in ($RawInput -split "`r?`n")) {
+              $pathText = $line.Trim()
+              if ([string]::IsNullOrWhiteSpace($pathText)) {
+                continue
+              }
+
+              $expanded = [Environment]::ExpandEnvironmentVariables($pathText)
+              $expanded = $expanded.Replace('${{ env.EMULEBB_WORKSPACE_OUTPUT_ROOT }}', $env:EMULEBB_WORKSPACE_OUTPUT_ROOT)
+              $expanded = $expanded.Replace('${{ env.EMULEBB_WORKSPACE_ROOT }}', $env:EMULEBB_WORKSPACE_ROOT)
+
+              if ([System.IO.Path]::IsPathRooted($expanded)) {
+                $resolved.Add($expanded)
+                continue
+              }
+
+              $firstPart = ($expanded -split '[\\/]')[0]
+              if ($outputChildren -contains $firstPart) {
+                $resolved.Add((Join-Path $env:EMULEBB_WORKSPACE_OUTPUT_ROOT $expanded))
+              } else {
+                $resolved.Add((Join-Path $env:GITHUB_WORKSPACE $expanded))
+              }
+            }
+
+            return $resolved.ToArray()
+          }
+
+          function Write-MultilineOutput {
+            param(
+              [string]$Name,
+              [string[]]$Value
+            )
+
+            $delimiter = "EOF_$([Guid]::NewGuid().ToString('N'))"
+            Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "$Name<<$delimiter"
+            foreach ($line in $Value) {
+              Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value $line
+            }
+            Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value $delimiter
+          }
+
+          Write-MultilineOutput -Name "artifact_path" -Value (Resolve-ArtifactPathInput $env:ARTIFACT_PATH_INPUT)
+          Write-MultilineOutput -Name "failure_artifact_path" -Value (Resolve-ArtifactPathInput $env:FAILURE_ARTIFACT_PATH_INPUT)
+
       - name: Upload failure artifacts
         if: ${{ failure() && inputs.failure_artifact_name != '' && inputs.failure_artifact_path != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.failure_artifact_name }}
-          path: ${{ inputs.failure_artifact_path }}
+          path: ${{ steps.artifact_paths.outputs.failure_artifact_path }}
           if-no-files-found: ignore
           retention-days: ${{ inputs.failure_artifact_retention_days }}
 
@@ -198,6 +279,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.artifact_name }}
-          path: ${{ inputs.artifact_path }}
+          path: ${{ steps.artifact_paths.outputs.artifact_path }}
           if-no-files-found: error
           retention-days: ${{ inputs.artifact_retention_days }}

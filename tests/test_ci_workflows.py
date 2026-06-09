@@ -41,7 +41,9 @@ def test_reusable_workspace_command_owns_materialized_ci_setup() -> None:
 
     assert "workflow_call:" in text
     assert "EMULEBB_WORKSPACE_ROOT: ${{ github.workspace }}" in text
-    assert r"EMULEBB_WORKSPACE_OUTPUT_ROOT: ${{ runner.temp }}\emulebb-output" in text
+    assert 'Join-Path $env:RUNNER_TEMP "emulebb-output"' in text
+    assert "EMULEBB_WORKSPACE_OUTPUT_ROOT=$outputRoot" in text
+    assert "Resolve-ArtifactPathInput" in text
     assert "python -m emule_workspace materialize" in text
     assert "python -m emule_workspace audit-artifacts" in text
     assert "materialize --workspace-root" not in text
@@ -114,11 +116,11 @@ def test_controlled_smoke_uses_reusable_core_offline_and_lan_suite() -> None:
     assert r"scripts\command-line-smoke.py" in text
     assert "Release ARM64 eMuleBB package" in text
     assert "ARM64 offline command-line smoke" in text
-    assert r"${{ runner.temp }}\emulebb-output\reports\command-line-smoke\**" in text
-    assert r"${{ runner.temp }}\emulebb-output\artifacts\command-line-smoke\**" in text
-    assert r"${{ runner.temp }}\emulebb-output\reports\live-e2e-suite\**" in text
-    assert r"${{ runner.temp }}\emulebb-output\artifacts\live-e2e-suite\**" in text
-    assert r"${{ runner.temp }}\emulebb-output\logs\builds\**" in text
+    assert "reports/command-line-smoke/**" in text
+    assert "artifacts/command-line-smoke/**" in text
+    assert "reports/live-e2e-suite/**" in text
+    assert "artifacts/live-e2e-suite/**" in text
+    assert "logs/builds/**" in text
 
 
 def test_controlled_smoke_keeps_first_lane_narrow() -> None:
@@ -147,8 +149,8 @@ def test_vs2026_v145_probe_exercises_native_build_without_smoke_or_package() -> 
     assert "--platform x64" in text
     assert "--clean" in text
     assert "--variant main" in text
-    assert r"${{ runner.temp }}\emulebb-output\reports\v145-probe\**" in text
-    assert r"${{ runner.temp }}\emulebb-output\logs\builds\**" in text
+    assert "reports/v145-probe/**" in text
+    assert "logs/builds/**" in text
     assert "package-release" not in text
     assert "package-amutorrent" not in text
     assert "test live-e2e" not in text
