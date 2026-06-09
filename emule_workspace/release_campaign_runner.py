@@ -34,6 +34,7 @@ from .config import (
 )
 from .campaign_scenario_runner import invoke_campaign_scenario
 from .layout import WorkspaceLayout
+from .materialize import sync_workspace
 from .process import get_python_invocation, run_native
 from .python_tests import invoke_python_tests
 from .release import create_amutorrent_package, create_release_package
@@ -111,6 +112,9 @@ _CAMPAIGN_SCENARIO_VALUE_OPTIONS = {
     "--local-swarm-mode",
 }
 _CAMPAIGN_SCENARIO_FLAG_OPTIONS = {"--skip-build", "--dry-run"}
+_PYTHON_TEST_VALUE_OPTIONS = {"--path", "--expression", "-k"}
+_PYTHON_TEST_FLAG_OPTIONS = {"--quiet", "-q"}
+_SYNC_VALUE_OPTIONS = {"--workspace-name", "--artifacts-seed-root"}
 
 
 @dataclass(frozen=True)
@@ -472,11 +476,18 @@ def _dispatch_workspace_command(
     if tokens == ["validate"]:
         validate_workspace(layout)
         return
+    if tokens and tokens[0] == "sync":
+        sync_workspace(
+            workspace_root=str(layout.emule_workspace_root),
+            workspace_name=_option_value(tokens, "--workspace-name"),
+            artifacts_seed_root=_option_value(tokens, "--artifacts-seed-root"),
+        )
+        return
     if tokens[:2] == ["test", "certification"]:
         invoke_certification(layout, workspace_options, _certification_options(campaign_options, tokens))
         return
     if tokens[:2] == ["test", "python"]:
-        invoke_python_tests(layout, PythonTestOptions(quiet="--quiet" in tokens))
+        invoke_python_tests(layout, _python_test_options_from_tokens(tokens))
         return
     if tokens[:2] == ["test", "protocol-parity"]:
         invoke_protocol_parity(layout, workspace_options, VariantComparisonOptions())
@@ -697,6 +708,16 @@ def _campaign_scenario_options_from_tokens(tokens: list[str]) -> CampaignScenari
     )
 
 
+def _python_test_options_from_tokens(tokens: list[str]) -> PythonTestOptions:
+    """Returns focused pytest options from one release campaign command."""
+
+    return PythonTestOptions(
+        quiet="--quiet" in tokens or "-q" in tokens,
+        paths=tuple(_option_values(tokens, "--path")),
+        expression=_option_value(tokens, "--expression") or _option_value(tokens, "-k"),
+    )
+
+
 def _option_value(tokens: list[str], option: str) -> str | None:
     for index, token in enumerate(tokens[:-1]):
         if token == option:
@@ -737,12 +758,16 @@ def _validate_workspace_command_tokens(tokens: list[str]) -> None:
     workspace_options = WorkspaceOptions(workspace_root=Path("."))
     if tokens == ["validate"]:
         return
+    if tokens and tokens[0] == "sync":
+        _validate_options(tokens[1:], value_options=_SYNC_VALUE_OPTIONS, flag_options=set())
+        return
     if tokens[:2] == ["test", "certification"]:
         _validate_options(tokens[2:], value_options=_CERTIFICATION_VALUE_OPTIONS, flag_options=_CERTIFICATION_FLAG_OPTIONS)
         _certification_options(campaign_options, tokens)
         return
     if tokens[:2] == ["test", "python"]:
-        _validate_options(tokens[2:], value_options=set(), flag_options={"--quiet"})
+        _validate_options(tokens[2:], value_options=_PYTHON_TEST_VALUE_OPTIONS, flag_options=_PYTHON_TEST_FLAG_OPTIONS)
+        _python_test_options_from_tokens(tokens)
         return
     if tokens[:2] == ["test", "protocol-parity"]:
         _validate_options(tokens[2:], value_options=set(), flag_options=set())

@@ -344,6 +344,84 @@ def test_campaign_execute_dispatches_supported_commands(tmp_path: Path, monkeypa
     assert calls == ["cleanup", "validate", "python", "live:controller-surface"]
 
 
+def test_campaign_execute_forwards_focused_python_test_options(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    layout = make_layout(tmp_path)
+    campaign = campaign_payload()
+    campaign["phases"][0]["scenarios"] = [
+        {
+            "id": "rust-python",
+            "command": (
+                "python -m emule_workspace test python "
+                "--path tests/python/test_emulebb_rust_local_client.py -q -k local_search"
+            ),
+            "blocking": True,
+        }
+    ]
+    write_campaign(layout, campaign)
+    calls: list[tuple[bool, tuple[str, ...], str | None]] = []
+
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "run_pre_test_cleanup",
+        lambda _layout: release_campaign_runner.CleanupRunSummary("routine", True, "passed", 0, 0, 0, {}),
+    )
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "invoke_python_tests",
+        lambda _layout, options: calls.append((options.quiet, options.paths, options.expression)),
+    )
+
+    release_campaign_runner.invoke_release_campaign(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path),
+        ReleaseCampaignOptions(campaign="test-campaign", phase="preflight", execute=True),
+    )
+
+    assert calls == [(True, ("tests/python/test_emulebb_rust_local_client.py",), "local_search")]
+
+
+def test_campaign_execute_dispatches_workspace_sync(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    layout = make_layout(tmp_path)
+    campaign = campaign_payload()
+    campaign["phases"][0]["scenarios"] = [
+        {
+            "id": "sync",
+            "command": "python -m emule_workspace sync --workspace-name workspace",
+            "blocking": True,
+        }
+    ]
+    write_campaign(layout, campaign)
+    calls: list[tuple[str, str | None, str | None]] = []
+
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "run_pre_test_cleanup",
+        lambda _layout: release_campaign_runner.CleanupRunSummary("routine", True, "passed", 0, 0, 0, {}),
+    )
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "sync_workspace",
+        lambda **kwargs: calls.append(
+            (
+                kwargs["workspace_root"],
+                kwargs["workspace_name"],
+                kwargs["artifacts_seed_root"],
+            )
+        ),
+    )
+
+    release_campaign_runner.invoke_release_campaign(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path),
+        ReleaseCampaignOptions(campaign="test-campaign", phase="preflight", execute=True),
+    )
+
+    assert calls == [(str(layout.emule_workspace_root), "workspace", None)]
+
+
 def test_campaign_execute_forwards_live_e2e_suite_selection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     layout = make_layout(tmp_path)
     campaign = campaign_payload()
