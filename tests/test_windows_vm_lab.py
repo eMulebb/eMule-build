@@ -450,6 +450,77 @@ def test_prepare_vm_lab_dry_run_plans_targets(tmp_path: Path) -> None:
     assert result["targets"][0]["baselineReportPath"].endswith("reports\\vm-lab\\prepare\\win10-baseline.json")
 
 
+def test_vm_lab_audit_passes_clean_existing_output_root_disk(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    layout = _layout(tmp_path)
+    config_path = layout.build_repo_root / "vm-lab.local.json"
+    _write_config(config_path)
+    disk_path = layout.output_artifacts_root / "vm-lab" / "images" / "win10.vhdx"
+    disk_path.parent.mkdir(parents=True)
+    disk_path.write_bytes(b"vhd")
+
+    monkeypatch.setattr(
+        windows_vm_lab,
+        "_query_vm_lab_hyperv_disks",
+        lambda **_kwargs: [
+            {
+                "vmName": "emulebb-win10-test",
+                "state": "Off",
+                "vmPath": str(layout.output_artifacts_root / "vm-lab"),
+                "diskPath": str(disk_path),
+                "diskExists": True,
+            }
+        ],
+    )
+
+    result = windows_vm_lab.audit_vm_lab(layout, config_file=str(config_path), matrix=("win10",))
+
+    assert result["status"] == "passed"
+    assert result["findings"] == []
+
+
+def test_vm_lab_audit_flags_workspace_state_and_missing_vhds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    layout = _layout(tmp_path)
+    config_path = layout.build_repo_root / "vm-lab.local.json"
+    _write_config(config_path)
+    stale_state_disk = layout.workspace_root / "state" / "vm-lab" / "images" / "win10-old.avhdx"
+    missing_output_disk = layout.output_artifacts_root / "vm-lab" / "images" / "win11.vhdx"
+
+    monkeypatch.setattr(
+        windows_vm_lab,
+        "_query_vm_lab_hyperv_disks",
+        lambda **_kwargs: [
+            {
+                "vmName": "emulebb-win10-test",
+                "state": "Off",
+                "vmPath": "C:\\ProgramData\\Microsoft\\Windows\\Hyper-V",
+                "diskPath": str(stale_state_disk),
+                "diskExists": False,
+            },
+            {
+                "vmName": "emulebb-win11-test",
+                "state": "Off",
+                "vmPath": "C:\\ProgramData\\Microsoft\\Windows\\Hyper-V",
+                "diskPath": str(missing_output_disk),
+                "diskExists": False,
+            },
+        ],
+    )
+
+    result = windows_vm_lab.audit_vm_lab(layout, config_file=str(config_path), matrix=("win10", "win11"))
+
+    assert result["status"] == "failed"
+    reasons = {(finding["vmName"], finding["reason"]) for finding in result["findings"]}
+    assert ("emulebb-win10-test", "workspace-state-vhd") in reasons
+    assert ("emulebb-win10-test", "missing-vhd") in reasons
+    assert ("emulebb-win11-test", "missing-vhd") in reasons
+
+
 def test_prepare_vm_target_script_skips_oobe_and_installs_efi_fallback() -> None:
     script = windows_vm_lab._prepare_vm_target_script()
 

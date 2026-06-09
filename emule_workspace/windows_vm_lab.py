@@ -44,6 +44,7 @@ DEFAULT_PROCESSOR_COUNT = 2
 WINDOWS_VM_SUITE_NAME = "windows-vm"
 WINDOWS_VM_RESULT_FILE_NAME = "windows-vm-result.json"
 WINDOWS_VM_SUMMARY_FILE_NAME = "windows-vm-summary.json"
+VM_LAB_AUDIT_SCHEMA = "emulebb.windows-vm-lab-audit.v1"
 SUPPORTED_TARGETS = ("win10", "win11")
 LOCAL_SWARM_REST_OPENAPI_RELATIVE_PATH = Path("docs") / "rest" / "REST-API-OPENAPI.yaml"
 LOCAL_SWARM_APP_SOURCE_RELATIVE_DIR = Path("app") / "emulebb-main" / "srchybrid"
@@ -435,6 +436,87 @@ def prepare_vm_lab(layout: WorkspaceLayout, options: VmPrepareOptions) -> dict[s
     }
     print(json.dumps(result, indent=2))
     return result
+
+
+def audit_vm_lab(
+    layout: WorkspaceLayout,
+    *,
+    config_file: str | None = None,
+    matrix: Sequence[str] = SUPPORTED_TARGETS,
+    vm_name_pattern: str = "emulebb-*",
+) -> dict[str, object]:
+    """Audits local Hyper-V VM registrations for stale eMuleBB lab disks."""
+
+    config = load_vm_lab_config(layout, config_file)
+    target_keys = tuple(matrix)
+    missing_targets = [key for key in target_keys if key not in config.targets]
+    if missing_targets:
+        raise RuntimeError(f"Windows VM lab config has no target(s): {', '.join(missing_targets)}")
+
+    configured_vm_names = tuple(config.targets[key].vm_name for key in target_keys)
+    records = _query_vm_lab_hyperv_disks(configured_vm_names=configured_vm_names, vm_name_pattern=vm_name_pattern)
+    workspace_state_root = (layout.workspace_root / "state").resolve()
+    findings: list[dict[str, object]] = []
+    audited_records: list[dict[str, object]] = []
+    for record in records:
+        vm_name = str(record.get("vmName") or "")
+        disk_path = Path(str(record.get("diskPath") or "")).resolve()
+        disk_exists = bool(record.get("diskExists"))
+        reasons: list[str] = []
+        if _path_is_relative_to(disk_path, workspace_state_root):
+            reasons.append("workspace-state-vhd")
+        if not disk_exists:
+            reasons.append("missing-vhd")
+        audited_record = {
+            "vmName": vm_name,
+            "state": str(record.get("state") or ""),
+            "vmPath": str(record.get("vmPath") or ""),
+            "diskPath": str(disk_path),
+            "diskExists": disk_exists,
+            "reasons": reasons,
+        }
+        audited_records.append(audited_record)
+        for reason in reasons:
+            findings.append(
+                {
+                    "vmName": vm_name,
+                    "diskPath": str(disk_path),
+                    "reason": reason,
+                }
+            )
+
+    result = {
+        "schema": VM_LAB_AUDIT_SCHEMA,
+        "status": "failed" if findings else "passed",
+        "generatedAtUtc": _now_utc(),
+        "configFile": str(config.config_path),
+        "matrix": list(target_keys),
+        "vmNamePattern": vm_name_pattern,
+        "expectedImageRoot": str(_vm_image_root(layout)),
+        "workspaceStateRoot": str(workspace_state_root),
+        "records": audited_records,
+        "findings": findings,
+    }
+    print_vm_lab_audit(result)
+    return result
+
+
+def print_vm_lab_audit(result: dict[str, object]) -> None:
+    """Prints a compact VM lab audit summary."""
+
+    if result.get("status") == "passed":
+        print("Windows VM lab audit passed.")
+    else:
+        print("Windows VM lab audit failed.")
+    print(f"Expected image root: {result.get('expectedImageRoot')}")
+    findings = result.get("findings")
+    if isinstance(findings, list):
+        print(f"Findings: {len(findings)}")
+        for finding in findings[:40]:
+            if isinstance(finding, dict):
+                print(f"  {finding.get('vmName')}: {finding.get('reason')} -> {finding.get('diskPath')}")
+        if len(findings) > 40:
+            print(f"  ... {len(findings) - 40} more")
 
 
 def launch_manual_vm(
@@ -2884,6 +2966,66 @@ def _ensure_local_swarm_node_archive(layout: WorkspaceLayout, platform: str) -> 
     return archive_path
 
 
+def _query_vm_lab_hyperv_disks(
+    *,
+    configured_vm_names: Sequence[str],
+    vm_name_pattern: str,
+) -> list[dict[str, object]]:
+    names_json = json.dumps(list(configured_vm_names))
+    escaped_pattern = _escape_powershell_single_quoted(vm_name_pattern)
+    script = rf"""
+$ErrorActionPreference = 'Stop'
+$names = ConvertFrom-Json @'
+{names_json}
+'@
+$vms = @()
+foreach ($name in $names) {{
+  $vm = Get-VM -Name $name -ErrorAction SilentlyContinue
+  if ($vm) {{ $vms += $vm }}
+}}
+$patternVms = Get-VM -Name '{escaped_pattern}' -ErrorAction SilentlyContinue
+if ($patternVms) {{ $vms += $patternVms }}
+$seen = @{{}}
+$rows = @()
+foreach ($vm in $vms) {{
+  if ($seen.ContainsKey($vm.Name)) {{ continue }}
+  $seen[$vm.Name] = $true
+  foreach ($drive in Get-VMHardDiskDrive -VMName $vm.Name) {{
+    $diskPath = [string]$drive.Path
+    $rows += [pscustomobject]@{{
+      vmName = [string]$vm.Name
+      state = [string]$vm.State
+      vmPath = [string]$vm.Path
+      diskPath = $diskPath
+      diskExists = [bool](Test-Path -LiteralPath $diskPath)
+    }}
+  }}
+}}
+$rows | ConvertTo-Json -Depth 4
+"""
+    completed = subprocess.run(
+        ["powershell", "-NoProfile", "-Command", script],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(f"Unable to query Hyper-V VM lab disks: {completed.stderr.strip()}")
+    payload = (completed.stdout or "").strip()
+    if not payload:
+        return []
+    parsed = json.loads(payload)
+    if isinstance(parsed, dict):
+        parsed = [parsed]
+    if not isinstance(parsed, list):
+        raise RuntimeError("Hyper-V VM lab disk query returned unexpected JSON.")
+    return [entry for entry in parsed if isinstance(entry, dict)]
+
+
+def _escape_powershell_single_quoted(value: str) -> str:
+    return value.replace("'", "''")
+
+
 def _vm_image_root(layout: WorkspaceLayout) -> Path:
     return layout.output_artifacts_root / "vm-lab" / "images"
 
@@ -2898,6 +3040,14 @@ def _vm_manual_report_root(layout: WorkspaceLayout) -> Path:
 
 def _windows_vm_report_root(layout: WorkspaceLayout) -> Path:
     return layout.output_reports_root / WINDOWS_VM_SUITE_NAME
+
+
+def _path_is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
 
 
 def _resolve_config_path(layout: WorkspaceLayout, config_file: str | None) -> Path:

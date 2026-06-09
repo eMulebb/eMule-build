@@ -336,6 +336,17 @@ def test_vm_lab_prepare_help_is_available() -> None:
     assert "--dry-run" in result.output
 
 
+def test_vm_lab_audit_help_is_available() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(cli.main, ["vm-lab", "audit", "--help"])
+
+    assert result.exit_code == 0
+    assert "--config-file" in result.output
+    assert "--matrix" in result.output
+    assert "--vm-name-pattern" in result.output
+
+
 def test_vm_lab_manual_help_is_available() -> None:
     runner = CliRunner()
 

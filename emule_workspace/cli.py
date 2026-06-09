@@ -83,6 +83,7 @@ from .windows_vm_lab import (
     VmManualOptions,
     VmPrepareOptions,
     WindowsVmTestOptions,
+    audit_vm_lab,
     invoke_windows_vm_tests,
     launch_manual_vm,
     parse_matrix,
@@ -1508,6 +1509,34 @@ def vm_lab_prepare(
         "vm-lab prepare",
         lambda **kwargs: prepare_vm_lab(kwargs["layout"], prepare_options),
     )(workspace_options=workspace_options, layout=layout)
+
+
+@vm_lab.command("audit")
+@_common_options
+@click.option("--config-file", default=None, help="Ignored Windows VM lab JSON config. Defaults to vm-lab.local.json.")
+@click.option("--matrix", default="win10,win11", show_default=True, help="Comma-separated configured Windows VM targets.")
+@click.option("--vm-name-pattern", default="emulebb-*", show_default=True, help="Additional Hyper-V VM name pattern to audit.")
+def vm_lab_audit(
+    *,
+    config_file: str | None,
+    matrix: str,
+    vm_name_pattern: str,
+    workspace_options: WorkspaceOptions,
+    layout,
+) -> None:
+    """Audit Hyper-V VM lab registrations for stale workspace-state disks."""
+
+    def run_audit(**kwargs: Any) -> None:
+        result = audit_vm_lab(
+            kwargs["layout"],
+            config_file=config_file,
+            matrix=parse_matrix(matrix),
+            vm_name_pattern=vm_name_pattern,
+        )
+        if result.get("status") != "passed":
+            raise RuntimeError("Windows VM lab audit found stale or missing VM disks.")
+
+    _locked("vm-lab audit", run_audit)(workspace_options=workspace_options, layout=layout)
 
 
 @vm_lab.command("manual")
