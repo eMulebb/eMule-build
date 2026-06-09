@@ -207,10 +207,14 @@ def create_amutorrent_package(
     _assert_clean_amutorrent_package_inputs(layout, amutorrent_root)
     asset_arch = "arm64" if workspace_options.platform == "ARM64" else "x64"
     package_build_root = layout.output_packages_root / "build" / "amutorrent" / asset_arch
+    staged_source_root = package_build_root / "source"
     static_build_root = package_build_root / "static"
     _assert_path_under_root(package_build_root, layout.output_packages_root, "aMuTorrent package build path")
+    if package_options.clean and package_build_root.exists():
+        shutil.rmtree(package_build_root)
     _assert_packaging_node_supported(workspace_options.platform)
-    _build_amutorrent_webapp(amutorrent_root, package_options.clean, static_build_root)
+    _stage_amutorrent_source(amutorrent_root, staged_source_root)
+    _build_amutorrent_webapp(staged_source_root, package_options.clean, static_build_root)
 
     release_root = _release_root_for_version(layout, package_options.release_version)
     staging_root = release_root / "staging" / f"amutorrent-{asset_arch}"
@@ -224,7 +228,7 @@ def create_amutorrent_package(
     if staging_root.exists():
         shutil.rmtree(staging_root)
     package_root.mkdir(parents=True, exist_ok=True)
-    _copy_amutorrent_runtime(amutorrent_root, package_root, static_build_root)
+    _copy_amutorrent_runtime(staged_source_root, package_root, static_build_root)
     _write_amutorrent_readme(package_root, package_options.release_version, workspace_options.platform)
     _copy_package_file(amutorrent_root / "LICENSE", package_root, Path("LICENSE-aMuTorrent.txt"))
     _write_amutorrent_sbom(
@@ -1096,13 +1100,38 @@ def _assert_packaging_node_supported(platform: str) -> None:
         )
 
 
-def _build_amutorrent_webapp(amutorrent_root: Path, clean: bool, static_output_root: Path) -> None:
+def _stage_amutorrent_source(amutorrent_root: Path, staged_source_root: Path) -> None:
+    """Stages package build inputs without repo-local generated outputs."""
+
+    if staged_source_root.exists():
+        shutil.rmtree(staged_source_root)
+    _copy_tree_filtered(amutorrent_root, staged_source_root, _exclude_amutorrent_source_stage)
+
+
+def _exclude_amutorrent_source_stage(relative_path: Path, source_path: Path) -> bool:
+    parts = relative_path.parts
+    if any(part in {".git", "node_modules", ".cache", "__pycache__"} for part in parts):
+        return True
+    if parts and parts[0] in {"data", "logs", "tmp", "temp"}:
+        return True
+    if len(parts) >= 2 and parts[0] == "server" and parts[1] in {"data", "logs"}:
+        return True
+    if relative_path == Path("static/output.css"):
+        return True
+    if len(parts) >= 2 and parts[0] == "static" and parts[1] == "dist":
+        return relative_path.name != "chart.umd.min.js"
+    if source_path.is_file() and source_path.suffix.lower() in {".log", ".db", ".sqlite", ".sqlite3", ".map"}:
+        return True
+    return False
+
+
+def _build_amutorrent_webapp(staged_source_root: Path, clean: bool, static_output_root: Path) -> None:
     """Installs runtime dependencies and refreshes bundled frontend assets."""
 
     if clean:
         for generated_path in (
-            amutorrent_root / "node_modules",
-            amutorrent_root / "server" / "node_modules",
+            staged_source_root / "node_modules",
+            staged_source_root / "server" / "node_modules",
             static_output_root,
         ):
             if generated_path.exists():
@@ -1113,9 +1142,9 @@ def _build_amutorrent_webapp(amutorrent_root: Path, clean: bool, static_output_r
     env = os.environ.copy()
     env["AMUTORRENT_STATIC_OUTPUT_ROOT"] = str(static_output_root)
     static_output_root.mkdir(parents=True, exist_ok=True)
-    subprocess.run([npm, "ci"], cwd=amutorrent_root, check=True)
-    subprocess.run([npm, "ci", "--prefix", "server", "--omit=dev"], cwd=amutorrent_root, check=True)
-    subprocess.run([npm, "run", "build"], cwd=amutorrent_root, check=True, env=env)
+    subprocess.run([npm, "ci"], cwd=staged_source_root, check=True)
+    subprocess.run([npm, "ci", "--prefix", "server", "--omit=dev"], cwd=staged_source_root, check=True)
+    subprocess.run([npm, "run", "build"], cwd=staged_source_root, check=True, env=env)
 
 
 def _copy_amutorrent_runtime(amutorrent_root: Path, package_root: Path, static_build_root: Path) -> None:

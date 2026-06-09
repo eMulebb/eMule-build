@@ -1079,6 +1079,66 @@ def test_copy_amutorrent_runtime_uses_output_root_static_bundle(tmp_path: Path) 
     assert (package_root / "static" / "output.css").read_bytes() == b"output root css\n"
 
 
+def test_stage_amutorrent_source_excludes_repo_local_generated_outputs(tmp_path: Path) -> None:
+    amutorrent_root = tmp_path / "repos" / "amutorrent"
+    staged_source_root = tmp_path / "output" / "packages" / "build" / "amutorrent" / "x64" / "source"
+    for path, payload in (
+        (amutorrent_root / "package.json", b"{}\n"),
+        (amutorrent_root / "server" / "server.js", b"server\n"),
+        (amutorrent_root / "node_modules" / "react" / "package.json", b"{}\n"),
+        (amutorrent_root / "server" / "node_modules" / "express" / "package.json", b"{}\n"),
+        (amutorrent_root / "server" / "data" / "config.json", b"{}\n"),
+        (amutorrent_root / "static" / "index.html", b"<html></html>\n"),
+        (amutorrent_root / "static" / "dist" / "chart.umd.min.js", b"chart\n"),
+        (amutorrent_root / "static" / "dist" / "app.bundle.js", b"repo bundle\n"),
+        (amutorrent_root / "static" / "output.css", b"repo css\n"),
+    ):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+
+    release._stage_amutorrent_source(amutorrent_root, staged_source_root)
+
+    assert (staged_source_root / "package.json").is_file()
+    assert (staged_source_root / "server" / "server.js").is_file()
+    assert (staged_source_root / "static" / "index.html").is_file()
+    assert (staged_source_root / "static" / "dist" / "chart.umd.min.js").is_file()
+    assert not (staged_source_root / "node_modules").exists()
+    assert not (staged_source_root / "server" / "node_modules").exists()
+    assert not (staged_source_root / "server" / "data").exists()
+    assert not (staged_source_root / "static" / "dist" / "app.bundle.js").exists()
+    assert not (staged_source_root / "static" / "output.css").exists()
+
+
+def test_build_amutorrent_webapp_runs_npm_in_staged_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    staged_source_root = tmp_path / "output" / "packages" / "build" / "amutorrent" / "x64" / "source"
+    static_output_root = tmp_path / "output" / "packages" / "build" / "amutorrent" / "x64" / "static"
+    (staged_source_root / "node_modules").mkdir(parents=True)
+    (staged_source_root / "server" / "node_modules").mkdir(parents=True)
+    static_output_root.mkdir(parents=True)
+    commands: list[tuple[list[str], Path, dict[str, str] | None]] = []
+
+    monkeypatch.setattr(release.shutil, "which", lambda _name: "npm.cmd")
+
+    def fake_run(command, *, cwd, check, env=None):
+        assert check is True
+        commands.append(([str(part) for part in command], Path(cwd), env))
+
+    monkeypatch.setattr(release.subprocess, "run", fake_run)
+
+    release._build_amutorrent_webapp(staged_source_root, clean=True, static_output_root=static_output_root)
+
+    assert not (staged_source_root / "node_modules").exists()
+    assert not (staged_source_root / "server" / "node_modules").exists()
+    assert commands[0] == (["npm.cmd", "ci"], staged_source_root, None)
+    assert commands[1] == (["npm.cmd", "ci", "--prefix", "server", "--omit=dev"], staged_source_root, None)
+    assert commands[2][0] == ["npm.cmd", "run", "build"]
+    assert commands[2][1] == staged_source_root
+    assert commands[2][2]["AMUTORRENT_STATIC_OUTPUT_ROOT"] == str(static_output_root)
+
+
 def test_amutorrent_package_contents_reject_generated_state_and_source_maps(tmp_path: Path) -> None:
     zip_path = tmp_path / "amutorrent.zip"
     _write_amutorrent_zip(
