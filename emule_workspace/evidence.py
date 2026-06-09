@@ -204,9 +204,9 @@ def _workspace_relative(layout: WorkspaceLayout, path: Path) -> str:
 
 def _output_root(layout: WorkspaceLayout) -> Path:
     output_root = getattr(layout, "output_root", None)
-    if output_root is not None:
-        return Path(output_root)
-    return layout.workspace_root / "state"
+    if output_root is None:
+        raise RuntimeError("WorkspaceLayout.output_root must be configured for evidence output.")
+    return Path(output_root)
 
 
 def _format_bytes(value: int) -> str:

@@ -172,9 +172,11 @@ class WorkspaceLayout:
         }
 
     def _resolved_output_root(self) -> Path:
-        """Returns the configured output root, with a legacy fallback for direct unit fixtures."""
+        """Returns the configured output root for generated workspace outputs."""
 
-        return self.output_root or (self.workspace_root / "state")
+        if self.output_root is None:
+            raise RuntimeError("WorkspaceLayout.output_root must be configured for generated workspace outputs.")
+        return self.output_root
 
 
 def build_repo_root() -> Path:

@@ -17,18 +17,6 @@ ALLOWED_WORKSPACE_STATE_PATHS = {
         'nested_state = layout.build_repo_root / "workspaces" / getattr(layout, "workspace_name", "workspace") / "state"',
     ),
     (
-        "emule_workspace/cleanup.py",
-        'return layout.workspace_root / "state"',
-    ),
-    (
-        "emule_workspace/evidence.py",
-        'return layout.workspace_root / "state"',
-    ),
-    (
-        "emule_workspace/layout.py",
-        'return self.output_root or (self.workspace_root / "state")',
-    ),
-    (
         "emule_workspace/materialize.py",
         'legacy_status_path = root / "workspaces" / resolved_workspace_name / "state" / "EMULE-STATUS.md"',
     ),

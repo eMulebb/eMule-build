@@ -221,6 +221,29 @@ def test_build_log_directory_uses_output_root_when_configured(tmp_path: Path) ->
     )
 
 
+def test_generated_output_roots_require_output_root(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspaces" / "workspace"
+    layout = WorkspaceLayout(
+        emule_workspace_root=tmp_path,
+        workspace_name="workspace",
+        workspace_root=workspace_root,
+        build_repo_root=tmp_path / "repos" / "emulebb-build",
+        tests_repo_root=tmp_path / "repos" / "emulebb-build-tests",
+        tooling_repo_root=tmp_path / "repos" / "emulebb-tooling",
+        ed2k_server_repo_root=tmp_path / "repos" / "goed2k-server",
+        amule_repo_root=tmp_path / "repos" / "amule",
+        seed_repo_path=tmp_path / "repos" / "emulebb",
+        seed_repo_branch="main",
+        dependencies=(),
+        app_variants=(),
+        test_targets=LayoutTestTargets(test_build_variant="main", test_run_variant="main", baseline_variant="community"),
+        toolset_override_variable="",
+    )
+
+    with pytest.raises(RuntimeError, match="output_root must be configured"):
+        _ = layout.output_build_root
+
+
 def test_layout_exposes_generated_output_subroots_and_child_environment(tmp_path: Path) -> None:
     workspace_root = tmp_path / "workspaces" / "workspace"
     output_root = tmp_path / "emulebb-output"

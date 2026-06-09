@@ -721,9 +721,9 @@ def _optional_root(layout: WorkspaceLayout, attribute: str) -> Path:
 
 def _output_root(layout: WorkspaceLayout) -> Path:
     output_root = getattr(layout, "output_root", None)
-    if output_root is not None:
-        return Path(output_root)
-    return layout.workspace_root / "state"
+    if output_root is None:
+        raise RuntimeError("WorkspaceLayout.output_root must be configured for cleanup output.")
+    return Path(output_root)
 
 
 def _child_directories(path: Path) -> list[Path]:
