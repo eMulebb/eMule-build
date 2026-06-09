@@ -1033,6 +1033,31 @@ def test_amutorrent_package_contents_accept_runtime_bundle(tmp_path: Path) -> No
     assert "aMuTorrent/SBOM.spdx.json" in hashes
 
 
+def test_copy_amutorrent_runtime_uses_output_root_static_bundle(tmp_path: Path) -> None:
+    amutorrent_root = tmp_path / "repos" / "amutorrent"
+    package_root = tmp_path / "package" / "aMuTorrent"
+    static_build_root = tmp_path / "output" / "packages" / "build" / "amutorrent" / "x64" / "static"
+    server_module = amutorrent_root / "server" / "node_modules" / "express" / "package.json"
+    for path, payload in (
+        (amutorrent_root / "server" / "server.js", b"server\n"),
+        (amutorrent_root / "server" / "package.json", b"{}\n"),
+        (server_module, b"{}\n"),
+        (amutorrent_root / "static" / "index.html", b"<script></script>\n"),
+        (amutorrent_root / "static" / "dist" / "app.bundle.js", b"stale repo bundle\n"),
+        (amutorrent_root / "static" / "output.css", b"stale repo css\n"),
+        (static_build_root / "dist" / "app.bundle.js", b"output root bundle\n"),
+        (static_build_root / "output.css", b"output root css\n"),
+    ):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+
+    release._copy_amutorrent_runtime(amutorrent_root, package_root, static_build_root)
+
+    assert (package_root / "static" / "index.html").read_bytes() == b"<script></script>\n"
+    assert (package_root / "static" / "dist" / "app.bundle.js").read_bytes() == b"output root bundle\n"
+    assert (package_root / "static" / "output.css").read_bytes() == b"output root css\n"
+
+
 def test_amutorrent_package_contents_reject_generated_state_and_source_maps(tmp_path: Path) -> None:
     zip_path = tmp_path / "amutorrent.zip"
     _write_amutorrent_zip(

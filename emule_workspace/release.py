@@ -205,10 +205,13 @@ def create_amutorrent_package(
 
     amutorrent_root = layout.resolve_workspace_path("repos/amutorrent")
     _assert_clean_amutorrent_package_inputs(layout, amutorrent_root)
-    _assert_packaging_node_supported(workspace_options.platform)
-    _build_amutorrent_webapp(amutorrent_root, package_options.clean)
-
     asset_arch = "arm64" if workspace_options.platform == "ARM64" else "x64"
+    package_build_root = layout.output_packages_root / "build" / "amutorrent" / asset_arch
+    static_build_root = package_build_root / "static"
+    _assert_path_under_root(package_build_root, layout.output_packages_root, "aMuTorrent package build path")
+    _assert_packaging_node_supported(workspace_options.platform)
+    _build_amutorrent_webapp(amutorrent_root, package_options.clean, static_build_root)
+
     release_root = _release_root_for_version(layout, package_options.release_version)
     staging_root = release_root / "staging" / f"amutorrent-{asset_arch}"
     package_root = staging_root / "aMuTorrent"
@@ -221,7 +224,7 @@ def create_amutorrent_package(
     if staging_root.exists():
         shutil.rmtree(staging_root)
     package_root.mkdir(parents=True, exist_ok=True)
-    _copy_amutorrent_runtime(amutorrent_root, package_root)
+    _copy_amutorrent_runtime(amutorrent_root, package_root, static_build_root)
     _write_amutorrent_readme(package_root, package_options.release_version, workspace_options.platform)
     _copy_package_file(amutorrent_root / "LICENSE", package_root, Path("LICENSE-aMuTorrent.txt"))
     _write_amutorrent_sbom(
@@ -1060,36 +1063,43 @@ def _assert_packaging_node_supported(platform: str) -> None:
         )
 
 
-def _build_amutorrent_webapp(amutorrent_root: Path, clean: bool) -> None:
+def _build_amutorrent_webapp(amutorrent_root: Path, clean: bool, static_output_root: Path) -> None:
     """Installs runtime dependencies and refreshes bundled frontend assets."""
 
     if clean:
         for generated_path in (
             amutorrent_root / "node_modules",
             amutorrent_root / "server" / "node_modules",
+            static_output_root,
         ):
             if generated_path.exists():
                 shutil.rmtree(generated_path)
     npm = shutil.which("npm.cmd") or shutil.which("npm")
     if not npm:
         raise RuntimeError("package amutorrent requires npm on PATH.")
+    env = os.environ.copy()
+    env["AMUTORRENT_STATIC_OUTPUT_ROOT"] = str(static_output_root)
+    static_output_root.mkdir(parents=True, exist_ok=True)
     subprocess.run([npm, "ci"], cwd=amutorrent_root, check=True)
     subprocess.run([npm, "ci", "--prefix", "server", "--omit=dev"], cwd=amutorrent_root, check=True)
-    subprocess.run([npm, "run", "build"], cwd=amutorrent_root, check=True)
+    subprocess.run([npm, "run", "build"], cwd=amutorrent_root, check=True, env=env)
 
 
-def _copy_amutorrent_runtime(amutorrent_root: Path, package_root: Path) -> None:
+def _copy_amutorrent_runtime(amutorrent_root: Path, package_root: Path, static_build_root: Path) -> None:
     """Copies the aMuTorrent runtime payload."""
 
     server_root = amutorrent_root / "server"
     static_root = amutorrent_root / "static"
     if not (server_root / "node_modules").is_dir():
         raise RuntimeError(f"Cannot package missing aMuTorrent production node_modules: {server_root / 'node_modules'}")
-    if not (static_root / "dist" / "app.bundle.js").is_file():
-        raise RuntimeError(f"Cannot package missing built aMuTorrent frontend bundle: {static_root / 'dist' / 'app.bundle.js'}")
+    if not (static_build_root / "dist" / "app.bundle.js").is_file():
+        raise RuntimeError(f"Cannot package missing built aMuTorrent frontend bundle: {static_build_root / 'dist' / 'app.bundle.js'}")
+    if not (static_build_root / "output.css").is_file():
+        raise RuntimeError(f"Cannot package missing built aMuTorrent CSS bundle: {static_build_root / 'output.css'}")
 
     _copy_tree_filtered(server_root, package_root / "server", _exclude_amutorrent_server_runtime)
-    _copy_tree_filtered(static_root, package_root / "static", _exclude_amutorrent_static_runtime)
+    _copy_tree_filtered(static_root, package_root / "static", _exclude_amutorrent_static_source_runtime)
+    _copy_tree_filtered(static_build_root, package_root / "static", _exclude_amutorrent_static_runtime)
 
 
 def _exclude_amutorrent_server_runtime(relative_path: Path, source_path: Path) -> bool:
@@ -1114,6 +1124,15 @@ def _exclude_amutorrent_static_runtime(relative_path: Path, source_path: Path) -
     if source_path.is_file() and source_path.suffix.lower() in {".map", ".sh"}:
         return True
     return False
+
+
+def _exclude_amutorrent_static_source_runtime(relative_path: Path, source_path: Path) -> bool:
+    parts = relative_path.parts
+    if parts and parts[0] == "dist":
+        return True
+    if relative_path.name == "output.css":
+        return True
+    return _exclude_amutorrent_static_runtime(relative_path, source_path)
 
 
 def _expected_language_dlls(tooling_repo_root: Path) -> tuple[str, ...]:
