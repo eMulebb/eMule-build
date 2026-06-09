@@ -152,7 +152,15 @@ def invoke_native_test_suites(
     selected_variant = test_run_variant or layout.test_targets.test_run_variant
     app_root = layout.get_app_variant(selected_variant).path
     build_tag = get_test_build_tag(layout.workspace_root, app_root)
-    binary_path = layout.tests_repo_root / "build" / build_tag / options.platform / options.configuration / "emule-tests.exe"
+    binary_path = (
+        layout.output_build_root
+        / "tests"
+        / build_tag
+        / options.platform
+        / options.configuration
+        / "bin"
+        / "emule-tests.exe"
+    )
     if not binary_path.is_file():
         raise RuntimeError(f"Built test executable not found: {binary_path}")
 

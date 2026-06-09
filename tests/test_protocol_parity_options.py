@@ -4,7 +4,7 @@ from pathlib import Path
 
 from emule_workspace import test_runs
 from emule_workspace.config import VariantComparisonOptions, WorkspaceOptions
-from emule_workspace.layout import AppVariant, TestTargets as LayoutTestTargets, WorkspaceLayout
+from emule_workspace.layout import AppVariant, TestTargets as LayoutTestTargets, WorkspaceLayout, get_test_build_tag
 
 
 def make_layout(tmp_path: Path) -> WorkspaceLayout:
@@ -35,6 +35,7 @@ def make_layout(tmp_path: Path) -> WorkspaceLayout:
         ),
         test_targets=LayoutTestTargets(test_build_variant="main", test_run_variant="main", baseline_variant="community"),
         toolset_override_variable="",
+        output_root=emule_workspace_root.parent / f"{emule_workspace_root.name}-output",
     )
 
 
@@ -65,3 +66,36 @@ def test_protocol_parity_runs_surface_goldens_then_live_diff(tmp_path: Path, mon
     assert any(str(part).endswith("run-live-diff.py") for part in commands[2])
     assert "--suite-name" in commands[2]
     assert "protocol-parity" in commands[2]
+
+
+def test_native_test_suites_run_output_root_binary(tmp_path: Path, monkeypatch) -> None:
+    commands: list[list[object]] = []
+    labels: list[str] = []
+    layout = make_layout(tmp_path)
+    binary_path = (
+        layout.output_build_root
+        / "tests"
+        / get_test_build_tag(layout.workspace_root, layout.get_app_variant("main").path)
+        / "x64"
+        / "Release"
+        / "bin"
+        / "emule-tests.exe"
+    )
+    binary_path.parent.mkdir(parents=True)
+    binary_path.write_bytes(b"")
+
+    def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
+        commands.append(list(command))
+        labels.append(label)
+
+    monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+
+    test_runs.invoke_native_test_suites(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, configuration="Release", platform="x64"),
+        test_run_variant="main",
+        suite_names=("parity",),
+    )
+
+    assert commands == [[binary_path, "--test-suite=parity"]]
+    assert labels == ["parity tests main Release/x64"]
