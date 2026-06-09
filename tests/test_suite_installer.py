@@ -925,11 +925,28 @@ def test_suite_installer_full_install_uses_hashed_local_dependency_manifest_and_
     assert list((install_root / "apps" / "prowlarr").rglob("Prowlarr.Console.exe"))
     assert list((install_root / "apps" / "radarr").rglob("Radarr.Console.exe"))
     assert list((install_root / "apps" / "sonarr").rglob("Sonarr.Console.exe"))
+    mpc_hc_path = install_root / "apps" / "MPC-HC" / "mpc-hc64.exe"
+    ffmpeg_path = install_root / "tools" / "ffmpeg" / "ffmpeg-8.1.1-essentials_build" / "bin" / "ffmpeg.exe"
+    mediainfo_path = install_root / "tools" / "mediainfo" / "MediaInfo.dll"
+    assert mpc_hc_path.is_file()
+    assert ffmpeg_path.is_file()
+    assert (install_root / "tools" / "ffmpeg" / "ffmpeg-8.1.1-essentials_build" / "bin" / "ffprobe.exe").is_file()
+    assert mediainfo_path.is_file()
+    assert suite_config["optionalTools"]["mpcHc"]["installed"] is True
+    assert Path(suite_config["optionalTools"]["mpcHc"]["path"]) == mpc_hc_path
+    assert suite_config["optionalTools"]["ffmpeg"]["installed"] is True
+    assert Path(suite_config["optionalTools"]["ffmpeg"]["path"]) == ffmpeg_path
+    assert suite_config["optionalTools"]["mediainfo"]["installed"] is True
+    assert Path(suite_config["optionalTools"]["mediainfo"]["path"]) == mediainfo_path
     preferences = (install_root / "profiles" / "emulebb" / "config" / "preferences.ini").read_text(encoding="utf-16")
     assert "ApiKey=" + first_keys["emulebb"] in preferences
     assert "BindInterface=hide.me" in preferences
     assert "BindAddr=\n" in preferences
     assert f"BindAddr={suite_config['services']['emulebb']['bindAddress']}" in preferences
+    assert f"VideoPlayer={mpc_hc_path}" in preferences
+    assert f"VideoThumbnailFfmpegPath={ffmpeg_path}" in preferences
+    assert "VideoThumbnailIntervalSeconds=90" in preferences
+    assert f"MediaInfo_MediaInfoDllPath={mediainfo_path}" in preferences
     assert f"Port={suite_config['services']['emulebb']['port']}" in preferences
     assert "SaveLogToDisk=1" in preferences
     assert "SaveDebugToDisk=" not in preferences
@@ -1636,6 +1653,9 @@ def test_suite_installer_requires_hashed_pinned_dependencies() -> None:
     assert "9d388c476edfe579439830dc87f05fc50c86fa0dce80802726832c72088e731b" in installer
     assert "cc4fdffc4a82a3805e53aa9c016749fd17247eb21dd6764b1b53ced471695bb7" in installer
     assert "19a81e69dedd8d317b5fa8a1a9c48d63bc3b3f3ba87b84c94ff6d75b1803e419" in installer
+    assert "658b755c069ac3c3ed6265378baad3e7d270be12bd9642abd5b402b9f95a54ed" in installer
+    assert "6f58ce889f59c311410f7d2b18895b33c03456463486f3b1ebc93d97a0f54541" in installer
+    assert "f8c81699550a3a9425e9bdd1d6621587c463c51c568848ab8d3e36fe5efc222c" in installer
     assert "Latest dependency resolution requires -DependencyManifest entries with exact URLs and SHA256 hashes." in installer
     assert "DependencyChannel Latest requires -DependencyManifest with exact URLs and SHA256 hashes." in installer
     assert "Latest dependency releases are unavailable unless you pass -DependencyManifest." in installer
@@ -1660,6 +1680,11 @@ def test_suite_installer_requires_hashed_pinned_dependencies() -> None:
     assert "Verifying Node runtime" in installer
     assert "Save-DependencyCache -Kind 'node' -Name 'Node runtime' -AssetName $nodeSpec.FileName -ExpectedSha256 $nodeSpec.Sha256 -Source $nodeArchive" in installer
     assert "Extracting Node runtime" in installer
+    assert "Restore-DependencyCache -Kind 'media-tool'" in installer
+    assert "Downloading optional $($Spec.DisplayName) dependency $assetName" in installer
+    assert "Verifying optional $($Spec.DisplayName) dependency" in installer
+    assert "Extracting optional $($Spec.DisplayName) dependency" in installer
+    assert "Write-Warning \"$($spec.DisplayName) is optional and was not installed." in installer
 
 
 def test_suite_installer_uses_packaged_language_manifest() -> None:
@@ -1682,11 +1707,13 @@ def test_suite_installer_uses_packaged_suite_apps_manifest() -> None:
     helper_text = manifest_helper.read_text(encoding="utf-8")
     payload = json.loads(app_manifest.read_text(encoding="utf-8"))
     arr_apps = {entry["key"]: entry for entry in payload["arrApps"]}
+    media_tools = {entry["key"]: entry for entry in payload["mediaTools"]}
 
     assert payload["schema"] == "emulebb.suite-apps.v1"
     assert "function ConvertTo-SuiteAppManifest" in helper_text
     assert "function Read-SuiteAppManifest" in helper_text
     assert set(arr_apps) == {"prowlarr", "radarr", "sonarr", "lidarr", "whisparr"}
+    assert set(media_tools) == {"mpc-hc", "ffmpeg", "mediainfo"}
     assert payload["defaultArrAppNames"] == ["prowlarr", "radarr", "sonarr", "lidarr"]
     assert payload["suiteServiceOrder"] == [
         "emulebb",
@@ -1699,6 +1726,9 @@ def test_suite_installer_uses_packaged_suite_apps_manifest() -> None:
     ]
     for app in arr_apps.values():
         assert len(app["dependency"]["sha256"]) == 64
+    for tool in media_tools.values():
+        assert len(tool["dependency"]["sha256"]) == 64
+        assert tool["dependency"]["url"].startswith("https://")
     assert arr_apps["radarr"]["indexerCategories"] == [2000]
     assert arr_apps["sonarr"]["indexerCategories"] == [5000]
     assert arr_apps["lidarr"]["indexerCategories"] == [3000]

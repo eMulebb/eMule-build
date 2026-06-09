@@ -11,6 +11,41 @@ function ConvertTo-SuiteManifestStringArray {
     return $items
 }
 
+function Get-SuiteManifestProperty {
+    param([object]$Value, [string]$Name)
+    if ($null -eq $Value) {
+        return ''
+    }
+    if ($Value -is [System.Collections.IDictionary]) {
+        foreach ($key in $Value.Keys) {
+            if ([string]::Equals([string]$key, $Name, [StringComparison]::OrdinalIgnoreCase)) {
+                return [string]$Value[$key]
+            }
+        }
+        return ''
+    }
+    if ($null -eq $Value.PSObject.Properties[$Name]) {
+        return ''
+    }
+    return [string]$Value.PSObject.Properties[$Name].Value
+}
+
+function ConvertTo-SuiteDependencySpec {
+    param([object]$Dependency)
+    if ($null -eq $Dependency) {
+        return $null
+    }
+    return @{
+        Repo = Get-SuiteManifestProperty -Value $Dependency -Name 'repo'
+        Tag = Get-SuiteManifestProperty -Value $Dependency -Name 'tag'
+        Pattern = Get-SuiteManifestProperty -Value $Dependency -Name 'assetPattern'
+        Exe = Get-SuiteManifestProperty -Value $Dependency -Name 'exe'
+        FileName = Get-SuiteManifestProperty -Value $Dependency -Name 'fileName'
+        Url = Get-SuiteManifestProperty -Value $Dependency -Name 'url'
+        Sha256 = Get-SuiteManifestProperty -Value $Dependency -Name 'sha256'
+    }
+}
+
 function ConvertTo-SuiteAppManifest {
     param([object]$Payload, [string]$Path = '')
     if ($null -eq $Payload) {
@@ -48,15 +83,7 @@ function ConvertTo-SuiteAppManifest {
 
         $dependencyProperty = $entry.PSObject.Properties['dependency']
         if ($null -ne $dependencyProperty -and $null -ne $dependencyProperty.Value) {
-            $dependency = $dependencyProperty.Value
-            $dependencyPins[$key] = @{
-                Repo = [string]$dependency.repo
-                Tag = [string]$dependency.tag
-                Pattern = [string]$dependency.assetPattern
-                Exe = [string]$dependency.exe
-                Url = [string]$dependency.url
-                Sha256 = [string]$dependency.sha256
-            }
+            $dependencyPins[$key] = ConvertTo-SuiteDependencySpec -Dependency $dependencyProperty.Value
         }
 
         $categoryProperty = $entry.PSObject.Properties['indexerCategories']
@@ -89,9 +116,29 @@ function ConvertTo-SuiteAppManifest {
         if ($null -ne $Payload.node.PSObject.Properties['archives']) {
             foreach ($property in $Payload.node.archives.PSObject.Properties) {
                 $nodeArchives[$property.Name] = @{
-                    FileName = [string]$property.Value.fileName
-                    Sha256 = [string]$property.Value.sha256
+                    FileName = Get-SuiteManifestProperty -Value $property.Value -Name 'fileName'
+                    Sha256 = Get-SuiteManifestProperty -Value $property.Value -Name 'sha256'
                 }
+            }
+        }
+    }
+
+    $mediaTools = @{}
+    if ($null -ne $Payload.PSObject.Properties['mediaTools']) {
+        foreach ($entry in @($Payload.mediaTools)) {
+            $keyProperty = $entry.PSObject.Properties['key']
+            if ($null -eq $keyProperty) {
+                continue
+            }
+            $key = ([string]$keyProperty.Value).ToLowerInvariant()
+            if ([string]::IsNullOrWhiteSpace($key)) {
+                continue
+            }
+            $mediaTools[$key] = @{
+                DisplayName = [string]$entry.displayName
+                Destination = [string]$entry.destination
+                Executable = [string]$entry.executable
+                Dependency = if ($null -ne $entry.PSObject.Properties['dependency']) { ConvertTo-SuiteDependencySpec -Dependency $entry.dependency } else { $null }
             }
         }
     }
@@ -101,6 +148,7 @@ function ConvertTo-SuiteAppManifest {
         ArrAppMetadata = $arrMetadata
         PinnedDependencies = $dependencyPins
         ArrIndexerCategories = $indexerCategories
+        MediaTools = $mediaTools
         CoreServiceNames = if ($null -ne $Payload.PSObject.Properties['coreServiceNames']) { ConvertTo-SuiteManifestStringArray -Value $Payload.coreServiceNames } else { @() }
         ControllerServiceNames = if ($null -ne $Payload.PSObject.Properties['controllerServiceNames']) { ConvertTo-SuiteManifestStringArray -Value $Payload.controllerServiceNames } else { @() }
         DefaultArrAppNames = if ($null -ne $Payload.PSObject.Properties['defaultArrAppNames']) { ConvertTo-SuiteManifestStringArray -Value $Payload.defaultArrAppNames } else { @() }

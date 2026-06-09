@@ -169,7 +169,19 @@ def write_dependency_manifest(path: Path, dependency_root: Path) -> None:
     prowlarr_zip = dependency_root / "prowlarr.zip"
     radarr_zip = dependency_root / "radarr.zip"
     sonarr_zip = dependency_root / "sonarr.zip"
+    mpc_hc_zip = dependency_root / "mpc-hc.zip"
+    ffmpeg_zip = dependency_root / "ffmpeg.zip"
+    mediainfo_zip = dependency_root / "mediainfo.zip"
     write_zip(node_zip, {"node-v24.15.0-win-x64/node.exe": b"node\n"})
+    write_zip(mpc_hc_zip, {"mpc-hc64.exe": b"mpc-hc\n"})
+    write_zip(
+        ffmpeg_zip,
+        {
+            "ffmpeg-8.1.1-essentials_build/bin/ffmpeg.exe": b"ffmpeg\n",
+            "ffmpeg-8.1.1-essentials_build/bin/ffprobe.exe": b"ffprobe\n",
+        },
+    )
+    write_zip(mediainfo_zip, {"MediaInfo.dll": b"mediainfo\n"})
     write_zip(
         prowlarr_zip,
         {
@@ -214,6 +226,11 @@ def write_dependency_manifest(path: Path, dependency_root: Path) -> None:
         "sonarr": arr_dependency_spec(sonarr_zip, "Sonarr.exe"),
         "lidarr": arr_dependency_spec(lidarr_zip, "Lidarr.exe"),
         "whisparr": arr_dependency_spec(whisparr_zip, "Whisparr.exe"),
+        "mediaTools": {
+            "mpc-hc": media_tool_dependency_spec(mpc_hc_zip, "mpc-hc64.exe"),
+            "ffmpeg": media_tool_dependency_spec(ffmpeg_zip, "ffmpeg.exe"),
+            "mediainfo": media_tool_dependency_spec(mediainfo_zip, "MediaInfo.dll"),
+        },
     }
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
@@ -245,6 +262,13 @@ def arr_dependency_spec(path: Path, exe_name: str) -> dict[str, str]:
         "assetPattern": "",
         "exeName": exe_name,
         **dependency_spec(path),
+    }
+
+
+def media_tool_dependency_spec(path: Path, exe_name: str) -> dict[str, str]:
+    return {
+        "executable": exe_name,
+        "dependency": dependency_spec(path, file_name=path.name),
     }
 
 

@@ -235,6 +235,38 @@ $PinnedDependencies = @{
         Sha256 = '7e90caa524c18bb6e8d63be2e1e3c79e1e06fa023e9db1568d6096deae83d9c7'
     }
 }
+$PinnedMediaTools = @{
+    'mpc-hc' = @{
+        DisplayName = 'MPC-HC'
+        Destination = 'apps\MPC-HC'
+        Executable = 'mpc-hc64.exe'
+        Dependency = @{
+            FileName = 'MPC-HC.2.7.2.x64.zip'
+            Url = 'https://github.com/clsid2/mpc-hc/releases/download/2.7.2/MPC-HC.2.7.2.x64.zip'
+            Sha256 = '658b755c069ac3c3ed6265378baad3e7d270be12bd9642abd5b402b9f95a54ed'
+        }
+    }
+    ffmpeg = @{
+        DisplayName = 'FFmpeg'
+        Destination = 'tools\ffmpeg'
+        Executable = 'ffmpeg.exe'
+        Dependency = @{
+            FileName = 'ffmpeg-release-essentials.zip'
+            Url = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip'
+            Sha256 = '6f58ce889f59c311410f7d2b18895b33c03456463486f3b1ebc93d97a0f54541'
+        }
+    }
+    mediainfo = @{
+        DisplayName = 'MediaInfo DLL'
+        Destination = 'tools\mediainfo'
+        Executable = 'MediaInfo.dll'
+        Dependency = @{
+            FileName = 'MediaInfo_DLL_26.05_Windows_x64_WithoutInstaller.zip'
+            Url = 'https://mediaarea.net/download/binary/libmediainfo0/26.05/MediaInfo_DLL_26.05_Windows_x64_WithoutInstaller.zip'
+            Sha256 = 'f8c81699550a3a9425e9bdd1d6621587c463c51c568848ab8d3e36fe5efc222c'
+        }
+    }
+}
 
 function Write-Step {
     param([string]$Message)
@@ -662,6 +694,11 @@ function New-SuiteConfig {
         symbols = [ordered]@{
             emulebbPdbPath = $EmulebbPdbPath
         }
+        optionalTools = [ordered]@{
+            mpcHc = [ordered]@{ installed = $false; path = '' }
+            ffmpeg = [ordered]@{ installed = $false; path = '' }
+            mediainfo = [ordered]@{ installed = $false; path = '' }
+        }
         allowRemoteServiceBind = [bool]$AllowRemoteServiceBind
         services = [ordered]@{
             emulebb = [ordered]@{ bindAddress = (Resolve-OptionalValue -Value $EmulebbBindAddress -Default $controlBind); clientHost = ''; port = $EmulebbPort; apiKey = '' }
@@ -737,6 +774,7 @@ function Initialize-SuiteAppMetadata {
     $script:AllArrAppNames = $manifest.AllArrAppNames
     $script:ArrAppMetadata = $manifest.ArrAppMetadata
     if ($manifest.PinnedDependencies.Count -gt 0) { $script:PinnedDependencies = $manifest.PinnedDependencies }
+    if ($manifest.MediaTools.Count -gt 0) { $script:PinnedMediaTools = $manifest.MediaTools }
     if (@($manifest.CoreServiceNames).Count -gt 0) { $script:CoreServiceNames = $manifest.CoreServiceNames }
     if (@($manifest.ControllerServiceNames).Count -gt 0) { $script:ControllerServiceNames = $manifest.ControllerServiceNames }
     if (@($manifest.DefaultArrAppNames).Count -gt 0) { $script:DefaultArrAppNames = $manifest.DefaultArrAppNames }
@@ -1629,6 +1667,13 @@ function Assert-SuiteConfig {
             amutorrent = [ordered]@{ zip = ''; manifest = '' }
         }
     }
+    if ($null -eq $Config.optionalTools) {
+        $Config.optionalTools = [ordered]@{
+            mpcHc = [ordered]@{ installed = $false; path = '' }
+            ffmpeg = [ordered]@{ installed = $false; path = '' }
+            mediainfo = [ordered]@{ installed = $false; path = '' }
+        }
+    }
     if ([string]::IsNullOrWhiteSpace($Config.credentials.username) -or $Config.credentials.username -notmatch '^[a-zA-Z0-9_]{3,32}$') {
         throw "SuiteUsername must be 3-32 characters and contain only letters, numbers, or underscores: $($Config.credentials.username)"
     }
@@ -1945,6 +1990,84 @@ function Load-DependencyManifest {
     return $result
 }
 
+function Get-OptionalObjectProperty {
+    param([object]$Item, [string]$Name)
+    if ($Item -is [System.Collections.IDictionary]) {
+        foreach ($key in $Item.Keys) {
+            if ([string]::Equals([string]$key, $Name, [StringComparison]::OrdinalIgnoreCase)) {
+                return [string]$Item[$key]
+            }
+        }
+        return ''
+    }
+    if ($null -eq $Item -or $null -eq $Item.PSObject.Properties[$Name]) {
+        return ''
+    }
+    return [string]$Item.PSObject.Properties[$Name].Value
+}
+
+function ConvertTo-DependencySpec {
+    param([object]$Item, [string]$DefaultExe)
+    if ($null -eq $Item) {
+        return $null
+    }
+    $url = Get-OptionalObjectProperty -Item $Item -Name 'url'
+    $fileName = Get-OptionalObjectProperty -Item $Item -Name 'fileName'
+    if ([string]::IsNullOrWhiteSpace($fileName) -and -not [string]::IsNullOrWhiteSpace($url)) {
+        $fileName = [IO.Path]::GetFileName($url)
+    }
+    return @{
+        Repo = Get-OptionalObjectProperty -Item $Item -Name 'repo'
+        Tag = Get-OptionalObjectProperty -Item $Item -Name 'tag'
+        Pattern = Get-OptionalObjectProperty -Item $Item -Name 'assetPattern'
+        Exe = (Resolve-OptionalValue -Value (Get-OptionalObjectProperty -Item $Item -Name 'exeName') -Default (Resolve-OptionalValue -Value (Get-OptionalObjectProperty -Item $Item -Name 'exe') -Default $DefaultExe))
+        FileName = $fileName
+        Sha256 = Get-OptionalObjectProperty -Item $Item -Name 'sha256'
+        Url = $url
+    }
+}
+
+function Get-ManifestMediaToolItem {
+    param([object]$Payload, [string]$Name)
+    if ($null -eq $Payload) {
+        return $null
+    }
+    if ($null -ne $Payload.PSObject.Properties['mediaTools'] -and $null -ne $Payload.mediaTools) {
+        $mediaTools = $Payload.mediaTools
+        if ($null -ne $mediaTools.PSObject.Properties[$Name]) {
+            return $mediaTools.$Name
+        }
+    }
+    if ($null -ne $Payload.PSObject.Properties[$Name]) {
+        return $Payload.$Name
+    }
+    return $null
+}
+
+function Load-MediaToolDependencies {
+    param([object]$Payload)
+    $result = @{}
+    foreach ($name in @('mpc-hc', 'ffmpeg', 'mediainfo')) {
+        $defaultTool = $PinnedMediaTools[$name]
+        $tool = @{
+            DisplayName = [string]$defaultTool.DisplayName
+            Destination = [string]$defaultTool.Destination
+            Executable = [string]$defaultTool.Executable
+            Dependency = ConvertTo-DependencySpec -Item $defaultTool.Dependency -DefaultExe ([string]$defaultTool.Executable)
+        }
+        $override = Get-ManifestMediaToolItem -Payload $Payload -Name $name
+        if ($null -ne $override) {
+            if ($null -ne $override.PSObject.Properties['displayName']) { $tool.DisplayName = [string]$override.displayName }
+            if ($null -ne $override.PSObject.Properties['destination']) { $tool.Destination = [string]$override.destination }
+            if ($null -ne $override.PSObject.Properties['executable']) { $tool.Executable = [string]$override.executable }
+            $dependencyPayload = if ($null -ne $override.PSObject.Properties['dependency']) { $override.dependency } else { $override }
+            $tool.Dependency = ConvertTo-DependencySpec -Item $dependencyPayload -DefaultExe ([string]$tool.Executable)
+        }
+        $result[$name] = $tool
+    }
+    return $result
+}
+
 function Load-NodeSpec {
     param([object]$Payload, [string]$Platform)
     $defaultSpec = $NodeArchives[$Platform]
@@ -1960,15 +2083,15 @@ function Load-NodeSpec {
     if ($null -eq $item) {
         return $result
     }
-    $url = [string]$item.url
-    $fileName = [string]$item.fileName
+    $url = Get-OptionalObjectProperty -Item $item -Name 'url'
+    $fileName = Get-OptionalObjectProperty -Item $item -Name 'fileName'
     if ([string]::IsNullOrWhiteSpace($fileName) -and -not [string]::IsNullOrWhiteSpace($url)) {
         $fileName = [IO.Path]::GetFileName($url)
     }
     if ([string]::IsNullOrWhiteSpace($fileName)) {
         throw 'Node dependency manifest entry requires fileName or url.'
     }
-    $sha256 = [string]$item.sha256
+    $sha256 = Get-OptionalObjectProperty -Item $item -Name 'sha256'
     if ([string]::IsNullOrWhiteSpace($sha256)) {
         throw 'Node dependency download requires a SHA256 hash.'
     }
@@ -2122,6 +2245,88 @@ function Install-ArrDependency {
     Write-Step "Extracting $Name dependency"
     Expand-ZipSafe -Archive $archivePath -Destination $extractRoot
     Write-Step "$Name installed"
+}
+
+function Find-InstalledToolPath {
+    param([string]$Root, [string]$Executable)
+    if ($DryRun) {
+        return ''
+    }
+    if ([string]::IsNullOrWhiteSpace($Executable)) {
+        throw 'Optional tool executable name is required.'
+    }
+    $directPath = Join-Path $Root $Executable
+    if (Test-Path -LiteralPath $directPath -PathType Leaf) {
+        return $directPath
+    }
+    $matches = @(Get-ChildItem -LiteralPath $Root -Recurse -File -Filter $Executable -ErrorAction SilentlyContinue | Select-Object -First 1)
+    if ($matches.Count -eq 0) {
+        throw "Optional tool install did not contain expected file: $Executable"
+    }
+    return [string]$matches[0].FullName
+}
+
+function Install-OptionalToolDependency {
+    param([string]$Name, [hashtable]$Spec)
+    if ($script:SuiteConfig.platform -ne 'x64') {
+        Write-Warning "$($Spec.DisplayName) is optional and is skipped on $($script:SuiteConfig.platform) because the pinned portable package is x64-only."
+        return ''
+    }
+    $dependency = $Spec.Dependency
+    if ($null -eq $dependency) {
+        throw "$($Spec.DisplayName) optional dependency spec is missing."
+    }
+    $assetName = [string]$dependency.FileName
+    $assetUrl = [string]$dependency.Url
+    if ([string]::IsNullOrWhiteSpace($assetName) -and -not [string]::IsNullOrWhiteSpace($assetUrl)) {
+        $assetName = [IO.Path]::GetFileName($assetUrl)
+    }
+    if ([string]::IsNullOrWhiteSpace($assetName)) {
+        throw "$($Spec.DisplayName) optional dependency requires fileName or url."
+    }
+    if ([string]::IsNullOrWhiteSpace($assetUrl)) {
+        throw "$($Spec.DisplayName) optional dependency requires a URL."
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$dependency.Sha256)) {
+        throw "$($Spec.DisplayName) optional dependency requires a SHA256 hash."
+    }
+    $archivePath = Join-Path (Join-Path $script:Root 'downloads-cache') $assetName
+    $extractRoot = Join-Path $script:Root ([string]$Spec.Destination)
+    if (-not (Restore-DependencyCache -Kind 'media-tool' -Name "$($Spec.DisplayName) optional dependency" -AssetName $assetName -ExpectedSha256 $dependency.Sha256 -Destination $archivePath)) {
+        Write-Step "Downloading optional $($Spec.DisplayName) dependency $assetName"
+        Invoke-Download -Url $assetUrl -Destination $archivePath
+        Write-Step "Verifying optional $($Spec.DisplayName) dependency"
+        Assert-FileHash -Path $archivePath -ExpectedSha256 $dependency.Sha256
+        Save-DependencyCache -Kind 'media-tool' -Name "$($Spec.DisplayName) optional dependency" -AssetName $assetName -ExpectedSha256 $dependency.Sha256 -Source $archivePath
+    }
+    Write-Step "Extracting optional $($Spec.DisplayName) dependency"
+    Expand-ZipSafe -Archive $archivePath -Destination $extractRoot
+    $toolPath = Find-InstalledToolPath -Root $extractRoot -Executable ([string]$Spec.Executable)
+    Write-Step "$($Spec.DisplayName) optional dependency installed"
+    return $toolPath
+}
+
+function Install-OptionalMediaTools {
+    param([hashtable]$Config, [object]$DependencyManifestPayload)
+    $toolSpecs = Load-MediaToolDependencies -Payload $DependencyManifestPayload
+    $configKeys = @{
+        'mpc-hc' = 'mpcHc'
+        ffmpeg = 'ffmpeg'
+        mediainfo = 'mediainfo'
+    }
+    foreach ($name in @('mpc-hc', 'ffmpeg', 'mediainfo')) {
+        $spec = $toolSpecs[$name]
+        try {
+            $toolPath = Install-OptionalToolDependency -Name $name -Spec $spec
+            if (-not [string]::IsNullOrWhiteSpace($toolPath)) {
+                $configKey = $configKeys[$name]
+                $Config.optionalTools[$configKey].installed = $true
+                $Config.optionalTools[$configKey].path = $toolPath
+            }
+        } catch {
+            Write-Warning "$($spec.DisplayName) is optional and was not installed. $($_.Exception.Message)"
+        }
+    }
 }
 
 function ConvertTo-XmlText {
@@ -2312,6 +2517,18 @@ function Update-EmulePreferencesFile {
         [pscustomobject]@{ Section = 'WebServer'; Key = 'WebUseUPnP'; Value = '0' }
         [pscustomobject]@{ Section = 'WebServer'; Key = 'ApiKey'; Value = [string]$Config.services.emulebb.apiKey }
     )
+    if ($Config.optionalTools.mpcHc.installed -and -not [string]::IsNullOrWhiteSpace([string]$Config.optionalTools.mpcHc.path)) {
+        $updates += [pscustomobject]@{ Section = 'eMule'; Key = 'VideoPlayer'; Value = [string]$Config.optionalTools.mpcHc.path }
+        $updates += [pscustomobject]@{ Section = 'eMule'; Key = 'VideoPlayerArgs'; Value = '' }
+    }
+    if ($Config.optionalTools.ffmpeg.installed -and -not [string]::IsNullOrWhiteSpace([string]$Config.optionalTools.ffmpeg.path)) {
+        $updates += [pscustomobject]@{ Section = 'eMule'; Key = 'VideoThumbnailFfmpegPath'; Value = [string]$Config.optionalTools.ffmpeg.path }
+        $updates += [pscustomobject]@{ Section = 'eMule'; Key = 'VideoThumbnailIntervalSeconds'; Value = '90' }
+        $updates += [pscustomobject]@{ Section = 'eMule'; Key = 'AllowPeerPreview'; Value = '0' }
+    }
+    if ($Config.optionalTools.mediainfo.installed -and -not [string]::IsNullOrWhiteSpace([string]$Config.optionalTools.mediainfo.path)) {
+        $updates += [pscustomobject]@{ Section = 'eMule'; Key = 'MediaInfo_MediaInfoDllPath'; Value = [string]$Config.optionalTools.mediainfo.path }
+    }
     $text = Get-Content -Raw -LiteralPath $PreferencesPath
     Update-IniText -Text $text -Updates $updates | Set-Content -Encoding Unicode -LiteralPath $PreferencesPath
 }
@@ -2602,6 +2819,17 @@ function Write-CredentialsFile {
     $lines.Add('Suite config: manifests\suite-config.json')
     $lines.Add('Incoming downloads: downloads\incoming')
     $lines.Add('Temporary downloads: downloads\temp')
+    $installedTools = @()
+    if ($Config.optionalTools.mpcHc.installed) { $installedTools += "MPC-HC: $($Config.optionalTools.mpcHc.path)" }
+    if ($Config.optionalTools.ffmpeg.installed) { $installedTools += "FFmpeg: $($Config.optionalTools.ffmpeg.path)" }
+    if ($Config.optionalTools.mediainfo.installed) { $installedTools += "MediaInfo DLL: $($Config.optionalTools.mediainfo.path)" }
+    if ($installedTools.Count -gt 0) {
+        $lines.Add('')
+        $lines.Add('Optional media tools')
+        foreach ($tool in $installedTools) {
+            $lines.Add($tool)
+        }
+    }
     ($lines -join "`r`n") + "`r`n" | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $script:Root 'credentials.txt')
 
     $cards = New-Object 'System.Collections.Generic.List[string]'
@@ -2943,6 +3171,20 @@ function Write-InstallManifest {
             manifest = [string]$Config.automationExamples.manifest
             installed = -not [string]::IsNullOrWhiteSpace([string]$Config.automationExamples.zip)
         }
+        optionalTools = @{
+            mpcHc = @{
+                installed = [bool]$Config.optionalTools.mpcHc.installed
+                path = [string]$Config.optionalTools.mpcHc.path
+            }
+            ffmpeg = @{
+                installed = [bool]$Config.optionalTools.ffmpeg.installed
+                path = [string]$Config.optionalTools.ffmpeg.path
+            }
+            mediainfo = @{
+                installed = [bool]$Config.optionalTools.mediainfo.installed
+                path = [string]$Config.optionalTools.mediainfo.path
+            }
+        }
         services = $serviceManifest
         p2p = @{
             bindInterfacePresent = -not [string]::IsNullOrWhiteSpace($Config.p2p.bindInterface)
@@ -3024,6 +3266,8 @@ if (@(Get-SelectedArrAppNames -Config $script:SuiteConfig).Count -gt 0) {
         Install-ArrDependency -Name $name -Spec $dependencies[$name] -Channel $script:SuiteConfig.dependencyChannel
     }
 }
+
+Install-OptionalMediaTools -Config $script:SuiteConfig -DependencyManifestPayload $dependencyManifestPayload
 
 $script:ProfileImport = Write-EmuleProfile -Config $script:SuiteConfig
 $script:Symbols = Copy-OptionalEmuleSymbols -Config $script:SuiteConfig
