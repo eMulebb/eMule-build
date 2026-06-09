@@ -193,3 +193,29 @@ def test_get_app_variant_error_lists_keys_paths_and_branches(tmp_path: Path) -> 
     assert "Use a configured variant key, not the worktree folder name." in message
     assert "main -> app\\emulebb-main (main)" in message
     assert "community -> app\\emulebb-community-baseline (baseline/community-0.72a)" in message
+
+
+def test_build_log_directory_uses_output_root_when_configured(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspaces" / "workspace"
+    output_root = tmp_path / "emulebb-output"
+    layout = WorkspaceLayout(
+        emule_workspace_root=tmp_path,
+        workspace_name="workspace",
+        workspace_root=workspace_root,
+        build_repo_root=tmp_path / "repos" / "emulebb-build",
+        tests_repo_root=tmp_path / "repos" / "emulebb-build-tests",
+        tooling_repo_root=tmp_path / "repos" / "emulebb-tooling",
+        ed2k_server_repo_root=tmp_path / "repos" / "goed2k-server",
+        amule_repo_root=tmp_path / "repos" / "amule",
+        seed_repo_path=tmp_path / "repos" / "emulebb",
+        seed_repo_branch="main",
+        dependencies=(),
+        app_variants=(),
+        test_targets=LayoutTestTargets(test_build_variant="main", test_run_variant="main", baseline_variant="community"),
+        toolset_override_variable="",
+        output_root=output_root,
+    )
+
+    assert layout.build_log_directory("20260609T120000Z-build-app") == (
+        output_root / "logs" / "builds" / "20260609T120000Z-build-app"
+    )

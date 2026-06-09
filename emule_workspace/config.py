@@ -59,6 +59,7 @@ class WorkspaceOptions(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     workspace_root: Path = Field(description="Canonical EMULEBB_WORKSPACE_ROOT path.")
+    output_root: Path | None = Field(default=None, description="Canonical EMULEBB_WORKSPACE_OUTPUT_ROOT path.")
     workspace_name: str = Field(default="workspace")
     configuration: BuildConfiguration = "Release"
     platform: BuildPlatform = "x64"
@@ -70,6 +71,13 @@ class WorkspaceOptions(BaseModel):
         """Stores the workspace root as an absolute path."""
 
         return value.expanduser().resolve()
+
+    @field_validator("output_root")
+    @classmethod
+    def resolve_output_root(cls, value: Path | None) -> Path | None:
+        """Stores the output root as an absolute path when provided."""
+
+        return value.expanduser().resolve() if value is not None else None
 
 
 class BuildClientsOptions(BaseModel):
@@ -475,6 +483,7 @@ def resolve_workspace_options(
     resolved_root, _output_root = resolve_required_workspace_roots()
     return WorkspaceOptions(
         workspace_root=resolved_root,
+        output_root=_output_root,
         workspace_name=workspace_name or "workspace",
         configuration=configuration,
         platform=platform,

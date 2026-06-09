@@ -115,7 +115,11 @@ def _common_options(function: F) -> F:
                 platform=kwargs.pop("platform"),
                 build_output_mode=kwargs.pop("build_output_mode"),
             )
-            layout = load_layout(workspace_options.workspace_root, workspace_options.workspace_name)
+            layout = load_layout(
+                workspace_options.workspace_root,
+                workspace_options.workspace_name,
+                output_root=workspace_options.output_root,
+            )
         except Exception as exc:
             raise click.ClickException(str(exc)) from exc
         return function(*args, workspace_options=workspace_options, layout=layout, **kwargs)

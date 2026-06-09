@@ -59,6 +59,7 @@ class WorkspaceLayout:
     p2p_overlord_agents_repo_root: Path | None = None
     p2p_overlord_be_repo_root: Path | None = None
     p2p_overlord_tooling_repo_root: Path | None = None
+    output_root: Path | None = None
 
     def resolve_workspace_path(self, relative_path: str) -> Path:
         """Resolves a root-relative workspace path."""
@@ -85,9 +86,74 @@ class WorkspaceLayout:
     def build_log_directory(self, stamp: str) -> Path:
         """Returns and creates the workspace build-log directory for one session."""
 
-        directory = self.workspace_root / "state" / "build-logs" / stamp
+        directory = self.output_logs_root / "builds" / stamp
         directory.mkdir(parents=True, exist_ok=True)
         return directory
+
+    @property
+    def output_build_root(self) -> Path:
+        """Returns the root for generated build outputs."""
+
+        return self._resolved_output_root() / "builds"
+
+    @property
+    def output_logs_root(self) -> Path:
+        """Returns the root for generated logs."""
+
+        return self._resolved_output_root() / "logs"
+
+    @property
+    def output_reports_root(self) -> Path:
+        """Returns the root for generated reports."""
+
+        return self._resolved_output_root() / "reports"
+
+    @property
+    def output_artifacts_root(self) -> Path:
+        """Returns the root for generated test and workflow artifacts."""
+
+        return self._resolved_output_root() / "artifacts"
+
+    @property
+    def output_packages_root(self) -> Path:
+        """Returns the root for generated package build staging."""
+
+        return self._resolved_output_root() / "packages"
+
+    @property
+    def output_release_root(self) -> Path:
+        """Returns the root for generated release assets."""
+
+        return self._resolved_output_root() / "release"
+
+    @property
+    def output_cache_root(self) -> Path:
+        """Returns the root for generated caches."""
+
+        return self._resolved_output_root() / "cache"
+
+    @property
+    def output_tmp_root(self) -> Path:
+        """Returns the root for generated temporary state."""
+
+        return self._resolved_output_root() / "tmp"
+
+    @property
+    def output_profiles_root(self) -> Path:
+        """Returns the root for generated runtime profiles."""
+
+        return self._resolved_output_root() / "profiles"
+
+    @property
+    def output_tools_root(self) -> Path:
+        """Returns the root for downloaded or built tool payloads."""
+
+        return self._resolved_output_root() / "tools"
+
+    def _resolved_output_root(self) -> Path:
+        """Returns the configured output root, with a legacy fallback for direct unit fixtures."""
+
+        return self.output_root or (self.workspace_root / "state")
 
 
 def build_repo_root() -> Path:
@@ -96,7 +162,7 @@ def build_repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def load_layout(emule_workspace_root: Path, workspace_name: str | None = None) -> WorkspaceLayout:
+def load_layout(emule_workspace_root: Path, workspace_name: str | None = None, *, output_root: Path | None = None) -> WorkspaceLayout:
     """Loads and resolves the build and workspace manifests."""
 
     repo_root = build_repo_root()
@@ -150,6 +216,7 @@ def load_layout(emule_workspace_root: Path, workspace_name: str | None = None) -
         p2p_overlord_agents_repo_root=_resolve_workspace_manifest_path(workspace_root, repos["p2p_overlord_agents"]),
         p2p_overlord_be_repo_root=_resolve_workspace_manifest_path(workspace_root, repos["p2p_overlord_be"]),
         p2p_overlord_tooling_repo_root=_resolve_workspace_manifest_path(workspace_root, repos["p2p_overlord_tooling"]),
+        output_root=output_root.resolve() if output_root is not None else None,
         seed_repo_path=_resolve_workspace_manifest_path(workspace_root, seed_repo["path"]),
         seed_repo_branch=str(seed_repo["branch"]),
         dependencies=dependencies,
