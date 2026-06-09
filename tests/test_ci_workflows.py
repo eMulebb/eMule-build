@@ -195,6 +195,37 @@ def test_emulebb_publish_release_workflow_builds_and_publishes_github_generated_
     assert "emulebb-nightly-" not in text
 
 
+def test_emulebb_rc_package_proof_is_manual_and_non_publishing() -> None:
+    text = _read_app_workflow("rc-package-proof.yml")
+
+    assert "workflow_dispatch:" in text
+    assert "release_version:" in text
+    assert "target_sha:" in text
+    assert "build_ref:" in text
+    assert "schedule:" not in text
+    assert "uses: emulebb/emulebb-build/.github/workflows/reusable-workspace-command.yml@main" in text
+    assert "app_ref: ${{ needs.prepare.outputs.target_sha }}" in text
+    assert "build_ref: ${{ inputs.build_ref }}" in text
+    assert "runs_on: windows-2022" in text
+    assert "python -m emule_workspace package-release" in text
+    assert "--release-version $packageVersion" in text
+    assert "emulebb-$packageVersion-$assetArch.zip" in text
+    assert "emulebb-$packageVersion-$assetArch.manifest.json" in text
+    assert "emulebb-$packageVersion-$assetArch.sbom.spdx.json" in text
+    assert "emulebb-$packageVersion-diagnostics-$assetArch.zip" in text
+    assert "emulebb-$packageVersion-diagnostics-$assetArch.manifest.json" in text
+    assert "emulebb-$packageVersion-diagnostics-$assetArch.sbom.spdx.json" in text
+    assert "Bootstrap-eMuleBBSuite.ps1" in text
+    assert "Bootstrap-eMuleBBSuite.ps1.sha256" in text
+    assert "emulebb-diagnostics.exe" in text
+    assert "No release, tag, attestation, nightly publish, soak, or live campaign" in text
+    assert "gh release create" not in text
+    assert "git tag -a" not in text
+    assert "actions/attest" not in text
+    assert "package-amutorrent" not in text
+    assert "test live-e2e" not in text
+
+
 def test_emulebb_nightly_workflow_publishes_standard_and_diagnostics_assets() -> None:
     text = _read_app_workflow("nightly.yml")
 
