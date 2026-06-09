@@ -13,9 +13,14 @@ from emule_workspace import windows_vm_lab
 
 
 def _layout(tmp_path: Path) -> SimpleNamespace:
+    output_root = tmp_path.parent / f"{tmp_path.name}-output"
     return SimpleNamespace(
         emule_workspace_root=tmp_path,
         workspace_root=tmp_path / "workspaces" / "workspace",
+        output_artifacts_root=output_root / "artifacts",
+        output_release_root=output_root / "release",
+        output_reports_root=output_root / "reports",
+        output_tools_root=output_root / "tools",
         build_repo_root=tmp_path / "repos" / "emulebb-build",
         tests_repo_root=tmp_path / "repos" / "emulebb-build-tests",
         tooling_repo_root=tmp_path / "repos" / "emulebb-tooling",
@@ -442,7 +447,7 @@ def test_prepare_vm_lab_dry_run_plans_targets(tmp_path: Path) -> None:
     assert result["matrix"] == ["win10"]
     assert result["targets"][0]["vmName"] == "emulebb-win10-test"
     assert result["targets"][0]["checkpointName"] == "emulebb-clean"
-    assert result["targets"][0]["baselineReportPath"].endswith("state\\vm-lab\\prepare\\win10-baseline.json")
+    assert result["targets"][0]["baselineReportPath"].endswith("reports\\vm-lab\\prepare\\win10-baseline.json")
 
 
 def test_prepare_vm_target_script_skips_oobe_and_installs_efi_fallback() -> None:
@@ -633,7 +638,7 @@ def test_manual_vm_dry_run_plans_operator_session(tmp_path: Path) -> None:
     assert result["targets"][0]["vmName"] == "emulebb-win11-test"
     assert result["targets"][0]["guestIp"] == "192.168.251.11"
     assert result["targets"][0]["reportDir"].endswith("win11")
-    assert (layout.workspace_root / "state" / "vm-lab" / "manual" / "latest" / "manual-session-result.json").is_file()
+    assert (layout.output_reports_root / "vm-lab" / "manual" / "latest" / "manual-session-result.json").is_file()
 
 
 def test_manual_vm_target_script_restores_installs_and_leaves_running() -> None:
@@ -705,7 +710,7 @@ def test_windows_vm_test_dry_run_writes_report(tmp_path: Path) -> None:
         ),
     )
 
-    report_root = layout.workspace_root / "state" / "test-reports" / "windows-vm"
+    report_root = layout.output_reports_root / "windows-vm"
     assert result["status"] == "planned"
     assert result["matrix"] == ["win10", "win11"]
     assert (report_root / "latest" / windows_vm_lab.WINDOWS_VM_RESULT_FILE_NAME).is_file()
@@ -759,7 +764,7 @@ def test_windows_vm_reusable_campaign_summary_records_scenario_metadata(tmp_path
         ),
     )
 
-    report_root = layout.workspace_root / "state" / "test-reports" / "windows-vm"
+    report_root = layout.output_reports_root / "windows-vm"
     summary = json.loads((report_root / "latest" / windows_vm_lab.WINDOWS_VM_SUMMARY_FILE_NAME).read_text(encoding="utf-8"))
     expected = {
         "scenarioId": "emulebb.flow.ui.search.local-swarm.v1",
@@ -844,8 +849,8 @@ def test_windows_vm_profile_smoke_payload_stages_local_swarm_harness(tmp_path: P
         / "Release"
         / "emule.exe"
     )
-    amule_daemon_exe = layout.workspace_root / "state" / "tools" / "amule" / "bin" / "amuled.exe"
-    amule_control_exe = layout.workspace_root / "state" / "tools" / "amule" / "bin" / "amulecmd.exe"
+    amule_daemon_exe = layout.output_tools_root / "amule" / "bin" / "amuled.exe"
+    amule_control_exe = layout.output_tools_root / "amule" / "bin" / "amulecmd.exe"
     release_asset_paths = windows_vm_lab._local_swarm_release_asset_paths(layout, "0.7.3-rc.2", "x64")
     for path in (tracing_harness_exe, amule_daemon_exe, amule_control_exe):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -1203,7 +1208,7 @@ def test_windows_vm_hideme_live_wire_requires_both_targets(tmp_path: Path) -> No
 
 def test_ensure_python_installer_uses_verified_cached_artifact(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     layout = _layout(tmp_path)
-    installer = layout.workspace_root / "state" / "tools" / "python" / windows_vm_lab.PYTHON_INSTALLER_FILE_NAME
+    installer = layout.output_tools_root / "python" / windows_vm_lab.PYTHON_INSTALLER_FILE_NAME
     installer.parent.mkdir(parents=True, exist_ok=True)
     installer.write_bytes(b"installer")
     monkeypatch.setattr(windows_vm_lab, "PYTHON_INSTALLER_SHA256", windows_vm_lab._sha256(installer))
@@ -1215,7 +1220,7 @@ def test_ensure_hide_me_installer_uses_trusted_cached_artifact(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     layout = _layout(tmp_path)
-    installer = layout.workspace_root / "state" / "tools" / "hide-me" / windows_vm_lab.HIDE_ME_INSTALLER_FILE_NAME
+    installer = layout.output_tools_root / "hide-me" / windows_vm_lab.HIDE_ME_INSTALLER_FILE_NAME
     installer.parent.mkdir(parents=True, exist_ok=True)
     installer.write_bytes(b"installer")
     monkeypatch.setattr(windows_vm_lab, "_is_trusted_hide_me_installer", lambda path: path == installer)
@@ -1269,7 +1274,7 @@ def test_ensure_pwsh_installer_uses_trusted_cached_artifact(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     layout = _layout(tmp_path)
-    installer = layout.workspace_root / "state" / "tools" / "pwsh" / windows_vm_lab.PWSH_INSTALLER_FILE_NAME
+    installer = layout.output_tools_root / "pwsh" / windows_vm_lab.PWSH_INSTALLER_FILE_NAME
     installer.parent.mkdir(parents=True, exist_ok=True)
     installer.write_bytes(b"installer")
     monkeypatch.setattr(windows_vm_lab, "_is_trusted_pwsh_installer", lambda path: path == installer)
@@ -1282,9 +1287,7 @@ def test_ensure_dotnet_desktop_runtime_installer_uses_trusted_cached_artifact(
 ) -> None:
     layout = _layout(tmp_path)
     installer = (
-        layout.workspace_root
-        / "state"
-        / "tools"
+        layout.output_tools_root
         / "dotnet"
         / windows_vm_lab.DOTNET_DESKTOP_RUNTIME_FILE_NAME
     )
@@ -1300,9 +1303,7 @@ def test_ensure_dotnet_desktop_runtime_x86_installer_uses_trusted_cached_artifac
 ) -> None:
     layout = _layout(tmp_path)
     installer = (
-        layout.workspace_root
-        / "state"
-        / "tools"
+        layout.output_tools_root
         / "dotnet"
         / windows_vm_lab.DOTNET_DESKTOP_RUNTIME_X86_FILE_NAME
     )

@@ -1217,7 +1217,7 @@ def local_swarm_rest_source_contract_paths(layout: WorkspaceLayout) -> tuple[Pat
 def local_swarm_amule_exes(layout: WorkspaceLayout) -> tuple[Path | None, Path | None]:
     """Returns the staged aMule daemon/control binaries for reusable VM swarm payloads."""
 
-    root = layout.workspace_root / "state" / "tools" / "amule" / "bin"
+    root = layout.output_tools_root / "amule" / "bin"
     daemon = root / "amuled.exe"
     control = root / "amulecmd.exe"
     return (
@@ -1400,7 +1400,7 @@ def run_windows_vm_hideme_live_wire(
 def build_goed2k_server_exe(layout: WorkspaceLayout) -> Path:
     """Builds the local ED2K server as a Windows executable for guest transfer tests."""
 
-    output_dir = layout.workspace_root / "state" / "tools" / "goed2k-server"
+    output_dir = layout.output_tools_root / "goed2k-server"
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / "goed2k-server.exe"
     go_exe = shutil.which("go")
@@ -1535,37 +1535,37 @@ def ensure_vc_redist_x64_installer(layout: WorkspaceLayout) -> Path:
 def python_installer_cache_path(layout: WorkspaceLayout) -> Path:
     """Returns the host cache path for the Python guest installer."""
 
-    return layout.workspace_root / "state" / "tools" / "python" / PYTHON_INSTALLER_FILE_NAME
+    return layout.output_tools_root / "python" / PYTHON_INSTALLER_FILE_NAME
 
 
 def hide_me_installer_cache_path(layout: WorkspaceLayout) -> Path:
     """Returns the host cache path for the hide.me guest installer."""
 
-    return layout.workspace_root / "state" / "tools" / "hide-me" / HIDE_ME_INSTALLER_FILE_NAME
+    return layout.output_tools_root / "hide-me" / HIDE_ME_INSTALLER_FILE_NAME
 
 
 def pwsh_installer_cache_path(layout: WorkspaceLayout) -> Path:
     """Returns the host cache path for the PowerShell 7 guest installer."""
 
-    return layout.workspace_root / "state" / "tools" / "pwsh" / PWSH_INSTALLER_FILE_NAME
+    return layout.output_tools_root / "pwsh" / PWSH_INSTALLER_FILE_NAME
 
 
 def dotnet_desktop_runtime_cache_path(layout: WorkspaceLayout) -> Path:
     """Returns the host cache path for the .NET Desktop Runtime guest installer."""
 
-    return layout.workspace_root / "state" / "tools" / "dotnet" / DOTNET_DESKTOP_RUNTIME_FILE_NAME
+    return layout.output_tools_root / "dotnet" / DOTNET_DESKTOP_RUNTIME_FILE_NAME
 
 
 def dotnet_desktop_runtime_x86_cache_path(layout: WorkspaceLayout) -> Path:
     """Returns the host cache path for the x86 .NET Desktop Runtime guest installer."""
 
-    return layout.workspace_root / "state" / "tools" / "dotnet" / DOTNET_DESKTOP_RUNTIME_X86_FILE_NAME
+    return layout.output_tools_root / "dotnet" / DOTNET_DESKTOP_RUNTIME_X86_FILE_NAME
 
 
 def vc_redist_x64_cache_path(layout: WorkspaceLayout) -> Path:
     """Returns the host cache path for the Microsoft VC++ x64 redistributable."""
 
-    return layout.workspace_root / "state" / "tools" / "vc-redist" / VC_REDIST_X64_FILE_NAME
+    return layout.output_tools_root / "vc-redist" / VC_REDIST_X64_FILE_NAME
 
 
 def default_hide_me_settings_path() -> Path:
@@ -2782,12 +2782,12 @@ finally {
 
 def _release_package_zip(layout: WorkspaceLayout, release_version: str, platform: str) -> Path:
     arch = "arm64" if platform == "ARM64" else "x64"
-    return layout.workspace_root / "state" / "release" / f"emulebb-v{release_version}" / f"emulebb-{release_version}-{arch}.zip"
+    return layout.output_release_root / f"emulebb-v{release_version}" / f"emulebb-{release_version}-{arch}.zip"
 
 
 def _local_swarm_release_asset_paths(layout: WorkspaceLayout, release_version: str, platform: str) -> tuple[Path, ...]:
     arch = "arm64" if platform == "ARM64" else "x64"
-    release_root = layout.workspace_root / "state" / "release" / f"emulebb-v{release_version}"
+    release_root = layout.output_release_root / f"emulebb-v{release_version}"
     return (
         release_root / f"emulebb-{release_version}-{arch}.zip",
         release_root / f"emulebb-{release_version}-{arch}.manifest.json",
@@ -2861,7 +2861,7 @@ def _path_from_local_dependency_url(raw_url: str) -> Path:
 def _local_swarm_node_archive_path(layout: WorkspaceLayout, platform: str) -> Path:
     if platform != "x64":
         raise RuntimeError("VM local-swarm aMuTorrent runtime staging supports x64 Node only in v1.")
-    return layout.workspace_root / "state" / "tools" / "node" / LOCAL_SWARM_NODE_ARCHIVE_X64
+    return layout.output_tools_root / "node" / LOCAL_SWARM_NODE_ARCHIVE_X64
 
 
 def _ensure_local_swarm_node_archive(layout: WorkspaceLayout, platform: str) -> Path:
@@ -2885,19 +2885,19 @@ def _ensure_local_swarm_node_archive(layout: WorkspaceLayout, platform: str) -> 
 
 
 def _vm_image_root(layout: WorkspaceLayout) -> Path:
-    return layout.workspace_root / "state" / "vm-lab" / "images"
+    return layout.output_artifacts_root / "vm-lab" / "images"
 
 
 def _vm_prepare_report_root(layout: WorkspaceLayout) -> Path:
-    return layout.workspace_root / "state" / "vm-lab" / "prepare"
+    return layout.output_reports_root / "vm-lab" / "prepare"
 
 
 def _vm_manual_report_root(layout: WorkspaceLayout) -> Path:
-    return layout.workspace_root / "state" / "vm-lab" / "manual"
+    return layout.output_reports_root / "vm-lab" / "manual"
 
 
 def _windows_vm_report_root(layout: WorkspaceLayout) -> Path:
-    return layout.workspace_root / "state" / "test-reports" / WINDOWS_VM_SUITE_NAME
+    return layout.output_reports_root / WINDOWS_VM_SUITE_NAME
 
 
 def _resolve_config_path(layout: WorkspaceLayout, config_file: str | None) -> Path:

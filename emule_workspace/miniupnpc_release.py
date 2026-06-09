@@ -31,8 +31,8 @@ def create_miniupnpc_package(
     if not package_script.is_file():
         raise RuntimeError(f"MiniUPnP package script is missing: {package_script}")
 
-    release_root = layout.workspace_root / "state" / "release" / f"miniupnpc-v{package_options.release_version}"
-    _assert_under(release_root, layout.workspace_root / "state")
+    release_root = layout.output_release_root / f"miniupnpc-v{package_options.release_version}"
+    _assert_under(release_root, layout.output_release_root)
 
     command = get_python_invocation().command(
         [

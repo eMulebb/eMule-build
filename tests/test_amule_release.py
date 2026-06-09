@@ -12,6 +12,7 @@ from emule_workspace.process import PythonInvocation
 class FakeLayout:
     def __init__(self, root: Path) -> None:
         self.workspace_root = root / "workspaces" / "workspace"
+        self.output_release_root = root.parent / f"{root.name}-output" / "release"
         self.amule_root = root / "repos" / "amule"
         self.workspace_root.mkdir(parents=True)
         (self.amule_root / "tools").mkdir(parents=True)
@@ -50,7 +51,7 @@ def test_package_amule_invokes_repo_script(tmp_path: Path, monkeypatch: pytest.M
     assert "x64" in command
     assert "--require-clean" in command
     assert "--clean" in command
-    assert str(layout.workspace_root / "state" / "release" / "amule-3.0.0-emulebb.1") in command
+    assert str(layout.output_release_root / "amule-3.0.0-emulebb.1") in command
     assert str(msys2_root) in command
 
 

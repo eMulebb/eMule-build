@@ -960,7 +960,7 @@ def _aggregate_status(results: list[CampaignCommandResult], *, dry_run: bool) ->
 
 def _new_report_dir(layout: WorkspaceLayout, campaign_id: str) -> Path:
     stamp = utc_run_id()
-    return layout.workspace_root / "state" / "release-campaign-runs" / f"{stamp}-{campaign_id}"
+    return layout.output_reports_root / "release-campaign-runs" / f"{stamp}-{campaign_id}"
 
 
 def _scenario_context_payload(contexts: tuple[CampaignScenarioContext, ...]) -> list[dict[str, Any]]:

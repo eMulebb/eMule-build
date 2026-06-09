@@ -14,6 +14,7 @@ from emule_workspace.layout import AppVariant, TestTargets as LayoutTestTargets,
 def make_layout(tmp_path: Path) -> WorkspaceLayout:
     emule_workspace_root = tmp_path
     workspace_root = emule_workspace_root / "workspaces" / "workspace"
+    output_root = emule_workspace_root.parent / f"{emule_workspace_root.name}-output"
     tests_repo_root = emule_workspace_root / "repos" / "emulebb-build-tests"
     app_root = workspace_root / "app" / "emulebb-main"
     for path in (
@@ -38,11 +39,12 @@ def make_layout(tmp_path: Path) -> WorkspaceLayout:
         app_variants=(AppVariant(name="main", path=app_root, branch="main"),),
         test_targets=LayoutTestTargets(test_build_variant="main", test_run_variant="main", baseline_variant="community"),
         toolset_override_variable="",
+        output_root=output_root,
     )
 
 
 def latest_certification_report(layout: WorkspaceLayout) -> Path:
-    reports = sorted((layout.workspace_root / "state" / "certification").glob(f"*/{certification_result_file_name()}"))
+    reports = sorted((layout.output_reports_root / "certification").glob(f"*/{certification_result_file_name()}"))
     assert reports
     return reports[-1]
 
@@ -182,7 +184,7 @@ def test_certification_preserves_inconclusive_child_status(tmp_path: Path, monke
 
     def fake_invoke_step(_layout, _options, _certification_options, name):
         if name == "live-fast-ui-rest":
-            child_report = layout.workspace_root / "state" / "test-reports" / "live-e2e-suite" / "latest"
+            child_report = layout.output_reports_root / "live-e2e-suite" / "latest"
             child_report.mkdir(parents=True)
             (child_report / "live-e2e-suite-result.json").write_text(
                 json.dumps({"status": "inconclusive", "has_inconclusive_suites": True}) + "\n",

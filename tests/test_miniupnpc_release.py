@@ -12,6 +12,7 @@ from emule_workspace import miniupnpc_release
 class FakeLayout:
     def __init__(self, root: Path) -> None:
         self.workspace_root = root / "workspaces" / "workspace"
+        self.output_release_root = root.parent / f"{root.name}-output" / "release"
         self.miniupnp_root = root / "repos" / "third_party" / "emulebb-miniupnp"
         self.workspace_root.mkdir(parents=True)
         (self.miniupnp_root / "tools").mkdir(parents=True)
@@ -49,7 +50,7 @@ def test_package_miniupnpc_invokes_repo_script(tmp_path: Path, monkeypatch: pyte
     assert "x64" in command
     assert "--require-clean" in command
     assert "--clean" in command
-    assert str(layout.workspace_root / "state" / "release" / "miniupnpc-v2.2.3-emulebb.1") in command
+    assert str(layout.output_release_root / "miniupnpc-v2.2.3-emulebb.1") in command
 
 
 def test_package_miniupnpc_rejects_debug_config(tmp_path: Path) -> None:

@@ -15,6 +15,7 @@ from emule_workspace.layout import AppVariant, TestTargets as LayoutTestTargets,
 def make_layout(tmp_path: Path) -> WorkspaceLayout:
     emule_workspace_root = tmp_path
     workspace_root = emule_workspace_root / "workspaces" / "workspace"
+    output_root = emule_workspace_root.parent / f"{emule_workspace_root.name}-output"
     tests_repo_root = emule_workspace_root / "repos" / "emulebb-build-tests"
     app_root = workspace_root / "app" / "emulebb-main"
     for path in (
@@ -40,6 +41,7 @@ def make_layout(tmp_path: Path) -> WorkspaceLayout:
         app_variants=(AppVariant(name="main", path=app_root, branch="main"),),
         test_targets=LayoutTestTargets(test_build_variant="main", test_run_variant="main", baseline_variant="community"),
         toolset_override_variable="",
+        output_root=output_root,
     )
 
 
@@ -211,7 +213,7 @@ def test_campaign_execute_dry_run_writes_planned_report(tmp_path: Path) -> None:
         ReleaseCampaignOptions(campaign="test-campaign", execute=True, dry_run=True),
     )
 
-    reports = sorted((layout.workspace_root / "state" / "release-campaign-runs").glob(f"*/{release_campaign_result_file_name()}"))
+    reports = sorted((layout.output_reports_root / "release-campaign-runs").glob(f"*/{release_campaign_result_file_name()}"))
     assert reports
     payload = json.loads(reports[-1].read_text(encoding="utf-8"))
     assert payload["status"] == "planned"
@@ -298,7 +300,7 @@ def test_campaign_report_records_local_vm_swarm_scenario_context(tmp_path: Path)
         ReleaseCampaignOptions(campaign="test-campaign", phase="controller-surface", execute=True, dry_run=True),
     )
 
-    reports = sorted((layout.workspace_root / "state" / "release-campaign-runs").glob(f"*/{release_campaign_result_file_name()}"))
+    reports = sorted((layout.output_reports_root / "release-campaign-runs").glob(f"*/{release_campaign_result_file_name()}"))
     payload = json.loads(reports[-1].read_text(encoding="utf-8"))
     assert payload["plannedCommands"][0]["selectedCampaignScenarioMode"] == "local"
     assert payload["commands"][0]["selectedCampaignScenarioMode"] == "local"
@@ -1258,7 +1260,7 @@ def test_campaign_execute_records_pre_run_cleanup(tmp_path: Path, monkeypatch: p
         ReleaseCampaignOptions(campaign="test-campaign", execute=True),
     )
 
-    reports = sorted((layout.workspace_root / "state" / "release-campaign-runs").glob(f"*/{release_campaign_result_file_name()}"))
+    reports = sorted((layout.output_reports_root / "release-campaign-runs").glob(f"*/{release_campaign_result_file_name()}"))
     payload = json.loads(reports[-1].read_text(encoding="utf-8"))
     assert payload["options"]["preRunCleanup"] is True
     assert payload["preRunCleanup"]["status"] == "passed"
@@ -1361,7 +1363,7 @@ def test_campaign_dry_run_fails_required_live_suite_skipped_by_network(
             ReleaseCampaignOptions(campaign="test-campaign", phase="controller-surface", execute=True, dry_run=True),
         )
 
-    reports = sorted((layout.workspace_root / "state" / "release-campaign-runs").glob(f"*/{release_campaign_result_file_name()}"))
+    reports = sorted((layout.output_reports_root / "release-campaign-runs").glob(f"*/{release_campaign_result_file_name()}"))
     payload = json.loads(reports[-1].read_text(encoding="utf-8"))
     assert payload["status"] == "failed"
     assert "required live E2E suite(s) skipped" in payload["commands"][0]["error"]
@@ -1391,7 +1393,7 @@ def test_campaign_dry_run_accepts_required_live_suite_with_vpn_network(
         ),
     )
 
-    reports = sorted((layout.workspace_root / "state" / "release-campaign-runs").glob(f"*/{release_campaign_result_file_name()}"))
+    reports = sorted((layout.output_reports_root / "release-campaign-runs").glob(f"*/{release_campaign_result_file_name()}"))
     payload = json.loads(reports[-1].read_text(encoding="utf-8"))
     assert payload["status"] == "planned"
     assert payload["commands"][0]["status"] == "planned"

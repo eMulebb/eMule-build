@@ -379,13 +379,13 @@ def subprocess_os_environ() -> dict[str, str]:
 
 
 def staged_amule_root(layout: WorkspaceLayout) -> Path:
-    """Returns the workspace-state aMule runtime staging root."""
+    """Returns the output-root aMule runtime staging root."""
 
-    return layout.workspace_root / "state" / "tools" / "amule"
+    return layout.output_tools_root / "amule"
 
 
 def stage_amule_runtime(layout: WorkspaceLayout) -> None:
-    """Stages the latest aMule portable runtime below the workspace state tree."""
+    """Stages the latest aMule portable runtime below the output root."""
 
     source_root = find_amule_portable_root(layout.amule_repo_root)
     target_root = staged_amule_root(layout)
@@ -687,13 +687,13 @@ def with_trailing_separator(path: Path) -> str:
 def arm64_overrides_props_path(layout: WorkspaceLayout) -> Path:
     """Returns the generated ARM64 Crypto++ props path."""
 
-    return layout.workspace_root / "state" / "arm64-build-overrides.props"
+    return layout.output_build_root / "arm64-overrides" / "arm64-build-overrides.props"
 
 
 def arm64_overrides_targets_path(layout: WorkspaceLayout) -> Path:
     """Returns the generated ARM64 Crypto++ targets path."""
 
-    return layout.workspace_root / "state" / "arm64-build-overrides.targets"
+    return layout.output_build_root / "arm64-overrides" / "arm64-build-overrides.targets"
 
 
 def remove_stale_generated_artifacts(repo_path: Path, kind: str) -> None:

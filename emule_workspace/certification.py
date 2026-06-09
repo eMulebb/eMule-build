@@ -435,11 +435,11 @@ def _vpn_step_test_network(certification_options: CertificationOptions) -> str:
 
 def _new_report_dir(layout: WorkspaceLayout, profile: str) -> Path:
     stamp = utc_run_id()
-    return layout.workspace_root / "state" / "certification" / f"{stamp}-{profile}"
+    return layout.output_reports_root / "certification" / f"{stamp}-{profile}"
 
 
 def _test_reports_root(layout: WorkspaceLayout) -> Path:
-    return layout.workspace_root / "state" / "test-reports"
+    return layout.output_reports_root
 
 
 def _report_directory_snapshot(reports_root: Path) -> dict[Path, float]:
@@ -484,7 +484,7 @@ def _child_result_path(report_path: Path) -> Path:
     if report_path.name == "latest":
         suite_name = report_path.parent.name
         return report_path / f"{suite_name}-result.json"
-    if report_path.parent.name == "test-reports":
+    if (report_path / "latest").is_dir():
         return report_path / "latest" / f"{report_path.name}-result.json"
     return report_path / _report_result_file_name(report_path)
 
