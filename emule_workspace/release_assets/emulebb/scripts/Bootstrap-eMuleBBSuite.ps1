@@ -288,11 +288,14 @@ function Get-ReleaseVersion {
         $escapedAssetArch = [regex]::Escape($AssetArch)
         foreach ($asset in @($Release.assets)) {
             $name = [string]$asset.name
+            if ($name -match "^emulebb-.+-diagnostics-$escapedAssetArch\.zip$") {
+                continue
+            }
             if ($name -match "^emulebb-(.+)-$escapedAssetArch\.zip$") {
                 return $Matches[1]
             }
         }
-        throw "Nightly release $tag does not contain an eMuleBB $AssetArch ZIP asset."
+        throw "Nightly release $tag does not contain a standard eMuleBB $AssetArch ZIP asset."
     }
     throw "Unexpected release tag: $tag"
 }

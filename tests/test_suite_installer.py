@@ -2217,6 +2217,14 @@ function Invoke-RestMethod {{
         prerelease = $true
         assets = @(
             [pscustomobject]@{{
+                name = 'emulebb-0.7.3-nightly.20260524.ae562c1-diagnostics-x64.zip'
+                browser_download_url = 'https://example.invalid/emulebb-0.7.3-nightly.20260524.ae562c1-diagnostics-x64.zip'
+            }},
+            [pscustomobject]@{{
+                name = 'emulebb-0.7.3-nightly.20260524.ae562c1-diagnostics-x64.manifest.json'
+                browser_download_url = 'https://example.invalid/emulebb-0.7.3-nightly.20260524.ae562c1-diagnostics-x64.manifest.json'
+            }},
+            [pscustomobject]@{{
                 name = 'emulebb-0.7.3-nightly.20260524.ae562c1-x64.zip'
                 browser_download_url = 'https://example.invalid/emulebb-0.7.3-nightly.20260524.ae562c1-x64.zip'
             }},
@@ -2242,6 +2250,7 @@ function Invoke-RestMethod {{
 
     assert "Resolved release emulebb-nightly-20260524-ae562c1 for x64" in completed.stdout
     assert "emulebb-0.7.3-nightly.20260524.ae562c1-x64.zip" in completed.stdout
+    assert "emulebb-0.7.3-nightly.20260524.ae562c1-diagnostics-x64.zip" not in completed.stdout
     assert (
         "-ReleaseBaseUrl https://github.com/emulebb/emulebb/releases/download/"
         "emulebb-nightly-20260524-ae562c1"
