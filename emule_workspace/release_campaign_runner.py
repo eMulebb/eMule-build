@@ -1157,7 +1157,7 @@ def _release_campaign_paths(layout: WorkspaceLayout, module: ModuleType) -> Any:
     return module.ReleaseCampaignPaths(  # type: ignore[attr-defined]
         tests_repo_root=layout.tests_repo_root,
         emule_workspace_root=layout.emule_workspace_root,
-        workspace_state_root=layout.workspace_root / "state",
+        workspace_output_root=layout.output_root,
     )
 
 

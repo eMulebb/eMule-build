@@ -1186,7 +1186,8 @@ def test_live_e2e_hide_me_registration_updates_only_whitelist_for_materialized_e
 
 
 def test_live_e2e_restarts_hide_me_when_failed_report_points_at_upnp(tmp_path: Path, monkeypatch) -> None:
-    reports = tmp_path / "workspaces" / "workspace" / "state" / "test-reports" / "live-e2e-suite" / "run"
+    layout = make_layout(tmp_path)
+    reports = layout.output_reports_root / "live-e2e-suite" / "run"
     reports.mkdir(parents=True)
     (reports / "rest-api-smoke-result.json").write_text(
         '{"status":"failed","failed_phase":"nat_backend_order","error":"Timed out waiting for UPnP NAT backend order"}',
@@ -1205,7 +1206,6 @@ def test_live_e2e_restarts_hide_me_when_failed_report_points_at_upnp(tmp_path: P
         recovery_inputs.append(failure_text)
         return {"requested": True}
 
-    layout = make_layout(tmp_path)
     monkeypatch.setattr(test_runs, "run_native", fake_run_native)
     monkeypatch.setattr(test_runs, "ensure_split_tunnel_apps", lambda paths, **_kwargs: {"enabled": False})
     monkeypatch.setattr(test_runs, "restart_hide_me_after_upnp_failure_if_requested", fake_recover)
@@ -1222,7 +1222,8 @@ def test_live_e2e_restarts_hide_me_when_failed_report_points_at_upnp(tmp_path: P
 
 
 def test_live_e2e_restarts_hide_me_when_app_log_points_at_upnp(tmp_path: Path, monkeypatch) -> None:
-    logs = tmp_path / "workspaces" / "workspace" / "state" / "test-reports" / "live-e2e-suite" / "run" / "rest-api" / "logs"
+    layout = make_layout(tmp_path)
+    logs = layout.output_reports_root / "live-e2e-suite" / "run" / "rest-api" / "logs"
     logs.mkdir(parents=True)
     (logs / "emulebb-verbose.log").write_text(
         "UPnP failed to setup port forwarding\nAdding PortMapping failed for port 9447 (TCP), Error Code 501\n",
@@ -1241,7 +1242,6 @@ def test_live_e2e_restarts_hide_me_when_app_log_points_at_upnp(tmp_path: Path, m
         recovery_inputs.append(failure_text)
         return {"requested": True}
 
-    layout = make_layout(tmp_path)
     monkeypatch.setattr(test_runs, "run_native", fake_run_native)
     monkeypatch.setattr(test_runs, "ensure_split_tunnel_apps", lambda paths, **_kwargs: {"enabled": False})
     monkeypatch.setattr(test_runs, "restart_hide_me_after_upnp_failure_if_requested", fake_recover)
@@ -1258,7 +1258,8 @@ def test_live_e2e_restarts_hide_me_when_app_log_points_at_upnp(tmp_path: Path, m
 
 
 def test_live_e2e_retries_once_after_hide_me_upnp_recovery(tmp_path: Path, monkeypatch) -> None:
-    logs = tmp_path / "workspaces" / "workspace" / "state" / "test-reports" / "live-e2e-suite" / "run" / "rest-api" / "logs"
+    layout = make_layout(tmp_path)
+    logs = layout.output_reports_root / "live-e2e-suite" / "run" / "rest-api" / "logs"
     logs.mkdir(parents=True)
     (logs / "emulebb-verbose.log").write_text(
         "UPnP failed to setup port forwarding\n",
@@ -1281,7 +1282,6 @@ def test_live_e2e_retries_once_after_hide_me_upnp_recovery(tmp_path: Path, monke
         recovery_inputs.append(failure_text)
         return {"requested": True}
 
-    layout = make_layout(tmp_path)
     monkeypatch.setattr(test_runs, "run_native", fake_run_native)
     monkeypatch.setattr(test_runs, "ensure_split_tunnel_apps", lambda paths, **_kwargs: {"enabled": False})
     monkeypatch.setattr(test_runs, "restart_hide_me_after_upnp_failure_if_requested", fake_recover)
@@ -1602,7 +1602,7 @@ def test_live_e2e_runs_pre_run_cleanup_when_requested(tmp_path: Path, monkeypatc
     assert calls == ["cleanup", "run"]
 
 
-def test_live_e2e_uses_workspace_state_defaults(tmp_path: Path, monkeypatch) -> None:
+def test_live_e2e_uses_env_workspace_root(tmp_path: Path, monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
@@ -1619,7 +1619,7 @@ def test_live_e2e_uses_workspace_state_defaults(tmp_path: Path, monkeypatch) -> 
 
     command = captured["command"]
     assert isinstance(command, list)
-    assert option_values(command, "--workspace-root") == [str(layout.workspace_root)]
+    assert "--workspace-root" not in command
     assert "--artifacts-dir" not in command
 
 
@@ -1706,7 +1706,8 @@ def test_release_campaign_report_forwards_campaign_phase_and_json_options(tmp_pa
     assert option_values(command, "--campaign") == ["emulebb-0.7.3"]
     assert option_values(command, "--phase") == ["live-wire-release"]
     assert option_values(command, "--test-repo-root") == [str(layout.tests_repo_root)]
-    assert option_values(command, "--workspace-state-root") == [str(layout.workspace_root / "state")]
+    assert "--workspace-root" not in command
+    assert "--workspace-state-root" not in command
     assert "--json" in command
     assert captured["env"] == {
         "EMULEBB_WORKSPACE_ROOT": layout.emule_workspace_root,

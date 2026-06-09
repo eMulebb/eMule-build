@@ -534,7 +534,7 @@ def _stop_running_tests(layout: WorkspaceLayout, report_dir: Path, phase_name: s
     diagnostics_dir.mkdir(parents=True, exist_ok=True)
     python = get_python_invocation()
     completed = subprocess.run(
-        python.command([script, "--workspace-root", layout.emule_workspace_root, "--json"]),
+        python.command([script, "--json"]),
         cwd=str(layout.emule_workspace_root),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,

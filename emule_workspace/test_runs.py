@@ -119,8 +119,6 @@ def invoke_test_runs(layout: WorkspaceLayout, options: WorkspaceOptions) -> None
                 layout.tests_repo_root / "scripts" / "run-native-coverage.py",
                 "--test-repo-root",
                 layout.tests_repo_root,
-                "--workspace-root",
-                layout.workspace_root,
                 "--app-root",
                 app_root,
                 "--configuration",
@@ -226,8 +224,6 @@ def invoke_protocol_parity(
                 layout.tests_repo_root / "scripts" / "run-protocol-surface-diff.py",
                 "--test-repo-root",
                 layout.tests_repo_root,
-                "--workspace-root",
-                layout.workspace_root,
                 "--test-run-app-root",
                 test_run_app_root,
                 "--baseline-app-root",
@@ -297,8 +293,6 @@ def invoke_community_core_coverage(
                 layout.tests_repo_root / "scripts" / "run-community-core-coverage.py",
                 "--test-repo-root",
                 layout.tests_repo_root,
-                "--workspace-root",
-                layout.workspace_root,
                 "--main-app-root",
                 test_run_app_root,
                 "--community-app-root",
@@ -389,8 +383,6 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
 
     args: list[str | Path | int | float] = [
         script_path,
-        "--workspace-root",
-        layout.workspace_root,
         "--app-root",
         app_root,
         "--configuration",
@@ -795,10 +787,6 @@ def invoke_release_campaign_report(
         script_path,
         "--test-repo-root",
         layout.tests_repo_root,
-        "--workspace-root",
-        layout.emule_workspace_root,
-        "--workspace-state-root",
-        layout.workspace_root / "state",
         "--campaign",
         campaign_options.campaign,
     ]
@@ -831,8 +819,6 @@ def invoke_amutorrent_interactive_session(
 
     args: list[str | Path] = [
         script_path,
-        "--workspace-root",
-        layout.workspace_root,
         "--app-root",
         app_root,
         "--configuration",
@@ -863,8 +849,6 @@ def invoke_fake_kad_trust_soak(
 
     args: list[str | Path | float | int] = [
         script_path,
-        "--workspace-root",
-        layout.workspace_root,
         "--app-root",
         app_root,
         "--configuration",
@@ -928,8 +912,6 @@ def invoke_amutorrent_clean_startup(
 
     args: list[str | Path | float] = [
         script_path,
-        "--workspace-root",
-        layout.workspace_root,
         "--app-root",
         app_root,
         "--configuration",
@@ -987,8 +969,6 @@ def invoke_amutorrent_resilience(
 
     args: list[str | Path | float] = [
         script_path,
-        "--workspace-root",
-        layout.workspace_root,
         "--app-root",
         app_root,
         "--configuration",
@@ -1048,8 +1028,6 @@ def invoke_amutorrent_emulebb_ui(
 
     args: list[str | Path | float] = [
         script_path,
-        "--workspace-root",
-        layout.workspace_root,
         "--app-root",
         app_root,
         "--configuration",
