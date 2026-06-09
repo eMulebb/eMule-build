@@ -246,7 +246,7 @@ AMULE_MSYS2_PACKAGE_SNAPSHOT = (
 
 
 def build_amule_client(session: BuildSession, *, clean: bool) -> None:
-    """Builds the aMule Windows portable client and stages daemon tools under workspace state."""
+    """Builds the aMule Windows portable client and stages daemon tools under the output root."""
 
     if session.options.platform != "x64":
         raise RuntimeError("build clients --client amule currently supports only --platform x64 via MSYS2 MINGW64.")
@@ -257,12 +257,14 @@ def build_amule_client(session: BuildSession, *, clean: bool) -> None:
         raise RuntimeError(f"aMule Windows build script was not found: {script_path}")
     if clean:
         for path in (
+            amule_build_output_root(session.layout),
+            amule_release_output_root(session.layout),
+            staged_amule_root(session.layout),
             session.layout.amule_repo_root / "build-windows-x64",
             session.layout.amule_repo_root / "build-windows-x86_64",
             session.layout.amule_repo_root / "amule-portable-x64",
             session.layout.amule_repo_root / "amule-portable-x86_64",
             session.layout.amule_repo_root / "dist",
-            staged_amule_root(session.layout),
         ):
             remove_tree_if_present(path)
 
@@ -283,7 +285,7 @@ def build_amule_client(session: BuildSession, *, clean: bool) -> None:
                 stderr=subprocess.STDOUT,
                 text=True,
                 check=False,
-                env=msys2_mingw64_environment(msys2_root),
+                env=msys2_mingw64_environment(msys2_root, session.layout),
             )
         if completed.returncode != 0:
             raise RuntimeError(f"aMule Windows build failed with exit code {completed.returncode}. See {log_path}")
@@ -327,7 +329,7 @@ def resolve_msys2_root() -> Path:
     )
 
 
-def msys2_mingw64_environment(msys2_root: Path) -> dict[str, str]:
+def msys2_mingw64_environment(msys2_root: Path, layout: WorkspaceLayout | None = None) -> dict[str, str]:
     """Builds the environment used to launch the MSYS2 MINGW64 aMule recipe."""
 
     env = subprocess_os_environ()
@@ -338,6 +340,8 @@ def msys2_mingw64_environment(msys2_root: Path) -> dict[str, str]:
     mingw_bin = msys2_root / "mingw64" / "bin"
     usr_bin = msys2_root / "usr" / "bin"
     env["PATH"] = f"{mingw_bin};{usr_bin};{env.get('PATH', '')}"
+    if layout is not None:
+        env.update({name: str(value) for name, value in layout.subprocess_environment().items()})
     return env
 
 
@@ -384,10 +388,22 @@ def staged_amule_root(layout: WorkspaceLayout) -> Path:
     return layout.output_tools_root / "amule"
 
 
+def amule_build_output_root(layout: WorkspaceLayout) -> Path:
+    """Returns the output-root aMule build root used by the Windows recipe."""
+
+    return layout.output_build_root / "amule"
+
+
+def amule_release_output_root(layout: WorkspaceLayout) -> Path:
+    """Returns the output-root aMule distribution root used by the Windows recipe."""
+
+    return layout.output_release_root / "amule"
+
+
 def stage_amule_runtime(layout: WorkspaceLayout) -> None:
     """Stages the latest aMule portable runtime below the output root."""
 
-    source_root = find_amule_portable_root(layout.amule_repo_root)
+    source_root = find_amule_portable_root(layout)
     target_root = staged_amule_root(layout)
     remove_tree_if_present(target_root)
     shutil.copytree(source_root, target_root)
@@ -396,13 +412,13 @@ def stage_amule_runtime(layout: WorkspaceLayout) -> None:
             raise RuntimeError(f"Staged aMule runtime is missing required file: {target_root / required}")
 
 
-def find_amule_portable_root(repo_root: Path) -> Path:
+def find_amule_portable_root(layout: WorkspaceLayout) -> Path:
     """Finds or extracts the portable aMule runtime built by the Windows recipe."""
 
     candidates = sorted(
         (
             path.parent.parent
-            for path in repo_root.glob("**/bin/amuled.exe")
+            for path in amule_build_output_root(layout).glob("**/bin/amuled.exe")
             if "amule-portable" in str(path.parent.parent).lower() or "dist" in str(path.parent.parent).lower()
         ),
         key=lambda path: path.stat().st_mtime,
@@ -412,10 +428,13 @@ def find_amule_portable_root(repo_root: Path) -> Path:
         if (candidate / "bin" / "amulecmd.exe").is_file():
             return candidate
 
-    zip_candidates = sorted((repo_root / "dist").glob("*.zip"), key=lambda path: path.stat().st_mtime, reverse=True)
+    zip_candidates = sorted(amule_release_output_root(layout).glob("*.zip"), key=lambda path: path.stat().st_mtime, reverse=True)
     if not zip_candidates:
-        raise RuntimeError(f"aMule build did not produce a portable runtime or zip under {repo_root}")
-    extract_root = repo_root / "dist" / "_workspace-extracted"
+        raise RuntimeError(
+            "aMule build did not produce a portable runtime or zip under "
+            f"{amule_build_output_root(layout)} or {amule_release_output_root(layout)}"
+        )
+    extract_root = layout.output_tmp_root / "amule-portable-extracted"
     remove_tree_if_present(extract_root)
     with zipfile.ZipFile(zip_candidates[0]) as archive:
         archive.extractall(extract_root)

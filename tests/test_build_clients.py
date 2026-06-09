@@ -29,6 +29,17 @@ def test_msys2_mingw64_environment_prefers_mingw_tools(tmp_path: Path, monkeypat
     assert env["PATH"].startswith(str(tmp_path / "msys64" / "mingw64" / "bin"))
 
 
+def test_msys2_mingw64_environment_forwards_workspace_roots(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PATH", "C:\\Windows\\System32")
+    layout = make_layout(tmp_path)
+
+    env = build.msys2_mingw64_environment(tmp_path / "msys64", layout)
+
+    assert env["EMULEBB_WORKSPACE_ROOT"] == str(layout.emule_workspace_root)
+    assert env["EMULEBB_WORKSPACE_OUTPUT_ROOT"] == str(layout.output_root)
+    assert env["CARGO_TARGET_DIR"] == str(layout.output_rust_target_root)
+
+
 def test_build_amule_msys2_command_enters_repo_and_runs_windows_recipe(tmp_path: Path) -> None:
     repo = tmp_path / "repos" / "amule"
 
@@ -38,6 +49,20 @@ def test_build_amule_msys2_command_enters_repo_and_runs_windows_recipe(tmp_path:
     assert "mingw-w64-x86_64-wxwidgets3.2-msw" in command
     assert "./packaging/windows/build.sh" in command
     assert build.windows_path_to_msys(repo) in command
+
+
+def test_stage_amule_runtime_uses_output_root_portable_tree(tmp_path: Path) -> None:
+    layout = make_layout(tmp_path)
+    daemon = build.amule_build_output_root(layout) / "amule-portable-x64" / "bin" / "amuled.exe"
+    control = daemon.parent / "amulecmd.exe"
+    for executable in (daemon, control):
+        executable.parent.mkdir(parents=True, exist_ok=True)
+        executable.write_bytes(b"")
+
+    build.stage_amule_runtime(layout)
+
+    assert (layout.output_tools_root / "amule" / "bin" / "amuled.exe").is_file()
+    assert (layout.output_tools_root / "amule" / "bin" / "amulecmd.exe").is_file()
 
 
 def test_build_clients_defaults_to_amule_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -78,4 +103,5 @@ def make_layout(tmp_path: Path) -> WorkspaceLayout:
         app_variants=(),
         test_targets=LayoutTestTargets(test_build_variant="main", test_run_variant="main", baseline_variant="community"),
         toolset_override_variable="EMULEBB_VS_PLATFORM_TOOLSET",
+        output_root=tmp_path / "workspace-output",
     )
