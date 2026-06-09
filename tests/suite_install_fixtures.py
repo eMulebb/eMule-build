@@ -120,8 +120,9 @@ def write_local_package_artifacts(
     package_pdb_payload: bytes = b"pdb",
     installer_payload: bytes = b"#Requires -Version 5.1\n",
 ) -> LocalPackageArtifacts:
-    release_root = workspace_root / "state" / "release" / f"emulebb-v{version}"
-    package_build_root = workspace_root / "state" / "package-build" / f"emulebb-v{version}" / arch / package_flavor / "app"
+    output_root = workspace_root.parent.parent / "emulebb-output"
+    release_root = output_root / "release" / f"emulebb-v{version}"
+    package_build_root = output_root / "packages" / "build" / f"emulebb-v{version}" / arch / package_flavor / "app"
     package_build_root.mkdir(parents=True)
     executable_name = "emulebb-diagnostics.exe" if package_flavor == "diagnostics" else "emulebb.exe"
     pdb_name = Path(executable_name).with_suffix(".pdb").name

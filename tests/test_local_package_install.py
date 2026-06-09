@@ -51,9 +51,12 @@ def _write_live_wire(path: Path, target: Path, **local_overrides: object) -> Non
 
 
 def _layout(tmp_path: Path) -> SimpleNamespace:
+    output_root = tmp_path / "emulebb-output"
     return SimpleNamespace(
         emule_workspace_root=tmp_path,
         workspace_root=tmp_path / "workspaces" / "workspace",
+        output_release_root=output_root / "release",
+        output_packages_root=output_root / "packages",
         build_repo_root=tmp_path / "repos" / "emulebb-build",
         tests_repo_root=tmp_path / "repos" / "emulebb-build-tests",
     )
@@ -66,6 +69,7 @@ def _workspace_options(tmp_path: Path) -> WorkspaceOptions:
         configuration="Release",
         platform="x64",
         build_output_mode="ErrorsOnly",
+        output_root=tmp_path / "emulebb-output",
     )
 
 

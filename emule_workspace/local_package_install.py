@@ -289,14 +289,14 @@ def resolve_install_artifacts(
     """Returns the release artifacts and private symbols used by the installer."""
 
     arch = "arm64" if workspace_options.platform == "ARM64" else "x64"
-    release_root = layout.workspace_root / "state" / "release" / f"emulebb-v{release_version}"
+    release_root = layout.output_release_root / f"emulebb-v{release_version}"
     if package_flavor not in {"standard", "diagnostics"}:
         raise RuntimeError(f"Unsupported eMuleBB package flavor: {package_flavor}")
     flavor_asset_suffix = "" if package_flavor == "standard" else f"-{package_flavor}"
     executable_name = package_app_exe_name(package_flavor)
     pdb_name = app_pdb_name_for_exe(executable_name)
     package_build_root = (
-        layout.workspace_root / "state" / "package-build" / f"emulebb-v{release_version}" / arch / package_flavor / "app"
+        layout.output_packages_root / "build" / f"emulebb-v{release_version}" / arch / package_flavor / "app"
     )
     artifacts = InstallArtifacts(
         release_root=release_root,

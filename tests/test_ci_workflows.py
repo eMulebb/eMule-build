@@ -94,8 +94,11 @@ def test_controlled_smoke_uses_reusable_core_offline_and_lan_suite() -> None:
     assert "python -m emule_workspace package-release" in text
     assert "python -m emule_workspace package-amutorrent" in text
     assert "python -m emule_workspace build app" in text
+    assert "python -m emule_workspace package-release `\n          --workspace-root" not in text
+    assert "python -m emule_workspace package-amutorrent `\n          --workspace-root" not in text
+    assert "python -m emule_workspace build app `\n          --workspace-root" not in text
     assert "--variant tracing-harness" in text
-    assert "state\\ci\\live-wire-inputs.ci.json" in text
+    assert "tmp\\ci\\live-wire-inputs.ci.json" in text
     assert "local_package_install" in text
     assert "Get-NetAdapter" in text
     assert "--materialize-test-install" in text
@@ -110,11 +113,11 @@ def test_controlled_smoke_uses_reusable_core_offline_and_lan_suite() -> None:
     assert r"scripts\command-line-smoke.py" in text
     assert "Release ARM64 eMuleBB package" in text
     assert "ARM64 offline command-line smoke" in text
-    assert "workspaces/workspace/state/test-reports/command-line-smoke/**" in text
-    assert "workspaces/workspace/state/test-artifacts/command-line-smoke/**" in text
-    assert "workspaces/workspace/state/test-reports/live-e2e-suite/**" in text
-    assert "workspaces/workspace/state/test-artifacts/live-e2e-suite/**" in text
-    assert "workspaces/workspace/state/build-logs/**" in text
+    assert r"${{ runner.temp }}\emulebb-output\reports\command-line-smoke\**" in text
+    assert r"${{ runner.temp }}\emulebb-output\artifacts\command-line-smoke\**" in text
+    assert r"${{ runner.temp }}\emulebb-output\reports\live-e2e-suite\**" in text
+    assert r"${{ runner.temp }}\emulebb-output\artifacts\live-e2e-suite\**" in text
+    assert r"${{ runner.temp }}\emulebb-output\logs\builds\**" in text
 
 
 def test_controlled_smoke_keeps_first_lane_narrow() -> None:
@@ -143,8 +146,8 @@ def test_vs2026_v145_probe_exercises_native_build_without_smoke_or_package() -> 
     assert "--platform x64" in text
     assert "--clean" in text
     assert "--variant main" in text
-    assert "workspaces/workspace/state/v145-probe/**" in text
-    assert "workspaces/workspace/state/build-logs/**" in text
+    assert r"${{ runner.temp }}\emulebb-output\reports\v145-probe\**" in text
+    assert r"${{ runner.temp }}\emulebb-output\logs\builds\**" in text
     assert "package-release" not in text
     assert "package-amutorrent" not in text
     assert "test live-e2e" not in text

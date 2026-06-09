@@ -209,7 +209,7 @@ def create_amutorrent_package(
     _build_amutorrent_webapp(amutorrent_root, package_options.clean)
 
     asset_arch = "arm64" if workspace_options.platform == "ARM64" else "x64"
-    release_root = layout.workspace_root / "state" / "release" / f"emulebb-v{package_options.release_version}"
+    release_root = _release_root_for_version(layout, package_options.release_version)
     staging_root = release_root / "staging" / f"amutorrent-{asset_arch}"
     package_root = staging_root / "aMuTorrent"
     zip_path = release_root / f"emulebb-{package_options.release_version}-amutorrent-{asset_arch}.zip"
@@ -286,10 +286,8 @@ def create_release_package(
 
     asset_arch = _release_asset_arch(workspace_options.platform)
     release_root = _release_root(layout, package_options)
-    package_build_arch_root = (
-        layout.workspace_root / "state" / "package-build" / f"emulebb-v{package_options.release_version}" / asset_arch
-    )
-    _assert_path_under_root(package_build_arch_root, layout.workspace_root / "state", "release package build path")
+    package_build_arch_root = layout.output_packages_root / "build" / f"emulebb-v{package_options.release_version}" / asset_arch
+    _assert_path_under_root(package_build_arch_root, layout.output_packages_root, "release package build path")
     if package_options.clean and package_build_arch_root.exists():
         shutil.rmtree(package_build_arch_root)
 
@@ -935,7 +933,13 @@ def _release_asset_arch(platform: str) -> str:
 def _release_root(layout: WorkspaceLayout, package_options: ReleasePackageOptions) -> Path:
     """Returns the release artifact root for one package version."""
 
-    return layout.workspace_root / "state" / "release" / f"emulebb-v{package_options.release_version}"
+    return _release_root_for_version(layout, package_options.release_version)
+
+
+def _release_root_for_version(layout: WorkspaceLayout, release_version: str) -> Path:
+    """Returns the release artifact root for one release version."""
+
+    return layout.output_release_root / f"emulebb-v{release_version}"
 
 
 def _package_build_root(
@@ -947,9 +951,8 @@ def _package_build_root(
     """Returns the package-only app build output root for one release asset."""
 
     return (
-        layout.workspace_root
-        / "state"
-        / "package-build"
+        layout.output_packages_root
+        / "build"
         / f"emulebb-v{package_options.release_version}"
         / _release_asset_arch(platform)
         / flavor
