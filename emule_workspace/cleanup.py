@@ -533,12 +533,49 @@ def _build_output_candidates(layout: WorkspaceLayout) -> list[CleanupCandidate]:
     package_build = _output_root(layout) / "packages" / "build"
     if package_build.is_dir():
         candidates.append(_directory_candidate(package_build, "build-output", "release package app build output"))
+    candidates.extend(_third_party_dependency_build_candidates(layout))
+    third_party_builds = getattr(layout, "output_third_party_build_root", None)
+    if isinstance(third_party_builds, Path) and third_party_builds.is_dir():
+        candidates.append(_directory_candidate(third_party_builds, "build-output", "canonical third-party build output"))
     for dependency in layout.dependencies:
         root = layout.emule_workspace_root / dependency.path
         for child_name in ("x64", "ARM64", "Debug", "Release", "build"):
             path = root / child_name
             if path.is_dir():
                 candidates.append(_directory_candidate(path, "build-output", "dependency build output"))
+    return candidates
+
+
+def _third_party_dependency_build_candidates(layout: WorkspaceLayout) -> list[CleanupCandidate]:
+    third_party = layout.emule_workspace_root / "repos" / "third_party"
+    specs: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
+        ("emulebb-cryptopp", ("ARM64", "x64"), ("adhoc.cpp", "adhoc.cpp.copied")),
+        ("emulebb-id3lib", ("libprj/ARM64", "libprj/x64", "libprj/id3lib"), ()),
+        ("emulebb-libpcpnatpmp", ("cmake-build-arm64", "cmake-build-x64"), ()),
+        (
+            "emulebb-mbedtls",
+            ("visualc/VS2017-ARM64", "visualc/VS2017-x64", "visualc/VS2017/ARM64", "visualc/VS2017/x64"),
+            (),
+        ),
+        ("emulebb-miniupnp", ("miniupnpc/msvc/ARM64", "miniupnpc/msvc/x64"), ("miniupnpc/miniupnpcstrings.h", "miniupnpc/rc_version.h")),
+        ("emulebb-resizablelib", ("ResizableLib/ARM64", "ResizableLib/x64"), ()),
+        (
+            "emulebb-zlib",
+            ("cmake-build-ARM64", "cmake-build-x64", "contrib/vstudio/vc/ARM64", "contrib/vstudio/vc/x64", "contrib/vstudio/vc/zlib"),
+            (),
+        ),
+    )
+    candidates: list[CleanupCandidate] = []
+    for repo_name, directories, files in specs:
+        repo_root = third_party / repo_name
+        for relative in directories:
+            path = repo_root / relative
+            if path.is_dir():
+                candidates.append(_directory_candidate(path, "build-output", "third-party dependency build output"))
+        for relative in files:
+            path = repo_root / relative
+            if path.is_file():
+                candidates.append(_file_candidate(path, "build-output", "third-party dependency generated file"))
     return candidates
 
 
@@ -563,15 +600,27 @@ def _product_family_output_candidates(layout: WorkspaceLayout) -> list[CleanupCa
         _optional_root(layout, "p2p_overlord_be_repo_root") / "overlord-be-coordinator" / ".svelte-kit",
         repos_root / "amutorrent" / "node_modules",
         repos_root / "amutorrent" / "server" / "node_modules",
+        repos_root / "amutorrent" / "server" / "data",
+        repos_root / "amutorrent" / "server" / "logs",
         repos_root / "amutorrent" / "website" / "node_modules",
-        repos_root / "amutorrent" / "static" / "dist",
+        repos_root / "amutorrent" / "website" / ".astro",
         repos_root / "amutorrent" / "website" / "dist",
+        repos_root / "amutorrent" / "website" / "public",
+        repos_root / "amutorrent" / "website" / "src" / "assets",
+        repos_root / "amutorrent" / "website" / "src" / "content" / "docs" / "docs",
         repos_root / "amule" / "build",
         repos_root / "amule" / "dist",
     )
     for path in candidate_paths:
         if path.is_dir():
             candidates.append(_directory_candidate(path, "product-family-output", "generated product-family repository output"))
+    for path in (
+        repos_root / "amutorrent" / "static" / "dist" / "app.bundle.js",
+        repos_root / "amutorrent" / "static" / "dist" / "app.bundle.js.map",
+        repos_root / "amutorrent" / "static" / "output.css",
+    ):
+        if path.is_file():
+            candidates.append(_file_candidate(path, "product-family-output", "generated product-family repository output"))
     return candidates
 
 
@@ -582,6 +631,9 @@ def _root_legacy_state_candidates(layout: WorkspaceLayout) -> list[CleanupCandid
         path = root / name
         if path.is_dir():
             candidates.append(_directory_candidate(path, "root-legacy-state", "legacy generated state directory at workspace root"))
+    nested_state = layout.build_repo_root / "workspaces" / getattr(layout, "workspace_name", "workspace") / "state"
+    if nested_state.is_dir():
+        candidates.append(_directory_candidate(nested_state, "root-legacy-state", "nested generated workspace state under build repo"))
     return candidates
 
 
