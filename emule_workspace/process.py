@@ -46,6 +46,31 @@ def get_python_invocation() -> PythonInvocation:
     raise RuntimeError("Python 3 was not found on PATH.")
 
 
+def _ensure_cargo_target_dir(
+    command: Sequence[str | os.PathLike[str]],
+    env: dict[str, str],
+) -> None:
+    """Pins Cargo's target directory under EMULEBB_WORKSPACE_OUTPUT_ROOT.
+
+    Any cargo invocation that did not receive the orchestrated workspace
+    environment (for example product-family or ad-hoc cargo calls) otherwise
+    falls back to Cargo's default ``<crate>/target`` and pollutes the
+    repository tree. When the command is cargo and CARGO_TARGET_DIR is not
+    already set, derive it from the output root, mirroring
+    ``WorkspaceLayout.output_rust_target_root``. Mutates ``env`` in place.
+    """
+
+    if "CARGO_TARGET_DIR" in env or not command:
+        return
+    program = os.path.basename(str(command[0])).lower()
+    if program not in ("cargo", "cargo.exe"):
+        return
+    output_root = env.get("EMULEBB_WORKSPACE_OUTPUT_ROOT", "").strip()
+    if not output_root:
+        return
+    env["CARGO_TARGET_DIR"] = str(Path(output_root) / "builds" / "rust" / "target")
+
+
 def run_native(
     command: Sequence[str | os.PathLike[str]],
     *,
@@ -59,6 +84,7 @@ def run_native(
     merged_env = os.environ.copy()
     if env:
         merged_env.update({key: str(value) for key, value in env.items()})
+    _ensure_cargo_target_dir(command, merged_env)
 
     completed = subprocess.run(
         [str(part) for part in command],
@@ -80,12 +106,16 @@ def run_captured(
 ) -> str:
     """Runs a command and returns stdout, raising with stderr on failure."""
 
+    merged_env = os.environ.copy()
+    _ensure_cargo_target_dir(command, merged_env)
+
     completed = subprocess.run(
         [str(part) for part in command],
         cwd=str(cwd),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        env=merged_env,
         check=False,
     )
     if completed.returncode != 0:
