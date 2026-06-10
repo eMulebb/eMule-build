@@ -93,7 +93,7 @@ from .windows_vm_lab import (
 F = TypeVar("F", bound=Callable[..., Any])
 
 APP_VARIANT_HELP = "Configured app variant key (for example: main, community). This is not the worktree folder name."
-APP_VARIANT_BUILD_HELP = f"{APP_VARIANT_HELP} Defaults to all variants."
+APP_VARIANT_BUILD_HELP = f"{APP_VARIANT_HELP} Defaults to all variants, or main when --diagnostics is set."
 TEST_RUN_VARIANT_HELP = f"{APP_VARIANT_HELP} Defaults to the workspace test-run variant."
 BASELINE_VARIANT_HELP = f"{APP_VARIANT_HELP} Defaults to the workspace baseline variant."
 

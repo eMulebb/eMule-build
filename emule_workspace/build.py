@@ -146,9 +146,19 @@ def build_apps(
     session = BuildSession(layout=layout, options=options, command_name="build app", clean=clean)
     try:
         assert_app_layout(layout)
+        selected_variant_names = app_variant_names
+        if enable_diagnostics and not selected_variant_names:
+            selected_variant_names = ("main",)
+        variants = selected_app_variants(layout, selected_variant_names)
+        if enable_diagnostics:
+            unsupported = [variant.name for variant in variants if variant.name != "main"]
+            if unsupported:
+                raise RuntimeError(
+                    "build app --diagnostics is only supported for the main app variant; "
+                    f"unsupported variant(s): {', '.join(unsupported)}."
+                )
         ensure_app_dependency_artifacts(layout, options, clean=clean)
         target = "Rebuild" if clean else "Build"
-        variants = selected_app_variants(layout, app_variant_names)
         for variant in variants:
             extra_properties = [*app_property_overrides(layout, options.platform)]
             diagnostics_flags: dict[str, bool] = (

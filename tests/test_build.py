@@ -149,6 +149,35 @@ def test_build_apps_diagnostics_option_enables_all_release_diagnostics(
     assert captured["step_name"] == "APP main diagnostics"
 
 
+def test_build_apps_diagnostics_option_defaults_to_main_variant(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured = capture_build_apps_msbuild_calls(
+        tmp_path,
+        monkeypatch,
+        app_variant_names=(),
+        enable_diagnostics=True,
+        include_community=True,
+    )
+
+    assert [call["step_name"] for call in captured["msbuild_calls"]] == ["APP main diagnostics"]
+
+
+def test_build_apps_diagnostics_option_rejects_non_main_variant(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with pytest.raises(RuntimeError, match="--diagnostics is only supported for the main app variant"):
+        capture_build_apps_msbuild_calls(
+            tmp_path,
+            monkeypatch,
+            app_variant_names=("community",),
+            enable_diagnostics=True,
+            include_community=True,
+        )
+
+
 def test_build_apps_diagnostics_option_requires_release(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -240,8 +269,33 @@ def capture_build_apps_msbuild_call(
     enable_diagnostics: bool = False,
     configuration: str = "Release",
 ) -> dict[str, object]:
-    layout = make_layout(tmp_path, app_variants=True)
-    captured: dict[str, object] = {}
+    captured = capture_build_apps_msbuild_calls(
+        tmp_path,
+        monkeypatch,
+        app_variant_names=("main",),
+        enable_startup_diagnostics=enable_startup_diagnostics,
+        enable_diagnostics=enable_diagnostics,
+        configuration=configuration,
+    )
+    assert len(captured["msbuild_calls"]) == 1
+    return {
+        **captured["msbuild_calls"][0],
+        "cfg_binary_path": captured.get("cfg_binary_path"),
+    }
+
+
+def capture_build_apps_msbuild_calls(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    app_variant_names: tuple[str, ...],
+    enable_startup_diagnostics: bool | None = None,
+    enable_diagnostics: bool = False,
+    configuration: str = "Release",
+    include_community: bool = False,
+) -> dict[str, object]:
+    layout = make_layout(tmp_path, app_variants=True, include_community=include_community)
+    captured: dict[str, object] = {"msbuild_calls": []}
 
     monkeypatch.setattr(build, "assert_app_layout", lambda _layout: None)
     monkeypatch.setattr(build, "ensure_app_dependency_artifacts", lambda *_args, **_kwargs: None)
@@ -252,9 +306,13 @@ def capture_build_apps_msbuild_call(
     monkeypatch.setattr(build, "verify_app_control_flow_guard", fake_verify_app_control_flow_guard)
 
     def fake_invoke_msbuild_project(*_args, **kwargs):
-        captured["project_path"] = kwargs["project_path"]
-        captured["extra_properties"] = tuple(kwargs.get("extra_properties") or ())
-        captured["step_name"] = kwargs["step_name"]
+        captured["msbuild_calls"].append(
+            {
+                "project_path": kwargs["project_path"],
+                "extra_properties": tuple(kwargs.get("extra_properties") or ()),
+                "step_name": kwargs["step_name"],
+            }
+        )
 
     monkeypatch.setattr(build, "invoke_msbuild_project", fake_invoke_msbuild_project)
 
@@ -262,7 +320,7 @@ def capture_build_apps_msbuild_call(
         layout,
         WorkspaceOptions(workspace_root=layout.emule_workspace_root, configuration=configuration, platform="x64"),
         clean=False,
-        app_variant_names=("main",),
+        app_variant_names=app_variant_names,
         enable_startup_diagnostics=enable_startup_diagnostics,
         enable_diagnostics=enable_diagnostics,
     )
@@ -270,10 +328,22 @@ def capture_build_apps_msbuild_call(
     return captured
 
 
-def make_layout(tmp_path: Path, *, app_variants: bool = False) -> WorkspaceLayout:
+def make_layout(tmp_path: Path, *, app_variants: bool = False, include_community: bool = False) -> WorkspaceLayout:
     emule_workspace_root = tmp_path / "workspace-root"
     workspace_root = emule_workspace_root / "workspaces" / "workspace"
     app_root = workspace_root / "app" / "emulebb-main"
+    variants = ()
+    if app_variants:
+        variants = (AppVariant(name="main", path=app_root, branch="main"),)
+        if include_community:
+            variants = (
+                *variants,
+                AppVariant(
+                    name="community",
+                    path=workspace_root / "app" / "emulebb-community-baseline",
+                    branch="baseline/community-0.72a",
+                ),
+            )
     return WorkspaceLayout(
         emule_workspace_root=emule_workspace_root,
         workspace_name="workspace",
@@ -286,7 +356,7 @@ def make_layout(tmp_path: Path, *, app_variants: bool = False) -> WorkspaceLayou
         seed_repo_path=emule_workspace_root / "repos" / "emulebb",
         seed_repo_branch="main",
         dependencies=(),
-        app_variants=(AppVariant(name="main", path=app_root, branch="main"),) if app_variants else (),
+        app_variants=variants,
         test_targets=LayoutTestTargets(test_build_variant="main", test_run_variant="main", baseline_variant="community"),
         toolset_override_variable="EMULEBB_VS_PLATFORM_TOOLSET",
         output_root=tmp_path / "emulebb-output",
