@@ -20,7 +20,7 @@ def test_cargo_target_dir_is_derived_from_output_root_for_cargo() -> None:
 
 def test_cargo_target_dir_handles_absolute_cargo_executable() -> None:
     env = {"EMULEBB_WORKSPACE_OUTPUT_ROOT": OUTPUT_ROOT}
-    _ensure_cargo_target_dir([r"C:/Users/dev/.cargo/bin/cargo.exe", "build"], env)
+    _ensure_cargo_target_dir([r"C:/toolchains/rust/bin/cargo.exe", "build"], env)
     assert env["CARGO_TARGET_DIR"] == _expected_target_dir()
 
 
