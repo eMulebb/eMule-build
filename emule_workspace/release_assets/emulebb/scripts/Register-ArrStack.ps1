@@ -391,6 +391,33 @@ function Set-ProviderField {
     throw "Provider payload is missing field: $Name"
 }
 
+function Set-EmuleQbitCredential {
+    param($Provider, [string]$EmuleApiKey)
+    # Prefer qBittorrent API-key authentication when the Arr download-client
+    # schema exposes an API-key field: eMuleBB validates it as
+    # "Authorization: Bearer <key>". Discover the field by name so this works
+    # regardless of how a given Arr build labels it. Fall back to the
+    # username/password login flow (username 'emule', password = API key) for
+    # Arr builds that do not expose an API-key field.
+    $apiKeyFieldName = $null
+    foreach ($field in @($Provider.fields)) {
+        if ([string]$field.name -match '(?i)apikey') {
+            $apiKeyFieldName = [string]$field.name
+            break
+        }
+    }
+    if ($apiKeyFieldName) {
+        [void](Set-ProviderField -Provider $Provider -Name $apiKeyFieldName -Value $EmuleApiKey)
+        [void](Set-ProviderField -Provider $Provider -Name 'username' -Value '' -Optional)
+        [void](Set-ProviderField -Provider $Provider -Name 'password' -Value '' -Optional)
+        Write-Host 'Configured eMuleBB qBittorrent client with API-key (bearer) authentication.' -ForegroundColor Green
+        return
+    }
+    [void](Set-ProviderField -Provider $Provider -Name 'username' -Value 'emule')
+    [void](Set-ProviderField -Provider $Provider -Name 'password' -Value $EmuleApiKey)
+    Write-Host 'Configured eMuleBB qBittorrent client with username/password (Arr build has no API-key field).' -ForegroundColor Yellow
+}
+
 function Get-ArrApiBasePath {
     param([string]$Kind)
     switch ($Kind.ToLowerInvariant()) {
@@ -538,8 +565,7 @@ function Save-QbitClient {
     [void](Set-ProviderField -Provider $payload -Name 'port' -Value $uri.Port)
     [void](Set-ProviderField -Provider $payload -Name 'useSsl' -Value ($uri.Scheme -eq 'https'))
     [void](Set-ProviderField -Provider $payload -Name 'urlBase' -Value $urlBase)
-    [void](Set-ProviderField -Provider $payload -Name 'username' -Value 'emule')
-    [void](Set-ProviderField -Provider $payload -Name 'password' -Value $EmuleApiKey)
+    Set-EmuleQbitCredential -Provider $payload -EmuleApiKey $EmuleApiKey
     if ($Kind -eq 'radarr') {
         [void](Set-ProviderField -Provider $payload -Name 'movieCategory' -Value $category)
     } elseif ($Kind -eq 'sonarr') {
@@ -591,8 +617,7 @@ function Save-ProwlarrQbitClient {
     [void](Set-ProviderField -Provider $payload -Name 'port' -Value $uri.Port)
     [void](Set-ProviderField -Provider $payload -Name 'useSsl' -Value ($uri.Scheme -eq 'https'))
     [void](Set-ProviderField -Provider $payload -Name 'urlBase' -Value $urlBase)
-    [void](Set-ProviderField -Provider $payload -Name 'username' -Value 'emule')
-    [void](Set-ProviderField -Provider $payload -Name 'password' -Value $EmuleApiKey)
+    Set-EmuleQbitCredential -Provider $payload -EmuleApiKey $EmuleApiKey
     [void](Set-ProviderField -Provider $payload -Name 'category' -Value '' -Optional)
     [void](Set-ProviderField -Provider $payload -Name 'initialState' -Value 0 -Optional)
     if ($uri.Scheme -eq 'https') {

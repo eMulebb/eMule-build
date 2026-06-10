@@ -1902,7 +1902,14 @@ def test_suite_arr_registration_defers_prowlarr_sync_until_all_apps_are_saved() 
     assert register_arr_stack.index("Run-TargetWithRetry -Name 'eMuleBB category registration'") < register_arr_stack.index("$script:EmulebbBaseUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue")
     assert register_arr_stack.index("Run-TargetWithRetry -Name \"Prowlarr $Target application registration\"") < register_arr_stack.index("Run-TargetWithRetry -Name 'Prowlarr download client registration'")
     assert register_arr_stack.index("Run-TargetWithRetry -Name (\"$Target download client {0}\"") < register_arr_stack.index("$script:targetUrl = Normalize-HttpBaseUrl -Value (Read-RequiredValue", register_arr_stack.index("Run-TargetWithRetry -Name (\"$Target download client {0}\""))
-    assert "Set-ProviderField -Provider $payload -Name 'password' -Value $EmuleApiKey" in register_arr_stack
+    assert "function Set-EmuleQbitCredential" in register_arr_stack
+    # Prefer the qBittorrent API-key (bearer) field when the Arr schema exposes it.
+    assert "[string]$field.name -match '(?i)apikey'" in register_arr_stack
+    assert "Set-ProviderField -Provider $Provider -Name $apiKeyFieldName -Value $EmuleApiKey" in register_arr_stack
+    # Fall back to the username/password login flow otherwise.
+    assert "Set-ProviderField -Provider $Provider -Name 'password' -Value $EmuleApiKey" in register_arr_stack
+    # Both the Arr and Prowlarr qBittorrent client savers use the shared helper.
+    assert register_arr_stack.count("Set-EmuleQbitCredential -Provider $payload -EmuleApiKey $EmuleApiKey") == 2
     assert "Set-ProviderField -Provider $payload -Name 'apiKey' -Value $ArrKey" in register_arr_stack
     assert "if ($SyncProwlarrOnly)" in register_arr_stack
     assert "if ($VerifyIndexerOnly)" in register_arr_stack
