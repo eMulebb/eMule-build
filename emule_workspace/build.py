@@ -522,7 +522,7 @@ def app_property_overrides(layout: WorkspaceLayout, platform: str) -> tuple[str,
     """Returns app MSBuild dependency root properties."""
 
     third_party = layout.resolve_workspace_path("repos/third_party")
-    return (
+    properties = [
         f"/p:WorkspaceRoot={with_trailing_separator(layout.emule_workspace_root)}",
         f"/p:CryptoPpRoot={with_trailing_separator(third_party / 'emulebb-cryptopp')}",
         f"/p:CryptoPpLibRoot={with_trailing_separator(dependency_library_root(layout, 'cryptopp', '$(Configuration)', platform))}",
@@ -540,7 +540,15 @@ def app_property_overrides(layout: WorkspaceLayout, platform: str) -> tuple[str,
         f"/p:ResizableLibLibRoot={with_trailing_separator(dependency_library_root(layout, 'ResizableLib', '$(Configuration)', platform))}",
         f"/p:ZlibRoot={with_trailing_separator(third_party / 'emulebb-zlib')}",
         f"/p:ZlibLibRoot={with_trailing_separator(dependency_library_root(layout, 'zlib', '$(Configuration)', platform))}",
-    )
+    ]
+    if platform == "ARM64":
+        # WHY: the ARM64 runner builds the large MFC precompiled header with the
+        # default 32-bit host cl.exe, which exhausts its address space - the app
+        # build fails with C3859 "Failed to create virtual memory for PCH" and
+        # C1076 "internal heap limit reached". Force the 64-bit host toolchain
+        # (HostX64\arm64) so the PCH has room. x64 keeps its existing host.
+        properties.append("/p:PreferredToolArchitecture=x64")
+    return tuple(properties)
 
 
 def crypto_pp_properties(layout: WorkspaceLayout, platform: str) -> tuple[str, ...]:
