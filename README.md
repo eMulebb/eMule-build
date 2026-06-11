@@ -231,6 +231,8 @@ needed.
 |---|---|---|---|
 | `EMULEBB_MSYS2_ROOT` | `build clients --client amule` | First usable system MSYS2 root, normally a standard MSYS2 install under the system drive | Point the aMule Windows client build at a nonstandard MSYS2 install. |
 | `EMULEBB_VS_PLATFORM_TOOLSET` | app, dependency, release MSBuild entrypoints, and Visual Studio CMake dependency builds | `v143` | Temporarily force a Visual Studio toolset such as `v143` or `v145` for compatibility diagnosis. |
+| `EMULEBB_CMAKE_GENERATOR` | Visual Studio CMake dependency builds | Active Visual Studio generator | Force a specific CMake generator such as `Visual Studio 18 2026` or `Ninja` for dependency-build toolchain diagnosis. |
+| `EMULEBB_CMAKE_PLATFORM` | Visual Studio CMake dependency builds | The requested build platform (`x64` or `ARM64`) | Override the CMake generator platform (`-A`); set empty to omit the platform argument. |
 
 Use these only at the shell or CI-job boundary:
 
