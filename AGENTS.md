@@ -1,10 +1,13 @@
 # Rules
 
 - Read `EMULEBB_WORKSPACE_ROOT\repos\emulebb-tooling\docs\WORKSPACE-POLICY.md`
-  before build or test orchestration work; it is authoritative for
-  workspace-wide rules.
-- This file contains build-repo local deltas only. Do not duplicate branch,
-  worktree, setup, dependency, or app-source policy here.
+  first; it is authoritative for workspace-wide rules.
+- Start from
+  `EMULEBB_WORKSPACE_ROOT\repos\emulebb-tooling\docs\reference\AGENT-CHECKLIST.md`
+  for the repeatable operating path.
+
+Everything below is this repo's local deltas only:
+
 - `python -m emule_workspace` is the authoritative orchestration surface.
 - Keep orchestration topology-driven from the generated workspace manifest and
   repo-local `deps.json`.
