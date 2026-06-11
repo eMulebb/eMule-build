@@ -361,3 +361,27 @@ def make_layout(tmp_path: Path, *, app_variants: bool = False, include_community
         toolset_override_variable="EMULEBB_VS_PLATFORM_TOOLSET",
         output_root=tmp_path / "emulebb-output",
     )
+
+
+def test_arm64_host_tool_architecture_prefers_native_arm64(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A native ARM64 host selects the native ARM64 compiler instead of emulated x64."""
+
+    monkeypatch.delenv("PROCESSOR_ARCHITEW6432", raising=False)
+    monkeypatch.setenv("PROCESSOR_ARCHITECTURE", "ARM64")
+    assert build.arm64_host_tool_architecture() == "ARM64"
+
+
+def test_arm64_host_tool_architecture_detects_arm64_under_emulation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An x64-emulated process on ARM64 still resolves the native ARM64 host via ARCHITEW6432."""
+
+    monkeypatch.setenv("PROCESSOR_ARCHITECTURE", "AMD64")
+    monkeypatch.setenv("PROCESSOR_ARCHITEW6432", "ARM64")
+    assert build.arm64_host_tool_architecture() == "ARM64"
+
+
+def test_arm64_host_tool_architecture_uses_x64_on_x64_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An x64 host cross-compiling ARM64 keeps the existing HostX64 selection."""
+
+    monkeypatch.delenv("PROCESSOR_ARCHITEW6432", raising=False)
+    monkeypatch.setenv("PROCESSOR_ARCHITECTURE", "AMD64")
+    assert build.arm64_host_tool_architecture() == "x64"

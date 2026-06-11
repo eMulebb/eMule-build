@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import shlex
 import subprocess
@@ -518,6 +519,23 @@ def app_dependency_artifacts(layout: WorkspaceLayout, configuration: str, platfo
     )
 
 
+def arm64_host_tool_architecture() -> str:
+    """Returns the 64-bit MSBuild host-tool architecture to use for ARM64 app builds.
+
+    WHY: Building the large MFC precompiled header with the default 32-bit host
+    cl.exe exhausts its address space - the app build fails with C3859 "Failed to
+    create virtual memory for PCH" and C1076 "internal heap limit reached". A
+    64-bit host has room. On a native ARM64 host (e.g. the windows-11-arm CI
+    runner) the native HostARM64 compiler is correct and avoids the x64-emulation
+    PCH exhaustion; on an x64 host cross-compiling ARM64 the HostX64 compiler is
+    correct. PROCESSOR_ARCHITEW6432 reports the true machine architecture even when
+    this process itself runs under emulation.
+    """
+
+    native = (os.environ.get("PROCESSOR_ARCHITEW6432") or os.environ.get("PROCESSOR_ARCHITECTURE") or "").upper()
+    return "ARM64" if native == "ARM64" else "x64"
+
+
 def app_property_overrides(layout: WorkspaceLayout, platform: str) -> tuple[str, ...]:
     """Returns app MSBuild dependency root properties."""
 
@@ -542,12 +560,10 @@ def app_property_overrides(layout: WorkspaceLayout, platform: str) -> tuple[str,
         f"/p:ZlibLibRoot={with_trailing_separator(dependency_library_root(layout, 'zlib', '$(Configuration)', platform))}",
     ]
     if platform == "ARM64":
-        # WHY: the ARM64 runner builds the large MFC precompiled header with the
-        # default 32-bit host cl.exe, which exhausts its address space - the app
-        # build fails with C3859 "Failed to create virtual memory for PCH" and
-        # C1076 "internal heap limit reached". Force the 64-bit host toolchain
-        # (HostX64\arm64) so the PCH has room. x64 keeps its existing host.
-        properties.append("/p:PreferredToolArchitecture=x64")
+        # WHY: select a 64-bit host compiler so the large MFC PCH fits; native
+        # ARM64 hosts use HostARM64 (no x64 emulation), x64 hosts use HostX64.
+        # See arm64_host_tool_architecture for the C3859/C1076 rationale.
+        properties.append(f"/p:PreferredToolArchitecture={arm64_host_tool_architecture()}")
     return tuple(properties)
 
 
