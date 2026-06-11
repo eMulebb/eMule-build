@@ -422,6 +422,97 @@ def test_campaign_execute_dispatches_workspace_sync(tmp_path: Path, monkeypatch:
     assert calls == [(str(layout.emule_workspace_root), "workspace", None)]
 
 
+def test_campaign_execute_dispatches_multi_client_matrix_script(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    layout = make_layout(tmp_path)
+    campaign = campaign_payload()
+    campaign["phases"][1]["scenarios"] = [
+        {
+            "id": "rust-emulebb",
+            "command": (
+                "python scripts/multi-client-p2p-matrix.py --lan-bind-addr ${X_LOCAL_IP} "
+                "--app-exe ${EMULEBB_WORKSPACE_OUTPUT_ROOT}/builds/app/main/x64/Release/standard/bin/emulebb.exe "
+                "--client2-app-exe "
+                "${EMULEBB_WORKSPACE_OUTPUT_ROOT}/builds/app/tracing-harness/x64/Release/standard/bin/emule.exe "
+                "--require-scenario cl-emulebb-001-cl-emulebb-rust-005-bidirectional-exchange"
+            ),
+            "blocking": True,
+        }
+    ]
+    write_campaign(layout, campaign)
+    calls: list[tuple[list[str], str, Path, dict[str, str]]] = []
+
+    monkeypatch.setenv("X_LOCAL_IP", "192.0.2.44")
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "run_pre_test_cleanup",
+        lambda _layout: release_campaign_runner.CleanupRunSummary("routine", True, "passed", 0, 0, 0, {}),
+    )
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "get_python_invocation",
+        lambda: SimpleNamespace(command=lambda args: ["PY", *[str(arg) for arg in args]]),
+    )
+    monkeypatch.setattr(
+        release_campaign_runner,
+        "run_native",
+        lambda command, *, label, cwd, env: calls.append((command, label, cwd, env)),
+    )
+
+    release_campaign_runner.invoke_release_campaign(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path),
+        ReleaseCampaignOptions(campaign="test-campaign", phase="controller-surface", execute=True),
+    )
+
+    assert calls == [
+        (
+            [
+                "PY",
+                str(layout.tests_repo_root / "scripts/multi-client-p2p-matrix.py"),
+                "--lan-bind-addr",
+                "192.0.2.44",
+                "--app-exe",
+                str(
+                    layout.output_root
+                    / "builds"
+                    / "app"
+                    / "main"
+                    / "x64"
+                    / "Release"
+                    / "standard"
+                    / "bin"
+                    / "emulebb.exe"
+                ),
+                "--client2-app-exe",
+                str(
+                    layout.output_root
+                    / "builds"
+                    / "app"
+                    / "tracing-harness"
+                    / "x64"
+                    / "Release"
+                    / "standard"
+                    / "bin"
+                    / "emule.exe"
+                ),
+                "--require-scenario",
+                "cl-emulebb-001-cl-emulebb-rust-005-bidirectional-exchange",
+            ],
+            "release multi-client P2P matrix",
+            layout.tests_repo_root,
+            {
+                "EMULEBB_WORKSPACE_ROOT": str(layout.emule_workspace_root),
+                "EMULEBB_WORKSPACE_OUTPUT_ROOT": str(layout.output_root),
+                "CARGO_TARGET_DIR": str(layout.output_rust_target_root),
+                "X_LOCAL_IP": "192.0.2.44",
+            },
+        )
+    ]
+
+
 def test_campaign_execute_forwards_live_e2e_suite_selection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     layout = make_layout(tmp_path)
     campaign = campaign_payload()

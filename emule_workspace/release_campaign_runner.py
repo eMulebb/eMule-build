@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shlex
 import sys
 import time
@@ -115,6 +116,31 @@ _CAMPAIGN_SCENARIO_FLAG_OPTIONS = {"--skip-build", "--dry-run"}
 _PYTHON_TEST_VALUE_OPTIONS = {"--path", "--expression", "-k"}
 _PYTHON_TEST_FLAG_OPTIONS = {"--quiet", "-q"}
 _SYNC_VALUE_OPTIONS = {"--workspace-name", "--artifacts-seed-root"}
+_MULTI_CLIENT_MATRIX_VALUE_OPTIONS = {
+    "--app-root",
+    "--app-exe",
+    "--client2-app-exe",
+    "--profile-seed-dir",
+    "--artifacts-dir",
+    "--configuration",
+    "--api-key",
+    "--lan-bind-addr",
+    "--p2p-bind-interface-name",
+    "--p2p-bind-interface-address",
+    "--rest-ready-timeout-seconds",
+    "--server-connect-timeout-seconds",
+    "--link-export-timeout-seconds",
+    "--server-publish-timeout-seconds",
+    "--transfer-completion-timeout-seconds",
+    "--fixture-size-bytes",
+    "--ed2k-server-repo",
+    "--ed2k-server-exe",
+    "--emuleai-exe",
+    "--amule-daemon-exe",
+    "--amule-control-exe",
+    "--require-scenario",
+}
+_MULTI_CLIENT_MATRIX_FLAG_OPTIONS = {"--keep-artifacts", "--require-optional-clients"}
 
 
 @dataclass(frozen=True)
@@ -464,6 +490,17 @@ def _dispatch_supported_command(
             env=layout.subprocess_environment(),
         )
         return
+    if tokens[:2] == ["python", "scripts/multi-client-p2p-matrix.py"]:
+        env = _release_command_environment(layout)
+        expanded_tokens = _expand_release_command_tokens(tokens, env)
+        python = get_python_invocation()
+        run_native(
+            python.command([layout.tests_repo_root / expanded_tokens[1], *expanded_tokens[2:]]),
+            label="release multi-client P2P matrix",
+            cwd=layout.tests_repo_root,
+            env=env,
+        )
+        return
     raise ValueError(f"Unsupported release campaign command: {command}")
 
 
@@ -750,7 +787,37 @@ def _assert_supported_command(command: str) -> None:
         return
     if len(_dispatch_shape) == 2 and _dispatch_shape[0] == "python" and _dispatch_shape[1].replace("/", "\\") == r"repos\emulebb-tooling\ci\check-clean-worktree.py":
         return
+    if _dispatch_shape[:2] == ["python", "scripts/multi-client-p2p-matrix.py"]:
+        _validate_options(
+            _dispatch_shape[2:],
+            value_options=_MULTI_CLIENT_MATRIX_VALUE_OPTIONS,
+            flag_options=_MULTI_CLIENT_MATRIX_FLAG_OPTIONS,
+        )
+        return
     raise ValueError(f"Unsupported release campaign command: {command}")
+
+
+def _release_command_environment(layout: WorkspaceLayout) -> dict[str, str]:
+    env = {key: str(value) for key, value in layout.subprocess_environment().items()}
+    for name in ("X_LOCAL_IP",):
+        if name in os.environ:
+            env[name] = os.environ[name]
+    return env
+
+
+def _expand_release_command_tokens(tokens: list[str], env: dict[str, str]) -> list[str]:
+    return [_expand_release_command_token(token, env) for token in tokens]
+
+
+def _expand_release_command_token(token: str, env: dict[str, str]) -> str:
+    expanded = token
+    for name, value in env.items():
+        expanded = expanded.replace(f"${{{name}}}", value)
+    if "${" in expanded:
+        raise ValueError(f"Release campaign command contains an unresolved environment variable: {token}.")
+    if expanded != token and ("/" in expanded or "\\" in expanded):
+        return str(Path(expanded))
+    return expanded
 
 
 def _validate_workspace_command_tokens(tokens: list[str]) -> None:
