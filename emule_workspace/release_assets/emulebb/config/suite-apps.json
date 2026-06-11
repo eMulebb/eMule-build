@@ -1,16 +1,16 @@
 {
   "schema": "emulebb.suite-apps.v1",
   "node": {
-    "version": "v24.15.0",
+    "version": "v24.16.0",
     "minimumMajor": 24,
     "archives": {
       "x64": {
-        "fileName": "node-v24.15.0-win-x64.zip",
-        "sha256": "cc5149eabd53779ce1e7bdc5401643622d0c7e6800ade18928a767e940bb0e62"
+        "fileName": "node-v24.16.0-win-x64.zip",
+        "sha256": "edaca9bd58ec8e92037dac4e877d52f6b8f430b81c18b57e264b4e2fb111cd56"
       },
       "ARM64": {
-        "fileName": "node-v24.15.0-win-arm64.zip",
-        "sha256": "c9eb7402eda26e2ba7e44b6727fc85a8de56c5095b1f71ebd3062892211aa116"
+        "fileName": "node-v24.16.0-win-arm64.zip",
+        "sha256": "14834611d4c6b3c06054e7007732b90474c16e0b32f395e05b55a571ef71c6d2"
       }
     }
   },
@@ -82,11 +82,11 @@
       "indexerCategories": [],
       "dependency": {
         "repo": "Prowlarr/Prowlarr",
-        "tag": "v2.3.5.5327",
+        "tag": "v2.4.0.5397",
         "assetPattern": "windows(?:-core)?-x64\\.zip$",
         "exe": "Prowlarr.exe",
-        "url": "https://github.com/Prowlarr/Prowlarr/releases/download/v2.3.5.5327/Prowlarr.master.2.3.5.5327.windows-core-x64.zip",
-        "sha256": "9d388c476edfe579439830dc87f05fc50c86fa0dce80802726832c72088e731b"
+        "url": "https://github.com/Prowlarr/Prowlarr/releases/download/v2.4.0.5397/Prowlarr.master.2.4.0.5397.windows-core-x64.zip",
+        "sha256": "c97754d8bf36b224e21f081b4f0bcc4d3cbf61fb84c087aeaa30f60d31012530"
       }
     },
     {
@@ -101,11 +101,11 @@
       ],
       "dependency": {
         "repo": "Radarr/Radarr",
-        "tag": "v6.1.1.10360",
+        "tag": "v6.2.1.10461",
         "assetPattern": "windows(?:-core)?-x64\\.zip$",
         "exe": "Radarr.exe",
-        "url": "https://github.com/Radarr/Radarr/releases/download/v6.1.1.10360/Radarr.master.6.1.1.10360.windows-core-x64.zip",
-        "sha256": "cc4fdffc4a82a3805e53aa9c016749fd17247eb21dd6764b1b53ced471695bb7"
+        "url": "https://github.com/Radarr/Radarr/releases/download/v6.2.1.10461/Radarr.master.6.2.1.10461.windows-core-x64.zip",
+        "sha256": "c9a6ecd1d84923947f6f92f16b43780744834e0a2be7a1ee04bf86e82113500b"
       }
     },
     {
