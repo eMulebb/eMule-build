@@ -165,14 +165,14 @@ def write_local_package_artifacts(
 
 
 def write_dependency_manifest(path: Path, dependency_root: Path) -> None:
-    node_zip = dependency_root / "node-v24.15.0-win-x64.zip"
+    node_zip = dependency_root / "node-v24.16.0-win-x64.zip"
     prowlarr_zip = dependency_root / "prowlarr.zip"
     radarr_zip = dependency_root / "radarr.zip"
     sonarr_zip = dependency_root / "sonarr.zip"
     mpc_hc_zip = dependency_root / "mpc-hc.zip"
     ffmpeg_zip = dependency_root / "ffmpeg.zip"
     mediainfo_zip = dependency_root / "mediainfo.zip"
-    write_zip(node_zip, {"node-v24.15.0-win-x64/node.exe": b"node\n"})
+    write_zip(node_zip, {"node-v24.16.0-win-x64/node.exe": b"node\n"})
     write_zip(mpc_hc_zip, {"mpc-hc64.exe": b"mpc-hc\n"})
     write_zip(
         ffmpeg_zip,

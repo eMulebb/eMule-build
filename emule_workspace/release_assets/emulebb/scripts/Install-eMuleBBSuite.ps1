@@ -113,7 +113,7 @@ $script:InstallerBoundParameters = $PSBoundParameters
 
 $AutoPortRangeStart = 49152
 $AutoPortRangeEnd = 65535
-$NodeVersion = 'v24.15.0'
+$NodeVersion = 'v24.16.0'
 $MinimumNodeMajor = 24
 $CoreServiceNames = @('emulebb')
 $ControllerServiceNames = @('emulebb', 'amutorrent')
@@ -190,30 +190,30 @@ $ArrAppMetadata = @{
 }
 $NodeArchives = @{
     x64 = @{
-        FileName = 'node-v24.15.0-win-x64.zip'
-        Sha256 = 'cc5149eabd53779ce1e7bdc5401643622d0c7e6800ade18928a767e940bb0e62'
+        FileName = 'node-v24.16.0-win-x64.zip'
+        Sha256 = 'edaca9bd58ec8e92037dac4e877d52f6b8f430b81c18b57e264b4e2fb111cd56'
     }
     ARM64 = @{
-        FileName = 'node-v24.15.0-win-arm64.zip'
-        Sha256 = 'c9eb7402eda26e2ba7e44b6727fc85a8de56c5095b1f71ebd3062892211aa116'
+        FileName = 'node-v24.16.0-win-arm64.zip'
+        Sha256 = '14834611d4c6b3c06054e7007732b90474c16e0b32f395e05b55a571ef71c6d2'
     }
 }
 $PinnedDependencies = @{
     prowlarr = @{
         Repo = 'Prowlarr/Prowlarr'
-        Tag = 'v2.3.5.5327'
+        Tag = 'v2.4.0.5397'
         Pattern = 'windows(?:-core)?-x64\.zip$'
         Exe = 'Prowlarr.exe'
-        Url = 'https://github.com/Prowlarr/Prowlarr/releases/download/v2.3.5.5327/Prowlarr.master.2.3.5.5327.windows-core-x64.zip'
-        Sha256 = '9d388c476edfe579439830dc87f05fc50c86fa0dce80802726832c72088e731b'
+        Url = 'https://github.com/Prowlarr/Prowlarr/releases/download/v2.4.0.5397/Prowlarr.master.2.4.0.5397.windows-core-x64.zip'
+        Sha256 = 'c97754d8bf36b224e21f081b4f0bcc4d3cbf61fb84c087aeaa30f60d31012530'
     }
     radarr = @{
         Repo = 'Radarr/Radarr'
-        Tag = 'v6.1.1.10360'
+        Tag = 'v6.2.1.10461'
         Pattern = 'windows(?:-core)?-x64\.zip$'
         Exe = 'Radarr.exe'
-        Url = 'https://github.com/Radarr/Radarr/releases/download/v6.1.1.10360/Radarr.master.6.1.1.10360.windows-core-x64.zip'
-        Sha256 = 'cc4fdffc4a82a3805e53aa9c016749fd17247eb21dd6764b1b53ced471695bb7'
+        Url = 'https://github.com/Radarr/Radarr/releases/download/v6.2.1.10461/Radarr.master.6.2.1.10461.windows-core-x64.zip'
+        Sha256 = 'c9a6ecd1d84923947f6f92f16b43780744834e0a2be7a1ee04bf86e82113500b'
     }
     sonarr = @{
         Repo = 'Sonarr/Sonarr'

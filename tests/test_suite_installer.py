@@ -1709,8 +1709,8 @@ def test_suite_installer_requires_hashed_pinned_dependencies() -> None:
     assert "Fix or regenerate this file, then rerun scripts\\Install-eMuleBBSuite.ps1." in installer
     assert "Read-JsonFile -Path $ConfigFile -Description 'ConfigFile'" in installer
     assert "Read-JsonFile -Path $ManifestPath -Description 'DependencyManifest'" in installer
-    assert "9d388c476edfe579439830dc87f05fc50c86fa0dce80802726832c72088e731b" in installer
-    assert "cc4fdffc4a82a3805e53aa9c016749fd17247eb21dd6764b1b53ced471695bb7" in installer
+    assert "c97754d8bf36b224e21f081b4f0bcc4d3cbf61fb84c087aeaa30f60d31012530" in installer
+    assert "c9a6ecd1d84923947f6f92f16b43780744834e0a2be7a1ee04bf86e82113500b" in installer
     assert "19a81e69dedd8d317b5fa8a1a9c48d63bc3b3f3ba87b84c94ff6d75b1803e419" in installer
     assert "658b755c069ac3c3ed6265378baad3e7d270be12bd9642abd5b402b9f95a54ed" in installer
     assert "6f58ce889f59c311410f7d2b18895b33c03456463486f3b1ebc93d97a0f54541" in installer

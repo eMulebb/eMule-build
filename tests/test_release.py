@@ -1024,8 +1024,8 @@ def test_amutorrent_manifest_records_runtime_policy_and_source_provenance(
     assert manifest["amutorrentBranch"] == "main"
     assert manifest["amutorrentCommit"] == "amut123"
     assert manifest["runtimePolicy"]["minimumPathNodeMajor"] == 24
-    assert manifest["runtimePolicy"]["pinnedFallbackNodeVersion"] == "v24.15.0"
-    assert manifest["runtimePolicy"]["pinnedFallbackNodeArchive"] == "node-v24.15.0-win-arm64.zip"
+    assert manifest["runtimePolicy"]["pinnedFallbackNodeVersion"] == "v24.16.0"
+    assert manifest["runtimePolicy"]["pinnedFallbackNodeArchive"] == "node-v24.16.0-win-arm64.zip"
     assert manifest["runtimePolicy"]["runnerOwner"] == "eMuleBB suite installer"
     assert manifest["runtimePolicy"]["localAppDataUsed"] is False
     assert manifest["runtimePolicy"]["spacesInInstallPathAllowed"] is False

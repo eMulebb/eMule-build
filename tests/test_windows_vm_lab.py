@@ -1058,8 +1058,8 @@ def test_local_swarm_dependency_assets_are_read_from_live_wire_manifest(tmp_path
     dependency_root.mkdir(parents=True)
     dependency_manifest = dependency_root / "dependency-manifest.json"
     assets = {
-        "prowlarr": dependency_root / "Prowlarr.master.2.3.5.5327.windows-core-x64.zip",
-        "radarr": dependency_root / "Radarr.master.6.1.1.10360.windows-core-x64.zip",
+        "prowlarr": dependency_root / "Prowlarr.master.2.4.0.5397.windows-core-x64.zip",
+        "radarr": dependency_root / "Radarr.master.6.2.1.10461.windows-core-x64.zip",
         "sonarr": dependency_root / "Sonarr.main.4.0.17.2952.win-x64.zip",
     }
     for path in assets.values():

@@ -54,15 +54,15 @@ KAD_DIAGNOSTICS_BINARY_MARKERS = (
     b"emulebb-diagnostics-kad.log",
     "emulebb-diagnostics-kad.log".encode("utf-16le"),
 )
-AMUTORRENT_NODE_VERSION = "v24.15.0"
+AMUTORRENT_NODE_VERSION = "v24.16.0"
 AMUTORRENT_NODE_ARCHIVES = {
     "x64": (
-        "node-v24.15.0-win-x64.zip",
-        "cc5149eabd53779ce1e7bdc5401643622d0c7e6800ade18928a767e940bb0e62",
+        "node-v24.16.0-win-x64.zip",
+        "edaca9bd58ec8e92037dac4e877d52f6b8f430b81c18b57e264b4e2fb111cd56",
     ),
     "ARM64": (
-        "node-v24.15.0-win-arm64.zip",
-        "c9eb7402eda26e2ba7e44b6727fc85a8de56c5095b1f71ebd3062892211aa116",
+        "node-v24.16.0-win-arm64.zip",
+        "14834611d4c6b3c06054e7007732b90474c16e0b32f395e05b55a571ef71c6d2",
     ),
 }
 RELEASE_THIRD_PARTY_COMPONENTS = (
