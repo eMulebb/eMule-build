@@ -86,11 +86,19 @@ def get_dumpbin_path() -> Path:
     if not msvc_root.is_dir():
         raise RuntimeError(f"MSVC tools root not found: {msvc_root}")
     for toolset in sorted(msvc_root.iterdir(), reverse=True):
+        # WHY: search both x64-hosted and native ARM64-hosted tool directories so
+        # dumpbin (used for CFG verification) resolves on a native ARM64 build host
+        # (e.g. the windows-11-arm CI runner), not only on x64 hosts. PATH lookup
+        # above still takes priority.
         for relative in (
             Path("bin/Hostx64/x64/dumpbin.exe"),
             Path("bin/HostX64/x64/dumpbin.exe"),
             Path("bin/Hostx64/arm64/dumpbin.exe"),
             Path("bin/HostX64/arm64/dumpbin.exe"),
+            Path("bin/HostARM64/arm64/dumpbin.exe"),
+            Path("bin/Hostarm64/arm64/dumpbin.exe"),
+            Path("bin/HostARM64/x64/dumpbin.exe"),
+            Path("bin/Hostarm64/x64/dumpbin.exe"),
         ):
             candidate = toolset / relative
             if candidate.is_file():
