@@ -57,6 +57,7 @@ param(
     [ValidateRange(0, 65535)]
     [int]$WhisparrPort = 0,
 
+    [switch]$IncludeNightly,
     [switch]$IncludePrerelease,
     [switch]$AllowRemoteServiceBind,
     [switch]$NonInteractive,
@@ -88,6 +89,11 @@ Enable-Tls12
 
 if ($InstallMediaTools -and $NoMediaTools) {
     throw 'Use either -InstallMediaTools or -NoMediaTools, not both.'
+}
+
+if ($IncludePrerelease) {
+    Write-Warning 'The -IncludePrerelease switch is deprecated. Release candidates now install by default; pass -IncludeNightly to opt into nightly builds.'
+    $IncludeNightly = $true
 }
 
 $Repository = 'emulebb/emulebb'
@@ -202,6 +208,11 @@ function Test-SupportedReleaseTag {
     return $Tag -match '^emulebb-v.+' -or $Tag -match '^emulebb-nightly-\d{8}-[0-9a-fA-F]+(-run\d+)?$'
 }
 
+function Test-NightlyReleaseTag {
+    param([string]$Tag)
+    return $Tag -match '^emulebb-nightly-\d{8}-[0-9a-fA-F]+(-run\d+)?$'
+}
+
 function Test-SupportedAmutorrentReleaseTag {
     param([string]$Tag)
     return $Tag -match '^amutorrent-v.+' -or $Tag -match '^amutorrent-nightly-\d{8}-[0-9a-fA-F]+(-run\d+)?$'
@@ -213,7 +224,8 @@ function Get-Release {
         return Invoke-GitHubApi -Uri "$ApiBase/repos/$Repository/releases/tags/$tag" -Description "eMuleBB release $tag"
     }
     $releases = Invoke-GitHubApi -Uri "$ApiBase/repos/$Repository/releases" -Description 'eMuleBB releases'
-    $nightlyFallback = $null
+    # GitHub returns releases newest-first, so the first supported non-nightly tag is the
+    # latest release candidate or stable release. Nightly builds are opt-in via -IncludeNightly.
     foreach ($release in @($releases)) {
         if ($release.draft) {
             continue
@@ -222,24 +234,21 @@ function Get-Release {
         if (-not (Test-SupportedReleaseTag -Tag $tag)) {
             continue
         }
-        if ($release.prerelease -and -not $IncludePrerelease) {
-            if ($tag -match '^emulebb-nightly-' -and $null -eq $nightlyFallback) {
-                $nightlyFallback = $release
-            }
+        if ((Test-NightlyReleaseTag -Tag $tag) -and -not $IncludeNightly) {
             continue
         }
         return $release
     }
-    if ($null -ne $nightlyFallback) {
-        return $nightlyFallback
+    if ($IncludeNightly) {
+        throw 'No matching eMuleBB release was found.'
     }
-    throw 'No matching eMuleBB release was found.'
+    throw 'No matching eMuleBB stable release or release candidate was found. Pass -IncludeNightly to install the latest nightly build.'
 }
 
 function Get-AmutorrentRelease {
     param([string]$EmulebbVersion)
     $releases = Invoke-GitHubApi -Uri "$ApiBase/repos/$AmutorrentRepository/releases" -Description 'aMuTorrent releases'
-    $stableFallback = $null
+    $releaseFallback = $null
     $nightlyFallback = $null
     $matchingReleasePattern = $null
     if (-not [string]::IsNullOrWhiteSpace($EmulebbVersion)) {
@@ -256,20 +265,20 @@ function Get-AmutorrentRelease {
         if ($null -ne $matchingReleasePattern -and $tag -match $matchingReleasePattern) {
             return $release
         }
-        if ($release.prerelease) {
+        if ($tag -match '^amutorrent-nightly-') {
             if ($null -eq $nightlyFallback) {
                 $nightlyFallback = $release
             }
             continue
         }
-        if ($null -eq $stableFallback) {
-            $stableFallback = $release
+        if ($null -eq $releaseFallback) {
+            $releaseFallback = $release
         }
     }
-    if ($null -ne $stableFallback) {
-        return $stableFallback
+    if ($null -ne $releaseFallback) {
+        return $releaseFallback
     }
-    if ($null -ne $nightlyFallback) {
+    if ($IncludeNightly -and $null -ne $nightlyFallback) {
         return $nightlyFallback
     }
     throw 'No matching aMuTorrent release was found.'

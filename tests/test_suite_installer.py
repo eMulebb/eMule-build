@@ -2091,6 +2091,7 @@ def test_suite_bootstrapper_requires_emulebb_package_root() -> None:
     assert "$Description must include a SHA256 hash." in bootstrapper
     assert "Assert-RequiredSha256 -Value ([string]$manifest.sha256) -Description 'Downloaded eMuleBB release manifest'" in bootstrapper
     assert "IncludePrerelease" in bootstrapper
+    assert "IncludeNightly" in bootstrapper
     assert "EmulebbBindAddress" in bootstrapper
     assert "AmutorrentPort" in bootstrapper
     assert "AllowRemoteServiceBind" in bootstrapper
@@ -2364,7 +2365,7 @@ function Invoke-RestMethod {{
         }}
     )
 }}
-& '{bootstrapper_path}' -Platform x64 -Bundle Core -DryRun -NoStart
+& '{bootstrapper_path}' -Platform x64 -Bundle Core -IncludeNightly -DryRun -NoStart
 """
 
     completed = _run_powershell(["-Command", command], cwd=repo_root)
@@ -2372,6 +2373,94 @@ function Invoke-RestMethod {{
     assert "Resolved release emulebb-nightly-20260604-5169162 for x64" in completed.stdout
     assert "eMule_v0.60d-broadband" not in completed.stdout
     assert "emulebb-0.7.3-nightly.20260604.5169162-x64.zip" in completed.stdout
+
+
+def test_suite_bootstrapper_prefers_release_candidate_over_nightly_by_default() -> None:
+    repo_root = Path.cwd()
+    bootstrapper_path = (repo_root / BOOTSTRAPPER).resolve()
+    command = rf"""
+function Invoke-RestMethod {{
+    param([string]$Uri, [hashtable]$Headers)
+    if ($Uri -ne 'https://api.github.com/repos/emulebb/emulebb/releases') {{
+        throw "Unexpected release URI: $Uri"
+    }}
+    return @(
+        [pscustomobject]@{{
+            tag_name = 'emulebb-nightly-20260610-abcdef0'
+            draft = $false
+            prerelease = $true
+            assets = @(
+                [pscustomobject]@{{
+                    name = 'emulebb-0.7.3-nightly.20260610.abcdef0-x64.zip'
+                    browser_download_url = 'https://example.invalid/emulebb-0.7.3-nightly.20260610.abcdef0-x64.zip'
+                }},
+                [pscustomobject]@{{
+                    name = 'emulebb-0.7.3-nightly.20260610.abcdef0-x64.manifest.json'
+                    browser_download_url = 'https://example.invalid/emulebb-0.7.3-nightly.20260610.abcdef0-x64.manifest.json'
+                }}
+            )
+        }},
+        [pscustomobject]@{{
+            tag_name = 'emulebb-v0.7.3-rc.2'
+            draft = $false
+            prerelease = $true
+            assets = @(
+                [pscustomobject]@{{
+                    name = 'emulebb-0.7.3-rc.2-x64.zip'
+                    browser_download_url = 'https://example.invalid/emulebb-0.7.3-rc.2-x64.zip'
+                }},
+                [pscustomobject]@{{
+                    name = 'emulebb-0.7.3-rc.2-x64.manifest.json'
+                    browser_download_url = 'https://example.invalid/emulebb-0.7.3-rc.2-x64.manifest.json'
+                }}
+            )
+        }}
+    )
+}}
+& '{bootstrapper_path}' -Platform x64 -Bundle Core -DryRun -NoStart
+"""
+
+    completed = _run_powershell(["-Command", command], cwd=repo_root)
+
+    assert "Resolved release emulebb-v0.7.3-rc.2 for x64" in completed.stdout
+    assert "emulebb-nightly-20260610-abcdef0" not in completed.stdout
+
+
+def test_suite_bootstrapper_requires_opt_in_for_nightly_only_releases() -> None:
+    repo_root = Path.cwd()
+    bootstrapper_path = (repo_root / BOOTSTRAPPER).resolve()
+    powershell = shutil.which("powershell")
+    assert powershell is not None
+    command = rf"""
+function Invoke-RestMethod {{
+    param([string]$Uri, [hashtable]$Headers)
+    if ($Uri -ne 'https://api.github.com/repos/emulebb/emulebb/releases') {{
+        throw "Unexpected release URI: $Uri"
+    }}
+    return @(
+        [pscustomobject]@{{
+            tag_name = 'emulebb-nightly-20260610-abcdef0'
+            draft = $false
+            prerelease = $true
+            assets = @()
+        }}
+    )
+}}
+& '{bootstrapper_path}' -Platform x64 -Bundle Core -DryRun -NoStart
+"""
+
+    completed = subprocess.run(
+        [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
+        cwd=repo_root,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+
+    assert completed.returncode != 0
+    output = " ".join(completed.stdout.split())
+    assert "Pass -IncludeNightly to install the latest nightly build." in output
 
 
 def test_suite_bootstrapper_hands_named_bundle_to_installer(tmp_path: Path) -> None:
@@ -2468,7 +2557,7 @@ function Invoke-WebRequest {{
     }}
     throw "Unexpected download URI: $Uri"
 }}
-& '{bootstrapper_path}' -Platform x64 -Bundle Full -NoStart
+& '{bootstrapper_path}' -Platform x64 -Bundle Full -IncludeNightly -NoStart
 """
 
     completed = _run_powershell(["-Command", command], cwd=repo_root)
