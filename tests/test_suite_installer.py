@@ -227,7 +227,7 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
     assert start_suite.index("Ensure-EmuleBootstrapFiles") < start_suite.index("& (Join-Path $Root 'scripts\\Start-Suite.ps1')")
     assert "$EmuleBootstrapFiles" in start_suite
     assert "server.met" in start_suite
-    assert "http://upd.emule-security.org/server.met" in start_suite
+    assert "https://upd.emule-security.org/server.met" in start_suite
     assert "nodes.dat" in start_suite
     assert "https://upd.emule-security.org/nodes.dat" in start_suite
     assert "function Invoke-EmuleBootstrapFileDownload" in start_suite

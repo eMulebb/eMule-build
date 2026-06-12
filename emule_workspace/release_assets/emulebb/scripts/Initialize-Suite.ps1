@@ -2,7 +2,7 @@
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
 $EmuleBootstrapFiles = @(
-    @{ Name = 'server.met'; Url = 'http://upd.emule-security.org/server.met' },
+    @{ Name = 'server.met'; Url = 'https://upd.emule-security.org/server.met' },
     @{ Name = 'nodes.dat'; Url = 'https://upd.emule-security.org/nodes.dat' }
 )
 
