@@ -3395,3 +3395,56 @@ $argv = @('-Bundle')
 
     assert completed.returncode != 0
     assert "Install-eMuleBBSuite.ps1 was invoked with positional parameter strings" in completed.stdout
+
+
+# Signatures PowerShell raises when a [ValidateSet] parameter has no valid default
+# and the script text is bound via Invoke-Expression (the `irm <url> | iex` path).
+_IEX_PARAM_BIND_FAILURE_SIGNATURE = (
+    "attribute cannot be added because variable|"
+    "does not belong to the set|"
+    "Cannot validate argument"
+)
+
+
+def _top_level_param_block(text: str) -> str:
+    """Return the script's leading param(...) block via balanced-paren matching."""
+    match = re.search(r"param\s*\(", text, re.IGNORECASE)
+    assert match is not None, "no top-level param( block found"
+    depth = 0
+    index = match.end() - 1
+    while index < len(text):
+        if text[index] == "(":
+            depth += 1
+        elif text[index] == ")":
+            depth -= 1
+            if depth == 0:
+                return text[match.start() : index + 1]
+        index += 1
+    raise AssertionError("unbalanced param( block")
+
+
+@pytest.mark.parametrize("script", [BOOTSTRAPPER, INSTALLER], ids=["bootstrapper", "installer"])
+def test_release_irm_iex_scripts_param_block_binds_under_invoke_expression(
+    script: Path, tmp_path: Path
+) -> None:
+    # Regression for BUG-017: a [ValidateSet] parameter with no valid default (e.g.
+    # an optional -UiLanguage) binds fine under `& script.ps1` but fails only under
+    # `irm <url> | iex`, because Invoke-Expression applies the validation attribute
+    # to the variable's empty default and rejects it. Both irm-invokable release
+    # scripts (bootstrapper and installer) must bind their param block under iex.
+    # Only the param block is bound here (a sentinel throw replaces the body) so the
+    # check stays side-effect free.
+    param_block = _top_level_param_block((Path.cwd() / script).resolve().read_text(encoding="utf-8"))
+    smoke = tmp_path / "param-iex-smoke.ps1"
+    smoke.write_text(param_block + "\nthrow 'PARAM_BIND_OK'\n", encoding="utf-8")
+    command = (
+        "$ErrorActionPreference='Stop'; "
+        f"$text = Get-Content -Raw -LiteralPath '{smoke.as_posix()}'; "
+        "try { Invoke-Expression $text } "
+        "catch { $m = \"$($_.Exception.Message)\"; "
+        f"if ($m -match '{_IEX_PARAM_BIND_FAILURE_SIGNATURE}') {{ Write-Output \"PARAM_BIND_FAILED: $m\" }} "
+        "else { Write-Output \"PARAM_BIND_OK: $m\" } }"
+    )
+    completed = _run_powershell(["-Command", command], cwd=Path.cwd())
+    assert "PARAM_BIND_FAILED" not in completed.stdout, completed.stdout
+    assert "PARAM_BIND_OK" in completed.stdout, completed.stdout
