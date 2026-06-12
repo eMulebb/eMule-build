@@ -230,10 +230,120 @@ def build_clients(layout: WorkspaceLayout, options: WorkspaceOptions, build_opti
         for client in selected_clients:
             if client == "amule":
                 build_amule_client(session, clean=build_options.clean)
+            elif client == "emulebb-rust":
+                build_emulebb_rust_client(session, clean=build_options.clean)
             else:
                 raise RuntimeError(f"Unsupported client build target: {client}")
     finally:
         session.write_recap()
+
+
+RUST_CLIENT_TARGETS = {
+    "x64": "x86_64-pc-windows-msvc",
+    "ARM64": "aarch64-pc-windows-msvc",
+}
+
+
+def build_emulebb_rust_client(session: BuildSession, *, clean: bool) -> None:
+    """Builds and stages the headless Rust eMuleBB client under the output root."""
+
+    repo_root = session.layout.emulebb_rust_repo_root
+    if repo_root is None:
+        raise RuntimeError("build clients --client emulebb-rust requires repos/emulebb-rust in the workspace manifest.")
+    if not repo_root.is_dir():
+        raise RuntimeError(f"eMuleBB Rust repo was not found: {repo_root}")
+    target = rust_client_target(session.options.platform)
+    cargo_path = find_tool(("cargo.exe", "cargo"))
+    if cargo_path is None:
+        raise RuntimeError("build clients --client emulebb-rust requires Rust cargo on PATH.")
+    cargo_command = "cargo.exe" if os.name == "nt" else "cargo"
+    if clean:
+        remove_tree_if_present(staged_emulebb_rust_root(session.layout))
+
+    log_path = session.log_directory / f"client-emulebb-rust-build-release-{session.options.platform.lower()}.log"
+    command = [
+        cargo_command,
+        "build",
+        "-p",
+        "emulebb-daemon",
+        "--bin",
+        "emulebb-rust",
+        "--release",
+        "--target",
+        target,
+    ]
+    env = subprocess_os_environ()
+    env.update({name: str(value) for name, value in session.layout.subprocess_environment().items()})
+    started_at = time.monotonic()
+    try:
+        with log_path.open("w", encoding="utf-8", newline="\n") as stream:
+            stream.write(f"Cargo: {cargo_path}\n")
+            stream.write(f"Rust target: {target}\n")
+            stream.write(f"CARGO_TARGET_DIR: {env['CARGO_TARGET_DIR']}\n")
+            stream.write(" ".join(shlex.quote(part) for part in command) + "\n\n")
+            completed = subprocess.run(
+                command,
+                cwd=repo_root,
+                stdout=stream,
+                stderr=subprocess.STDOUT,
+                text=True,
+                check=False,
+                env=env,
+            )
+        if completed.returncode != 0:
+            raise RuntimeError(f"eMuleBB Rust client build failed with exit code {completed.returncode}. See {log_path}")
+        stage_emulebb_rust_runtime(session.layout, target)
+        session.add_step(
+            name="CLIENT eMuleBB Rust",
+            succeeded=True,
+            log_path=log_path,
+            duration_seconds=time.monotonic() - started_at,
+            warning_count=0,
+        )
+    except Exception:
+        session.add_step(
+            name="CLIENT eMuleBB Rust",
+            succeeded=False,
+            log_path=log_path,
+            duration_seconds=time.monotonic() - started_at,
+            warning_count=0,
+        )
+        raise
+
+
+def rust_client_target(platform: str) -> str:
+    """Returns the Rust MSVC target triple for one workspace package platform."""
+
+    try:
+        return RUST_CLIENT_TARGETS[platform]
+    except KeyError as error:
+        supported = ", ".join(sorted(RUST_CLIENT_TARGETS))
+        raise RuntimeError(f"Unsupported eMuleBB Rust client platform {platform}; supported: {supported}") from error
+
+
+def staged_emulebb_rust_root(layout: WorkspaceLayout) -> Path:
+    """Returns the output-root eMuleBB Rust runtime staging root."""
+
+    return layout.output_tools_root / "emulebb-rust"
+
+
+def stage_emulebb_rust_runtime(layout: WorkspaceLayout, target: str) -> None:
+    """Stages the built headless Rust client below the output root."""
+
+    source_root = layout.output_rust_target_root / target / "release"
+    exe = source_root / "emulebb-rust.exe"
+    if not exe.is_file():
+        raise RuntimeError(f"Built eMuleBB Rust client executable was not found: {exe}")
+    target_root = staged_emulebb_rust_root(layout)
+    remove_tree_if_present(target_root)
+    bin_root = target_root / "bin"
+    bin_root.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(exe, bin_root / exe.name)
+    pdb = source_root / "emulebb-rust.pdb"
+    if pdb.is_file():
+        shutil.copy2(pdb, bin_root / pdb.name)
+    if not (bin_root / "emulebb-rust.exe").is_file():
+        raise RuntimeError(f"Staged eMuleBB Rust runtime is missing required file: {bin_root / 'emulebb-rust.exe'}")
 
 
 AMULE_MSYS2_PACKAGE_SNAPSHOT = (

@@ -85,6 +85,7 @@ python -m emule_workspace cleanup
 python -m emule_workspace build libs
 python -m emule_workspace build app
 python -m emule_workspace build tests
+python -m emule_workspace build clients
 python -m emule_workspace build all
 python -m emule_workspace test python
 python -m emule_workspace test all
@@ -273,6 +274,10 @@ Live E2E examples:
 Interactive aMuTorrent example:
 
 - `amutorrent-session -Config Debug -Platform x64 -LiveNetwork` launches Debug x64 eMuleBB with a disposable profile, starts aMuTorrent against the eMuleBB REST API, opens the aMuTorrent URL, and writes a `stop-session.cmd` helper into the session report directory.
+
+Headless Rust client build example:
+
+- `python -m emule_workspace build clients --client emulebb-rust --config Release --platform x64` builds `repos\emulebb-rust` through Cargo and stages `emulebb-rust.exe` under `EMULEBB_WORKSPACE_OUTPUT_ROOT\tools\emulebb-rust\bin`.
 
 Python test examples:
 

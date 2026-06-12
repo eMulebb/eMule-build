@@ -745,8 +745,8 @@ def build_tests(
     "--client",
     "clients",
     multiple=True,
-    type=click.Choice(["amule"]),
-    help="Optional P2P client to build. Defaults to all clients.",
+    type=click.Choice(["amule", "emulebb-rust"]),
+    help="Optional P2P client to build. Defaults to aMule.",
 )
 def build_clients(
     *,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -76,6 +77,77 @@ def test_build_clients_defaults_to_amule_only(tmp_path: Path, monkeypatch: pytes
     assert calls == [False]
 
 
+def test_build_clients_builds_emulebb_rust_target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[bool] = []
+    layout = make_layout(tmp_path)
+    options = WorkspaceOptions(workspace_root=layout.emule_workspace_root)
+    monkeypatch.setattr(build, "build_emulebb_rust_client", lambda _session, *, clean: calls.append(clean))
+
+    build.build_clients(layout, options, BuildClientsOptions(clients=("emulebb-rust",), clean=True))
+
+    assert calls == [True]
+
+
+def test_build_emulebb_rust_client_runs_cargo_and_stages_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    layout = make_layout(tmp_path)
+    repo_root = layout.emulebb_rust_repo_root
+    assert repo_root is not None
+    repo_root.mkdir(parents=True)
+    cargo = tmp_path / "cargo.exe"
+    cargo.write_bytes(b"")
+    commands: list[tuple[list[str], Path, dict[str, str]]] = []
+
+    def fake_run(command, *, cwd, stdout, stderr, text, check, env):
+        commands.append((list(command), Path(cwd), dict(env)))
+        built = layout.output_rust_target_root / "x86_64-pc-windows-msvc" / "release"
+        built.mkdir(parents=True)
+        (built / "emulebb-rust.exe").write_bytes(b"exe")
+        (built / "emulebb-rust.pdb").write_bytes(b"pdb")
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(build, "find_tool", lambda _names: cargo)
+    monkeypatch.setattr(build.subprocess, "run", fake_run)
+    session = build.BuildSession(
+        layout=layout,
+        options=WorkspaceOptions(workspace_root=layout.emule_workspace_root),
+        command_name="build clients",
+    )
+
+    build.build_emulebb_rust_client(session, clean=True)
+
+    command, cwd, env = commands[0]
+    assert cwd == repo_root
+    assert command == [
+        "cargo.exe",
+        "build",
+        "-p",
+        "emulebb-daemon",
+        "--bin",
+        "emulebb-rust",
+        "--release",
+        "--target",
+        "x86_64-pc-windows-msvc",
+    ]
+    assert env["EMULEBB_WORKSPACE_OUTPUT_ROOT"] == str(layout.output_root)
+    assert env["CARGO_TARGET_DIR"] == str(layout.output_rust_target_root)
+    assert (layout.output_tools_root / "emulebb-rust" / "bin" / "emulebb-rust.exe").read_bytes() == b"exe"
+    assert (layout.output_tools_root / "emulebb-rust" / "bin" / "emulebb-rust.pdb").read_bytes() == b"pdb"
+
+
+def test_stage_emulebb_rust_runtime_requires_built_executable(tmp_path: Path) -> None:
+    layout = make_layout(tmp_path)
+
+    with pytest.raises(RuntimeError, match="executable was not found"):
+        build.stage_emulebb_rust_runtime(layout, "x86_64-pc-windows-msvc")
+
+
+def test_rust_client_target_maps_workspace_platforms() -> None:
+    assert build.rust_client_target("x64") == "x86_64-pc-windows-msvc"
+    assert build.rust_client_target("ARM64") == "aarch64-pc-windows-msvc"
+
+
 def test_build_clients_rejects_emuleai_target(tmp_path: Path) -> None:
     layout = make_layout(tmp_path)
     options = WorkspaceOptions(workspace_root=layout.emule_workspace_root)
@@ -103,5 +175,6 @@ def make_layout(tmp_path: Path) -> WorkspaceLayout:
         app_variants=(),
         test_targets=LayoutTestTargets(test_build_variant="main", test_run_variant="main", baseline_variant="community"),
         toolset_override_variable="EMULEBB_VS_PLATFORM_TOOLSET",
+        emulebb_rust_repo_root=emule_workspace_root / "repos" / "emulebb-rust",
         output_root=tmp_path / "workspace-output",
     )
