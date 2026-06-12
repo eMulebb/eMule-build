@@ -1982,6 +1982,19 @@ def test_suite_amutorrent_registration_repairs_stale_env_owned_clients() -> None
     assert "Test-ClientHasActiveEnvField -Client $clients[$index]" in register_amutorrent
 
 
+def test_suite_installer_wizard_receives_config_by_reference() -> None:
+    # Regression: the interactive wizard must take the [ordered] suite config as an
+    # IDictionary, NOT a [hashtable]. A [hashtable] parameter coerces the
+    # OrderedDictionary into a shallow copy, so the wizard's top-level writes
+    # (bundle, selectedApps, allowRemoteServiceBind, portBlockStart, dependencyChannel)
+    # are dropped and the install silently reverts to the -Bundle default (Full),
+    # while nested edits (services/p2p/language) persist via shared references.
+    installer = INSTALLER.read_text(encoding="utf-8")
+    wizard = installer.split("function Invoke-InstallWizard", 1)[1].split("\nfunction ", 1)[0]
+    assert "param([System.Collections.IDictionary]$Config)" in wizard
+    assert "param([hashtable]$Config)" not in wizard
+
+
 def test_suite_installer_global_bind_is_default_not_override() -> None:
     installer = INSTALLER.read_text(encoding="utf-8")
 

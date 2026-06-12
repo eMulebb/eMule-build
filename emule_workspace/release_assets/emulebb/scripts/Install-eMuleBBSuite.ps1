@@ -1437,7 +1437,13 @@ function Get-BindableInterfaceNames {
 }
 
 function Invoke-InstallWizard {
-    param([hashtable]$Config)
+    # WHY: $Config is the script's [ordered] suite config. A [hashtable] parameter
+    # type coerces an OrderedDictionary into a NEW shallow-copied hashtable, so the
+    # wizard's top-level writes ($Config.bundle, $Config.selectedApps,
+    # allowRemoteServiceBind, portBlockStart, dependencyChannel) would be lost while
+    # nested edits (services/p2p/language) silently persisted via shared references.
+    # Accept any IDictionary so the wizard mutates the caller's config in place.
+    param([System.Collections.IDictionary]$Config)
     $step = 0
     while ($step -lt 7) {
         switch ($step) {
