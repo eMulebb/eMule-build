@@ -1078,7 +1078,9 @@ function Test-TcpPortAvailable {
 }
 
 function Resolve-ServicePorts {
-    param([hashtable]$Config)
+    # WHY: IDictionary (not [hashtable]) so the [ordered] config is passed by
+    # reference; the top-level $Config.portBlockStart write must reach the caller.
+    param([System.Collections.IDictionary]$Config)
     $serviceNames = @(Get-SuiteServiceNames -Config $Config)
     if ($serviceNames.Count -eq 0) {
         throw 'At least one suite service must be selected.'
@@ -1678,7 +1680,10 @@ function Test-PortAvailable {
 }
 
 function Assert-SuiteConfig {
-    param([hashtable]$Config)
+    # WHY: IDictionary (not [hashtable]) so the [ordered] config is passed by
+    # reference; the top-level credentials/packageSources/optionalTools defaulting
+    # writes must reach the caller instead of a shallow copy.
+    param([System.Collections.IDictionary]$Config)
     if (@('Core', 'Controller', 'Full') -notcontains $Config.bundle) {
         throw "Bundle must be Core, Controller, or Full: $($Config.bundle)"
     }
