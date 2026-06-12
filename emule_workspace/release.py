@@ -100,8 +100,8 @@ EMULEBB_RUNTIME_SCRIPT_PATHS = (
     "scripts/Start-Suite.ps1",
     "scripts/Stop-Suite.ps1",
     "scripts/Get-SuiteStatus.ps1",
-    "scripts/Test-Suite.ps1",
-    "scripts/Update-Suite.ps1",
+    "scripts/Get-SuiteInfo.ps1",
+    "scripts/Repair-Suite.ps1",
 )
 EMULEBB_CONFIG_ASSET_PATHS = (
     "config/suite-apps.json",

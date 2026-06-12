@@ -351,8 +351,8 @@ def test_suite_installer_core_install_writes_bind_aware_config_and_scripts(tmp_p
         "Start-Suite.ps1",
         "Stop-Suite.ps1",
         "Get-SuiteStatus.ps1",
-        "Test-Suite.ps1",
-        "Update-Suite.ps1",
+        "Get-SuiteInfo.ps1",
+        "Repair-Suite.ps1",
     ):
         _assert_powershell_parse(install_root / "scripts" / generated_script, cwd=repo_root)
 
@@ -549,7 +549,7 @@ def test_suite_installer_rejects_invalid_automation_examples_bundle(
     [
         ("missing-manifest", "SuiteScriptsZip requires -SuiteScriptsManifest with a SHA256 hash."),
         ("bad-hash", "SHA256 mismatch"),
-        ("missing-script", "Suite scripts bundle did not include scripts\\Update-Suite.ps1."),
+        ("missing-script", "Suite scripts bundle did not include scripts\\Repair-Suite.ps1."),
     ],
 )
 def test_suite_installer_rejects_invalid_suite_scripts_bundle(
@@ -564,7 +564,7 @@ def test_suite_installer_rejects_invalid_suite_scripts_bundle(
     suite_install_fixtures.write_core_release(release_root)
     script_entries = suite_install_fixtures.runtime_script_entries(installer_payload=INSTALLER.read_bytes())
     if case == "missing-script":
-        del script_entries["eMuleBB/scripts/Update-Suite.ps1"]
+        del script_entries["eMuleBB/scripts/Repair-Suite.ps1"]
     suite_install_fixtures.write_zip(scripts_zip, script_entries)
     if case == "bad-hash":
         scripts_manifest.write_text(json.dumps({"sha256": "0" * 64}) + "\n", encoding="utf-8")
@@ -1994,13 +1994,13 @@ def test_suite_installer_global_bind_is_default_not_override() -> None:
 
 def test_suite_generated_update_and_start_scripts_are_refresh_safe() -> None:
     installer = INSTALLER.read_text(encoding="utf-8")
-    update_suite = Path("emule_workspace/release_assets/emulebb/scripts/Update-Suite.ps1").read_text(encoding="utf-8")
+    repair_suite = Path("emule_workspace/release_assets/emulebb/scripts/Repair-Suite.ps1").read_text(encoding="utf-8")
     initialize_suite = Path("emule_workspace/release_assets/emulebb/scripts/Initialize-Suite.ps1").read_text(encoding="utf-8")
     start_emulebb = Path("emule_workspace/release_assets/emulebb/scripts/Start-eMuleBB.ps1").read_text(encoding="utf-8")
     start_suite = Path("emule_workspace/release_assets/emulebb/scripts/Start-Suite.ps1").read_text(encoding="utf-8")
     stop_suite = Path("emule_workspace/release_assets/emulebb/scripts/Stop-Suite.ps1").read_text(encoding="utf-8")
 
-    assert "& (Join-Path $Root 'scripts\\Stop-Suite.ps1')" in update_suite
+    assert "& (Join-Path $Root 'scripts\\Stop-Suite.ps1')" in repair_suite
     assert "$sourceScriptsDir = Join-Path $script:Root 'apps\\eMuleBB\\scripts'" in installer
     assert "Copy-Item -Force -LiteralPath $PSCommandPath -Destination (Join-Path $scriptsDir 'Install-eMuleBBSuite.ps1')" not in installer
     assert "function Test-ProcessRunning" in start_suite
