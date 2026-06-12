@@ -2765,6 +2765,11 @@ function Write-SuiteConfigFile {
     }
     $manifestDir = Join-Path $script:Root 'manifests'
     New-Item -ItemType Directory -Force -Path $manifestDir | Out-Null
+    # WHY: suite-config.json stores generated API keys and the suite password in
+    # plaintext and is intentionally left at default inherited NTFS ACLs. The suite
+    # is a single-user local install; the same secrets are also rendered to
+    # credentials.html and used in cleartext on loopback/LAN. ACL-locking this file
+    # is an accepted non-goal for this local tooling, not a packaging defect.
     $Config | ConvertTo-Json -Depth 10 | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $manifestDir 'suite-config.json')
 }
 
@@ -2984,8 +2989,8 @@ function Get-SuiteScriptNames {
         'Start-Suite.ps1',
         'Stop-Suite.ps1',
         'Get-SuiteStatus.ps1',
-        'Test-Suite.ps1',
-        'Update-Suite.ps1'
+        'Get-SuiteInfo.ps1',
+        'Repair-Suite.ps1'
     )
 }
 

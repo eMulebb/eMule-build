@@ -78,6 +78,11 @@ function Read-ActionValue {
     }
 }
 
+# WHY: secret prompts intentionally use plain Read-Host, not a masked SecureString prompt.
+# These are local suite API keys/passwords that travel in cleartext headers to
+# loopback/LAN services and are also stored in manifests\suite-config.json, so
+# masking the prompt protects nothing that is not already plaintext at rest and
+# on the wire. Unmasked entry is accepted by design for this local tooling.
 function Read-SecretValue {
     param([string]$Prompt, [string]$Value)
     if (-not [string]::IsNullOrWhiteSpace($Value)) {
