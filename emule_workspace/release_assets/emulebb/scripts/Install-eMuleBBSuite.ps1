@@ -21,8 +21,8 @@ param(
     [ValidateSet('English', 'Spanish', 'Italian', 'Portuguese')]
     [string]$Language = 'English',
 
-    [ValidateSet('English', 'Spanish', 'Italian', 'Portuguese')]
-    [string]$UiLanguage,
+    [ValidateSet('', 'English', 'Spanish', 'Italian', 'Portuguese')]
+    [string]$UiLanguage = '',
 
     [ValidateRange(0, 65535)]
     [int]$PortBlockStart = 0,

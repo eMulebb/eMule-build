@@ -3099,7 +3099,8 @@ function Invoke-WebRequest {{
     }}
     throw "Unexpected download URI: $Uri"
 }}
-& '{bootstrapper_path.as_posix()}'
+$bootstrapperText = Get-Content -Raw -LiteralPath '{bootstrapper_path.as_posix()}'
+Invoke-Expression $bootstrapperText
 """
 
     completed = _run_powershell(["-Command", command], cwd=repo_root)
