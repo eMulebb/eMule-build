@@ -1073,8 +1073,19 @@ def _default_platform_toolset_property(layout: WorkspaceLayout) -> str:
 
 
 def _assert_packaging_node_supported(platform: str) -> None:
-    """Requires PATH Node to support the requested native module package platform."""
+    """Requires PATH Node to match the pinned runtime Node major and target arch.
 
+    WHY pin the exact major (not ">= 24"): aMuTorrent ships native modules
+    (better-sqlite3) that this build compiles against the PATH Node ABI, but the
+    installed suite loads them under the pinned ``AMUTORRENT_NODE_VERSION`` runtime.
+    ``NODE_MODULE_VERSION`` is keyed to the Node *major*, so a build Node whose major
+    differs from the pinned runtime (e.g. building on Node 25 while the suite ships
+    Node 24) produces an ABI-mismatched package that throws
+    "compiled against a different Node.js version" and the controller fails to stay
+    running at launch. Fail fast here instead of shipping a broken package.
+    """
+
+    pinned_major = int(AMUTORRENT_NODE_VERSION.lstrip("v").split(".", 1)[0])
     try:
         completed = subprocess.run(
             ["node", "-p", "`${process.versions.node}|${process.arch}`"],
@@ -1083,14 +1094,23 @@ def _assert_packaging_node_supported(platform: str) -> None:
             text=True,
         )
     except (FileNotFoundError, subprocess.CalledProcessError) as exc:
-        raise RuntimeError("package amutorrent requires Node 24 or newer on PATH.") from exc
+        raise RuntimeError(
+            f"package amutorrent requires Node {pinned_major}.x "
+            f"(pinned runtime {AMUTORRENT_NODE_VERSION}) on PATH."
+        ) from exc
     version, node_arch = completed.stdout.strip().split("|", 1)
     try:
         major = int(version.split(".", 1)[0])
     except ValueError as exc:
         raise RuntimeError(f"Cannot parse Node version from PATH: {version!r}") from exc
-    if major < 24:
-        raise RuntimeError(f"package amutorrent requires Node 24 or newer on PATH, found {version}.")
+    if major != pinned_major:
+        raise RuntimeError(
+            "package amutorrent must build aMuTorrent native modules against the "
+            f"pinned suite runtime Node major {pinned_major} (runtime "
+            f"{AMUTORRENT_NODE_VERSION}); NODE_MODULE_VERSION is per-major, so building "
+            f"with Node {version} ships an ABI-mismatched better-sqlite3 that fails to "
+            f"launch. Build with Node {pinned_major}.x."
+        )
     expected_arch = "arm64" if platform == "ARM64" else "x64"
     if node_arch != expected_arch:
         raise RuntimeError(

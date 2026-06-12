@@ -1174,3 +1174,13 @@ def test_amutorrent_packaging_node_guard_rejects_cross_arch_native_modules(monke
 
     with pytest.raises(RuntimeError, match="native modules"):
         release._assert_packaging_node_supported("ARM64")
+
+
+def test_amutorrent_packaging_node_guard_rejects_newer_node_major(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A build Node newer than the pinned runtime major (e.g. Node 25 vs pinned 24)
+    # compiles an ABI-mismatched better-sqlite3 that fails to launch; reject it.
+    completed = SimpleNamespace(stdout="25.8.1|x64\n")
+    monkeypatch.setattr(release.subprocess, "run", lambda *args, **kwargs: completed)
+
+    with pytest.raises(RuntimeError, match="NODE_MODULE_VERSION is per-major"):
+        release._assert_packaging_node_supported("x64")
