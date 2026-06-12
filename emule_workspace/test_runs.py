@@ -827,25 +827,41 @@ def invoke_amutorrent_interactive_session(
     """Starts a disposable interactive aMuTorrent session."""
 
     _assert_test_execution_platform_supported(options)
-    app_root = layout.get_app_variant(layout.test_targets.test_run_variant).path
     script_path = layout.tests_repo_root / "scripts" / "amutorrent-interactive-session.py"
     if not script_path.is_file():
         raise RuntimeError(f"Missing aMuTorrent interactive session runner: {script_path}")
 
     args: list[str | Path] = [
         script_path,
-        "--app-root",
-        app_root,
+        "--backend",
+        session_options.backend,
         "--configuration",
         options.configuration,
     ]
+    if session_options.backend == "native":
+        app_root = layout.get_app_variant(layout.test_targets.test_run_variant).path
+        args.extend(["--app-root", app_root])
+    else:
+        if layout.emulebb_rust_repo_root is None:
+            raise RuntimeError("The workspace manifest must define repos.emulebb_rust for Rust aMuTorrent sessions.")
+        rust_exe_name = "emulebb-rust.exe" if os.name == "nt" else "emulebb-rust"
+        args.extend(
+            [
+                "--rust-repo",
+                layout.emulebb_rust_repo_root,
+                "--rust-exe",
+                layout.output_tools_root / "emulebb-rust" / "bin" / rust_exe_name,
+            ]
+        )
+    network_env = _test_network_env(layout, test_network="lan", require_lan=True)
+    _append_lan_bind_addr(args, network_env)
     _append_optional_flag(args, session_options.live_network, "--live-network")
     python = get_python_invocation()
     run_native(
         python.command(args),
         label="aMuTorrent interactive session",
         cwd=layout.emule_workspace_root,
-        env=_workspace_env(layout),
+        env=network_env,
     )
 
 

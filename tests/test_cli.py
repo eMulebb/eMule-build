@@ -209,6 +209,17 @@ def test_test_live_e2e_help_exposes_live_options() -> None:
     assert "--rest-cold-start-dump-stress-cpu-profile-stack" in result.output
 
 
+def test_amutorrent_session_help_exposes_backend_option() -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(cli.main, ["test", "amutorrent-session", "--help"])
+
+    assert result.exit_code == 0
+    assert "--backend" in result.output
+    assert "native" in result.output
+    assert "rust" in result.output
+
+
 def test_live_e2e_command_defaults_model_options(tmp_path: Path, monkeypatch) -> None:
     runner = CliRunner()
     captured: dict[str, object] = {}

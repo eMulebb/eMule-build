@@ -1222,16 +1222,24 @@ def test_certification(
 
 @test.command("amutorrent-session")
 @_common_options
+@click.option(
+    "--backend",
+    type=click.Choice(["native", "rust"]),
+    default="native",
+    show_default=True,
+    help="eMuleBB backend launched for the aMuTorrent session.",
+)
 @click.option("--live-network", is_flag=True, help="Allow the aMuTorrent session to use the live network.")
 def test_amutorrent_session(
     *,
+    backend: str,
     live_network: bool,
     workspace_options: WorkspaceOptions,
     layout,
 ) -> None:
     """Start an interactive aMuTorrent test session."""
 
-    session_options = AmutorrentSessionOptions(live_network=live_network)
+    session_options = AmutorrentSessionOptions(backend=backend, live_network=live_network)
     _locked(
         "test amutorrent-session",
         lambda **kwargs: invoke_amutorrent_interactive_session(kwargs["layout"], kwargs["workspace_options"], session_options),

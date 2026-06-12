@@ -15,6 +15,7 @@ BuildPlatform = Literal["x64", "ARM64"]
 BuildOutputMode = Literal["Full", "Warnings", "ErrorsOnly"]
 PackageFlavor = Literal["standard", "diagnostics"]
 ClientBuildTarget = Literal["amule", "emulebb-rust"]
+AmutorrentSessionBackend = Literal["native", "rust"]
 ACTIVE_EMULEBB_RELEASE_VERSION = "0.7.3-rc.2"
 WORKSPACE_ROOT_ENV = "EMULEBB_WORKSPACE_ROOT"
 WORKSPACE_OUTPUT_ROOT_ENV = "EMULEBB_WORKSPACE_OUTPUT_ROOT"
@@ -261,6 +262,7 @@ class AmutorrentSessionOptions(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+    backend: AmutorrentSessionBackend = "native"
     live_network: bool = False
 
 

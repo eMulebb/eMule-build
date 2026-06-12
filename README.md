@@ -94,6 +94,7 @@ python -m emule_workspace test protocol-parity
 python -m emule_workspace test live-e2e
 python -m emule_workspace test windows-vm
 python -m emule_workspace test amutorrent-session
+python -m emule_workspace test amutorrent-session --backend rust
 python -m emule_workspace test community-core-coverage
 python -m emule_workspace full
 python -m emule_workspace package-release
@@ -151,7 +152,7 @@ Command behavior:
 - `test protocol-parity` runs the focused Kad/eD2K gate: protocol surface diff, protocol oracle golden validation, and `protocol-parity` native live-diff.
 - `test live-e2e` runs the aggregate UI, REST API, and live-wire E2E suite from `emulebb-build-tests`.
 - `test windows-vm` runs package-smoke proof inside clean local Hyper-V Windows guests restored from a configured checkpoint.
-- `test amutorrent-session` starts a disposable interactive aMuTorrent session against eMuleBB REST and leaves both processes running for operator testing.
+- `test amutorrent-session` starts a disposable interactive aMuTorrent session against eMuleBB REST and leaves both processes running for operator testing. Use `--backend rust` to point aMuTorrent at the staged Rust client, falling back to the Rust repo Cargo launcher when needed.
 - `test community-core-coverage` runs community-core coverage checks with live REST E2E coverage enabled.
 - `build all` runs `build libs`, `build app`, and `build tests`.
 - `full` runs `build all`, then `test all`, then prints a workspace summary.
@@ -273,7 +274,7 @@ Live E2E examples:
 
 Interactive aMuTorrent example:
 
-- `amutorrent-session -Config Debug -Platform x64 -LiveNetwork` launches Debug x64 eMuleBB with a disposable profile, starts aMuTorrent against the eMuleBB REST API, opens the aMuTorrent URL, and writes a `stop-session.cmd` helper into the session report directory.
+- `amutorrent-session -Config Debug -Platform x64 -LiveNetwork` launches Debug x64 eMuleBB with a disposable profile, starts aMuTorrent against the eMuleBB REST API, opens the aMuTorrent URL, and writes a `stop-session.cmd` helper into the session report directory. Add `-Backend rust` to use the Rust client package.
 
 Headless Rust client build example:
 
