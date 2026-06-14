@@ -745,8 +745,8 @@ def build_tests(
     "--client",
     "clients",
     multiple=True,
-    type=click.Choice(["amule", "emulebb-rust"]),
-    help="Optional P2P client to build. Defaults to aMule.",
+    type=click.Choice(["amule", "emulebb-rust", "qbittorrentbb"]),
+    help="Optional P2P client to build. Defaults to aMule. qbittorrentbb honors EMULEBB_QBT_STATIC for a static single-exe build.",
 )
 def build_clients(
     *,

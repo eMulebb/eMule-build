@@ -11,7 +11,13 @@ import zipfile
 from pathlib import Path
 
 from .build_state import BuildSession
-from .cmake import invoke_cmake_dependency_build, remove_tree_if_present, static_msvc_runtime_cmake_arguments
+from .cmake import (
+    cmake_generator_arguments,
+    count_warnings,
+    invoke_cmake_dependency_build,
+    remove_tree_if_present,
+    static_msvc_runtime_cmake_arguments,
+)
 from .config import BuildClientsOptions, WorkspaceOptions
 from .git import repo_branch, test_app_branch_allowed
 from .layout import WorkspaceLayout, file_token
@@ -232,6 +238,10 @@ def build_clients(layout: WorkspaceLayout, options: WorkspaceOptions, build_opti
                 build_amule_client(session, clean=build_options.clean)
             elif client == "emulebb-rust":
                 build_emulebb_rust_client(session, clean=build_options.clean)
+            elif client == "qbittorrentbb":
+                # Static is opt-in (default dynamic dev build); CI sets it.
+                static = os.environ.get("EMULEBB_QBT_STATIC", "").strip().lower() in {"1", "true", "yes", "on"}
+                build_qbittorrentbb_client(session, clean=build_options.clean, static=static)
             else:
                 raise RuntimeError(f"Unsupported client build target: {client}")
     finally:
@@ -319,6 +329,146 @@ def rust_client_target(platform: str) -> str:
     except KeyError as error:
         supported = ", ".join(sorted(RUST_CLIENT_TARGETS))
         raise RuntimeError(f"Unsupported eMuleBB Rust client platform {platform}; supported: {supported}") from error
+
+
+def _qbt_vcpkg_toolchain() -> Path:
+    """Resolves the vcpkg CMake toolchain file (VCPKG_ROOT, else the local tools dir)."""
+
+    root = os.environ.get("VCPKG_ROOT", "").strip()
+    base = Path(root) if root else Path(r"C:\tools\vcpkg")
+    return base / "scripts" / "buildsystems" / "vcpkg.cmake"
+
+
+def _qbt_qt_prefix() -> str:
+    """Dynamic-build Qt6 prefix (static builds get Qt from vcpkg instead)."""
+
+    return os.environ.get("EMULEBB_QT_PREFIX", r"C:\tools\Qt\6.8.1\msvc2022_64")
+
+
+def _qbt_cmake_step(session: BuildSession, args: list[str], *, log_name: str, step_name: str) -> None:
+    """Runs one cmake invocation, logging to the session and recording a step."""
+
+    log_path = session.log_directory / log_name
+    started_at = time.monotonic()
+    try:
+        with log_path.open("w", encoding="utf-8", newline="\n") as stream:
+            stream.write(" ".join(shlex.quote(part) for part in args) + "\n\n")
+            completed = subprocess.run(args, stdout=stream, stderr=subprocess.STDOUT, text=True, check=False)
+        if completed.returncode != 0:
+            raise RuntimeError(f"{step_name} failed with exit code {completed.returncode}. See {log_path}")
+        session.add_step(
+            name=step_name,
+            succeeded=True,
+            log_path=log_path,
+            duration_seconds=time.monotonic() - started_at,
+            warning_count=count_warnings(log_path),
+        )
+    except Exception:
+        session.add_step(
+            name=step_name,
+            succeeded=False,
+            log_path=log_path,
+            duration_seconds=time.monotonic() - started_at,
+            warning_count=count_warnings(log_path),
+        )
+        raise
+
+
+def build_qbittorrentbb_client(session: BuildSession, *, clean: bool, static: bool) -> None:
+    """Builds qBittorrentBB and its emulebb-libtorrent engine under the output root.
+
+    ``static`` selects a fully self-contained build (vcpkg x64-windows-static incl.
+    Qt6, static MSVC runtime, static libtorrent) producing a single qbittorrent.exe
+    like upstream qBittorrent; otherwise a dynamic dev build (aqt Qt + libtorrent DLL).
+    """
+
+    layout = session.layout
+    # Repo roots are env-overridable so CI (fresh checkouts) and the source tree
+    # can point at the forks directly; otherwise fall back to the materialized
+    # workspace layout.
+    qb_env = os.environ.get("EMULEBB_QBT_REPO", "").strip()
+    lt_env = os.environ.get("EMULEBB_LIBTORRENT_REPO", "").strip()
+    qb_root = Path(qb_env) if qb_env else (layout.workspace_root / "repos" / "qbittorrentbb")
+    lt_root = Path(lt_env) if lt_env else (layout.workspace_root / "repos" / "third_party" / "emulebb-libtorrent")
+    if not qb_root.is_dir():
+        raise RuntimeError(f"qbittorrentbb repo not found: {qb_root} (set EMULEBB_QBT_REPO).")
+    if not lt_root.is_dir():
+        raise RuntimeError(f"emulebb-libtorrent repo not found: {lt_root} (set EMULEBB_LIBTORRENT_REPO).")
+
+    cmake_path = str(get_cmake_path())
+    toolchain = _qbt_vcpkg_toolchain()
+    if not toolchain.is_file():
+        raise RuntimeError(f"vcpkg toolchain not found: {toolchain} (set VCPKG_ROOT).")
+
+    triplet = "x64-windows-static" if static else "x64-windows"
+    config = session.options.configuration
+    generator = list(
+        cmake_generator_arguments(
+            session.options.platform,
+            toolset=os.environ.get(layout.toolset_override_variable, "").strip(),
+        )
+    )
+    static_args = list(static_msvc_runtime_cmake_arguments()) if static else []
+
+    lt_build = layout.output_third_party_build_root / "emulebb-libtorrent"
+    deps_prefix = layout.output_third_party_build_root / "deps" / "libtorrent"
+    qb_build = layout.output_build_root / "qbittorrentbb"
+    if clean:
+        remove_tree_if_present(lt_build)
+        remove_tree_if_present(qb_build)
+    lt_build.mkdir(parents=True, exist_ok=True)
+    qb_build.mkdir(parents=True, exist_ok=True)
+    suffix = f"{'static' if static else 'dynamic'}-{session.options.platform.lower()}"
+
+    common = [
+        *generator,
+        f"-DCMAKE_TOOLCHAIN_FILE={toolchain}",
+        f"-DVCPKG_TARGET_TRIPLET={triplet}",
+        *static_args,
+    ]
+
+    # --- emulebb-libtorrent: configure, build, install to the deps prefix ---
+    _qbt_cmake_step(
+        session,
+        [cmake_path, "-S", str(lt_root), "-B", str(lt_build), *common,
+         f"-DBUILD_SHARED_LIBS={'OFF' if static else 'ON'}"],
+        log_name=f"qbt-libtorrent-configure-{suffix}.log",
+        step_name="CLIENT qBittorrentBB libtorrent configure",
+    )
+    _qbt_cmake_step(
+        session,
+        [cmake_path, "--build", str(lt_build), "--config", config, "--parallel"],
+        log_name=f"qbt-libtorrent-build-{suffix}.log",
+        step_name="CLIENT qBittorrentBB libtorrent build",
+    )
+    _qbt_cmake_step(
+        session,
+        [cmake_path, "--install", str(lt_build), "--config", config, "--prefix", str(deps_prefix)],
+        log_name=f"qbt-libtorrent-install-{suffix}.log",
+        step_name="CLIENT qBittorrentBB libtorrent install",
+    )
+
+    # --- qbittorrentbb: configure, build (static gets Qt6 from vcpkg) ---
+    prefix_path = [str(deps_prefix)]
+    if not static:
+        prefix_path.insert(0, _qbt_qt_prefix())
+    _qbt_cmake_step(
+        session,
+        [cmake_path, "-S", str(qb_root), "-B", str(qb_build), *common,
+         f"-DCMAKE_PREFIX_PATH={';'.join(prefix_path)}"],
+        log_name=f"qbt-configure-{suffix}.log",
+        step_name="CLIENT qBittorrentBB configure",
+    )
+    _qbt_cmake_step(
+        session,
+        [cmake_path, "--build", str(qb_build), "--config", config, "--parallel"],
+        log_name=f"qbt-build-{suffix}.log",
+        step_name="CLIENT qBittorrentBB build",
+    )
+
+    exe = qb_build / config / "qbittorrent.exe"
+    if not exe.is_file():
+        raise RuntimeError(f"qbittorrentbb build did not produce qbittorrent.exe: {exe}")
 
 
 def staged_emulebb_rust_root(layout: WorkspaceLayout) -> Path:
