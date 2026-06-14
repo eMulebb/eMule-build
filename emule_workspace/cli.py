@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from functools import wraps
 from pathlib import Path
@@ -14,6 +15,7 @@ from .artifact_audit import audit_workspace_artifacts, print_artifact_audit
 from .build import build_apps as invoke_build_apps
 from .build import build_clients as invoke_build_clients
 from .build import build_libs as invoke_build_libs
+from .build import build_qbittorrentbb_client as invoke_build_qbittorrentbb_client
 from .certification import invoke_certification
 from .cleanup import cleanup_workspace
 from .config import (
@@ -47,7 +49,9 @@ from .config import (
 from .campaign_scenario_runner import invoke_campaign_scenario
 from .evidence import build_heavy_evidence_index, print_heavy_evidence_index, write_heavy_evidence_index
 from .amule_release import create_amule_package
-from .layout import load_layout
+from .build_state import BuildSession
+from .config import WORKSPACE_OUTPUT_ROOT_ENV
+from .layout import build_ci_layout, load_layout
 from .local_hammer_campaign import invoke_local_hammer_campaign
 from .local_package_install import install_local_package
 from .locks import WorkspaceLock
@@ -762,6 +766,38 @@ def build_clients(
         "build clients",
         lambda **kwargs: invoke_build_clients(kwargs["layout"], kwargs["workspace_options"], build_options),
     )(workspace_options=workspace_options, layout=layout)
+
+
+@build.command("qbittorrentbb-ci")
+@click.option("--clean", is_flag=True, help="Clean qbittorrentbb/libtorrent build trees before building.")
+@click.option("--static/--dynamic", default=True, show_default=True, help="Static single-exe build (vcpkg x64-windows-static incl. Qt6) vs dynamic dev build.")
+@click.option("--config", "configuration", type=click.Choice(["Debug", "Release"]), default="Release", show_default=True)
+@click.option("--platform", type=click.Choice(["x64", "ARM64"]), default="x64", show_default=True)
+def build_qbittorrentbb_ci(*, clean: bool, static: bool, configuration: str, platform: str) -> None:
+    """Build qBittorrentBB on CI from fork checkouts, without a materialized workspace.
+
+    Reads the fork roots from EMULEBB_QBT_REPO / EMULEBB_LIBTORRENT_REPO and the
+    output root from EMULEBB_WORKSPACE_OUTPUT_ROOT, so a fork-scoped GitHub runner
+    needs no full workspace topology. Honors VCPKG_ROOT for the vcpkg toolchain.
+    """
+
+    output_root_value = os.environ.get(WORKSPACE_OUTPUT_ROOT_ENV, "").strip()
+    if not output_root_value:
+        raise click.ClickException(f"{WORKSPACE_OUTPUT_ROOT_ENV} is required.")
+
+    layout = build_ci_layout(output_root=Path(output_root_value))
+    options = WorkspaceOptions(
+        workspace_root=layout.workspace_root,
+        output_root=layout.output_root,
+        workspace_name="ci",
+        configuration=configuration,
+        platform=platform,
+    )
+    session = BuildSession(layout=layout, options=options, command_name="build qbittorrentbb-ci", clean=clean)
+    try:
+        invoke_build_qbittorrentbb_client(session, clean=clean, static=static)
+    finally:
+        session.write_recap()
 
 
 @build.command("all")

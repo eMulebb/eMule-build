@@ -186,6 +186,37 @@ def build_repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def build_ci_layout(*, output_root: Path, toolset_override_variable: str = "") -> WorkspaceLayout:
+    """Builds a minimal layout for fork-scoped CI builds (no materialized workspace).
+
+    GitHub CI checks out only the relevant forks and points the build at them via
+    environment overrides (e.g. EMULEBB_QBT_REPO / EMULEBB_LIBTORRENT_REPO), so it
+    needs no workspace manifest -- only the output root where generated build
+    artifacts go. Workspace/repo roots that such a build never touches are filled
+    with the emulebb-build checkout as a harmless, existing-directory sentinel.
+    """
+
+    resolved_output_root = output_root.expanduser().resolve()
+    sentinel = build_repo_root()
+    return WorkspaceLayout(
+        emule_workspace_root=sentinel,
+        workspace_name="ci",
+        workspace_root=sentinel,
+        build_repo_root=sentinel,
+        tests_repo_root=sentinel,
+        tooling_repo_root=sentinel,
+        ed2k_server_repo_root=sentinel,
+        amule_repo_root=sentinel,
+        seed_repo_path=sentinel,
+        seed_repo_branch="",
+        dependencies=(),
+        app_variants=(),
+        test_targets=TestTargets(test_build_variant="", test_run_variant="", baseline_variant=""),
+        toolset_override_variable=toolset_override_variable,
+        output_root=resolved_output_root,
+    )
+
+
 def load_layout(emule_workspace_root: Path, workspace_name: str | None = None, *, output_root: Path | None = None) -> WorkspaceLayout:
     """Loads and resolves the build and workspace manifests."""
 
