@@ -402,6 +402,21 @@ def canonical_topology() -> WorkspaceTopology:
                 additional_remotes=(AdditionalRemote(name="upstream", url="https://github.com/got3nks/amutorrent.git"),),
             ),
             ManagedRepo(
+                name="emulebb-libtorrent",
+                url="https://github.com/emulebb/emulebb-libtorrent.git",
+                relative_path="repos\\third_party\\emulebb-libtorrent",
+                branch="RC_2_0",
+                has_submodules=True,
+                additional_remotes=(AdditionalRemote(name="upstream", url="https://github.com/arvidn/libtorrent.git"),),
+            ),
+            ManagedRepo(
+                name="qbittorrentbb",
+                url="https://github.com/emulebb/qbittorrentbb.git",
+                relative_path="repos\\qbittorrentbb",
+                branch="master",
+                additional_remotes=(AdditionalRemote(name="upstream", url="https://github.com/qbittorrent/qBittorrent.git"),),
+            ),
+            ManagedRepo(
                 name="goed2k-server",
                 url="https://github.com/emulebb/goed2k-server.git",
                 relative_path="repos\\goed2k-server",
