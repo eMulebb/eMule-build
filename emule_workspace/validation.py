@@ -218,6 +218,7 @@ def run_policy_audits(layout: WorkspaceLayout) -> None:
         ("documentation path audit", "doc-paths"),
         ("editorconfig policy audit", "editorconfig-policy"),
         ("EMULEBB_* env override audit", "emulebb-env-override"),
+        ("English-only language audit", "language-policy"),
         ("localization policy audit", "localization-policy"),
         ("output-root build redirection audit", "output-root"),
         ("PowerShell boundary audit", "powershell-boundary"),
