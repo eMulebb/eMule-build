@@ -471,14 +471,18 @@ def build_qbittorrentbb_client(session: BuildSession, *, clean: bool, static: bo
         prefix_path = [str(deps_prefix)]
         if not static:
             prefix_path.insert(0, _qbt_qt_prefix())
-        # Static consumes Qt6 from vcpkg in manifest mode (qbittorrentbb/vcpkg.json),
-        # which resolves Qt's transitive image/font deps reliably; the dynamic dev
-        # build uses aqt Qt and must keep manifest mode off despite the vcpkg.json.
-        manifest_mode = "ON" if static else "OFF"
+        # Static Qt6 from vcpkg exports Wrap targets (e.g. WrapSystemZLIB) whose
+        # link interfaces reference imported targets created by find_package
+        # (ZLIB::ZLIB, PNG::PNG, Freetype::Freetype). Those are directory-scoped by
+        # default, so they are not visible at generate time from the package scope
+        # that defines the Wrap targets, and the configure fails with
+        # "target ... not found". Make find_package imported targets GLOBAL
+        # (CMake 3.24+) so they resolve across scopes.
+        global_targets = ["-DCMAKE_FIND_PACKAGE_TARGETS_GLOBAL=ON"] if static else []
         _qbt_cmake_step(
             session,
             [cmake_path, "-S", str(qb_root), "-B", str(qb_build), *common,
-             f"-DVCPKG_MANIFEST_MODE={manifest_mode}",
+             *global_targets,
              f"-DCMAKE_PREFIX_PATH={';'.join(prefix_path)}"],
             log_name=f"qbt-configure-{suffix}.log",
             step_name="CLIENT qBittorrentBB configure",
