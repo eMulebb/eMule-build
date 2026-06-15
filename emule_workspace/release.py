@@ -24,7 +24,12 @@ from .build import (
 )
 from .artifact_names import utc_run_id
 from .build_state import BuildSession
-from .config import AmutorrentPackageOptions, ReleasePackageOptions, WorkspaceOptions
+from .config import (
+    AmutorrentPackageOptions,
+    QbittorrentbbPackageOptions,
+    ReleasePackageOptions,
+    WorkspaceOptions,
+)
 from .git import git_output, repo_branch, repo_head, repo_status_lines
 from .layout import AppVariant, WorkspaceLayout
 from .msbuild import env_override, invoke_msbuild_project
@@ -268,6 +273,182 @@ def create_amutorrent_package(
     print(f"aMuTorrent manifest: {manifest_path}")
     print(f"aMuTorrent SBOM: {sbom_path}")
     print(f"SHA256: {zip_hash}")
+
+
+def create_qbittorrentbb_package(
+    layout: WorkspaceLayout,
+    workspace_options: WorkspaceOptions,
+    package_options: QbittorrentbbPackageOptions,
+) -> None:
+    """Packages the static qBittorrentBB single-exe into a ZIP plus manifest and SBOM.
+
+    Consumes the self-contained qbittorrent.exe produced by
+    `build qbittorrentbb-ci --static` (under the output build root) and the
+    qbittorrentbb / emulebb-libtorrent fork checkouts (env-overridable, so this
+    runs on CI without a materialized workspace). Artifacts are always unsigned.
+    """
+
+    if workspace_options.configuration != "Release":
+        raise RuntimeError("package qbittorrentbb requires --config Release.")
+    if not re.fullmatch(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.\-]+)?", package_options.release_version):
+        raise RuntimeError(
+            "qBittorrentBB package version must be MAJOR.MINOR.PATCH[-suffix]: "
+            f"{package_options.release_version}"
+        )
+
+    asset_arch = "arm64" if workspace_options.platform == "ARM64" else "x64"
+    exe_source = (
+        layout.output_build_root / "qbittorrentbb" / workspace_options.configuration / "qbittorrent.exe"
+    )
+    if not exe_source.is_file():
+        raise RuntimeError(
+            f"Static qbittorrent.exe not found: {exe_source}. "
+            "Run build qbittorrentbb-ci --static first."
+        )
+
+    qbt_env = os.environ.get("EMULEBB_QBT_REPO", "").strip()
+    lt_env = os.environ.get("EMULEBB_LIBTORRENT_REPO", "").strip()
+    qbt_root = Path(qbt_env) if qbt_env else layout.resolve_workspace_path("repos/qbittorrentbb")
+    lt_root = Path(lt_env) if lt_env else layout.resolve_workspace_path("repos/third_party/emulebb-libtorrent")
+
+    version = package_options.release_version
+    release_root = layout.output_release_root / f"qbittorrentbb-{version}"
+    staging_root = release_root / "staging" / f"qbittorrentbb-{asset_arch}"
+    package_root = staging_root / "qBittorrentBB"
+    zip_path = release_root / f"qbittorrentbb-{version}-{asset_arch}.zip"
+    manifest_path = release_root / f"qbittorrentbb-{version}-{asset_arch}.manifest.json"
+    sbom_path = release_root / f"qbittorrentbb-{version}-{asset_arch}.sbom.spdx.json"
+    for path_to_check in (staging_root, package_root, zip_path, manifest_path, sbom_path):
+        _assert_path_under_root(path_to_check, release_root, "qBittorrentBB package path")
+
+    if package_options.clean and release_root.exists():
+        shutil.rmtree(release_root)
+    if staging_root.exists():
+        shutil.rmtree(staging_root)
+    package_root.mkdir(parents=True, exist_ok=True)
+
+    shutil.copy2(exe_source, package_root / "qbittorrent.exe")
+    license_source = _qbittorrentbb_license(qbt_root)
+    if license_source is not None:
+        _copy_package_file(license_source, package_root, Path("COPYING.txt"))
+    _write_qbittorrentbb_readme(package_root, version, asset_arch)
+    _write_qbittorrentbb_sbom(
+        workspace_options=workspace_options,
+        qbt_root=qbt_root,
+        lt_root=lt_root,
+        package_root=package_root,
+        release_root=release_root,
+        asset_name=zip_path.name,
+        version=version,
+    )
+
+    if zip_path.exists():
+        zip_path.unlink()
+    release_root.mkdir(parents=True, exist_ok=True)
+    _write_zip(staging_root, package_root, zip_path)
+
+    zip_hash = _sha256(zip_path)
+    exe_hash = _sha256(package_root / "qbittorrent.exe")
+    package_file_hashes = _zip_entry_hashes(zip_path)
+    shutil.copy2(package_root / "SBOM.spdx.json", sbom_path)
+    sbom_hash = _sha256(sbom_path)
+    manifest = {
+        "schema": "emulebb.qbittorrentbb.package/1",
+        "name": f"qbittorrentbb-{version}-{asset_arch}",
+        "version": version,
+        "platform": workspace_options.platform,
+        "configuration": workspace_options.configuration,
+        "signed": False,
+        "linkage": "static (vcpkg x64-windows-static, single exe)",
+        "builtUtc": datetime.now(timezone.utc).isoformat(),
+        "asset": zip_path.name,
+        "sha256": zip_hash,
+        "executable": "qBittorrentBB/qbittorrent.exe",
+        "executableSha256": exe_hash,
+        "sbom": sbom_path.name,
+        "sbomSha256": sbom_hash,
+        "perFileSha256": package_file_hashes,
+        "source": {
+            "qbittorrentbb": _package_repo_provenance(qbt_root),
+            "emulebbLibtorrent": _package_repo_provenance(lt_root),
+        },
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8", newline="\n")
+    print(f"qBittorrentBB package: {zip_path}")
+    print(f"qBittorrentBB manifest: {manifest_path}")
+    print(f"qBittorrentBB SBOM: {sbom_path}")
+    print(f"SHA256: {zip_hash}")
+
+
+def _qbittorrentbb_license(qbt_root: Path) -> Path | None:
+    """Returns the qBittorrentBB license file, if present in the fork checkout."""
+
+    for candidate in ("COPYING", "LICENSE", "LICENSE.txt"):
+        path = qbt_root / candidate
+        if path.is_file():
+            return path
+    return None
+
+
+def _package_repo_provenance(repo_path: Path) -> dict[str, str]:
+    """Returns compact git provenance (commit, branch, remote) for a fork checkout."""
+
+    try:
+        branch = repo_branch(repo_path)
+    except Exception:
+        branch = ""
+    return {
+        "commit": _git_value(repo_path, "rev-parse", "HEAD"),
+        "branch": branch,
+        "remote": _git_value(repo_path, "config", "--get", "remote.origin.url"),
+    }
+
+
+def _write_qbittorrentbb_readme(package_root: Path, version: str, asset_arch: str) -> None:
+    """Writes a short README into the staged qBittorrentBB package."""
+
+    readme = (
+        f"qBittorrentBB {version} ({asset_arch})\n"
+        f"{'=' * 40}\n\n"
+        "Statically linked single-executable build (vcpkg x64-windows-static,\n"
+        "Qt6 and engine dependencies linked in). No accompanying DLLs are required.\n\n"
+        "This artifact is unsigned. Verify integrity with the SHA-256 recorded in\n"
+        "the accompanying .manifest.json before running.\n\n"
+        "qBittorrentBB is a fork of qBittorrent. See COPYING.txt for license terms.\n"
+    )
+    (package_root / "README.txt").write_text(readme, encoding="utf-8", newline="\n")
+
+
+def _write_qbittorrentbb_sbom(
+    *,
+    workspace_options: WorkspaceOptions,
+    qbt_root: Path,
+    lt_root: Path,
+    package_root: Path,
+    release_root: Path,
+    asset_name: str,
+    version: str,
+) -> None:
+    """Writes a package-local SPDX SBOM for the static qBittorrentBB asset."""
+
+    sbom_path = package_root / "SBOM.spdx.json"
+    _assert_path_under_root(sbom_path, package_root, "qBittorrentBB package SBOM")
+    components = [
+        _repo_spdx_package("qBittorrentBB source", qbt_root, declared_license="GPL-2.0-or-later"),
+        _repo_spdx_package("emulebb-libtorrent engine", lt_root, declared_license="BSD-3-Clause"),
+    ]
+    document = _build_spdx_sbom(
+        name=f"qBittorrentBB {version} {workspace_options.platform} static package",
+        namespace=f"https://github.com/emulebb/qbittorrentbb/releases/download/v{version}/{asset_name}.sbom",
+        package_name=f"qbittorrentbb-{version}-{workspace_options.platform}",
+        package_version=version,
+        package_license="GPL-2.0-or-later",
+        package_comment="Statically linked single-exe qBittorrentBB package (unsigned).",
+        package_root=package_root,
+        release_root=release_root,
+        components=components,
+    )
+    sbom_path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8", newline="\n")
 
 
 def create_release_package(

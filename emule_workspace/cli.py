@@ -38,6 +38,7 @@ from .config import (
     LocalHammerCampaignOptions,
     LocalPackageInstallOptions,
     MiniupnpcPackageOptions,
+    QbittorrentbbPackageOptions,
     PythonTestOptions,
     ReleasePackageOptions,
     ReleaseCampaignOptions,
@@ -65,7 +66,7 @@ from .product_family import (
 )
 from .process import get_python_invocation, run_native
 from .python_tests import invoke_python_tests
-from .release import create_amutorrent_package, create_release_package
+from .release import create_amutorrent_package, create_qbittorrentbb_package, create_release_package
 from .release_campaign_runner import invoke_release_campaign
 from .setup_commands import run_compare, write_dependency_update_report, write_materialization_status
 from .status import write_dependency_status, write_workspace_repo_status, write_workspace_summary
@@ -1699,6 +1700,38 @@ def package_miniupnpc(
         "package miniupnpc",
         lambda **kwargs: create_miniupnpc_package(kwargs["layout"], kwargs["workspace_options"], package_options),
     )(workspace_options=workspace_options, layout=layout)
+
+
+@main.command("package-qbittorrentbb")
+@click.option("--clean", is_flag=True, help="Remove the prior release root for this version before staging.")
+@click.option("--release-version", default="0.0.0-dev", show_default=True, help="Package version: MAJOR.MINOR.PATCH[-suffix].")
+@click.option("--platform", type=click.Choice(["x64", "ARM64"]), default="x64", show_default=True)
+def package_qbittorrentbb(*, clean: bool, release_version: str, platform: str) -> None:
+    """Package the static qbittorrent.exe (ZIP + manifest + SBOM, unsigned).
+
+    Consumes the single-exe produced by `build qbittorrentbb-ci --static` under
+    EMULEBB_WORKSPACE_OUTPUT_ROOT and the fork checkouts referenced by
+    EMULEBB_QBT_REPO / EMULEBB_LIBTORRENT_REPO, so it runs on CI without a
+    materialized workspace.
+    """
+
+    output_root_value = os.environ.get(WORKSPACE_OUTPUT_ROOT_ENV, "").strip()
+    if not output_root_value:
+        raise click.ClickException(f"{WORKSPACE_OUTPUT_ROOT_ENV} is required.")
+
+    layout = build_ci_layout(output_root=Path(output_root_value))
+    options = WorkspaceOptions(
+        workspace_root=layout.workspace_root,
+        output_root=layout.output_root,
+        workspace_name="ci",
+        configuration="Release",
+        platform=platform,
+    )
+    package_options = QbittorrentbbPackageOptions(release_version=release_version, clean=clean)
+    try:
+        create_qbittorrentbb_package(layout, options, package_options)
+    except Exception as exc:
+        raise click.ClickException(str(exc)) from exc
 
 
 @main.command("install-local-package")

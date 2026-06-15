@@ -421,6 +421,15 @@ class MiniupnpcPackageOptions(BaseModel):
     clean: bool = False
 
 
+class QbittorrentbbPackageOptions(BaseModel):
+    """Options for packaging the static qBittorrentBB single-exe artifact."""
+
+    model_config = ConfigDict(frozen=True)
+
+    release_version: str = "0.0.0-dev"
+    clean: bool = False
+
+
 class LocalPackageInstallOptions(BaseModel):
     """Options for refreshing a local package-style install."""
 
