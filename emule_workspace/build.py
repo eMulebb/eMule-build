@@ -374,13 +374,23 @@ def _qbt_cmake_step(session: BuildSession, args: list[str], *, log_name: str, st
         raise
 
 
-def build_qbittorrentbb_client(session: BuildSession, *, clean: bool, static: bool) -> None:
+def build_qbittorrentbb_client(session: BuildSession, *, clean: bool, static: bool, stage: str = "all") -> None:
     """Builds qBittorrentBB and its emulebb-libtorrent engine under the output root.
 
     ``static`` selects a fully self-contained build (vcpkg x64-windows-static incl.
     Qt6, static MSVC runtime, static libtorrent) producing a single qbittorrent.exe
     like upstream qBittorrent; otherwise a dynamic dev build (aqt Qt + libtorrent DLL).
+
+    ``stage`` selects which half to build: ``"libtorrent"`` (engine only),
+    ``"qbittorrent"`` (app only, reusing a previously installed engine) or ``"all"``.
+    Splitting lets CI build the engine -- which needs only boost/openssl/zlib -- and
+    surface its errors before installing Qt, instead of waiting for the slow Qt build.
     """
+
+    if stage not in ("all", "libtorrent", "qbittorrent"):
+        raise RuntimeError(f"Unsupported build stage: {stage}")
+    build_lt = stage in ("all", "libtorrent")
+    build_qb = stage in ("all", "qbittorrent")
 
     layout = session.layout
     # Repo roots are env-overridable so CI (fresh checkouts) and the source tree
@@ -413,8 +423,9 @@ def build_qbittorrentbb_client(session: BuildSession, *, clean: bool, static: bo
     lt_build = layout.output_third_party_build_root / "emulebb-libtorrent"
     deps_prefix = layout.output_third_party_build_root / "deps" / "libtorrent"
     qb_build = layout.output_build_root / "qbittorrentbb"
-    if clean:
+    if clean and build_lt:
         remove_tree_if_present(lt_build)
+    if clean and build_qb:
         remove_tree_if_present(qb_build)
     lt_build.mkdir(parents=True, exist_ok=True)
     qb_build.mkdir(parents=True, exist_ok=True)
@@ -428,47 +439,55 @@ def build_qbittorrentbb_client(session: BuildSession, *, clean: bool, static: bo
     ]
 
     # --- emulebb-libtorrent: configure, build, install to the deps prefix ---
-    _qbt_cmake_step(
-        session,
-        [cmake_path, "-S", str(lt_root), "-B", str(lt_build), *common,
-         f"-DBUILD_SHARED_LIBS={'OFF' if static else 'ON'}"],
-        log_name=f"qbt-libtorrent-configure-{suffix}.log",
-        step_name="CLIENT qBittorrentBB libtorrent configure",
-    )
-    _qbt_cmake_step(
-        session,
-        [cmake_path, "--build", str(lt_build), "--config", config, "--parallel"],
-        log_name=f"qbt-libtorrent-build-{suffix}.log",
-        step_name="CLIENT qBittorrentBB libtorrent build",
-    )
-    _qbt_cmake_step(
-        session,
-        [cmake_path, "--install", str(lt_build), "--config", config, "--prefix", str(deps_prefix)],
-        log_name=f"qbt-libtorrent-install-{suffix}.log",
-        step_name="CLIENT qBittorrentBB libtorrent install",
-    )
+    # Needs only boost/openssl/zlib (not Qt), so CI can run this stage first.
+    if build_lt:
+        _qbt_cmake_step(
+            session,
+            [cmake_path, "-S", str(lt_root), "-B", str(lt_build), *common,
+             f"-DBUILD_SHARED_LIBS={'OFF' if static else 'ON'}"],
+            log_name=f"qbt-libtorrent-configure-{suffix}.log",
+            step_name="CLIENT qBittorrentBB libtorrent configure",
+        )
+        _qbt_cmake_step(
+            session,
+            [cmake_path, "--build", str(lt_build), "--config", config, "--parallel"],
+            log_name=f"qbt-libtorrent-build-{suffix}.log",
+            step_name="CLIENT qBittorrentBB libtorrent build",
+        )
+        _qbt_cmake_step(
+            session,
+            [cmake_path, "--install", str(lt_build), "--config", config, "--prefix", str(deps_prefix)],
+            log_name=f"qbt-libtorrent-install-{suffix}.log",
+            step_name="CLIENT qBittorrentBB libtorrent install",
+        )
 
     # --- qbittorrentbb: configure, build (static gets Qt6 from vcpkg) ---
-    prefix_path = [str(deps_prefix)]
-    if not static:
-        prefix_path.insert(0, _qbt_qt_prefix())
-    _qbt_cmake_step(
-        session,
-        [cmake_path, "-S", str(qb_root), "-B", str(qb_build), *common,
-         f"-DCMAKE_PREFIX_PATH={';'.join(prefix_path)}"],
-        log_name=f"qbt-configure-{suffix}.log",
-        step_name="CLIENT qBittorrentBB configure",
-    )
-    _qbt_cmake_step(
-        session,
-        [cmake_path, "--build", str(qb_build), "--config", config, "--parallel"],
-        log_name=f"qbt-build-{suffix}.log",
-        step_name="CLIENT qBittorrentBB build",
-    )
+    if build_qb:
+        if not deps_prefix.is_dir():
+            raise RuntimeError(
+                f"libtorrent install prefix not found: {deps_prefix}. "
+                "Run the 'libtorrent' stage (or 'all') first."
+            )
+        prefix_path = [str(deps_prefix)]
+        if not static:
+            prefix_path.insert(0, _qbt_qt_prefix())
+        _qbt_cmake_step(
+            session,
+            [cmake_path, "-S", str(qb_root), "-B", str(qb_build), *common,
+             f"-DCMAKE_PREFIX_PATH={';'.join(prefix_path)}"],
+            log_name=f"qbt-configure-{suffix}.log",
+            step_name="CLIENT qBittorrentBB configure",
+        )
+        _qbt_cmake_step(
+            session,
+            [cmake_path, "--build", str(qb_build), "--config", config, "--parallel"],
+            log_name=f"qbt-build-{suffix}.log",
+            step_name="CLIENT qBittorrentBB build",
+        )
 
-    exe = qb_build / config / "qbittorrent.exe"
-    if not exe.is_file():
-        raise RuntimeError(f"qbittorrentbb build did not produce qbittorrent.exe: {exe}")
+        exe = qb_build / config / "qbittorrent.exe"
+        if not exe.is_file():
+            raise RuntimeError(f"qbittorrentbb build did not produce qbittorrent.exe: {exe}")
 
 
 def staged_emulebb_rust_root(layout: WorkspaceLayout) -> Path:

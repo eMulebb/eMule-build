@@ -772,9 +772,10 @@ def build_clients(
 @build.command("qbittorrentbb-ci")
 @click.option("--clean", is_flag=True, help="Clean qbittorrentbb/libtorrent build trees before building.")
 @click.option("--static/--dynamic", default=True, show_default=True, help="Static single-exe build (vcpkg x64-windows-static incl. Qt6) vs dynamic dev build.")
+@click.option("--stage", type=click.Choice(["all", "libtorrent", "qbittorrent"]), default="all", show_default=True, help="Build only the engine, only the app (reusing the installed engine), or both.")
 @click.option("--config", "configuration", type=click.Choice(["Debug", "Release"]), default="Release", show_default=True)
 @click.option("--platform", type=click.Choice(["x64", "ARM64"]), default="x64", show_default=True)
-def build_qbittorrentbb_ci(*, clean: bool, static: bool, configuration: str, platform: str) -> None:
+def build_qbittorrentbb_ci(*, clean: bool, static: bool, stage: str, configuration: str, platform: str) -> None:
     """Build qBittorrentBB on CI from fork checkouts, without a materialized workspace.
 
     Reads the fork roots from EMULEBB_QBT_REPO / EMULEBB_LIBTORRENT_REPO and the
@@ -796,7 +797,7 @@ def build_qbittorrentbb_ci(*, clean: bool, static: bool, configuration: str, pla
     )
     session = BuildSession(layout=layout, options=options, command_name="build qbittorrentbb-ci", clean=clean)
     try:
-        invoke_build_qbittorrentbb_client(session, clean=clean, static=static)
+        invoke_build_qbittorrentbb_client(session, clean=clean, static=static, stage=stage)
     finally:
         session.write_recap()
 
