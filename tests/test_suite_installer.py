@@ -1842,6 +1842,25 @@ def test_suite_manifest_declares_qbittorrentbb_p2p_client() -> None:
     assert "$script:P2pClientMetadata = $manifest.P2pClients" in installer
 
 
+def test_suite_installer_acquires_selected_p2p_clients() -> None:
+    installer = INSTALLER.read_text(encoding="utf-8")
+
+    # Acquisition + selection helpers exist.
+    assert "function Install-P2pClient" in installer
+    assert "function Get-SelectedP2pClientNames" in installer
+
+    # Verified, named-root extraction into apps\<Root>, mirroring the Arr path.
+    assert "Assert-FileHash -Path $archivePath -ExpectedSha256 $spec.Sha256" in installer
+    assert "Install-VerifiedReleaseZip -Name $packageRoot" in installer
+
+    # Unpinned clients refuse to install with a clear, actionable message.
+    assert "has no pinned release yet" in installer
+
+    # Wired into the main install flow, gated on selection (inert until activated).
+    assert "Get-SelectedP2pClientNames -Config $script:SuiteConfig" in installer
+    assert "Install-P2pClient -Name $name -Meta $script:P2pClientMetadata[$name]" in installer
+
+
 def test_suite_initializer_applies_arr_content_language_profiles() -> None:
     script_path = Path("emule_workspace/release_assets/emulebb/scripts/Initialize-Suite.ps1")
     _assert_powershell_parse(Path.cwd() / script_path, cwd=Path.cwd())

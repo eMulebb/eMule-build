@@ -1022,6 +1022,11 @@ function Get-SelectedMediaArrAppNames {
     return @((Get-SelectedArrAppNames -Config $Config) | Where-Object { $_ -ne 'prowlarr' })
 }
 
+function Get-SelectedP2pClientNames {
+    param([hashtable]$Config)
+    return @((Get-SuiteServiceNames -Config $Config) | Where-Object { $AllP2pClientNames -contains $_ })
+}
+
 function Get-ServiceDisplayName {
     param([string]$ServiceName)
     switch ($ServiceName) {
@@ -2318,6 +2323,48 @@ function Install-ArrDependency {
     Write-Step "$Name installed"
 }
 
+function Install-P2pClient {
+    param([string]$Name, [hashtable]$Meta)
+    if ($script:SuiteConfig.platform -ne 'x64') {
+        throw "P2P clients are x64-only in v1."
+    }
+    $display = if ([string]::IsNullOrWhiteSpace([string]$Meta.DisplayName)) { $Name } else { [string]$Meta.DisplayName }
+    $spec = $Meta.Dependency
+    if ($null -eq $spec) {
+        throw "$display has no dependency spec in config\suite-apps.json."
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$spec.Sha256)) {
+        throw "$display has no pinned release yet. Cut a $display release, then set its sha256 (and optionally url/tag) under p2pClients in config\suite-apps.json before enabling it."
+    }
+    $tag = if ($script:SuiteConfig.dependencyChannel -eq 'Latest') { 'latest' } else { [string]$spec.Tag }
+    $assetUrl = [string]$spec.Url
+    $assetName = $null
+    if ($DryRun -and [string]::IsNullOrWhiteSpace($assetUrl)) {
+        Write-Step "Would resolve $display from $($spec.Repo) $tag using pattern $($spec.Pattern)"
+        return
+    }
+    if ([string]::IsNullOrWhiteSpace($assetUrl)) {
+        $asset = Get-GithubReleaseAsset -Repo $spec.Repo -Tag $tag -Pattern $spec.Pattern
+        $assetName = [string]$asset.name
+        $assetUrl = [string]$asset.browser_download_url
+    } else {
+        $assetName = [IO.Path]::GetFileName($assetUrl)
+    }
+    $archivePath = Join-Path (Join-Path $script:Root 'downloads-cache') $assetName
+    if (-not (Restore-DependencyCache -Kind 'p2p' -Name "$display package" -AssetName $assetName -ExpectedSha256 $spec.Sha256 -Destination $archivePath)) {
+        Write-Step "Downloading $display package $assetName"
+        Invoke-Download -Url $assetUrl -Destination $archivePath
+        Write-Step "Verifying $display package"
+        Assert-FileHash -Path $archivePath -ExpectedSha256 $spec.Sha256
+        Save-DependencyCache -Kind 'p2p' -Name "$display package" -AssetName $assetName -ExpectedSha256 $spec.Sha256 -Source $archivePath
+    }
+    # The release ZIP has a single top-level folder (the package root, e.g.
+    # qBittorrentBB); reuse the named-root extractor so it lands at apps\<Root>.
+    $destination = if ([string]::IsNullOrWhiteSpace([string]$Meta.Destination)) { "apps\$Name" } else { [string]$Meta.Destination }
+    $packageRoot = [IO.Path]::GetFileName($destination.TrimEnd('\'))
+    Install-VerifiedReleaseZip -Name $packageRoot -ArchivePath $archivePath -Destination (Join-Path $script:Root 'apps')
+}
+
 function Find-InstalledToolPath {
     param([string]$Root, [string]$Executable)
     if ($DryRun) {
@@ -3346,6 +3393,10 @@ if (@(Get-SelectedArrAppNames -Config $script:SuiteConfig).Count -gt 0) {
     foreach ($name in $selectedArrDependencies) {
         Install-ArrDependency -Name $name -Spec $dependencies[$name] -Channel $script:SuiteConfig.dependencyChannel
     }
+}
+
+foreach ($name in @(Get-SelectedP2pClientNames -Config $script:SuiteConfig)) {
+    Install-P2pClient -Name $name -Meta $script:P2pClientMetadata[$name]
 }
 
 Install-OptionalMediaTools -Config $script:SuiteConfig -DependencyManifestPayload $dependencyManifestPayload
