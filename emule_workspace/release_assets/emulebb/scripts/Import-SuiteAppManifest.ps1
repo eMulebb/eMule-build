@@ -143,9 +143,34 @@ function ConvertTo-SuiteAppManifest {
         }
     }
 
+    $p2pClientNames = @()
+    $p2pClients = @{}
+    if ($null -ne $Payload.PSObject.Properties['p2pClients']) {
+        foreach ($entry in @($Payload.p2pClients)) {
+            $keyProperty = $entry.PSObject.Properties['key']
+            if ($null -eq $keyProperty) {
+                continue
+            }
+            $key = ([string]$keyProperty.Value).ToLowerInvariant()
+            if ([string]::IsNullOrWhiteSpace($key)) {
+                continue
+            }
+            $p2pClientNames += $key
+            $p2pClients[$key] = @{
+                DisplayName = [string]$entry.displayName
+                Exe = [string]$entry.exe
+                Destination = [string]$entry.destination
+                ConfigRelativePath = if ($null -ne $entry.PSObject.Properties['configRelativePath']) { [string]$entry.configRelativePath } else { '' }
+                Dependency = if ($null -ne $entry.PSObject.Properties['dependency']) { ConvertTo-SuiteDependencySpec -Dependency $entry.dependency } else { $null }
+            }
+        }
+    }
+
     return [ordered]@{
         AllArrAppNames = $arrNames
         ArrAppMetadata = $arrMetadata
+        AllP2pClientNames = $p2pClientNames
+        P2pClients = $p2pClients
         PinnedDependencies = $dependencyPins
         ArrIndexerCategories = $indexerCategories
         MediaTools = $mediaTools

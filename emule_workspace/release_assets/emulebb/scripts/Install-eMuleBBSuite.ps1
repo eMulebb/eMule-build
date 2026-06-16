@@ -120,6 +120,29 @@ $ControllerServiceNames = @('emulebb', 'amutorrent')
 $DefaultArrAppNames = @('prowlarr', 'radarr', 'sonarr', 'lidarr')
 $AllArrAppNames = @('prowlarr', 'radarr', 'sonarr', 'lidarr', 'whisparr')
 $SuiteServiceOrder = @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr', 'lidarr', 'whisparr')
+# P2P clients are suite components acquired from their own GitHub release (not Arr
+# apps and not part of the Arr taxonomy). qBittorrentBB ships as a folder build
+# whose release ZIP has a top-level 'qBittorrentBB' directory. The dependency is
+# left unpinned (empty Sha256/Url) until the first qBittorrentBB release is cut;
+# acquisition refuses to run while it is unpinned, and the client is not yet part
+# of $SuiteServiceOrder, so it is inert until explicitly activated.
+$AllP2pClientNames = @('qbittorrentbb')
+$P2pClientMetadata = @{
+    qbittorrentbb = @{
+        DisplayName = 'qBittorrentBB'
+        Exe = 'qbittorrent.exe'
+        Destination = 'apps\qBittorrentBB'
+        ConfigRelativePath = 'profile\qBittorrent\config\qBittorrent.ini'
+        Dependency = @{
+            Repo = 'emulebb/qbittorrentbb'
+            Tag = 'latest'
+            Pattern = 'qbittorrentbb-.*-x64\.zip$'
+            Exe = 'qbittorrent.exe'
+            Url = ''
+            Sha256 = ''
+        }
+    }
+}
 $FallbackLanguageOptions = @{
     english = @{
         DisplayName = 'English'
@@ -785,6 +808,8 @@ function Initialize-SuiteAppMetadata {
     if (@($manifest.ControllerServiceNames).Count -gt 0) { $script:ControllerServiceNames = $manifest.ControllerServiceNames }
     if (@($manifest.DefaultArrAppNames).Count -gt 0) { $script:DefaultArrAppNames = $manifest.DefaultArrAppNames }
     if (@($manifest.SuiteServiceOrder).Count -gt 0) { $script:SuiteServiceOrder = $manifest.SuiteServiceOrder }
+    if (@($manifest.AllP2pClientNames).Count -gt 0) { $script:AllP2pClientNames = $manifest.AllP2pClientNames }
+    if ($manifest.P2pClients.Count -gt 0) { $script:P2pClientMetadata = $manifest.P2pClients }
     if (-not [string]::IsNullOrWhiteSpace([string]$manifest.NodeVersion)) { $script:NodeVersion = [string]$manifest.NodeVersion }
     if ($null -ne $manifest.MinimumNodeMajor) { $script:MinimumNodeMajor = [int]$manifest.MinimumNodeMajor }
     if ($manifest.NodeArchives.Count -gt 0) { $script:NodeArchives = $manifest.NodeArchives }
