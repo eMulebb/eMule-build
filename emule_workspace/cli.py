@@ -1210,7 +1210,7 @@ def test_release_campaign(
 
 @test.command("certification")
 @_common_options
-@click.option("--profile", type=click.Choice(["fast", "overnight"]), default="fast", show_default=True)
+@click.option("--profile", type=click.Choice(["quick", "fast", "overnight"]), default="fast", show_default=True)
 @click.option("--test-network", type=click.Choice(["default", "offline", "lan", "vpn", "all"]), default="default", show_default=True)
 @click.option("--live-wire-inputs-file", default=None, help="Runtime live-wire search/download input JSON.")
 @click.option("--radarr-movie-root", default=None, help="Radarr-visible movie root for Radarr import live checks.")

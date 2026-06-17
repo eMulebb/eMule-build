@@ -59,6 +59,15 @@ class CertificationStepResult:
     report_paths: tuple[Path, ...] = ()
 
 
+QUICK_STEP_PLAN = (
+    CertificationStepPlan("validate", "static"),
+    CertificationStepPlan("build-app-debug-x64", "build"),
+    CertificationStepPlan("build-tests-debug-x64", "build"),
+    CertificationStepPlan("python-harness", "static"),
+    CertificationStepPlan("test-all-debug-x64", "native"),
+    CertificationStepPlan("live-fast-ui-rest", "live"),
+)
+
 FAST_STEP_PLAN = (
     CertificationStepPlan("validate", "static"),
     CertificationStepPlan("build-app-debug-x64", "build"),
@@ -88,6 +97,8 @@ OVERNIGHT_EXTRA_STEP_PLAN = (
 def get_certification_step_plan(profile: str) -> tuple[CertificationStepPlan, ...]:
     """Returns the ordered certification matrix for one profile."""
 
+    if profile == "quick":
+        return QUICK_STEP_PLAN
     if profile == "fast":
         return FAST_STEP_PLAN
     if profile == "overnight":
@@ -245,10 +256,18 @@ def _invoke_step(
         invoke_python_tests(layout, PythonTestOptions(quiet=True))
         return
     if name == "test-all-debug-x64":
-        invoke_test_runs(layout, _step_options(options, configuration="Debug", platform="x64"))
+        invoke_test_runs(
+            layout,
+            _step_options(options, configuration="Debug", platform="x64"),
+            coverage=certification_options.profile != "quick",
+        )
         return
     if name == "test-all-release-x64":
-        invoke_test_runs(layout, _step_options(options, configuration="Release", platform="x64"))
+        invoke_test_runs(
+            layout,
+            _step_options(options, configuration="Release", platform="x64"),
+            coverage=certification_options.profile != "quick",
+        )
         return
     if name == "protocol-parity":
         invoke_protocol_parity(layout, _step_options(options, configuration="Release", platform="x64"), VariantComparisonOptions())

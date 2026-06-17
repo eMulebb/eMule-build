@@ -40,7 +40,7 @@ LiveE2eProfile = Literal[
     "ui-resource-depth",
     "diagnostics-soak",
 ]
-CertificationProfile = Literal["fast", "overnight"]
+CertificationProfile = Literal["quick", "fast", "overnight"]
 BROAD_LIVE_E2E_PRE_RUN_CLEANUP_PROFILES: tuple[LiveE2eProfile, ...] = (
     "controller-surface",
     "installer-controller-surface",

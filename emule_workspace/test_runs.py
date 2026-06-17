@@ -106,38 +106,44 @@ INSTALLER_BACKED_LIVE_E2E_PROFILES = frozenset(
 )
 
 
-def invoke_test_runs(layout: WorkspaceLayout, options: WorkspaceOptions) -> None:
-    """Runs native parity/web_api suites, coverage, and live-diff."""
+def invoke_test_runs(layout: WorkspaceLayout, options: WorkspaceOptions, *, coverage: bool = True) -> None:
+    """Runs native parity/web_api suites, optional coverage, and live-diff.
+
+    The coverage pass re-executes the native suites under instrumentation, so it
+    doubles native runtime. Pass ``coverage=False`` for the lean quick tier where
+    coverage reporting is not needed; release-gating tiers keep it on.
+    """
 
     invoke_native_test_suites(layout, options, None, ("parity", "protocol-parity", "web_api"))
 
-    python = get_python_invocation()
-    test_run_variant = layout.test_targets.test_run_variant
-    app_root = layout.get_app_variant(test_run_variant).path
-    run_native(
-        python.command(
-            [
-                layout.tests_repo_root / "scripts" / "run-native-coverage.py",
-                "--test-repo-root",
-                layout.tests_repo_root,
-                "--app-root",
-                app_root,
-                "--configuration",
-                options.configuration,
-                "--platform",
-                options.platform,
-                "--suite-name",
-                "parity",
-                "--suite-name",
-                "protocol-parity",
-                "--suite-name",
-                "web_api",
-            ]
-        ),
-        label="native coverage",
-        cwd=layout.emule_workspace_root,
-        env=_workspace_env(layout),
-    )
+    if coverage:
+        python = get_python_invocation()
+        test_run_variant = layout.test_targets.test_run_variant
+        app_root = layout.get_app_variant(test_run_variant).path
+        run_native(
+            python.command(
+                [
+                    layout.tests_repo_root / "scripts" / "run-native-coverage.py",
+                    "--test-repo-root",
+                    layout.tests_repo_root,
+                    "--app-root",
+                    app_root,
+                    "--configuration",
+                    options.configuration,
+                    "--platform",
+                    options.platform,
+                    "--suite-name",
+                    "parity",
+                    "--suite-name",
+                    "protocol-parity",
+                    "--suite-name",
+                    "web_api",
+                ]
+            ),
+            label="native coverage",
+            cwd=layout.emule_workspace_root,
+            env=_workspace_env(layout),
+        )
     invoke_live_diff_runs(layout, options, VariantComparisonOptions())
 
 

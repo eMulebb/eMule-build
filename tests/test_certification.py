@@ -76,6 +76,42 @@ def test_certification_step_plan_is_two_tier() -> None:
     assert "amutorrent-resilience" in [step.name for step in overnight]
 
 
+def test_certification_quick_tier_is_lean_subset_of_fast() -> None:
+    quick = certification.get_certification_step_plan("quick")
+    names = [step.name for step in quick]
+
+    assert names == [
+        "validate",
+        "build-app-debug-x64",
+        "build-tests-debug-x64",
+        "python-harness",
+        "test-all-debug-x64",
+        "live-fast-ui-rest",
+    ]
+    fast_names = [step.name for step in certification.get_certification_step_plan("fast")]
+    assert set(names) <= set(fast_names)
+    # The inner loop omits the release-config native pass and the ARM64 build.
+    assert "test-all-release-x64" not in names
+    assert "build-app-release-arm64" not in names
+
+
+def test_quick_profile_skips_native_coverage(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    layout = make_layout(tmp_path)
+    captured: list[bool] = []
+
+    def fake_test_runs(_layout, _options, *, coverage: bool = True) -> None:
+        captured.append(coverage)
+
+    monkeypatch.setattr(certification, "invoke_test_runs", fake_test_runs)
+    options = WorkspaceOptions(workspace_root=tmp_path, platform="x64")
+
+    certification._invoke_step(layout, options, CertificationOptions(profile="quick"), "test-all-debug-x64")
+    certification._invoke_step(layout, options, CertificationOptions(profile="fast"), "test-all-release-x64")
+
+    # Quick drops the doubling coverage re-run; the fast gate keeps it.
+    assert captured == [False, True]
+
+
 def test_certification_writes_single_passing_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     layout = make_layout(tmp_path)
     calls: list[str] = []
