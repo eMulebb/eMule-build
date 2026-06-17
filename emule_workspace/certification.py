@@ -81,9 +81,10 @@ FAST_STEP_PLAN = (
     CertificationStepPlan("live-fast-ui-rest", "live"),
 )
 
+# Stock/community parity comparisons (protocol-parity, community-core-coverage)
+# are intentionally not in any tier: eMuleBB is protocol-stable and stock-compatible,
+# so they run on demand via `test protocol-parity` / `test community-core-coverage`.
 OVERNIGHT_EXTRA_STEP_PLAN = (
-    CertificationStepPlan("protocol-parity", "protocol"),
-    CertificationStepPlan("community-core-coverage", "protocol"),
     CertificationStepPlan("live-controller-surface", "live"),
     CertificationStepPlan("live-release-expanded", "live"),
     CertificationStepPlan("live-ui-resource-depth", "live"),

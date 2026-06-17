@@ -66,8 +66,10 @@ def test_certification_step_plan_is_two_tier() -> None:
         "live-fast-ui-rest",
     ]
     assert [step.name for step in overnight[: len(fast)]] == [step.name for step in fast]
-    assert "protocol-parity" in [step.name for step in overnight]
-    assert "community-core-coverage" in [step.name for step in overnight]
+    # Stock/community parity comparisons are on-demand only (test protocol-parity /
+    # test community-core-coverage), not part of any auto-run tier.
+    assert "protocol-parity" not in [step.name for step in overnight]
+    assert "community-core-coverage" not in [step.name for step in overnight]
     assert "live-stabilization-stress" in [step.name for step in overnight]
     assert "live-release-expanded" in [step.name for step in overnight]
     assert "live-ui-resource-depth" in [step.name for step in overnight]
