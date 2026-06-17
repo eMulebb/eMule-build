@@ -43,10 +43,10 @@ TRACING_HARNESS_EXE_NAMES = ("emule.exe", APP_EXE_NAME)
 # core three (parity, protocol-parity, web_api) carry the bulk of parity/REST
 # coverage; the rest are fast, seam-driven behavior suites that were previously
 # dormant (reachable only via ``test native --suite-name``) and are wired in here
-# so they actually gate. Each was verified green and sub-100ms before inclusion.
-# Deliberately excluded: suites with failing assertions pending triage
-# (fake_file_detector, startup, divergence), performance suites (benchmark,
-# pipeline, pipeline-benchmark), and the frozen MFC UI-shortcut suites.
+# so they actually gate. Each was verified green and fast before inclusion.
+# Deliberately excluded: divergence (a 0.8.0 scheduler-removal guard that stays
+# red until the legacy removal lands), performance suites (benchmark, pipeline,
+# pipeline-benchmark), and the frozen MFC UI-shortcut suites.
 # Keep in sync with TIER_NATIVE_SUITES in emulebb-build-tests test_inventory.py.
 TEST_ALL_NATIVE_SUITES = (
     "parity",
@@ -55,6 +55,7 @@ TEST_ALL_NATIVE_SUITES = (
     "async_dns_resolve",
     "background_refresh",
     "diagnostic_snapshot",
+    "fake_file_detector",
     "kad-base",
     "known_file_hash_open",
     "packets",
@@ -66,6 +67,7 @@ TEST_ALL_NATIVE_SUITES = (
     "server_connect",
     "server_info",
     "standby_prevention",
+    "startup",
     "startup_storage",
     "version_check_launch",
     "windows_firewall_repair",
