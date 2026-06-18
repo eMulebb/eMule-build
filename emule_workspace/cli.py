@@ -746,6 +746,7 @@ def build_tests(
 @build.command("clients")
 @_common_options
 @click.option("--clean", is_flag=True, help="Clean selected client outputs before building.")
+@click.option("--diagnostics", is_flag=True, help="Build diagnostics-flavored clients when supported.")
 @click.option(
     "--client",
     "clients",
@@ -756,13 +757,14 @@ def build_tests(
 def build_clients(
     *,
     clean: bool,
+    diagnostics: bool,
     clients: tuple[str, ...],
     workspace_options: WorkspaceOptions,
     layout,
 ) -> None:
     """Build opt-in third-party P2P clients for local multi-client tests."""
 
-    build_options = BuildClientsOptions(clean=clean, clients=clients)
+    build_options = BuildClientsOptions(clean=clean, clients=clients, diagnostics=diagnostics)
     _locked(
         "build clients",
         lambda **kwargs: invoke_build_clients(kwargs["layout"], kwargs["workspace_options"], build_options),

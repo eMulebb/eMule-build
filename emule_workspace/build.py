@@ -237,7 +237,7 @@ def build_clients(layout: WorkspaceLayout, options: WorkspaceOptions, build_opti
             if client == "amule":
                 build_amule_client(session, clean=build_options.clean)
             elif client == "emulebb-rust":
-                build_emulebb_rust_client(session, clean=build_options.clean)
+                build_emulebb_rust_client(session, clean=build_options.clean, diagnostics=build_options.diagnostics)
             elif client == "qbittorrentbb":
                 # Static is opt-in (default dynamic dev build); CI sets it.
                 static = os.environ.get("EMULEBB_QBT_STATIC", "").strip().lower() in {"1", "true", "yes", "on"}
@@ -254,7 +254,7 @@ RUST_CLIENT_TARGETS = {
 }
 
 
-def build_emulebb_rust_client(session: BuildSession, *, clean: bool) -> None:
+def build_emulebb_rust_client(session: BuildSession, *, clean: bool, diagnostics: bool = False) -> None:
     """Builds and stages the headless Rust eMuleBB client under the output root."""
 
     repo_root = session.layout.emulebb_rust_repo_root
@@ -270,7 +270,8 @@ def build_emulebb_rust_client(session: BuildSession, *, clean: bool) -> None:
     if clean:
         remove_tree_if_present(staged_emulebb_rust_root(session.layout))
 
-    log_path = session.log_directory / f"client-emulebb-rust-build-release-{session.options.platform.lower()}.log"
+    flavor = "diagnostics" if diagnostics else "release"
+    log_path = session.log_directory / f"client-emulebb-rust-build-{flavor}-{session.options.platform.lower()}.log"
     command = [
         cargo_command,
         "build",
@@ -282,6 +283,8 @@ def build_emulebb_rust_client(session: BuildSession, *, clean: bool) -> None:
         "--target",
         target,
     ]
+    if diagnostics:
+        command.extend(["--features", "packet-diagnostics"])
     env = subprocess_os_environ()
     env.update({name: str(value) for name, value in session.layout.subprocess_environment().items()})
     started_at = time.monotonic()
@@ -289,6 +292,7 @@ def build_emulebb_rust_client(session: BuildSession, *, clean: bool) -> None:
         with log_path.open("w", encoding="utf-8", newline="\n") as stream:
             stream.write(f"Cargo: {cargo_path}\n")
             stream.write(f"Rust target: {target}\n")
+            stream.write(f"Diagnostics: {diagnostics}\n")
             stream.write(f"CARGO_TARGET_DIR: {env['CARGO_TARGET_DIR']}\n")
             stream.write(" ".join(shlex.quote(part) for part in command) + "\n\n")
             completed = subprocess.run(
@@ -304,7 +308,7 @@ def build_emulebb_rust_client(session: BuildSession, *, clean: bool) -> None:
             raise RuntimeError(f"eMuleBB Rust client build failed with exit code {completed.returncode}. See {log_path}")
         stage_emulebb_rust_runtime(session.layout, target)
         session.add_step(
-            name="CLIENT eMuleBB Rust",
+            name=f"CLIENT eMuleBB Rust{' diagnostics' if diagnostics else ''}",
             succeeded=True,
             log_path=log_path,
             duration_seconds=time.monotonic() - started_at,
@@ -312,7 +316,7 @@ def build_emulebb_rust_client(session: BuildSession, *, clean: bool) -> None:
         )
     except Exception:
         session.add_step(
-            name="CLIENT eMuleBB Rust",
+            name=f"CLIENT eMuleBB Rust{' diagnostics' if diagnostics else ''}",
             succeeded=False,
             log_path=log_path,
             duration_seconds=time.monotonic() - started_at,

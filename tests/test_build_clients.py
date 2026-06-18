@@ -78,14 +78,39 @@ def test_build_clients_defaults_to_amule_only(tmp_path: Path, monkeypatch: pytes
 
 
 def test_build_clients_builds_emulebb_rust_target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[bool] = []
+    calls: list[tuple[bool, bool]] = []
     layout = make_layout(tmp_path)
     options = WorkspaceOptions(workspace_root=layout.emule_workspace_root)
-    monkeypatch.setattr(build, "build_emulebb_rust_client", lambda _session, *, clean: calls.append(clean))
+    monkeypatch.setattr(
+        build,
+        "build_emulebb_rust_client",
+        lambda _session, *, clean, diagnostics=False: calls.append((clean, diagnostics)),
+    )
 
     build.build_clients(layout, options, BuildClientsOptions(clients=("emulebb-rust",), clean=True))
 
-    assert calls == [True]
+    assert calls == [(True, False)]
+
+
+def test_build_clients_passes_emulebb_rust_diagnostics_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple[bool, bool]] = []
+    layout = make_layout(tmp_path)
+    options = WorkspaceOptions(workspace_root=layout.emule_workspace_root)
+    monkeypatch.setattr(
+        build,
+        "build_emulebb_rust_client",
+        lambda _session, *, clean, diagnostics=False: calls.append((clean, diagnostics)),
+    )
+
+    build.build_clients(
+        layout,
+        options,
+        BuildClientsOptions(clients=("emulebb-rust",), clean=True, diagnostics=True),
+    )
+
+    assert calls == [(True, True)]
 
 
 def test_build_emulebb_rust_client_runs_cargo_and_stages_runtime(
@@ -134,6 +159,37 @@ def test_build_emulebb_rust_client_runs_cargo_and_stages_runtime(
     assert env["CARGO_TARGET_DIR"] == str(layout.output_rust_target_root)
     assert (layout.output_tools_root / "emulebb-rust" / "bin" / "emulebb-rust.exe").read_bytes() == b"exe"
     assert (layout.output_tools_root / "emulebb-rust" / "bin" / "emulebb-rust.pdb").read_bytes() == b"pdb"
+
+
+def test_build_emulebb_rust_client_can_enable_packet_diagnostics(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    layout = make_layout(tmp_path)
+    repo_root = layout.emulebb_rust_repo_root
+    assert repo_root is not None
+    repo_root.mkdir(parents=True)
+    cargo = tmp_path / "cargo.exe"
+    cargo.write_bytes(b"")
+    commands: list[list[str]] = []
+
+    def fake_run(command, *, cwd, stdout, stderr, text, check, env):
+        commands.append(list(command))
+        built = layout.output_rust_target_root / "x86_64-pc-windows-msvc" / "release"
+        built.mkdir(parents=True)
+        (built / "emulebb-rust.exe").write_bytes(b"exe")
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(build, "find_tool", lambda _names: cargo)
+    monkeypatch.setattr(build.subprocess, "run", fake_run)
+    session = build.BuildSession(
+        layout=layout,
+        options=WorkspaceOptions(workspace_root=layout.emule_workspace_root),
+        command_name="build clients",
+    )
+
+    build.build_emulebb_rust_client(session, clean=False, diagnostics=True)
+
+    assert commands[0][-2:] == ["--features", "packet-diagnostics"]
 
 
 def test_stage_emulebb_rust_runtime_requires_built_executable(tmp_path: Path) -> None:

@@ -88,6 +88,7 @@ class BuildClientsOptions(BaseModel):
 
     clean: bool = False
     clients: tuple[ClientBuildTarget, ...] = ()
+    diagnostics: bool = False
 
 
 class PythonTestOptions(BaseModel):
