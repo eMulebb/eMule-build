@@ -1685,7 +1685,7 @@ def package_amule(
 @click.option("--clean", is_flag=True, help="Clean selected package build outputs before building.")
 @click.option(
     "--release-version",
-    default="2.2.3-emulebb.1",
+    default="2.3.3-emulebb.1",
     show_default=True,
     help="MiniUPnP release version in MAJOR.MINOR.PATCH-emulebb.N form.",
 )

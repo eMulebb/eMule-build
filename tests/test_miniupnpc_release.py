@@ -39,7 +39,7 @@ def test_package_miniupnpc_invokes_repo_script(tmp_path: Path, monkeypatch: pyte
     miniupnpc_release.create_miniupnpc_package(
         layout,  # type: ignore[arg-type]
         WorkspaceOptions(workspace_root=tmp_path, configuration="Release", platform="x64"),
-        MiniupnpcPackageOptions(release_version="2.2.3-emulebb.1", clean=True),
+        MiniupnpcPackageOptions(release_version="2.3.3-emulebb.1", clean=True),
     )
 
     assert calls
@@ -50,7 +50,7 @@ def test_package_miniupnpc_invokes_repo_script(tmp_path: Path, monkeypatch: pyte
     assert "x64" in command
     assert "--require-clean" in command
     assert "--clean" in command
-    assert str(layout.output_release_root / "miniupnpc-v2.2.3-emulebb.1") in command
+    assert str(layout.output_release_root / "miniupnpc-v2.3.3-emulebb.1") in command
 
 
 def test_package_miniupnpc_rejects_debug_config(tmp_path: Path) -> None:

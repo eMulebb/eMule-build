@@ -418,7 +418,7 @@ class MiniupnpcPackageOptions(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    release_version: str = "2.2.3-emulebb.1"
+    release_version: str = "2.3.3-emulebb.1"
     clean: bool = False
 
 

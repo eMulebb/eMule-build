@@ -597,7 +597,7 @@ def test_package_miniupnpc_help_exposes_release_version() -> None:
 
     assert result.exit_code == 0
     assert "--release-version" in result.output
-    assert "2.2.3-emulebb.1" in result.output
+    assert "2.3.3-emulebb.1" in result.output
 
 
 def test_materialize_help_exposes_bootstrap_options() -> None:
