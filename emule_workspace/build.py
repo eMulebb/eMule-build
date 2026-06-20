@@ -23,6 +23,7 @@ from .git import repo_branch, test_app_branch_allowed
 from .layout import WorkspaceLayout, file_token
 from .msbuild import env_override, invoke_msbuild_project
 from .process import find_tool
+from .qbittorrentbb_runtime import stage_qbittorrentbb_runtime
 from .toolchain import get_cmake_path, get_dumpbin_path, get_perl_path
 
 APP_EXE_NAME = "emulebb.exe"
@@ -402,8 +403,8 @@ def build_qbittorrentbb_client(session: BuildSession, *, clean: bool, static: bo
     # workspace layout.
     qb_env = os.environ.get("EMULEBB_QBT_REPO", "").strip()
     lt_env = os.environ.get("EMULEBB_LIBTORRENT_REPO", "").strip()
-    qb_root = Path(qb_env) if qb_env else (layout.workspace_root / "repos" / "qbittorrentbb")
-    lt_root = Path(lt_env) if lt_env else (layout.workspace_root / "repos" / "third_party" / "emulebb-libtorrent")
+    qb_root = Path(qb_env) if qb_env else layout.resolve_workspace_path("repos/qbittorrentbb")
+    lt_root = Path(lt_env) if lt_env else layout.resolve_workspace_path("repos/third_party/emulebb-libtorrent")
     if not qb_root.is_dir():
         raise RuntimeError(f"qbittorrentbb repo not found: {qb_root} (set EMULEBB_QBT_REPO).")
     if not lt_root.is_dir():
@@ -501,6 +502,20 @@ def build_qbittorrentbb_client(session: BuildSession, *, clean: bool, static: bo
         exe = qb_build / config / "qbittorrent.exe"
         if not exe.is_file():
             raise RuntimeError(f"qbittorrentbb build did not produce qbittorrent.exe: {exe}")
+        if not static:
+            qt_prefix = Path(_qbt_qt_prefix())
+            stage_qbittorrentbb_runtime(
+                executable=exe,
+                target_root=exe.parent,
+                qt_prefix=qt_prefix,
+                qbt_root=qb_root,
+                search_dirs=[
+                    exe.parent,
+                    qt_prefix / "bin",
+                    deps_prefix / "bin",
+                    lt_build / config,
+                ],
+            )
 
 
 def staged_emulebb_rust_root(layout: WorkspaceLayout) -> Path:

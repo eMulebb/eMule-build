@@ -212,6 +212,99 @@ def test_build_clients_rejects_emuleai_target(tmp_path: Path) -> None:
         BuildClientsOptions(clients=("emuleai",))  # type: ignore[arg-type]
 
 
+def test_dynamic_qbittorrentbb_build_stages_runtime_folder(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    layout = make_layout(tmp_path)
+    _prepare_qbittorrentbb_build_inputs(layout, tmp_path, monkeypatch)
+    monkeypatch.setenv("EMULEBB_QT_PREFIX", str(tmp_path / "qt"))
+    staged: list[dict[str, Path | list[Path]]] = []
+
+    def fake_cmake_step(session, _command, *, log_name, step_name):
+        if step_name == "CLIENT qBittorrentBB build":
+            exe = session.layout.output_build_root / "qbittorrentbb" / session.options.configuration / "qbittorrent.exe"
+            exe.parent.mkdir(parents=True, exist_ok=True)
+            exe.write_bytes(b"exe")
+
+    def fake_stage_qbittorrentbb_runtime(**kwargs):
+        staged.append(kwargs)
+
+    monkeypatch.setattr(build, "_qbt_cmake_step", fake_cmake_step)
+    monkeypatch.setattr(build, "stage_qbittorrentbb_runtime", fake_stage_qbittorrentbb_runtime)
+    session = build.BuildSession(
+        layout=layout,
+        options=WorkspaceOptions(
+            workspace_root=layout.emule_workspace_root,
+            output_root=layout.output_root,
+            configuration="Release",
+        ),
+        command_name="build clients",
+    )
+
+    build.build_qbittorrentbb_client(session, clean=False, static=False, stage="qbittorrent")
+
+    exe = layout.output_build_root / "qbittorrentbb" / "Release" / "qbittorrent.exe"
+    assert staged == [
+        {
+            "executable": exe,
+            "target_root": exe.parent,
+            "qt_prefix": tmp_path / "qt",
+            "qbt_root": layout.resolve_workspace_path("repos/qbittorrentbb"),
+            "search_dirs": [
+                exe.parent,
+                tmp_path / "qt" / "bin",
+                layout.output_third_party_build_root / "deps" / "libtorrent" / "bin",
+                layout.output_third_party_build_root / "emulebb-libtorrent" / "Release",
+            ],
+        }
+    ]
+
+
+def test_static_qbittorrentbb_build_does_not_stage_runtime_folder(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    layout = make_layout(tmp_path)
+    _prepare_qbittorrentbb_build_inputs(layout, tmp_path, monkeypatch)
+    staged: list[dict[str, object]] = []
+
+    def fake_cmake_step(session, _command, *, log_name, step_name):
+        if step_name == "CLIENT qBittorrentBB build":
+            exe = session.layout.output_build_root / "qbittorrentbb" / session.options.configuration / "qbittorrent.exe"
+            exe.parent.mkdir(parents=True, exist_ok=True)
+            exe.write_bytes(b"exe")
+
+    monkeypatch.setattr(build, "_qbt_cmake_step", fake_cmake_step)
+    monkeypatch.setattr(build, "stage_qbittorrentbb_runtime", lambda **kwargs: staged.append(kwargs))
+    session = build.BuildSession(
+        layout=layout,
+        options=WorkspaceOptions(
+            workspace_root=layout.emule_workspace_root,
+            output_root=layout.output_root,
+            configuration="Release",
+        ),
+        command_name="build qbittorrentbb-ci",
+    )
+
+    build.build_qbittorrentbb_client(session, clean=False, static=True, stage="qbittorrent")
+
+    assert staged == []
+
+
+def _prepare_qbittorrentbb_build_inputs(
+    layout: WorkspaceLayout,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    layout.resolve_workspace_path("repos/qbittorrentbb").mkdir(parents=True)
+    layout.resolve_workspace_path("repos/third_party/emulebb-libtorrent").mkdir(parents=True)
+    (layout.output_third_party_build_root / "deps" / "libtorrent").mkdir(parents=True)
+    (tmp_path / "vcpkg.cmake").write_text("# toolchain\n", encoding="utf-8")
+    monkeypatch.setattr(build, "_qbt_vcpkg_toolchain", lambda: tmp_path / "vcpkg.cmake")
+    monkeypatch.setattr(build, "get_cmake_path", lambda: tmp_path / "cmake.exe")
+
+
 def make_layout(tmp_path: Path) -> WorkspaceLayout:
     emule_workspace_root = tmp_path / "workspace-root"
     workspace_root = emule_workspace_root / "workspaces" / "workspace"
