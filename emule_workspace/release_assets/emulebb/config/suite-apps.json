@@ -71,23 +71,7 @@
       }
     }
   ],
-  "p2pClients": [
-    {
-      "key": "qbittorrentbb",
-      "displayName": "qBittorrentBB",
-      "exe": "qbittorrent.exe",
-      "destination": "apps\\qBittorrentBB",
-      "configRelativePath": "profile\\qBittorrent\\config\\qBittorrent.ini",
-      "dependency": {
-        "repo": "emulebb/qbittorrentbb",
-        "tag": "latest",
-        "assetPattern": "qbittorrentbb-.*-x64\\.zip$",
-        "exe": "qbittorrent.exe",
-        "url": "",
-        "sha256": ""
-      }
-    }
-  ],
+  "p2pClients": [],
   "arrApps": [
     {
       "key": "prowlarr",

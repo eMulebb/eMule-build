@@ -1810,31 +1810,23 @@ def test_suite_installer_uses_packaged_suite_apps_manifest() -> None:
     assert "'suite-apps.json'" in installer
 
 
-def test_suite_manifest_declares_qbittorrentbb_p2p_client() -> None:
+def test_suite_manifest_parks_side_p2p_clients_for_rc3() -> None:
     app_manifest = Path("emule_workspace/release_assets/emulebb/config/suite-apps.json")
     manifest_helper = Path("emule_workspace/release_assets/emulebb/scripts/Import-SuiteAppManifest.ps1")
     installer = INSTALLER.read_text(encoding="utf-8")
     payload = json.loads(app_manifest.read_text(encoding="utf-8"))
     helper_text = manifest_helper.read_text(encoding="utf-8")
 
-    p2p_clients = {entry["key"]: entry for entry in payload["p2pClients"]}
-    assert set(p2p_clients) == {"qbittorrentbb"}
-    qbt = p2p_clients["qbittorrentbb"]
-    assert qbt["displayName"] == "qBittorrentBB"
-    assert qbt["exe"] == "qbittorrent.exe"
-    assert qbt["destination"] == "apps\\qBittorrentBB"
-    assert qbt["configRelativePath"] == "profile\\qBittorrent\\config\\qBittorrent.ini"
-    assert qbt["dependency"]["repo"] == "emulebb/qbittorrentbb"
-    assert qbt["dependency"]["assetPattern"].endswith("x64\\.zip$")
-    # Unpinned until the first release is cut: empty sha keeps acquisition inert.
-    assert qbt["dependency"]["sha256"] == ""
-
-    # qBittorrentBB is a P2P client, not part of the Arr taxonomy, and is not yet
-    # in the launch order (activation is deferred until a release exists to pin).
+    # qBittorrentBB is parked outside the 0.7.3 RC3/final release path. The
+    # manifest section remains for future suite expansion, but no side P2P
+    # client is selectable or launchable from this MFC+aMuTorrent bundle.
+    assert payload["p2pClients"] == []
     assert "qbittorrentbb" not in payload["suiteServiceOrder"]
     assert "qbittorrentbb" not in payload["defaultArrAppNames"]
+    assert "$AllP2pClientNames = @()" in installer
+    assert "$P2pClientMetadata = @{}" in installer
 
-    # The manifest parser and the installer surface the p2pClients section.
+    # The manifest parser and the installer still surface the p2pClients section.
     assert "p2pClients" in helper_text
     assert "AllP2pClientNames = $p2pClientNames" in helper_text
     assert "P2pClients = $p2pClients" in helper_text

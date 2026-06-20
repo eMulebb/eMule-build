@@ -120,29 +120,11 @@ $ControllerServiceNames = @('emulebb', 'amutorrent')
 $DefaultArrAppNames = @('prowlarr', 'radarr', 'sonarr', 'lidarr')
 $AllArrAppNames = @('prowlarr', 'radarr', 'sonarr', 'lidarr', 'whisparr')
 $SuiteServiceOrder = @('emulebb', 'amutorrent', 'prowlarr', 'radarr', 'sonarr', 'lidarr', 'whisparr')
-# P2P clients are suite components acquired from their own GitHub release (not Arr
-# apps and not part of the Arr taxonomy). qBittorrentBB ships as a folder build
-# whose release ZIP has a top-level 'qBittorrentBB' directory. The dependency is
-# left unpinned (empty Sha256/Url) until the first qBittorrentBB release is cut;
-# acquisition refuses to run while it is unpinned, and the client is not yet part
-# of $SuiteServiceOrder, so it is inert until explicitly activated.
-$AllP2pClientNames = @('qbittorrentbb')
-$P2pClientMetadata = @{
-    qbittorrentbb = @{
-        DisplayName = 'qBittorrentBB'
-        Exe = 'qbittorrent.exe'
-        Destination = 'apps\qBittorrentBB'
-        ConfigRelativePath = 'profile\qBittorrent\config\qBittorrent.ini'
-        Dependency = @{
-            Repo = 'emulebb/qbittorrentbb'
-            Tag = 'latest'
-            Pattern = 'qbittorrentbb-.*-x64\.zip$'
-            Exe = 'qbittorrent.exe'
-            Url = ''
-            Sha256 = ''
-        }
-    }
-}
+# P2P companion clients are parked for the 0.7.3 RC3/final release path. Keep
+# the parser/install helpers below for the future suite expansion, but ship no
+# selectable side P2P client in the MFC+aMuTorrent PowerShell bundle.
+$AllP2pClientNames = @()
+$P2pClientMetadata = @{}
 $FallbackLanguageOptions = @{
     english = @{
         DisplayName = 'English'
