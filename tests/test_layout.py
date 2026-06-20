@@ -70,6 +70,8 @@ def test_repo_role_manifest_describes_workspace_repositories() -> None:
     assert repos["emulebb-tooling"]["group"] == "workspace"
     assert repos["emulebb-rust"]["role"] == "headless-rust-client"
     assert repos["emulebb-rust"]["group"] == "product-family"
+    assert repos["qbittorrentbb"]["role"] == "bittorrent-client"
+    assert repos["qbittorrentbb"]["group"] == "product-family"
     assert repos["p2p-overlord-be"]["role"] == "p2p-overlord-suite"
     assert repos["p2p-overlord-tooling"]["role"] == "p2p-overlord-test-tooling"
     assert repos["goed2k-server"]["role"] == "local-ed2k-test-server"
@@ -78,6 +80,8 @@ def test_repo_role_manifest_describes_workspace_repositories() -> None:
     assert analysis_repos["emuleai"]["role"] == "analysis-reference"
 
     third_party_repos = {repo["name"]: repo for repo in manifest["third_party_repos"]}
+    assert third_party_repos["emulebb-libtorrent"]["role"] == "third-party-dependency"
+    assert third_party_repos["emulebb-libtorrent"]["has_submodules"] is True
     assert third_party_repos["emulebb-zlib"]["role"] == "third-party-dependency"
     assert "update_policy" in third_party_repos["emulebb-zlib"]
 

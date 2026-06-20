@@ -337,6 +337,7 @@ def _repo_role(repo: ManagedRepo) -> str:
         "emulebb-pages": "public-docs-site",
         "emulebb-org-profile": "public-org-profile",
         "emulebb-rust": "headless-rust-client",
+        "qbittorrentbb": "bittorrent-client",
         "p2p-overlord-agents": "p2p-overlord-suite",
         "p2p-overlord-be": "p2p-overlord-suite",
         "p2p-overlord-tooling": "p2p-overlord-test-tooling",
@@ -400,14 +401,6 @@ def canonical_topology() -> WorkspaceTopology:
                 relative_path="repos\\amutorrent",
                 branch="main",
                 additional_remotes=(AdditionalRemote(name="upstream", url="https://github.com/got3nks/amutorrent.git"),),
-            ),
-            ManagedRepo(
-                name="emulebb-libtorrent",
-                url="https://github.com/emulebb/emulebb-libtorrent.git",
-                relative_path="repos\\third_party\\emulebb-libtorrent",
-                branch="RC_2_0",
-                has_submodules=True,
-                additional_remotes=(AdditionalRemote(name="upstream", url="https://github.com/arvidn/libtorrent.git"),),
             ),
             ManagedRepo(
                 name="qbittorrentbb",
@@ -509,6 +502,14 @@ def canonical_topology() -> WorkspaceTopology:
             ),
         ),
         third_party_repos=(
+            ManagedRepo(
+                name="emulebb-libtorrent",
+                url="https://github.com/emulebb/emulebb-libtorrent.git",
+                relative_path="repos\\third_party\\emulebb-libtorrent",
+                branch="RC_2_0",
+                has_submodules=True,
+                additional_remotes=(AdditionalRemote(name="upstream", url="https://github.com/arvidn/libtorrent.git"),),
+            ),
             ManagedRepo(
                 name="emulebb-cryptopp",
                 url="https://github.com/emulebb/emulebb-cryptopp.git",
