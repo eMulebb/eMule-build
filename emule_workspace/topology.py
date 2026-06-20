@@ -327,6 +327,10 @@ def _repo_role_payload(repo: ManagedRepo, *, role: str, group: str) -> dict[str,
 
 
 def _repo_role(repo: ManagedRepo) -> str:
+    # WHY: use .get() with a generic fallback rather than indexing directly. A
+    # managed repo whose role is not yet registered here (or one relocated between
+    # repo groups) must not raise KeyError and abort the whole `materialize` run,
+    # which is what previously turned an unmapped name into a hard CI failure.
     return {
         "emulebb-build": "workspace-orchestration",
         "emulebb-build-tests": "test-harness",
@@ -341,7 +345,7 @@ def _repo_role(repo: ManagedRepo) -> str:
         "p2p-overlord-agents": "p2p-overlord-suite",
         "p2p-overlord-be": "p2p-overlord-suite",
         "p2p-overlord-tooling": "p2p-overlord-test-tooling",
-    }[repo.name]
+    }.get(repo.name, "managed-repo")
 
 
 def _repo_group(repo: ManagedRepo) -> str:
