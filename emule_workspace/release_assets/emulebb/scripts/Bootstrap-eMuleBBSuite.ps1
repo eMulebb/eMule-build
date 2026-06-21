@@ -247,11 +247,19 @@ function Test-SupportedAmutorrentReleaseTag {
 }
 
 function Get-Release {
-    if (-not [string]::IsNullOrWhiteSpace($Version)) {
-        $tag = Get-ReleaseTag
-        return Invoke-GitHubApi -Uri "$ApiBase/repos/$Repository/releases/tags/$tag" -Description "eMuleBB release $tag"
+    # Resolve everything from the /releases list (which already carries each release's
+    # assets) and never call /releases/tags/<tag>: that endpoint can 504 while the list
+    # stays healthy, and it would be a redundant second request.
+    $releases = Invoke-GitHubApi -Uri "$ApiBase/repos/$Repository/releases?per_page=100" -Description 'eMuleBB releases'
+    $explicitTag = Get-ReleaseTag
+    if (-not [string]::IsNullOrWhiteSpace($explicitTag)) {
+        foreach ($release in @($releases)) {
+            if ([string]$release.tag_name -eq $explicitTag) {
+                return $release
+            }
+        }
+        throw "Release $explicitTag was not found among the latest eMuleBB releases. $(Get-LocalPackageRecoveryMessage)"
     }
-    $releases = Invoke-GitHubApi -Uri "$ApiBase/repos/$Repository/releases" -Description 'eMuleBB releases'
     # GitHub returns releases newest-first, so the first supported non-nightly tag is the
     # latest release candidate or stable release. Nightly builds are opt-in via -IncludeNightly.
     foreach ($release in @($releases)) {
