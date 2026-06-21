@@ -171,12 +171,40 @@ function Read-JsonFile {
     }
 }
 
-function Invoke-GitHubApi {
-    param([string]$Uri, [string]$Description)
+function Get-HttpStatusCode {
+    param($Exception)
     try {
-        return Invoke-RestMethod -Uri $Uri -Headers @{ 'User-Agent' = $UserAgent } -ErrorAction Stop
+        if ($null -ne $Exception -and $null -ne $Exception.Response) {
+            return [int]$Exception.Response.StatusCode
+        }
     } catch {
-        throw "Could not read $Description from GitHub: $(Get-ExceptionMessage -Exception $_.Exception) $(Get-LocalPackageRecoveryMessage)"
+    }
+    return 0
+}
+
+function Invoke-GitHubApi {
+    param([string]$Uri, [string]$Description, [int]$MaxAttempts = 4)
+    # Use Invoke-WebRequest + ConvertFrom-Json (Invoke-RestMethod can collapse a JSON
+    # array into a single object on some hosts) and retry transient gateway / throttle /
+    # network failures (e.g. GitHub HTTP 502/503/504, 429) so a flaky endpoint does not
+    # abort the install.
+    $attempt = 0
+    while ($true) {
+        $attempt++
+        try {
+            $response = Invoke-WebRequest -Uri $Uri -Headers @{ 'User-Agent' = $UserAgent } -UseBasicParsing -ErrorAction Stop
+            return ($response.Content | ConvertFrom-Json)
+        } catch {
+            $status = Get-HttpStatusCode -Exception $_.Exception
+            $transient = ($status -ge 500) -or ($status -eq 408) -or ($status -eq 429) -or ($status -eq 0)
+            if ((-not $transient) -or ($attempt -ge $MaxAttempts)) {
+                throw "Could not read $Description from GitHub: $(Get-ExceptionMessage -Exception $_.Exception) $(Get-LocalPackageRecoveryMessage)"
+            }
+            $reason = if ($status -gt 0) { "HTTP $status" } else { 'network error' }
+            $delay = [int][Math]::Min(20, [Math]::Pow(2, $attempt))
+            Write-Warning "Could not read $Description from GitHub - transient $reason; retrying in $delay s (attempt $attempt of $($MaxAttempts - 1))..."
+            Start-Sleep -Seconds $delay
+        }
     }
 }
 
