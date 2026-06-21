@@ -93,7 +93,7 @@ jobs:
           "EMULEBB_WORKSPACE_OUTPUT_ROOT=$outputRoot" | Add-Content -LiteralPath $env:GITHUB_ENV
 
       - name: Checkout build orchestration
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: emulebb/emulebb-build
           ref: ${{ inputs.build_ref }}
