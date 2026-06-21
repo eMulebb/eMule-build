@@ -9,6 +9,7 @@ import re
 import shutil
 import struct
 import subprocess
+import urllib.request
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -218,9 +219,9 @@ def create_amutorrent_package(
     _assert_path_under_root(package_build_root, layout.output_packages_root, "aMuTorrent package build path")
     if package_options.clean and package_build_root.exists():
         shutil.rmtree(package_build_root)
-    _assert_packaging_node_supported(workspace_options.platform)
+    node_bin_dir = _ensure_amutorrent_build_node(layout, workspace_options.platform)
     _stage_amutorrent_source(amutorrent_root, staged_source_root)
-    _build_amutorrent_webapp(staged_source_root, package_options.clean, static_build_root)
+    _build_amutorrent_webapp(staged_source_root, package_options.clean, static_build_root, node_bin_dir)
 
     release_root = _release_root_for_version(layout, package_options.release_version)
     staging_root = release_root / "staging" / f"amutorrent-{asset_arch}"
@@ -1280,52 +1281,67 @@ def _default_platform_toolset_property(layout: WorkspaceLayout) -> str:
     return f"/p:PlatformToolset={override}" if override else "/p:PlatformToolset=v143"
 
 
-def _assert_packaging_node_supported(platform: str) -> None:
-    """Requires PATH Node to match the pinned runtime Node major and target arch.
+def _ensure_amutorrent_build_node(layout: WorkspaceLayout, platform: str) -> Path:
+    """Materializes the pinned Node toolchain used to build aMuTorrent native modules.
 
-    WHY pin the exact major (not ">= 24"): aMuTorrent ships native modules
-    (better-sqlite3) that this build compiles against the PATH Node ABI, but the
-    installed suite loads them under the pinned ``AMUTORRENT_NODE_VERSION`` runtime.
-    ``NODE_MODULE_VERSION`` is keyed to the Node *major*, so a build Node whose major
-    differs from the pinned runtime (e.g. building on Node 25 while the suite ships
-    Node 24) produces an ABI-mismatched package that throws
-    "compiled against a different Node.js version" and the controller fails to stay
-    running at launch. Fail fast here instead of shipping a broken package.
+    WHY pin (and not use the ambient PATH Node): aMuTorrent ships native modules
+    (better-sqlite3) whose ``NODE_MODULE_VERSION`` is keyed to the Node *major*, and
+    the installed suite loads them under the pinned ``AMUTORRENT_NODE_VERSION`` runtime.
+    Building against whatever Node happens to be on PATH (e.g. Node 25 while the suite
+    ships Node 24) produces an ABI-mismatched package that fails to launch. Building
+    against the exact pinned Node — downloaded once and verified by SHA-256 — makes the
+    native module deterministically match the shipped runtime regardless of the build
+    host's installed Node. Returns the directory containing ``node.exe``/``npm.cmd``.
     """
 
-    pinned_major = int(AMUTORRENT_NODE_VERSION.lstrip("v").split(".", 1)[0])
-    try:
-        completed = subprocess.run(
-            ["node", "-p", "`${process.versions.node}|${process.arch}`"],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-    except (FileNotFoundError, subprocess.CalledProcessError) as exc:
+    if platform not in AMUTORRENT_NODE_ARCHIVES:
+        raise RuntimeError(f"No pinned aMuTorrent build Node is defined for platform {platform!r}.")
+    archive_name, archive_sha256 = AMUTORRENT_NODE_ARCHIVES[platform]
+    node_root = layout.output_tools_root / "node"
+    node_dir = node_root / archive_name[: -len(".zip")]
+    node_exe = node_dir / "node.exe"
+    npm_cmd = node_dir / "npm.cmd"
+
+    if not (node_exe.is_file() and npm_cmd.is_file()):
+        archive_path = node_root / archive_name
+        if not (archive_path.is_file() and _sha256(archive_path) == archive_sha256):
+            node_root.mkdir(parents=True, exist_ok=True)
+            tmp_path = archive_path.with_suffix(archive_path.suffix + ".tmp")
+            tmp_path.unlink(missing_ok=True)
+            url = f"https://nodejs.org/dist/{AMUTORRENT_NODE_VERSION}/{archive_name}"
+            with urllib.request.urlopen(url, timeout=300) as response, tmp_path.open("wb") as handle:
+                shutil.copyfileobj(response, handle)
+            actual = _sha256(tmp_path)
+            if actual != archive_sha256:
+                tmp_path.unlink(missing_ok=True)
+                raise RuntimeError(
+                    "Pinned aMuTorrent Node archive SHA256 mismatch. "
+                    f"Expected {archive_sha256}, got {actual}."
+                )
+            tmp_path.replace(archive_path)
+        if node_dir.exists():
+            shutil.rmtree(node_dir)
+        with zipfile.ZipFile(archive_path) as archive:
+            archive.extractall(node_root)
+        if not (node_exe.is_file() and npm_cmd.is_file()):
+            raise RuntimeError(
+                f"Pinned Node archive {archive_name} did not yield node.exe/npm.cmd under {node_dir}."
+            )
+
+    # Re-check the materialized Node actually runs the pinned version on this host:
+    # catches a corrupt extract or a cross-arch archive that cannot execute here.
+    completed = subprocess.run(
+        [str(node_exe), "-p", "process.versions.node"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    reported = "v" + completed.stdout.strip()
+    if reported != AMUTORRENT_NODE_VERSION:
         raise RuntimeError(
-            f"package amutorrent requires Node {pinned_major}.x "
-            f"(pinned runtime {AMUTORRENT_NODE_VERSION}) on PATH."
-        ) from exc
-    version, node_arch = completed.stdout.strip().split("|", 1)
-    try:
-        major = int(version.split(".", 1)[0])
-    except ValueError as exc:
-        raise RuntimeError(f"Cannot parse Node version from PATH: {version!r}") from exc
-    if major != pinned_major:
-        raise RuntimeError(
-            "package amutorrent must build aMuTorrent native modules against the "
-            f"pinned suite runtime Node major {pinned_major} (runtime "
-            f"{AMUTORRENT_NODE_VERSION}); NODE_MODULE_VERSION is per-major, so building "
-            f"with Node {version} ships an ABI-mismatched better-sqlite3 that fails to "
-            f"launch. Build with Node {pinned_major}.x."
+            f"Pinned aMuTorrent build Node reported {reported}, expected {AMUTORRENT_NODE_VERSION}."
         )
-    expected_arch = "arm64" if platform == "ARM64" else "x64"
-    if node_arch != expected_arch:
-        raise RuntimeError(
-            "package amutorrent target architecture must match PATH Node because "
-            f"server dependencies include native modules: target {platform} requires "
-            f"Node process.arch '{expected_arch}', found '{node_arch}'."
-        )
+    return node_dir
 
 
 def _stage_amutorrent_source(amutorrent_root: Path, staged_source_root: Path) -> None:
@@ -1353,8 +1369,13 @@ def _exclude_amutorrent_source_stage(relative_path: Path, source_path: Path) -> 
     return False
 
 
-def _build_amutorrent_webapp(staged_source_root: Path, clean: bool, static_output_root: Path) -> None:
-    """Installs runtime dependencies and refreshes bundled frontend assets."""
+def _build_amutorrent_webapp(
+    staged_source_root: Path,
+    clean: bool,
+    static_output_root: Path,
+    node_bin_dir: Path,
+) -> None:
+    """Installs runtime dependencies and refreshes bundled assets with the pinned Node."""
 
     if clean:
         for generated_path in (
@@ -1364,15 +1385,18 @@ def _build_amutorrent_webapp(staged_source_root: Path, clean: bool, static_outpu
         ):
             if generated_path.exists():
                 shutil.rmtree(generated_path)
-    npm = shutil.which("npm.cmd") or shutil.which("npm")
-    if not npm:
-        raise RuntimeError("package amutorrent requires npm on PATH.")
+    npm = node_bin_dir / "npm.cmd"
+    if not npm.is_file():
+        raise RuntimeError(f"Pinned aMuTorrent build Node toolchain is missing npm: {npm}.")
     env = os.environ.copy()
     env["AMUTORRENT_STATIC_OUTPUT_ROOT"] = str(static_output_root)
+    # Put the pinned Node first on PATH so npm and any lifecycle scripts resolve it,
+    # not the build host's ambient Node.
+    env["PATH"] = str(node_bin_dir) + os.pathsep + env.get("PATH", "")
     static_output_root.mkdir(parents=True, exist_ok=True)
-    subprocess.run([npm, "ci"], cwd=staged_source_root, check=True)
-    subprocess.run([npm, "ci", "--prefix", "server", "--omit=dev"], cwd=staged_source_root, check=True)
-    subprocess.run([npm, "run", "build"], cwd=staged_source_root, check=True, env=env)
+    subprocess.run([str(npm), "ci"], cwd=staged_source_root, check=True, env=env)
+    subprocess.run([str(npm), "ci", "--prefix", "server", "--omit=dev"], cwd=staged_source_root, check=True, env=env)
+    subprocess.run([str(npm), "run", "build"], cwd=staged_source_root, check=True, env=env)
 
 
 def _copy_amutorrent_runtime(amutorrent_root: Path, package_root: Path, static_build_root: Path) -> None:

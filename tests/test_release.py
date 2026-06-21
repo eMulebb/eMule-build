@@ -1115,12 +1115,13 @@ def test_build_amutorrent_webapp_runs_npm_in_staged_source(
 ) -> None:
     staged_source_root = tmp_path / "output" / "packages" / "build" / "amutorrent" / "x64" / "source"
     static_output_root = tmp_path / "output" / "packages" / "build" / "amutorrent" / "x64" / "static"
+    node_bin_dir = tmp_path / "tools" / "node" / "node-v24.16.0-win-x64"
+    node_bin_dir.mkdir(parents=True)
+    (node_bin_dir / "npm.cmd").write_bytes(b"")
     (staged_source_root / "node_modules").mkdir(parents=True)
     (staged_source_root / "server" / "node_modules").mkdir(parents=True)
     static_output_root.mkdir(parents=True)
     commands: list[tuple[list[str], Path, dict[str, str] | None]] = []
-
-    monkeypatch.setattr(release.shutil, "which", lambda _name: "npm.cmd")
 
     def fake_run(command, *, cwd, check, env=None):
         assert check is True
@@ -1128,14 +1129,25 @@ def test_build_amutorrent_webapp_runs_npm_in_staged_source(
 
     monkeypatch.setattr(release.subprocess, "run", fake_run)
 
-    release._build_amutorrent_webapp(staged_source_root, clean=True, static_output_root=static_output_root)
+    release._build_amutorrent_webapp(
+        staged_source_root,
+        clean=True,
+        static_output_root=static_output_root,
+        node_bin_dir=node_bin_dir,
+    )
 
     assert not (staged_source_root / "node_modules").exists()
     assert not (staged_source_root / "server" / "node_modules").exists()
-    assert commands[0] == (["npm.cmd", "ci"], staged_source_root, None)
-    assert commands[1] == (["npm.cmd", "ci", "--prefix", "server", "--omit=dev"], staged_source_root, None)
-    assert commands[2][0] == ["npm.cmd", "run", "build"]
+    npm = str(node_bin_dir / "npm.cmd")
+    assert commands[0][0] == [npm, "ci"]
+    assert commands[0][1] == staged_source_root
+    assert commands[1][0] == [npm, "ci", "--prefix", "server", "--omit=dev"]
+    assert commands[2][0] == [npm, "run", "build"]
     assert commands[2][1] == staged_source_root
+    # All three npm steps run under the pinned Node: its dir is prepended to PATH.
+    for _command, _cwd, env in commands:
+        assert env is not None
+        assert env["PATH"].startswith(str(node_bin_dir))
     assert commands[2][2]["AMUTORRENT_STATIC_OUTPUT_ROOT"] == str(static_output_root)
 
 
@@ -1161,26 +1173,49 @@ def test_amutorrent_package_contents_reject_standalone_installer_payload(tmp_pat
         release._assert_amutorrent_package_contents(zip_path)
 
 
-def test_amutorrent_packaging_node_guard_accepts_matching_arch(monkeypatch: pytest.MonkeyPatch) -> None:
-    completed = SimpleNamespace(stdout="24.15.0|x64\n")
-    monkeypatch.setattr(release.subprocess, "run", lambda *args, **kwargs: completed)
+def test_ensure_amutorrent_build_node_reuses_cached_pinned_node(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The build must use the pinned Node deterministically, not the ambient PATH Node.
+    archive_name, _ = release.AMUTORRENT_NODE_ARCHIVES["x64"]
+    node_dir = tmp_path / "tools" / "node" / archive_name[: -len(".zip")]
+    node_dir.mkdir(parents=True)
+    (node_dir / "node.exe").write_bytes(b"")
+    (node_dir / "npm.cmd").write_bytes(b"")
+    layout = SimpleNamespace(output_tools_root=tmp_path / "tools")
 
-    release._assert_packaging_node_supported("x64")
+    def no_download(*_args, **_kwargs):
+        raise AssertionError("must not download when the pinned Node is already cached")
+
+    monkeypatch.setattr(release.urllib.request, "urlopen", no_download)
+    pinned = release.AMUTORRENT_NODE_VERSION.lstrip("v")
+    monkeypatch.setattr(
+        release.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(stdout=pinned + "\n"),
+    )
+
+    assert release._ensure_amutorrent_build_node(layout, "x64") == node_dir
 
 
-def test_amutorrent_packaging_node_guard_rejects_cross_arch_native_modules(monkeypatch: pytest.MonkeyPatch) -> None:
-    completed = SimpleNamespace(stdout="24.15.0|x64\n")
-    monkeypatch.setattr(release.subprocess, "run", lambda *args, **kwargs: completed)
+def test_ensure_amutorrent_build_node_rejects_wrong_version(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A materialized Node that does not report the pinned version (corrupt extract or
+    # a cross-arch archive that cannot execute) must fail rather than ship a bad build.
+    archive_name, _ = release.AMUTORRENT_NODE_ARCHIVES["x64"]
+    node_dir = tmp_path / "tools" / "node" / archive_name[: -len(".zip")]
+    node_dir.mkdir(parents=True)
+    (node_dir / "node.exe").write_bytes(b"")
+    (node_dir / "npm.cmd").write_bytes(b"")
+    layout = SimpleNamespace(output_tools_root=tmp_path / "tools")
+    monkeypatch.setattr(
+        release.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(stdout="25.8.1\n"),
+    )
 
-    with pytest.raises(RuntimeError, match="native modules"):
-        release._assert_packaging_node_supported("ARM64")
-
-
-def test_amutorrent_packaging_node_guard_rejects_newer_node_major(monkeypatch: pytest.MonkeyPatch) -> None:
-    # A build Node newer than the pinned runtime major (e.g. Node 25 vs pinned 24)
-    # compiles an ABI-mismatched better-sqlite3 that fails to launch; reject it.
-    completed = SimpleNamespace(stdout="25.8.1|x64\n")
-    monkeypatch.setattr(release.subprocess, "run", lambda *args, **kwargs: completed)
-
-    with pytest.raises(RuntimeError, match="NODE_MODULE_VERSION is per-major"):
-        release._assert_packaging_node_supported("x64")
+    with pytest.raises(RuntimeError, match=f"expected {release.AMUTORRENT_NODE_VERSION}"):
+        release._ensure_amutorrent_build_node(layout, "x64")
