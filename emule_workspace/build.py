@@ -272,6 +272,10 @@ def build_emulebb_rust_client(session: BuildSession, *, clean: bool, diagnostics
         remove_tree_if_present(staged_emulebb_rust_root(session.layout))
 
     flavor = "diagnostics" if diagnostics else "release"
+    # The diagnostics flavor is a distinct bin target (emulebb-rust-diagnostics)
+    # so cargo emits emulebb-rust-diagnostics.exe DIRECTLY — same source, distinct
+    # name, mirroring the MFC emulebb.exe vs emulebb-diagnostics.exe split.
+    bin_name = "emulebb-rust-diagnostics" if diagnostics else "emulebb-rust"
     log_path = session.log_directory / f"client-emulebb-rust-build-{flavor}-{session.options.platform.lower()}.log"
     command = [
         cargo_command,
@@ -279,7 +283,7 @@ def build_emulebb_rust_client(session: BuildSession, *, clean: bool, diagnostics
         "-p",
         "emulebb-daemon",
         "--bin",
-        "emulebb-rust",
+        bin_name,
         "--release",
         "--target",
         target,
@@ -307,7 +311,7 @@ def build_emulebb_rust_client(session: BuildSession, *, clean: bool, diagnostics
             )
         if completed.returncode != 0:
             raise RuntimeError(f"eMuleBB Rust client build failed with exit code {completed.returncode}. See {log_path}")
-        stage_emulebb_rust_runtime(session.layout, target)
+        stage_emulebb_rust_runtime(session.layout, target, diagnostics=diagnostics)
         session.add_step(
             name=f"CLIENT eMuleBB Rust{' diagnostics' if diagnostics else ''}",
             succeeded=True,
@@ -524,23 +528,33 @@ def staged_emulebb_rust_root(layout: WorkspaceLayout) -> Path:
     return layout.output_tools_root / "emulebb-rust"
 
 
-def stage_emulebb_rust_runtime(layout: WorkspaceLayout, target: str) -> None:
-    """Stages the built headless Rust client below the output root."""
+def stage_emulebb_rust_runtime(layout: WorkspaceLayout, target: str, *, diagnostics: bool = False) -> None:
+    """Stages the built headless Rust client below the output root.
 
+    The diagnostics flavor is built as its own bin target, so cargo emits
+    ``emulebb-rust-diagnostics.exe`` directly (mirroring the MFC ``emulebb.exe`` vs
+    ``emulebb-diagnostics.exe`` split). Each flavor is staged under its own name, so
+    the plain release and diagnostics binaries never collide and consumers can pick
+    the build that emits the ``ed2k_packet_v1`` / ``diag_event_v1`` dumps
+    unambiguously.
+    """
+
+    exe_name = "emulebb-rust-diagnostics.exe" if diagnostics else "emulebb-rust.exe"
+    pdb_name = "emulebb-rust-diagnostics.pdb" if diagnostics else "emulebb-rust.pdb"
     source_root = layout.output_rust_target_root / target / "release"
-    exe = source_root / "emulebb-rust.exe"
+    exe = source_root / exe_name
     if not exe.is_file():
         raise RuntimeError(f"Built eMuleBB Rust client executable was not found: {exe}")
     target_root = staged_emulebb_rust_root(layout)
     remove_tree_if_present(target_root)
     bin_root = target_root / "bin"
     bin_root.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(exe, bin_root / exe.name)
-    pdb = source_root / "emulebb-rust.pdb"
+    shutil.copy2(exe, bin_root / exe_name)
+    pdb = source_root / pdb_name
     if pdb.is_file():
-        shutil.copy2(pdb, bin_root / pdb.name)
-    if not (bin_root / "emulebb-rust.exe").is_file():
-        raise RuntimeError(f"Staged eMuleBB Rust runtime is missing required file: {bin_root / 'emulebb-rust.exe'}")
+        shutil.copy2(pdb, bin_root / pdb_name)
+    if not (bin_root / exe_name).is_file():
+        raise RuntimeError(f"Staged eMuleBB Rust runtime is missing required file: {bin_root / exe_name}")
 
 
 AMULE_MSYS2_PACKAGE_SNAPSHOT = (
