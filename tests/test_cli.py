@@ -515,7 +515,7 @@ def test_refresh_product_family_rebases_help_is_available() -> None:
     result = runner.invoke(cli.main, ["refresh-product-family-rebases", "--help"])
 
     assert result.exit_code == 0
-    assert "Refresh local aMule and aMuTorrent clones" in result.output
+    assert "Refresh manual aMule and aMuTorrent checkouts" in result.output
 
 
 def test_install_local_package_help_exposes_live_wire_config() -> None:
@@ -607,6 +607,7 @@ def test_materialize_help_exposes_bootstrap_options() -> None:
 
     assert result.exit_code == 0
     assert "--artifacts-seed-root" in result.output
+    assert "--include-analysis" in result.output
 
 
 def test_sync_help_exposes_bootstrap_options() -> None:
@@ -616,6 +617,7 @@ def test_sync_help_exposes_bootstrap_options() -> None:
 
     assert result.exit_code == 0
     assert "--artifacts-seed-root" in result.output
+    assert "--include-analysis" in result.output
     assert "--workspace-root" not in result.output
 
 

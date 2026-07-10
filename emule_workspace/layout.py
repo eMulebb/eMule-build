@@ -49,7 +49,7 @@ class WorkspaceLayout:
     tests_repo_root: Path
     tooling_repo_root: Path
     ed2k_server_repo_root: Path
-    amule_repo_root: Path
+    amule_repo_root: Path | None
     seed_repo_path: Path
     seed_repo_branch: str
     dependencies: tuple[Dependency, ...]
@@ -267,11 +267,11 @@ def load_layout(emule_workspace_root: Path, workspace_name: str | None = None, *
         tests_repo_root=_resolve_workspace_manifest_path(workspace_root, repos["tests"]),
         tooling_repo_root=_resolve_workspace_manifest_path(workspace_root, repos["tooling"]),
         ed2k_server_repo_root=_resolve_workspace_manifest_path(workspace_root, repos["ed2k_server"]),
-        amule_repo_root=_resolve_workspace_manifest_path(workspace_root, repos["amule"]),
+        amule_repo_root=_optional_workspace_manifest_path(workspace_root, repos, "amule"),
         emulebb_rust_repo_root=_resolve_workspace_manifest_path(workspace_root, repos["emulebb_rust"]),
-        p2p_overlord_agents_repo_root=_resolve_workspace_manifest_path(workspace_root, repos["p2p_overlord_agents"]),
-        p2p_overlord_be_repo_root=_resolve_workspace_manifest_path(workspace_root, repos["p2p_overlord_be"]),
-        p2p_overlord_tooling_repo_root=_resolve_workspace_manifest_path(workspace_root, repos["p2p_overlord_tooling"]),
+        p2p_overlord_agents_repo_root=_optional_workspace_manifest_path(workspace_root, repos, "p2p_overlord_agents"),
+        p2p_overlord_be_repo_root=_optional_workspace_manifest_path(workspace_root, repos, "p2p_overlord_be"),
+        p2p_overlord_tooling_repo_root=_optional_workspace_manifest_path(workspace_root, repos, "p2p_overlord_tooling"),
         output_root=output_root.resolve() if output_root is not None else None,
         seed_repo_path=_resolve_workspace_manifest_path(workspace_root, seed_repo["path"]),
         seed_repo_branch=str(seed_repo["branch"]),
@@ -310,6 +310,13 @@ def _resolve_workspace_manifest_path(workspace_root: Path, relative_path: str | 
     """Resolves a path relative to the workspace manifest's workspace root."""
 
     return (workspace_root / Path(str(relative_path))).resolve()
+
+
+def _optional_workspace_manifest_path(workspace_root: Path, repos: dict[str, Any], key: str) -> Path | None:
+    value = repos.get(key)
+    if value is None:
+        return None
+    return _resolve_workspace_manifest_path(workspace_root, value)
 
 
 def _required_dict(payload: dict[str, Any], key: str) -> dict[str, Any]:

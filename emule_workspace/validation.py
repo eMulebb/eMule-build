@@ -48,7 +48,6 @@ def assert_required_workspace_paths(layout: WorkspaceLayout) -> None:
         layout.workspace_root / WORKSPACE_MANIFEST_NAME,
         layout.workspace_root / REPO_ROLE_MANIFEST_NAME,
         layout.emule_workspace_root / WORKSPACE_PROPS_FILE_NAME,
-        layout.emule_workspace_root / "analysis" / "compare",
         layout.emule_workspace_root / "AGENTS.md",
         layout.seed_repo_path,
         *(layout.emule_workspace_root / repo.relative_path for repo in canonical_topology().repos),
@@ -78,9 +77,9 @@ def assert_generated_workspace_manifest(layout: WorkspaceLayout) -> None:
 def assert_generated_repo_role_manifest(layout: WorkspaceLayout) -> None:
     """Checks that the generated repository role manifest matches Python topology."""
 
-    topology = canonical_topology()
     manifest_path = layout.workspace_root / REPO_ROLE_MANIFEST_NAME
     actual = load_json(manifest_path)
+    topology = canonical_topology(include_analysis=bool(actual.get("analysis_repos")))
     expected = build_repo_role_manifest(topology, layout.workspace_name)
     if actual != expected:
         raise RuntimeError(f"Repository role manifest drifted from Python topology: {manifest_path}. Run sync to regenerate it.")

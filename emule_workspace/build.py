@@ -233,7 +233,7 @@ def build_clients(layout: WorkspaceLayout, options: WorkspaceOptions, build_opti
 
     session = BuildSession(layout=layout, options=options, command_name="build clients", clean=build_options.clean)
     try:
-        selected_clients = tuple(dict.fromkeys(build_options.clients or ("amule",)))
+        selected_clients = tuple(dict.fromkeys(build_options.clients or ("emulebb-rust",)))
         for client in selected_clients:
             if client == "amule":
                 build_amule_client(session, clean=build_options.clean)
@@ -546,7 +546,6 @@ def stage_emulebb_rust_runtime(layout: WorkspaceLayout, target: str, *, diagnost
     if not exe.is_file():
         raise RuntimeError(f"Built eMuleBB Rust client executable was not found: {exe}")
     target_root = staged_emulebb_rust_root(layout)
-    remove_tree_if_present(target_root)
     bin_root = target_root / "bin"
     bin_root.mkdir(parents=True, exist_ok=True)
     shutil.copy2(exe, bin_root / exe_name)
@@ -584,6 +583,11 @@ def build_amule_client(session: BuildSession, *, clean: bool) -> None:
 
     if session.options.platform != "x64":
         raise RuntimeError("build clients --client amule currently supports only --platform x64 via MSYS2 MINGW64.")
+    if session.layout.amule_repo_root is None:
+        raise RuntimeError(
+            "build clients --client amule requires a manual repos/amule checkout; "
+            "it is no longer materialized by workspace setup."
+        )
     msys2_root = resolve_msys2_root()
     bash = msys2_root / "usr" / "bin" / "bash.exe"
     script_path = session.layout.amule_repo_root / "packaging" / "windows" / "build.sh"

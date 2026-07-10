@@ -86,7 +86,7 @@ def run_compare(*, preset_key: str | None = None, workspace_root: str | None = N
     """Shows compare presets or launches WinMerge for a selected preset."""
 
     root = resolve_setup_workspace_root(workspace_root)
-    topology = canonical_topology()
+    topology = canonical_topology(include_analysis=True)
     presets = compare_presets(root, topology)
     if not preset_key:
         print("WinMerge compare presets")
@@ -107,36 +107,23 @@ def run_compare(*, preset_key: str | None = None, workspace_root: str | None = N
 def compare_presets(root: Path, topology: WorkspaceTopology) -> tuple[ComparePreset, ...]:
     """Returns all configured comparison presets."""
 
+    analysis_specs = {
+        "community-0.60": ("Community 0.60", "Community 0.60 vs local"),
+        "community-0.72": ("Community 0.72", "Community 0.72 vs local"),
+        "mods-archive": ("Mods archive", "Mods Archive"),
+        "stale-v0.72a-experimental-clean": ("Stale experimental clean", "Stale experimental reference"),
+        "emuleai": ("eMuleAI", "eMuleAI vs local"),
+    }
     presets: list[ComparePreset] = []
     for right in (target.name for target in local_variant_compare_targets(root, topology)):
-        presets.extend(
-            [
-                ComparePreset(f"emuleai-vs-{right}", f"eMuleAI vs {right}", "eMuleAI vs local", "emuleai", right),
-                ComparePreset(f"amule-vs-{right}", f"aMule vs {right}", "aMule vs local", "amule", right),
-                ComparePreset(
-                    f"community-060-vs-{right}",
-                    f"Community 0.60 vs {right}",
-                    "Community 0.60 vs local",
-                    "community-0.60",
-                    right,
-                ),
-                ComparePreset(
-                    f"community-072-vs-{right}",
-                    f"Community 0.72 vs {right}",
-                    "Community 0.72 vs local",
-                    "community-0.72",
-                    right,
-                ),
-                ComparePreset(f"mods-archive-vs-{right}", f"Mods archive vs {right}", "Mods Archive", "mods-archive", right),
-                ComparePreset(
-                    f"stale-experimental-clean-vs-{right}",
-                    f"Stale experimental clean vs {right}",
-                    "Stale experimental reference",
-                    "stale-v0.72a-experimental-clean",
-                    right,
-                ),
-            ]
-        )
+        for repo in topology.analysis_repos:
+            if repo.name not in analysis_specs:
+                continue
+            label, category = analysis_specs[repo.name]
+            key_name = repo.name.replace("community-0.60", "community-060").replace(
+                "community-0.72", "community-072"
+            ).replace("stale-v0.72a-experimental-clean", "stale-experimental-clean")
+            presets.append(ComparePreset(f"{key_name}-vs-{right}", f"{label} vs {right}", category, repo.name, right))
     return tuple(presets)
 
 

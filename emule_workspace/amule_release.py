@@ -26,7 +26,12 @@ def create_amule_package(
             f"{package_options.release_version}"
         )
 
-    amule_root = layout.resolve_workspace_path("repos/amule")
+    amule_root = layout.amule_repo_root
+    if amule_root is None:
+        raise RuntimeError(
+            "package amule requires a manual repos/amule checkout; "
+            "it is no longer materialized by workspace setup."
+        )
     package_script = amule_root / "tools" / "package_windows.py"
     if not package_script.is_file():
         raise RuntimeError(f"aMule package script is missing: {package_script}")

@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 BUILD_MANIFEST_NAME = "deps.json"
 WORKSPACE_MANIFEST_NAME = "deps.json"
-WORKSPACE_MANIFEST_SCHEMA_VERSION = 6
+WORKSPACE_MANIFEST_SCHEMA_VERSION = 7
 REPO_ROLE_MANIFEST_NAME = "repo-roles.json"
 REPO_ROLE_MANIFEST_SCHEMA_VERSION = 1
 DEFAULT_WORKSPACE_NAME = "workspace"
@@ -21,14 +21,9 @@ SHARED_HOOK_REPO_NAMES = frozenset(
         "emulebb-build",
         "emulebb-build-tests",
         "emulebb-tooling",
-        "amutorrent",
         "goed2k-server",
-        "amule",
         "emulebb-pages",
         "emulebb-org-profile",
-        "p2p-overlord-agents",
-        "p2p-overlord-be",
-        "p2p-overlord-tooling",
     }
 )
 
@@ -157,15 +152,10 @@ class WorkspaceManifestRepos(BaseModel):
     build: str
     tests: str
     tooling: str
-    amutorrent: str
     ed2k_server: str
-    amule: str
     pages: str
     org_profile: str
     emulebb_rust: str
-    p2p_overlord_agents: str
-    p2p_overlord_be: str
-    p2p_overlord_tooling: str
     third_party: str
 
 
@@ -246,15 +236,10 @@ def build_workspace_manifest(topology: WorkspaceTopology, workspace_name: str | 
                 "build": _workspace_relative_repo_path(repo_by_name["emulebb-build"]),
                 "tests": _workspace_relative_repo_path(repo_by_name["emulebb-build-tests"]),
                 "tooling": _workspace_relative_repo_path(repo_by_name["emulebb-tooling"]),
-                "amutorrent": _workspace_relative_repo_path(repo_by_name["amutorrent"]),
                 "ed2k_server": _workspace_relative_repo_path(repo_by_name["goed2k-server"]),
-                "amule": _workspace_relative_repo_path(repo_by_name["amule"]),
                 "pages": _workspace_relative_repo_path(repo_by_name["emulebb-pages"]),
                 "org_profile": _workspace_relative_repo_path(repo_by_name["emulebb-org-profile"]),
                 "emulebb_rust": _workspace_relative_repo_path(repo_by_name["emulebb-rust"]),
-                "p2p_overlord_agents": _workspace_relative_repo_path(repo_by_name["p2p-overlord-agents"]),
-                "p2p_overlord_be": _workspace_relative_repo_path(repo_by_name["p2p-overlord-be"]),
-                "p2p_overlord_tooling": _workspace_relative_repo_path(repo_by_name["p2p-overlord-tooling"]),
                 "third_party": str(workspace_prefix / "repos" / "third_party"),
             },
         },
@@ -356,11 +341,59 @@ def _repo_group(repo: ManagedRepo) -> str:
     return "product-family"
 
 
-def canonical_topology() -> WorkspaceTopology:
+def canonical_topology(*, include_analysis: bool = False) -> WorkspaceTopology:
     """Returns the canonical eMuleBB workspace topology."""
 
+    analysis_repos = (
+        (
+            ManagedRepo(
+                name="community-0.60",
+                url="https://github.com/irwir/eMule.git",
+                relative_path="analysis\\community-0.60",
+                branch="v0.60d",
+                compare_subdir="srchybrid",
+            ),
+            ManagedRepo(
+                name="community-0.72",
+                url="https://github.com/irwir/eMule.git",
+                relative_path="analysis\\community-0.72",
+                branch="v0.72a",
+                compare_subdir="srchybrid",
+            ),
+            ManagedRepo(
+                name="mods-archive",
+                url="https://github.com/emulebb/emulebb-mods-archive.git",
+                relative_path="analysis\\mods-archive",
+                branch="main",
+                branch_optional=True,
+            ),
+            ManagedRepo(
+                name="stale-v0.72a-experimental-clean",
+                url="https://github.com/emulebb/emulebb.git",
+                relative_path="analysis\\stale-v0.72a-experimental-clean",
+                branch="stale/v0.72a-experimental-clean",
+                compare_subdir="srchybrid",
+            ),
+            ManagedRepo(
+                name="emuleai",
+                url="https://github.com/emulebb/emulebb-ai.git",
+                relative_path="analysis\\emuleai",
+                branch="master",
+                compare_subdir="srchybrid",
+                additional_remotes=(AdditionalRemote(name="upstream", url="https://github.com/eMuleAI/eMuleAI.git"),),
+            ),
+        )
+        if include_analysis
+        else ()
+    )
     return WorkspaceTopology(
-        root_directories=("analysis", "archives", "repos", "repos\\third_party", "workspaces"),
+        root_directories=(
+            *((("analysis",) if include_analysis else ())),
+            "archives",
+            "repos",
+            "repos\\third_party",
+            "workspaces",
+        ),
         app_repo=AppRepo(
             name="emulebb",
             url="https://github.com/emulebb/emulebb.git",
@@ -400,13 +433,6 @@ def canonical_topology() -> WorkspaceTopology:
                 branch="main",
             ),
             ManagedRepo(
-                name="amutorrent",
-                url="https://github.com/emulebb/amutorrent.git",
-                relative_path="repos\\amutorrent",
-                branch="main",
-                additional_remotes=(AdditionalRemote(name="upstream", url="https://github.com/got3nks/amutorrent.git"),),
-            ),
-            ManagedRepo(
                 name="qbittorrentbb",
                 url="https://github.com/emulebb/qbittorrentbb.git",
                 relative_path="repos\\qbittorrentbb",
@@ -421,14 +447,6 @@ def canonical_topology() -> WorkspaceTopology:
                 additional_remotes=(
                     AdditionalRemote(name="upstream", url="https://github.com/chenjia404/goed2k-server.git"),
                 ),
-            ),
-            ManagedRepo(
-                name="amule",
-                url="https://github.com/emulebb/amule.git",
-                relative_path="repos\\amule",
-                branch="master",
-                compare_subdir="src",
-                additional_remotes=(AdditionalRemote(name="upstream", url="https://github.com/amule-project/amule.git"),),
             ),
             ManagedRepo(
                 name="emulebb-pages",
@@ -448,63 +466,8 @@ def canonical_topology() -> WorkspaceTopology:
                 relative_path="repos\\emulebb-rust",
                 branch="main",
             ),
-            ManagedRepo(
-                name="p2p-overlord-agents",
-                url="https://github.com/emulebb/p2p-overlord-agents.git",
-                relative_path="repos\\p2p-overlord-agents",
-                branch="develop",
-            ),
-            ManagedRepo(
-                name="p2p-overlord-be",
-                url="https://github.com/emulebb/p2p-overlord-be.git",
-                relative_path="repos\\p2p-overlord-be",
-                branch="develop",
-            ),
-            ManagedRepo(
-                name="p2p-overlord-tooling",
-                url="https://github.com/emulebb/p2p-overlord-tooling.git",
-                relative_path="repos\\p2p-overlord-tooling",
-                branch="develop",
-            ),
         ),
-        analysis_repos=(
-            ManagedRepo(
-                name="community-0.60",
-                url="https://github.com/irwir/eMule.git",
-                relative_path="analysis\\community-0.60",
-                branch="v0.60d",
-                compare_subdir="srchybrid",
-            ),
-            ManagedRepo(
-                name="community-0.72",
-                url="https://github.com/irwir/eMule.git",
-                relative_path="analysis\\community-0.72",
-                branch="v0.72a",
-                compare_subdir="srchybrid",
-            ),
-            ManagedRepo(
-                name="mods-archive",
-                url="https://github.com/emulebb/emulebb-mods-archive.git",
-                relative_path="analysis\\mods-archive",
-                branch="main",
-                branch_optional=True,
-            ),
-            ManagedRepo(
-                name="stale-v0.72a-experimental-clean",
-                url="https://github.com/emulebb/emulebb.git",
-                relative_path="analysis\\stale-v0.72a-experimental-clean",
-                branch="stale/v0.72a-experimental-clean",
-                compare_subdir="srchybrid",
-            ),
-            ManagedRepo(
-                name="emuleai",
-                url="https://github.com/emulebb/emulebb-ai.git",
-                relative_path="analysis\\emuleai",
-                branch="master",
-                compare_subdir="srchybrid",
-                additional_remotes=(AdditionalRemote(name="upstream", url="https://github.com/eMuleAI/eMuleAI.git"),),
-            ),
-        ),
+        analysis_repos=analysis_repos,
         third_party_repos=(
             ManagedRepo(
                 name="emulebb-libtorrent",

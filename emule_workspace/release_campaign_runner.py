@@ -1288,7 +1288,7 @@ def _augment_evidence_report(report: dict[str, Any]) -> dict[str, Any]:
 
 
 def _workspace_repo_heads(layout: WorkspaceLayout) -> dict[str, dict[str, Any]]:
-    repos = {
+    repos: dict[str, Path | None] = {
         "emulebb": layout.seed_repo_path,
         "emulebb-main": layout.get_app_variant("main").path,
         "emulebb-build": layout.build_repo_root,
@@ -1300,7 +1300,9 @@ def _workspace_repo_heads(layout: WorkspaceLayout) -> dict[str, dict[str, Any]]:
     return {name: _repo_head_payload(path) for name, path in repos.items() if _is_git_worktree(path)}
 
 
-def _is_git_worktree(path: Path) -> bool:
+def _is_git_worktree(path: Path | None) -> bool:
+    if path is None:
+        return False
     return path.exists() and (path / ".git").exists()
 
 

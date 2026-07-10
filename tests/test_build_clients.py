@@ -66,15 +66,19 @@ def test_stage_amule_runtime_uses_output_root_portable_tree(tmp_path: Path) -> N
     assert (layout.output_tools_root / "amule" / "bin" / "amulecmd.exe").is_file()
 
 
-def test_build_clients_defaults_to_amule_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[bool] = []
+def test_build_clients_defaults_to_emulebb_rust(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[bool, bool]] = []
     layout = make_layout(tmp_path)
     options = WorkspaceOptions(workspace_root=layout.emule_workspace_root)
-    monkeypatch.setattr(build, "build_amule_client", lambda _session, *, clean: calls.append(clean))
+    monkeypatch.setattr(
+        build,
+        "build_emulebb_rust_client",
+        lambda _session, *, clean, diagnostics=False: calls.append((clean, diagnostics)),
+    )
 
     build.build_clients(layout, options, BuildClientsOptions())
 
-    assert calls == [False]
+    assert calls == [(False, False)]
 
 
 def test_build_clients_builds_emulebb_rust_target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -171,12 +175,15 @@ def test_build_emulebb_rust_client_can_enable_packet_diagnostics(
     cargo = tmp_path / "cargo.exe"
     cargo.write_bytes(b"")
     commands: list[list[str]] = []
+    staged_bin = layout.output_tools_root / "emulebb-rust" / "bin"
+    staged_bin.mkdir(parents=True)
+    (staged_bin / "emulebb-rust.exe").write_bytes(b"plain")
 
     def fake_run(command, *, cwd, stdout, stderr, text, check, env):
         commands.append(list(command))
         built = layout.output_rust_target_root / "x86_64-pc-windows-msvc" / "release"
         built.mkdir(parents=True)
-        (built / "emulebb-rust.exe").write_bytes(b"exe")
+        (built / "emulebb-rust-diagnostics.exe").write_bytes(b"diag")
         return subprocess.CompletedProcess(command, 0)
 
     monkeypatch.setattr(build, "find_tool", lambda _names: cargo)
@@ -189,7 +196,11 @@ def test_build_emulebb_rust_client_can_enable_packet_diagnostics(
 
     build.build_emulebb_rust_client(session, clean=False, diagnostics=True)
 
+    assert "--bin" in commands[0]
+    assert commands[0][commands[0].index("--bin") + 1] == "emulebb-rust-diagnostics"
     assert commands[0][-2:] == ["--features", "packet-diagnostics"]
+    assert (staged_bin / "emulebb-rust.exe").read_bytes() == b"plain"
+    assert (staged_bin / "emulebb-rust-diagnostics.exe").read_bytes() == b"diag"
 
 
 def test_stage_emulebb_rust_runtime_requires_built_executable(tmp_path: Path) -> None:

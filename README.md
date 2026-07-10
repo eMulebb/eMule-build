@@ -34,13 +34,20 @@ In practice this repo needs:
 - `repos\emulebb-build`
 - `repos\emulebb-build-tests`
 - `repos\emulebb-tooling`
-- `repos\amutorrent`
+- `repos\goed2k-server`
+- `repos\emulebb-rust`
+- `repos\qbittorrentbb`
 - `repos\emulebb-pages`
 - `repos\emulebb-org-profile`
 - `repos\third_party\...`
 - `workspaces\workspace\app\emulebb-main`
 - `workspaces\workspace\app\emulebb-community-baseline`
 - `workspaces\workspace\app\emulebb-community-tracing-harness`
+
+Analysis reference clones under `analysis\...` are optional. Use
+`python -m emule_workspace materialize --include-analysis` or
+`python -m emule_workspace sync --include-analysis` when comparison work needs
+those checkouts.
 
 `repos\emulebb` is not a normal development checkout. Python materialization owns
 it as the canonical app anchor, and it is expected to stay detached at
@@ -100,6 +107,10 @@ python -m emule_workspace full
 python -m emule_workspace package-release
 python -m emule_workspace vm-lab prepare
 ```
+
+`build clients` defaults to the materialized `emulebb-rust` client. The retired
+aMule checkout is no longer materialized; use `--client amule` only with a
+manual `repos\amule` checkout.
 
 ## Suite Installer Examples
 

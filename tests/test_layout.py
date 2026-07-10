@@ -33,14 +33,15 @@ def test_workspace_manifest_uses_json_contract_shape() -> None:
     assert manifest["schema_version"] == WORKSPACE_MANIFEST_SCHEMA_VERSION
     assert manifest["workspace"]["repos"]["build"] == "..\\..\\repos\\emulebb-build"
     assert manifest["workspace"]["repos"]["ed2k_server"] == "..\\..\\repos\\goed2k-server"
-    assert manifest["workspace"]["repos"]["amule"] == "..\\..\\repos\\amule"
+    assert "amule" not in manifest["workspace"]["repos"]
+    assert "amutorrent" not in manifest["workspace"]["repos"]
     assert "emuleai" not in manifest["workspace"]["repos"]
     assert manifest["workspace"]["repos"]["pages"] == "..\\..\\repos\\emulebb-pages"
     assert manifest["workspace"]["repos"]["org_profile"] == "..\\..\\repos\\emulebb-org-profile"
     assert manifest["workspace"]["repos"]["emulebb_rust"] == "..\\..\\repos\\emulebb-rust"
-    assert manifest["workspace"]["repos"]["p2p_overlord_agents"] == "..\\..\\repos\\p2p-overlord-agents"
-    assert manifest["workspace"]["repos"]["p2p_overlord_be"] == "..\\..\\repos\\p2p-overlord-be"
-    assert manifest["workspace"]["repos"]["p2p_overlord_tooling"] == "..\\..\\repos\\p2p-overlord-tooling"
+    assert "p2p_overlord_agents" not in manifest["workspace"]["repos"]
+    assert "p2p_overlord_be" not in manifest["workspace"]["repos"]
+    assert "p2p_overlord_tooling" not in manifest["workspace"]["repos"]
     assert manifest["workspace"]["app_repo"]["variants"][0] == {
         "name": "main",
         "path": "app\\emulebb-main",
@@ -72,12 +73,13 @@ def test_repo_role_manifest_describes_workspace_repositories() -> None:
     assert repos["emulebb-rust"]["group"] == "product-family"
     assert repos["qbittorrentbb"]["role"] == "bittorrent-client"
     assert repos["qbittorrentbb"]["group"] == "product-family"
-    assert repos["p2p-overlord-be"]["role"] == "p2p-overlord-suite"
-    assert repos["p2p-overlord-tooling"]["role"] == "p2p-overlord-test-tooling"
     assert repos["goed2k-server"]["role"] == "local-ed2k-test-server"
+    assert "amule" not in repos
+    assert "amutorrent" not in repos
+    assert "p2p-overlord-be" not in repos
 
     analysis_repos = {repo["name"]: repo for repo in manifest["analysis_repos"]}
-    assert analysis_repos["emuleai"]["role"] == "analysis-reference"
+    assert analysis_repos == {}
 
     third_party_repos = {repo["name"]: repo for repo in manifest["third_party_repos"]}
     assert third_party_repos["emulebb-libtorrent"]["role"] == "third-party-dependency"
@@ -107,18 +109,9 @@ def test_canonical_topology_materializes_ed2k_server_fork_under_repos() -> None:
     )
 
 
-def test_canonical_topology_materializes_client_references_in_active_and_analysis_roots() -> None:
+def test_canonical_topology_keeps_analysis_references_optional() -> None:
     repos = {repo.name: repo for repo in canonical_topology().repos}
-    analysis_repos = {repo.name: repo for repo in canonical_topology().analysis_repos}
-
-    amule = repos["amule"]
-    assert amule.url == "https://github.com/emulebb/amule.git"
-    assert amule.relative_path == "repos\\amule"
-    assert amule.branch == "master"
-    assert amule.compare_subdir == "src"
-    assert tuple((remote.name, remote.url) for remote in amule.additional_remotes) == (
-        ("upstream", "https://github.com/amule-project/amule.git"),
-    )
+    analysis_repos = {repo.name: repo for repo in canonical_topology(include_analysis=True).analysis_repos}
 
     assert "emuleai" not in repos
     emuleai = analysis_repos["emuleai"]
@@ -140,31 +133,21 @@ def test_canonical_topology_materializes_emulebb_rust_under_repos() -> None:
     assert rust.branch == "main"
 
 
-def test_canonical_topology_materializes_p2p_overlord_product_family_repos() -> None:
+def test_canonical_topology_does_not_materialize_retired_product_family_repos() -> None:
     repos = {repo.name: repo for repo in canonical_topology().repos}
 
-    agents = repos["p2p-overlord-agents"]
-    assert agents.url == "https://github.com/emulebb/p2p-overlord-agents.git"
-    assert agents.relative_path == "repos\\p2p-overlord-agents"
-    assert agents.branch == "develop"
-
-    backend = repos["p2p-overlord-be"]
-    assert backend.url == "https://github.com/emulebb/p2p-overlord-be.git"
-    assert backend.relative_path == "repos\\p2p-overlord-be"
-    assert backend.branch == "develop"
-
-    tooling = repos["p2p-overlord-tooling"]
-    assert tooling.url == "https://github.com/emulebb/p2p-overlord-tooling.git"
-    assert tooling.relative_path == "repos\\p2p-overlord-tooling"
-    assert tooling.branch == "develop"
-
+    assert "amule" not in repos
+    assert "amutorrent" not in repos
+    assert "p2p-overlord-agents" not in repos
+    assert "p2p-overlord-be" not in repos
+    assert "p2p-overlord-tooling" not in repos
     assert "p2p-overlord-ed2k-server" not in repos
 
 
 def test_compare_root_accepts_repo_targets_with_and_without_compare_subdirs(tmp_path: Path) -> None:
-    topology = canonical_topology()
+    topology = canonical_topology(include_analysis=True)
 
-    assert compare_root(tmp_path, topology, "amule") == tmp_path / "repos" / "amule" / "src"
+    assert compare_root(tmp_path, topology, "emuleai") == tmp_path / "analysis" / "emuleai" / "srchybrid"
     assert compare_root(tmp_path, topology, "mods-archive") == tmp_path / "analysis" / "mods-archive"
 
 

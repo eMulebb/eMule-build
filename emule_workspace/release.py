@@ -211,6 +211,11 @@ def create_amutorrent_package(
         )
 
     amutorrent_root = layout.resolve_workspace_path("repos/amutorrent")
+    if not amutorrent_root.is_dir():
+        raise RuntimeError(
+            "package amutorrent requires a manual repos/amutorrent checkout; "
+            "it is no longer materialized by workspace setup."
+        )
     _assert_clean_amutorrent_package_inputs(layout, amutorrent_root)
     asset_arch = "arm64" if workspace_options.platform == "ARM64" else "x64"
     package_build_root = layout.output_packages_root / "build" / "amutorrent" / asset_arch
