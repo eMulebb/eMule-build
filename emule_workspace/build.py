@@ -350,6 +350,28 @@ def rust_pdb_source_names(staged_pdb_name: str) -> tuple[str, ...]:
     return (staged_pdb_name, rustc_name)
 
 
+def remove_rust_target_runtime_artifacts(layout: WorkspaceLayout) -> None:
+    """Removes runnable Rust client copies from Cargo target dirs after staging."""
+
+    names = (
+        "emulebb-rust.exe",
+        "emulebb-rust.pdb",
+        "emulebb_rust.pdb",
+        "emulebb-rust-diagnostics.exe",
+        "emulebb-rust-diagnostics.pdb",
+        "emulebb_rust_diagnostics.pdb",
+    )
+    release_roots = [
+        layout.output_rust_target_root / "release",
+        *(layout.output_rust_target_root / target / "release" for target in RUST_CLIENT_TARGETS.values()),
+    ]
+    for release_root in release_roots:
+        for name in names:
+            path = release_root / name
+            if path.exists():
+                path.unlink()
+
+
 def _qbt_vcpkg_toolchain() -> Path:
     """Resolves the vcpkg CMake toolchain file (VCPKG_ROOT, else the local tools dir)."""
 
@@ -566,6 +588,7 @@ def stage_emulebb_rust_runtime(layout: WorkspaceLayout, target: str, *, diagnost
             break
     if not (bin_root / exe_name).is_file():
         raise RuntimeError(f"Staged eMuleBB Rust runtime is missing required file: {bin_root / exe_name}")
+    remove_rust_target_runtime_artifacts(layout)
 
 
 AMULE_MSYS2_PACKAGE_SNAPSHOT = (
