@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Sequence
 
+from .config import CARGO_TARGET_DIR_ENV, WORKSPACE_OUTPUT_ROOT_ENV
+
 
 @dataclass(frozen=True)
 class PythonInvocation:
@@ -46,29 +48,36 @@ def get_python_invocation() -> PythonInvocation:
     raise RuntimeError("Python 3 was not found on PATH.")
 
 
-def _ensure_cargo_target_dir(
+def _validate_cargo_target_dir(
     command: Sequence[str | os.PathLike[str]],
     env: dict[str, str],
 ) -> None:
-    """Pins Cargo's target directory under EMULEBB_WORKSPACE_OUTPUT_ROOT.
+    """Fails fast when a Cargo command lacks the caller-provided target dir."""
 
-    Any cargo invocation that did not receive the orchestrated workspace
-    environment (for example product-family or ad-hoc cargo calls) otherwise
-    falls back to Cargo's default ``<crate>/target`` and pollutes the
-    repository tree. When the command is cargo and CARGO_TARGET_DIR is not
-    already set, derive it from the output root, mirroring
-    ``WorkspaceLayout.output_rust_target_root``. Mutates ``env`` in place.
-    """
-
-    if "CARGO_TARGET_DIR" in env or not command:
+    if not command:
         return
     program = os.path.basename(str(command[0])).lower()
     if program not in ("cargo", "cargo.exe"):
         return
-    output_root = env.get("EMULEBB_WORKSPACE_OUTPUT_ROOT", "").strip()
-    if not output_root:
-        return
-    env["CARGO_TARGET_DIR"] = str(Path(output_root) / "builds" / "rust" / "target")
+    output_root_value = env.get(WORKSPACE_OUTPUT_ROOT_ENV, "").strip()
+    if not output_root_value:
+        raise RuntimeError(f"{WORKSPACE_OUTPUT_ROOT_ENV} is required for cargo commands.")
+    target_value = env.get(CARGO_TARGET_DIR_ENV, "").strip()
+    if not target_value:
+        raise RuntimeError(f"{CARGO_TARGET_DIR_ENV} is required for cargo commands.")
+    output_root = Path(output_root_value).expanduser().resolve()
+    target_dir = Path(target_value).expanduser().resolve()
+    if not output_root.is_dir():
+        raise RuntimeError(f"{WORKSPACE_OUTPUT_ROOT_ENV} must point to an existing directory: {output_root}")
+    if not target_dir.is_dir():
+        raise RuntimeError(f"{CARGO_TARGET_DIR_ENV} must point to an existing directory: {target_dir}")
+    expected = (output_root / "builds" / "rust" / "target").resolve()
+    if _normcase_path(target_dir) != _normcase_path(expected):
+        raise RuntimeError(f"{CARGO_TARGET_DIR_ENV} must be {expected}, got {target_dir}.")
+
+
+def _normcase_path(path: Path) -> str:
+    return str(path.resolve()).casefold().rstrip("\\/")
 
 
 def run_native(
@@ -84,7 +93,7 @@ def run_native(
     merged_env = os.environ.copy()
     if env:
         merged_env.update({key: str(value) for key, value in env.items()})
-    _ensure_cargo_target_dir(command, merged_env)
+    _validate_cargo_target_dir(command, merged_env)
 
     completed = subprocess.run(
         [str(part) for part in command],
@@ -107,7 +116,7 @@ def run_captured(
     """Runs a command and returns stdout, raising with stderr on failure."""
 
     merged_env = os.environ.copy()
-    _ensure_cargo_target_dir(command, merged_env)
+    _validate_cargo_target_dir(command, merged_env)
 
     completed = subprocess.run(
         [str(part) for part in command],

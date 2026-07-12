@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from emule_workspace import campaign_scenario_runner
 from emule_workspace.config import CampaignScenarioOptions, WorkspaceOptions
 from test_release_campaign_runner import make_layout, write_campaign_scenario_catalog
@@ -92,6 +94,16 @@ LOCAL_SWARM_TIER_OPTIONS = {
 """,
         encoding="utf-8",
     )
+
+
+@pytest.fixture(autouse=True)
+def workspace_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output_root = tmp_path.parent / f"{tmp_path.name}-output"
+    cargo_target_dir = output_root / "builds" / "rust" / "target"
+    cargo_target_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("EMULEBB_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("EMULEBB_WORKSPACE_OUTPUT_ROOT", str(output_root))
+    monkeypatch.setenv("CARGO_TARGET_DIR", str(cargo_target_dir))
 
 
 def test_campaign_scenario_local_mode_reuses_local_live_suites_and_tiered_swarm(

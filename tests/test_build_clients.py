@@ -32,7 +32,7 @@ def test_msys2_mingw64_environment_prefers_mingw_tools(tmp_path: Path, monkeypat
 
 def test_msys2_mingw64_environment_forwards_workspace_roots(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PATH", "C:\\Windows\\System32")
-    layout = make_layout(tmp_path)
+    layout = make_layout(tmp_path, monkeypatch)
 
     env = build.msys2_mingw64_environment(tmp_path / "msys64", layout)
 
@@ -68,7 +68,7 @@ def test_stage_amule_runtime_uses_output_root_portable_tree(tmp_path: Path) -> N
 
 def test_build_clients_defaults_to_emulebb_rust(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[bool, bool]] = []
-    layout = make_layout(tmp_path)
+    layout = make_layout(tmp_path, monkeypatch)
     options = WorkspaceOptions(workspace_root=layout.emule_workspace_root)
     monkeypatch.setattr(
         build,
@@ -83,7 +83,7 @@ def test_build_clients_defaults_to_emulebb_rust(tmp_path: Path, monkeypatch: pyt
 
 def test_build_clients_builds_emulebb_rust_target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[bool, bool]] = []
-    layout = make_layout(tmp_path)
+    layout = make_layout(tmp_path, monkeypatch)
     options = WorkspaceOptions(workspace_root=layout.emule_workspace_root)
     monkeypatch.setattr(
         build,
@@ -100,7 +100,7 @@ def test_build_clients_passes_emulebb_rust_diagnostics_flag(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls: list[tuple[bool, bool]] = []
-    layout = make_layout(tmp_path)
+    layout = make_layout(tmp_path, monkeypatch)
     options = WorkspaceOptions(workspace_root=layout.emule_workspace_root)
     monkeypatch.setattr(
         build,
@@ -120,7 +120,7 @@ def test_build_clients_passes_emulebb_rust_diagnostics_flag(
 def test_build_emulebb_rust_client_runs_cargo_and_stages_runtime(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    layout = make_layout(tmp_path)
+    layout = make_layout(tmp_path, monkeypatch)
     repo_root = layout.emulebb_rust_repo_root
     assert repo_root is not None
     repo_root.mkdir(parents=True)
@@ -168,7 +168,7 @@ def test_build_emulebb_rust_client_runs_cargo_and_stages_runtime(
 def test_build_emulebb_rust_client_can_enable_packet_diagnostics(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    layout = make_layout(tmp_path)
+    layout = make_layout(tmp_path, monkeypatch)
     repo_root = layout.emulebb_rust_repo_root
     assert repo_root is not None
     repo_root.mkdir(parents=True)
@@ -316,10 +316,17 @@ def _prepare_qbittorrentbb_build_inputs(
     monkeypatch.setattr(build, "get_cmake_path", lambda: tmp_path / "cmake.exe")
 
 
-def make_layout(tmp_path: Path) -> WorkspaceLayout:
+def make_layout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch | None = None) -> WorkspaceLayout:
     emule_workspace_root = tmp_path / "workspace-root"
     workspace_root = emule_workspace_root / "workspaces" / "workspace"
     app_root = workspace_root / "app" / "emulebb-main"
+    output_root = tmp_path / "workspace-output"
+    emule_workspace_root.mkdir(parents=True, exist_ok=True)
+    (output_root / "builds" / "rust" / "target").mkdir(parents=True, exist_ok=True)
+    if monkeypatch is not None:
+        monkeypatch.setenv("EMULEBB_WORKSPACE_ROOT", str(emule_workspace_root))
+        monkeypatch.setenv("EMULEBB_WORKSPACE_OUTPUT_ROOT", str(output_root))
+        monkeypatch.setenv("CARGO_TARGET_DIR", str(output_root / "builds" / "rust" / "target"))
     return WorkspaceLayout(
         emule_workspace_root=emule_workspace_root,
         workspace_name="workspace",
@@ -336,5 +343,5 @@ def make_layout(tmp_path: Path) -> WorkspaceLayout:
         test_targets=LayoutTestTargets(test_build_variant="main", test_run_variant="main", baseline_variant="community"),
         toolset_override_variable="EMULEBB_VS_PLATFORM_TOOLSET",
         emulebb_rust_repo_root=emule_workspace_root / "repos" / "emulebb-rust",
-        output_root=tmp_path / "workspace-output",
+        output_root=output_root,
     )

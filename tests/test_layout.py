@@ -246,9 +246,12 @@ def test_generated_output_roots_require_output_root(tmp_path: Path) -> None:
         _ = layout.output_build_root
 
 
-def test_layout_exposes_generated_output_subroots_and_child_environment(tmp_path: Path) -> None:
+def test_layout_exposes_generated_output_subroots_and_child_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     workspace_root = tmp_path / "workspaces" / "workspace"
-    output_root = tmp_path / "emulebb-output"
+    output_root = tmp_path.parent / f"{tmp_path.name}-output"
     layout = WorkspaceLayout(
         emule_workspace_root=tmp_path,
         workspace_name="workspace",
@@ -267,6 +270,10 @@ def test_layout_exposes_generated_output_subroots_and_child_environment(tmp_path
         toolset_override_variable="",
         output_root=output_root,
     )
+    (output_root / "builds" / "rust" / "target").mkdir(parents=True)
+    monkeypatch.setenv("EMULEBB_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("EMULEBB_WORKSPACE_OUTPUT_ROOT", str(output_root))
+    monkeypatch.setenv("CARGO_TARGET_DIR", str(output_root / "builds" / "rust" / "target"))
 
     assert layout.output_third_party_build_root == output_root / "builds" / "third_party"
     assert layout.output_rust_target_root == output_root / "builds" / "rust" / "target"

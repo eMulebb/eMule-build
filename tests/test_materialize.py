@@ -74,6 +74,7 @@ def test_seed_overlay_tracks_and_removes_stale_seed_files(tmp_path: Path, monkey
     )
     root = tmp_path / "workspace"
     output_root = tmp_path / "output"
+    output_root.mkdir(parents=True)
     monkeypatch.setenv("EMULEBB_WORKSPACE_ROOT", str(root))
     monkeypatch.setenv("EMULEBB_WORKSPACE_OUTPUT_ROOT", str(output_root))
     seed_root = tmp_path / "seed"

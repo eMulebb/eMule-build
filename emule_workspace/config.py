@@ -19,6 +19,7 @@ AmutorrentSessionBackend = Literal["native", "rust"]
 ACTIVE_EMULEBB_RELEASE_VERSION = "0.7.3-rc.2"
 WORKSPACE_ROOT_ENV = "EMULEBB_WORKSPACE_ROOT"
 WORKSPACE_OUTPUT_ROOT_ENV = "EMULEBB_WORKSPACE_OUTPUT_ROOT"
+CARGO_TARGET_DIR_ENV = "CARGO_TARGET_DIR"
 LiveE2eProfile = Literal[
     "default",
     "multi-client-p2p",
@@ -515,12 +516,38 @@ def resolve_required_workspace_roots() -> tuple[Path, Path]:
 
     workspace_root = Path(workspace_root_value).expanduser().resolve()
     output_root = Path(output_root_value).expanduser().resolve()
+    if not workspace_root.is_dir():
+        raise ValueError(f"{WORKSPACE_ROOT_ENV} must point to an existing directory: {workspace_root}")
+    if not output_root.is_dir():
+        raise ValueError(f"{WORKSPACE_OUTPUT_ROOT_ENV} must point to an existing directory: {output_root}")
     if _path_is_relative_to(output_root, workspace_root):
         raise ValueError(f"{WORKSPACE_OUTPUT_ROOT_ENV} must be outside {WORKSPACE_ROOT_ENV}: {output_root}")
     return workspace_root, output_root
 
 
+def resolve_required_cargo_target_dir(output_root: Path | None = None) -> Path:
+    """Resolves and validates the mandatory canonical Cargo target directory."""
+
+    target_value = os.environ.get(CARGO_TARGET_DIR_ENV, "").strip()
+    if not target_value:
+        raise ValueError(f"{CARGO_TARGET_DIR_ENV} is required.")
+    target_dir = Path(target_value).expanduser().resolve()
+    if not target_dir.is_dir():
+        raise ValueError(f"{CARGO_TARGET_DIR_ENV} must point to an existing directory: {target_dir}")
+    resolved_output_root = output_root
+    if resolved_output_root is None:
+        _workspace_root, resolved_output_root = resolve_required_workspace_roots()
+    expected = (resolved_output_root / "builds" / "rust" / "target").resolve()
+    if _normalized_path(target_dir) != _normalized_path(expected):
+        raise ValueError(f"{CARGO_TARGET_DIR_ENV} must be {expected}, got {target_dir}.")
+    return target_dir
+
+
 def _path_is_relative_to(path: Path, root: Path) -> bool:
-    path_text = str(path.resolve()).casefold().rstrip("\\/")
-    root_text = str(root.resolve()).casefold().rstrip("\\/")
+    path_text = _normalized_path(path)
+    root_text = _normalized_path(root)
     return path_text == root_text or path_text.startswith(root_text + "\\") or path_text.startswith(root_text + "/")
+
+
+def _normalized_path(path: Path) -> str:
+    return str(path.resolve()).casefold().rstrip("\\/")

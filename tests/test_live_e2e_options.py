@@ -50,7 +50,13 @@ def option_values(command: list[str], option: str) -> list[str]:
 
 
 @pytest.fixture(autouse=True)
-def fake_network_context(monkeypatch: pytest.MonkeyPatch) -> None:
+def fake_network_context(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output_root = tmp_path.parent / f"{tmp_path.name}-output"
+    cargo_target_dir = output_root / "builds" / "rust" / "target"
+    cargo_target_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("EMULEBB_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("EMULEBB_WORKSPACE_OUTPUT_ROOT", str(output_root))
+    monkeypatch.setenv("CARGO_TARGET_DIR", str(cargo_target_dir))
     monkeypatch.delenv("X_LOCAL_IP", raising=False)
     monkeypatch.setattr(test_runs, "build_apps", lambda *_args, **_kwargs: None)
 

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from emule_workspace import test_runs
 from emule_workspace.config import VariantComparisonOptions, WorkspaceOptions
 from emule_workspace.layout import AppVariant, TestTargets as LayoutTestTargets, WorkspaceLayout, get_test_build_tag
@@ -37,6 +39,16 @@ def make_layout(tmp_path: Path) -> WorkspaceLayout:
         toolset_override_variable="",
         output_root=emule_workspace_root.parent / f"{emule_workspace_root.name}-output",
     )
+
+
+@pytest.fixture(autouse=True)
+def workspace_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output_root = tmp_path.parent / f"{tmp_path.name}-output"
+    cargo_target_dir = output_root / "builds" / "rust" / "target"
+    cargo_target_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("EMULEBB_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("EMULEBB_WORKSPACE_OUTPUT_ROOT", str(output_root))
+    monkeypatch.setenv("CARGO_TARGET_DIR", str(cargo_target_dir))
 
 
 def test_protocol_parity_runs_surface_goldens_then_live_diff(tmp_path: Path, monkeypatch) -> None:

@@ -12,6 +12,7 @@ def test_dependency_update_report_writes_under_output_root(tmp_path: Path, monke
     workspace_root = tmp_path / "workspace"
     output_root = tmp_path / "output"
     (workspace_root / "workspaces" / "workspace").mkdir(parents=True)
+    output_root.mkdir(parents=True)
     monkeypatch.setenv("EMULEBB_WORKSPACE_ROOT", str(workspace_root))
     monkeypatch.setenv("EMULEBB_WORKSPACE_OUTPUT_ROOT", str(output_root))
     topology = WorkspaceTopology(

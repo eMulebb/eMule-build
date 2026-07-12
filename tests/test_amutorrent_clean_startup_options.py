@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from emule_workspace.config import AmutorrentCleanStartupOptions, WorkspaceOptions
 from emule_workspace.layout import AppVariant, TestTargets as LayoutTestTargets, WorkspaceLayout
 from emule_workspace import network_context, test_runs
@@ -30,12 +32,22 @@ def make_layout(tmp_path: Path) -> WorkspaceLayout:
         app_variants=(AppVariant(name="main", path=app_root, branch="main"),),
         test_targets=LayoutTestTargets(test_build_variant="main", test_run_variant="main", baseline_variant="community"),
         toolset_override_variable="",
-        output_root=emule_workspace_root / "output",
+        output_root=emule_workspace_root.parent / f"{emule_workspace_root.name}-output",
     )
 
 
 def option_values(command: list[str], option: str) -> list[str]:
     return [command[index + 1] for index, value in enumerate(command[:-1]) if value == option]
+
+
+@pytest.fixture(autouse=True)
+def workspace_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output_root = tmp_path.parent / f"{tmp_path.name}-output"
+    cargo_target_dir = output_root / "builds" / "rust" / "target"
+    cargo_target_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("EMULEBB_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("EMULEBB_WORKSPACE_OUTPUT_ROOT", str(output_root))
+    monkeypatch.setenv("CARGO_TARGET_DIR", str(cargo_target_dir))
 
 
 def test_amutorrent_clean_startup_forwards_live_options(tmp_path: Path, monkeypatch) -> None:

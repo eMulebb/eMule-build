@@ -650,13 +650,15 @@ def test_compare_help_is_available() -> None:
 
 def test_sync_rejects_workspace_root_outside_current_build_clone(tmp_path: Path) -> None:
     runner = CliRunner()
+    output_root = tmp_path.parent / "emulebb-output"
+    output_root.mkdir(parents=True)
 
     result = runner.invoke(
         cli.main,
         ["sync"],
         env={
             "EMULEBB_WORKSPACE_ROOT": str(tmp_path),
-            "EMULEBB_WORKSPACE_OUTPUT_ROOT": str(tmp_path.parent / "emulebb-output"),
+            "EMULEBB_WORKSPACE_OUTPUT_ROOT": str(output_root),
         },
     )
 

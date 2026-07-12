@@ -7,6 +7,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .config import (
+    CARGO_TARGET_DIR_ENV,
+    WORKSPACE_OUTPUT_ROOT_ENV,
+    WORKSPACE_ROOT_ENV,
+    resolve_required_cargo_target_dir,
+    resolve_required_workspace_roots,
+)
 from .topology import BUILD_MANIFEST_NAME, WORKSPACE_MANIFEST_NAME, load_json
 
 
@@ -164,12 +171,29 @@ class WorkspaceLayout:
         return self.output_build_root / "rust" / "target"
 
     def subprocess_environment(self) -> dict[str, Path]:
-        """Returns common environment roots passed to child workspace processes."""
+        """Returns validated process environment roots for child workspace processes."""
 
+        env_workspace_root, env_output_root = resolve_required_workspace_roots()
+        env_cargo_target_dir = resolve_required_cargo_target_dir(env_output_root)
+        if self.workspace_name != "ci" and _normcase_path(env_workspace_root) != _normcase_path(self.emule_workspace_root):
+            raise RuntimeError(
+                f"{WORKSPACE_ROOT_ENV} must match the loaded workspace layout: "
+                f"{self.emule_workspace_root.resolve()}, got {env_workspace_root}."
+            )
+        if _normcase_path(env_output_root) != _normcase_path(self._resolved_output_root()):
+            raise RuntimeError(
+                f"{WORKSPACE_OUTPUT_ROOT_ENV} must match the loaded workspace layout: "
+                f"{self._resolved_output_root().resolve()}, got {env_output_root}."
+            )
+        if _normcase_path(env_cargo_target_dir) != _normcase_path(self.output_rust_target_root):
+            raise RuntimeError(
+                f"{CARGO_TARGET_DIR_ENV} must match the loaded workspace layout: "
+                f"{self.output_rust_target_root.resolve()}, got {env_cargo_target_dir}."
+            )
         return {
-            "EMULEBB_WORKSPACE_ROOT": self.emule_workspace_root,
-            "EMULEBB_WORKSPACE_OUTPUT_ROOT": self._resolved_output_root(),
-            "CARGO_TARGET_DIR": self.output_rust_target_root,
+            WORKSPACE_ROOT_ENV: env_workspace_root,
+            WORKSPACE_OUTPUT_ROOT_ENV: env_output_root,
+            CARGO_TARGET_DIR_ENV: env_cargo_target_dir,
         }
 
     def _resolved_output_root(self) -> Path:
@@ -184,6 +208,10 @@ def build_repo_root() -> Path:
     """Returns the repository root that owns this package."""
 
     return Path(__file__).resolve().parents[1]
+
+
+def _normcase_path(path: Path) -> str:
+    return str(path.resolve()).casefold().rstrip("\\/")
 
 
 def build_ci_layout(*, output_root: Path, toolset_override_variable: str = "") -> WorkspaceLayout:

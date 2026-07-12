@@ -34,8 +34,8 @@ def test_audit_artifacts_command_fails_on_findings(tmp_path: Path, monkeypatch) 
     layout = make_layout(tmp_path)
     write_file(layout.emule_workspace_root / "workspaces" / "workspace" / "app" / "emulebb-main" / "srchybrid" / "x64" / "Release" / "emulebb.exe")
     monkeypatch.setenv("EMULEBB_WORKSPACE_ROOT", str(layout.emule_workspace_root))
-    output_root = tmp_path.parent / f"{tmp_path.name}-output"
-    monkeypatch.setenv("EMULEBB_WORKSPACE_OUTPUT_ROOT", str(output_root))
+    layout.output_root.mkdir(parents=True)
+    monkeypatch.setenv("EMULEBB_WORKSPACE_OUTPUT_ROOT", str(layout.output_root))
     monkeypatch.setattr(cli, "load_layout", lambda *_args, **_kwargs: layout)
 
     result = CliRunner().invoke(cli.main, ["audit-artifacts"])
@@ -52,15 +52,16 @@ def write_file(path: Path) -> Path:
 
 def make_layout(tmp_path: Path):
     workspace_root = tmp_path / "workspaces" / "workspace"
+    output_root = tmp_path.parent / f"{tmp_path.name}-output"
     return SimpleNamespace(
         emule_workspace_root=tmp_path,
-        output_root=tmp_path / "output",
-        output_tmp_root=tmp_path / "output" / "tmp",
+        output_root=output_root,
+        output_tmp_root=output_root / "tmp",
         workspace_root=workspace_root,
         build_repo_root=tmp_path / "repos" / "emulebb-build",
         tests_repo_root=tmp_path / "repos" / "emulebb-build-tests",
         tooling_repo_root=tmp_path / "repos" / "emulebb-tooling",
-        output_third_party_build_root=tmp_path / "output" / "builds" / "third_party",
+        output_third_party_build_root=output_root / "builds" / "third_party",
         dependencies=(),
         app_variants=(),
     )

@@ -128,6 +128,16 @@ LOCAL_SWARM_TIER_OPTIONS = {
     )
 
 
+@pytest.fixture(autouse=True)
+def workspace_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output_root = tmp_path.parent / f"{tmp_path.name}-output"
+    cargo_target_dir = output_root / "builds" / "rust" / "target"
+    cargo_target_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("EMULEBB_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("EMULEBB_WORKSPACE_OUTPUT_ROOT", str(output_root))
+    monkeypatch.setenv("CARGO_TARGET_DIR", str(cargo_target_dir))
+
+
 def campaign_payload() -> dict[str, object]:
     return {
         "kind": "instance",
