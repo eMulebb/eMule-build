@@ -133,7 +133,7 @@ def test_build_emulebb_rust_client_runs_cargo_and_stages_runtime(
         built = layout.output_rust_target_root / "x86_64-pc-windows-msvc" / "release"
         built.mkdir(parents=True)
         (built / "emulebb-rust.exe").write_bytes(b"exe")
-        (built / "emulebb-rust.pdb").write_bytes(b"pdb")
+        (built / "emulebb_rust.pdb").write_bytes(b"pdb")
         return subprocess.CompletedProcess(command, 0)
 
     monkeypatch.setattr(build, "find_tool", lambda _names: cargo)
@@ -163,6 +163,20 @@ def test_build_emulebb_rust_client_runs_cargo_and_stages_runtime(
     assert env["CARGO_TARGET_DIR"] == str(layout.output_rust_target_root)
     assert (layout.output_tools_root / "emulebb-rust" / "bin" / "emulebb-rust.exe").read_bytes() == b"exe"
     assert (layout.output_tools_root / "emulebb-rust" / "bin" / "emulebb-rust.pdb").read_bytes() == b"pdb"
+
+
+def test_stage_emulebb_rust_runtime_copies_rustc_underscore_pdb_name(tmp_path: Path) -> None:
+    layout = make_layout(tmp_path)
+    built = layout.output_rust_target_root / "x86_64-pc-windows-msvc" / "release"
+    built.mkdir(parents=True)
+    (built / "emulebb-rust-diagnostics.exe").write_bytes(b"diag")
+    (built / "emulebb_rust_diagnostics.pdb").write_bytes(b"diag-pdb")
+
+    build.stage_emulebb_rust_runtime(layout, "x86_64-pc-windows-msvc", diagnostics=True)
+
+    staged_bin = layout.output_tools_root / "emulebb-rust" / "bin"
+    assert (staged_bin / "emulebb-rust-diagnostics.exe").read_bytes() == b"diag"
+    assert (staged_bin / "emulebb-rust-diagnostics.pdb").read_bytes() == b"diag-pdb"
 
 
 def test_build_emulebb_rust_client_can_enable_packet_diagnostics(

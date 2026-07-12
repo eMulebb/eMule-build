@@ -340,6 +340,16 @@ def rust_client_target(platform: str) -> str:
         raise RuntimeError(f"Unsupported eMuleBB Rust client platform {platform}; supported: {supported}") from error
 
 
+def rust_pdb_source_names(staged_pdb_name: str) -> tuple[str, ...]:
+    """Returns PDB names cargo/rustc may emit for one staged Rust executable."""
+
+    path = Path(staged_pdb_name)
+    rustc_name = f"{path.stem.replace('-', '_')}{path.suffix}"
+    if rustc_name == staged_pdb_name:
+        return (staged_pdb_name,)
+    return (staged_pdb_name, rustc_name)
+
+
 def _qbt_vcpkg_toolchain() -> Path:
     """Resolves the vcpkg CMake toolchain file (VCPKG_ROOT, else the local tools dir)."""
 
@@ -549,9 +559,11 @@ def stage_emulebb_rust_runtime(layout: WorkspaceLayout, target: str, *, diagnost
     bin_root = target_root / "bin"
     bin_root.mkdir(parents=True, exist_ok=True)
     shutil.copy2(exe, bin_root / exe_name)
-    pdb = source_root / pdb_name
-    if pdb.is_file():
-        shutil.copy2(pdb, bin_root / pdb_name)
+    for pdb_source_name in rust_pdb_source_names(pdb_name):
+        pdb = source_root / pdb_source_name
+        if pdb.is_file():
+            shutil.copy2(pdb, bin_root / pdb_name)
+            break
     if not (bin_root / exe_name).is_file():
         raise RuntimeError(f"Staged eMuleBB Rust runtime is missing required file: {bin_root / exe_name}")
 
