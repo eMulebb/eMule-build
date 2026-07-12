@@ -350,6 +350,12 @@ def rust_pdb_source_names(staged_pdb_name: str) -> tuple[str, ...]:
     return (staged_pdb_name, rustc_name)
 
 
+def rust_pdb_stage_names(staged_pdb_name: str) -> tuple[str, ...]:
+    """Returns staged PDB aliases needed by humans and Windows symbol loaders."""
+
+    return rust_pdb_source_names(staged_pdb_name)
+
+
 def remove_rust_target_runtime_artifacts(layout: WorkspaceLayout) -> None:
     """Removes runnable Rust client copies from Cargo target dirs after staging."""
 
@@ -581,11 +587,15 @@ def stage_emulebb_rust_runtime(layout: WorkspaceLayout, target: str, *, diagnost
     bin_root = target_root / "bin"
     bin_root.mkdir(parents=True, exist_ok=True)
     shutil.copy2(exe, bin_root / exe_name)
+    staged_pdb_source = None
     for pdb_source_name in rust_pdb_source_names(pdb_name):
         pdb = source_root / pdb_source_name
         if pdb.is_file():
-            shutil.copy2(pdb, bin_root / pdb_name)
+            staged_pdb_source = pdb
             break
+    if staged_pdb_source is not None:
+        for staged_pdb_name in rust_pdb_stage_names(pdb_name):
+            shutil.copy2(staged_pdb_source, bin_root / staged_pdb_name)
     if not (bin_root / exe_name).is_file():
         raise RuntimeError(f"Staged eMuleBB Rust runtime is missing required file: {bin_root / exe_name}")
     remove_rust_target_runtime_artifacts(layout)

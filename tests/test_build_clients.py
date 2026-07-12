@@ -163,6 +163,7 @@ def test_build_emulebb_rust_client_runs_cargo_and_stages_runtime(
     assert env["CARGO_TARGET_DIR"] == str(layout.output_rust_target_root)
     assert (layout.output_tools_root / "emulebb-rust" / "bin" / "emulebb-rust.exe").read_bytes() == b"exe"
     assert (layout.output_tools_root / "emulebb-rust" / "bin" / "emulebb-rust.pdb").read_bytes() == b"pdb"
+    assert (layout.output_tools_root / "emulebb-rust" / "bin" / "emulebb_rust.pdb").read_bytes() == b"pdb"
     assert not (layout.output_rust_target_root / "x86_64-pc-windows-msvc" / "release" / "emulebb-rust.exe").exists()
     assert not (layout.output_rust_target_root / "x86_64-pc-windows-msvc" / "release" / "emulebb_rust.pdb").exists()
     assert not (layout.output_rust_target_root / "release" / "emulebb-rust.exe").exists()
@@ -183,6 +184,7 @@ def test_stage_emulebb_rust_runtime_copies_rustc_underscore_pdb_name(tmp_path: P
     staged_bin = layout.output_tools_root / "emulebb-rust" / "bin"
     assert (staged_bin / "emulebb-rust-diagnostics.exe").read_bytes() == b"diag"
     assert (staged_bin / "emulebb-rust-diagnostics.pdb").read_bytes() == b"diag-pdb"
+    assert (staged_bin / "emulebb_rust_diagnostics.pdb").read_bytes() == b"diag-pdb"
     assert not (built / "emulebb-rust-diagnostics.exe").exists()
     assert not (built / "emulebb_rust_diagnostics.pdb").exists()
     assert not (stale / "emulebb-rust.exe").exists()
