@@ -33,6 +33,7 @@ from .config import (
     CertificationOptions,
     CleanupOptions,
     CommunityCoverageOptions,
+    EmulebbRustPackageOptions,
     FakeKadTrustSoakOptions,
     LiveE2eOptions,
     LocalHammerCampaignOptions,
@@ -66,7 +67,12 @@ from .product_family import (
 )
 from .process import get_python_invocation, run_native
 from .python_tests import invoke_python_tests
-from .release import create_amutorrent_package, create_qbittorrentbb_package, create_release_package
+from .release import (
+    create_amutorrent_package,
+    create_emulebb_rust_package,
+    create_qbittorrentbb_package,
+    create_release_package,
+)
 from .release_campaign_runner import invoke_release_campaign
 from .setup_commands import run_compare, write_dependency_update_report, write_materialization_status
 from .status import write_dependency_status, write_workspace_repo_status, write_workspace_summary
@@ -1529,6 +1535,37 @@ def package_release(
     _locked(
         "package release",
         lambda **kwargs: create_release_package(kwargs["layout"], kwargs["workspace_options"], package_options),
+    )(workspace_options=workspace_options, layout=layout)
+
+
+@main.command("package-emulebb-rust")
+@_common_options
+@click.option("--clean", is_flag=True, help="Clean selected Rust build/staging outputs before building.")
+@click.option(
+    "--release-version",
+    default="0.1.0-beta.1",
+    show_default=True,
+    help="Rust release version in MAJOR.MINOR.PATCH[-rc.N|-beta.N|-nightly.YYYYMMDD.SHA] form.",
+)
+@click.option("--skip-build", is_flag=True, help="Reuse the staged regular Rust runtime instead of rebuilding it.")
+def package_emulebb_rust(
+    *,
+    clean: bool,
+    release_version: str,
+    skip_build: bool,
+    workspace_options: WorkspaceOptions,
+    layout,
+) -> None:
+    """Build or reuse the regular emulebb-rust daemon and create release artifacts."""
+
+    package_options = EmulebbRustPackageOptions(
+        release_version=release_version,
+        clean=clean,
+        skip_build=skip_build,
+    )
+    _locked(
+        "package emulebb-rust",
+        lambda **kwargs: create_emulebb_rust_package(kwargs["layout"], kwargs["workspace_options"], package_options),
     )(workspace_options=workspace_options, layout=layout)
 
 

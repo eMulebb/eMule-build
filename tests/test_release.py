@@ -11,7 +11,8 @@ from types import SimpleNamespace
 import pytest
 
 from emule_workspace import release
-from emule_workspace.layout import AppVariant
+from emule_workspace.config import EmulebbRustPackageOptions, WorkspaceOptions
+from emule_workspace.layout import AppVariant, TestTargets, WorkspaceLayout
 
 
 @pytest.mark.parametrize(
@@ -133,6 +134,53 @@ def _write_amutorrent_zip(path: Path, *, extra_entries: dict[str, bytes] | None 
     with zipfile.ZipFile(path, "w") as archive:
         for name, payload in entries.items():
             archive.writestr(name, payload)
+
+
+def _make_rust_package_layout(tmp_path: Path) -> WorkspaceLayout:
+    workspace_root = tmp_path / "workspace-root"
+    output_root = tmp_path / "workspace-output"
+    return WorkspaceLayout(
+        emule_workspace_root=workspace_root,
+        workspace_name="workspace",
+        workspace_root=workspace_root / "workspaces" / "workspace",
+        build_repo_root=workspace_root / "repos" / "emulebb-build",
+        tests_repo_root=workspace_root / "repos" / "emulebb-build-tests",
+        tooling_repo_root=workspace_root / "repos" / "emulebb-tooling",
+        ed2k_server_repo_root=workspace_root / "repos" / "goed2k-server",
+        amule_repo_root=workspace_root / "repos" / "amule",
+        seed_repo_path=workspace_root / "repos" / "emulebb",
+        seed_repo_branch="main",
+        dependencies=(),
+        app_variants=(),
+        test_targets=TestTargets(test_build_variant="main", test_run_variant="main", baseline_variant="community"),
+        toolset_override_variable="EMULEBB_VS_PLATFORM_TOOLSET",
+        emulebb_rust_repo_root=workspace_root / "repos" / "emulebb-rust",
+        output_root=output_root,
+    )
+
+
+def _stage_rust_package_inputs(layout: WorkspaceLayout) -> None:
+    rust_root = layout.emulebb_rust_repo_root
+    assert rust_root is not None
+    for repo in (rust_root, layout.build_repo_root, layout.tooling_repo_root):
+        repo.mkdir(parents=True, exist_ok=True)
+    (rust_root / "Cargo.toml").write_text(
+        "[workspace]\n[workspace.package]\nversion = \"0.1.0-beta.1\"\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    (rust_root / "emulebb-rust-settings.example.toml").write_text("[rest]\n", encoding="utf-8", newline="\n")
+    (rust_root / "LICENSE").write_text("GPL-2.0-only\n", encoding="utf-8", newline="\n")
+    scope = layout.tooling_repo_root / "docs" / "products" / "emulebb-rust" / "RELEASE-SCOPE.md"
+    scope.parent.mkdir(parents=True, exist_ok=True)
+    scope.write_text("# emulebb-rust Release Scope\n", encoding="utf-8", newline="\n")
+    staged_bin = layout.output_tools_root / "emulebb-rust" / "bin"
+    (staged_bin / "webui").mkdir(parents=True, exist_ok=True)
+    (staged_bin / "emulebb-rust.exe").write_bytes(_pe_payload(0x8664))
+    (staged_bin / "emulebb-rust-ui.exe").write_bytes(_pe_payload(0x8664))
+    (staged_bin / "emulebb-rust-diagnostics.exe").write_bytes(_pe_payload(0x8664))
+    (staged_bin / "webui" / "index.html").write_text("<div>webui</div>", encoding="utf-8", newline="\n")
+    (staged_bin / "webui" / "assets.js").write_text("console.log('webui');\n", encoding="utf-8", newline="\n")
 
 
 def test_package_release_dirty_guard_reports_all_provenance_inputs(
@@ -1052,6 +1100,77 @@ def test_amutorrent_package_contents_accept_runtime_bundle(tmp_path: Path) -> No
     assert hashes["aMuTorrent/README.md"] == hashlib.sha256(b"readme\n").hexdigest()
     assert "aMuTorrent/installer/windows/amutorrent.ps1" not in hashes
     assert "aMuTorrent/SBOM.spdx.json" in hashes
+
+
+def test_emulebb_rust_package_reuses_staged_regular_runtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    layout = _make_rust_package_layout(tmp_path)
+    _stage_rust_package_inputs(layout)
+    monkeypatch.setattr(release, "repo_status_lines", lambda _repo: [])
+    monkeypatch.setattr(
+        release,
+        "_package_repo_provenance",
+        lambda repo: {"commit": f"{repo.name}-commit", "branch": "main", "remote": ""},
+    )
+    options = WorkspaceOptions(
+        workspace_root=layout.emule_workspace_root,
+        output_root=layout.output_root,
+        configuration="Release",
+        platform="x64",
+    )
+
+    release.create_emulebb_rust_package(
+        layout,
+        options,
+        EmulebbRustPackageOptions(release_version="0.1.0-beta.1", skip_build=True),
+    )
+
+    release_root = layout.output_release_root / "rust-v0.1.0-beta.1"
+    zip_path = release_root / "emulebb-rust-v0.1.0-beta.1-windows-x64.zip"
+    manifest_path = release_root / "emulebb-rust-v0.1.0-beta.1-windows-x64.manifest.json"
+    sbom_path = release_root / "emulebb-rust-v0.1.0-beta.1-windows-x64.sbom.spdx.json"
+    sums_path = release_root / "SHA256SUMS"
+    assert zip_path.is_file()
+    assert manifest_path.is_file()
+    assert sbom_path.is_file()
+    assert sums_path.is_file()
+    release._assert_emulebb_rust_package_contents(zip_path)
+    with zipfile.ZipFile(zip_path) as archive:
+        names = set(archive.namelist())
+    assert "emulebb-rust/emulebb-rust.exe" in names
+    assert "emulebb-rust/webui/index.html" in names
+    assert "emulebb-rust/webui/assets.js" in names
+    assert "emulebb-rust/emulebb-rust-ui.exe" not in names
+    assert "emulebb-rust/emulebb-rust-diagnostics.exe" not in names
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["schema"] == "emulebb.rust.package/1"
+    assert manifest["version"] == "0.1.0-beta.1"
+    assert manifest["tag"] == "rust-v0.1.0-beta.1"
+    assert manifest["asset"] == zip_path.name
+    assert manifest["executable"] == "emulebb-rust/emulebb-rust.exe"
+    assert manifest["webuiRoot"] == "emulebb-rust/webui"
+    assert "emulebb-rust/webui/index.html" in manifest["perFileSha256"]
+    sums = sums_path.read_text(encoding="ascii").splitlines()
+    assert [line.split("  ", 1)[1] for line in sums] == [zip_path.name, manifest_path.name, sbom_path.name]
+
+
+def test_emulebb_rust_package_contents_reject_dead_ui_and_diagnostics(tmp_path: Path) -> None:
+    zip_path = tmp_path / "emulebb-rust.zip"
+    with zipfile.ZipFile(zip_path, "w") as archive:
+        archive.writestr("emulebb-rust/emulebb-rust.exe", _pe_payload(0x8664))
+        archive.writestr("emulebb-rust/webui/index.html", b"<html></html>\n")
+        archive.writestr("emulebb-rust/emulebb-rust-settings.example.toml", b"[rest]\n")
+        archive.writestr("emulebb-rust/LICENSE", b"license\n")
+        archive.writestr("emulebb-rust/README.md", b"readme\n")
+        archive.writestr("emulebb-rust/RELEASE-SCOPE.md", b"scope\n")
+        archive.writestr("emulebb-rust/SBOM.spdx.json", b'{"spdxVersion":"SPDX-2.3"}\n')
+        archive.writestr("emulebb-rust/emulebb-rust-ui.exe", _pe_payload(0x8664))
+        archive.writestr("emulebb-rust/emulebb-rust-diagnostics.exe", _pe_payload(0x8664))
+
+    with pytest.raises(RuntimeError, match="forbidden UI/diagnostics artifacts"):
+        release._assert_emulebb_rust_package_contents(zip_path)
 
 
 def test_copy_amutorrent_runtime_uses_output_root_static_bundle(tmp_path: Path) -> None:

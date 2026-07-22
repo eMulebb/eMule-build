@@ -405,6 +405,16 @@ class AmutorrentPackageOptions(BaseModel):
     clean: bool = False
 
 
+class EmulebbRustPackageOptions(BaseModel):
+    """Options for building the emulebb-rust package artifact."""
+
+    model_config = ConfigDict(frozen=True)
+
+    release_version: str = "0.1.0-beta.1"
+    clean: bool = False
+    skip_build: bool = False
+
+
 class AmulePackageOptions(BaseModel):
     """Options for building the optional aMule Windows package artifact."""
 

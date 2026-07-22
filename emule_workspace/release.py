@@ -9,6 +9,7 @@ import re
 import shutil
 import struct
 import subprocess
+import tomllib
 import urllib.request
 import zipfile
 from dataclasses import dataclass
@@ -19,7 +20,9 @@ from .build import (
     APP_EXE_NAME,
     DIAGNOSTICS_APP_EXE_NAME,
     app_property_overrides,
+    build_emulebb_rust_client,
     ensure_app_dependency_artifacts,
+    staged_emulebb_rust_root,
     verify_app_control_flow_guard,
     with_trailing_separator,
 )
@@ -27,6 +30,7 @@ from .artifact_names import utc_run_id
 from .build_state import BuildSession
 from .config import (
     AmutorrentPackageOptions,
+    EmulebbRustPackageOptions,
     QbittorrentbbPackageOptions,
     ReleasePackageOptions,
     WorkspaceOptions,
@@ -142,6 +146,8 @@ EMULEBB_SKIN_ASSET_PATHS = (
 )
 EMULEBB_RUNTIME_ASSET_PATHS = (*EMULEBB_RUNTIME_SCRIPT_PATHS, *EMULEBB_CONFIG_ASSET_PATHS, *EMULEBB_SKIN_ASSET_PATHS)
 EMULEBB_AUTOMATION_EXAMPLE_ASSET_ROOT_NAME = "emulebb_automation_examples"
+EMULEBB_RUST_PACKAGE_ROOT_NAME = "emulebb-rust"
+EMULEBB_RUST_PACKAGE_REQUIRED_WEBUI_ENTRY = f"{EMULEBB_RUST_PACKAGE_ROOT_NAME}/webui/index.html"
 
 
 @dataclass(frozen=True)
@@ -413,6 +419,116 @@ def create_qbittorrentbb_package(
     print(f"SHA256: {zip_hash}")
 
 
+def create_emulebb_rust_package(
+    layout: WorkspaceLayout,
+    workspace_options: WorkspaceOptions,
+    package_options: EmulebbRustPackageOptions,
+) -> None:
+    """Builds or reuses the staged Rust runtime and creates the Windows ZIP."""
+
+    if workspace_options.configuration != "Release":
+        raise RuntimeError("package emulebb-rust requires --config Release.")
+    if workspace_options.platform != "x64":
+        raise RuntimeError("package emulebb-rust currently supports only --platform x64.")
+    if not _is_release_version(package_options.release_version):
+        raise RuntimeError(
+            f"Rust release version must use {RELEASE_VERSION_FORMAT} format: {package_options.release_version}"
+        )
+    rust_root = layout.emulebb_rust_repo_root
+    if rust_root is None or not rust_root.is_dir():
+        raise RuntimeError("package emulebb-rust requires repos/emulebb-rust in the workspace manifest.")
+    _assert_emulebb_rust_version_matches(rust_root, package_options.release_version)
+    _assert_clean_emulebb_rust_package_inputs(layout, rust_root)
+
+    if not package_options.skip_build:
+        session = BuildSession(
+            layout=layout,
+            options=workspace_options,
+            command_name="package emulebb-rust",
+            clean=package_options.clean,
+            stamp=utc_run_id(),
+        )
+        try:
+            build_emulebb_rust_client(session, clean=package_options.clean, diagnostics=False)
+        finally:
+            session.write_recap()
+
+    release_root = _emulebb_rust_release_root(layout, package_options.release_version)
+    staging_root = release_root / "staging" / "windows-x64"
+    package_root = staging_root / EMULEBB_RUST_PACKAGE_ROOT_NAME
+    zip_path = release_root / f"emulebb-rust-v{package_options.release_version}-windows-x64.zip"
+    manifest_path = release_root / f"emulebb-rust-v{package_options.release_version}-windows-x64.manifest.json"
+    sbom_path = release_root / f"emulebb-rust-v{package_options.release_version}-windows-x64.sbom.spdx.json"
+    sums_path = release_root / "SHA256SUMS"
+    for path_to_check in (release_root, staging_root, package_root, zip_path, manifest_path, sbom_path, sums_path):
+        _assert_path_under_root(path_to_check, release_root, "emulebb-rust package path")
+
+    if staging_root.exists():
+        shutil.rmtree(staging_root)
+    package_root.mkdir(parents=True, exist_ok=True)
+    staged_bin = staged_emulebb_rust_root(layout) / "bin"
+    exe_source = staged_bin / "emulebb-rust.exe"
+    webui_source = staged_bin / "webui"
+    if not exe_source.is_file():
+        raise RuntimeError(f"Cannot package missing staged emulebb-rust executable: {exe_source}")
+    if not (webui_source / "index.html").is_file():
+        raise RuntimeError(f"Cannot package missing staged emulebb-rust WebUI: {webui_source / 'index.html'}")
+    _assert_pe_machine(exe_source, workspace_options.platform)
+    shutil.copy2(exe_source, package_root / "emulebb-rust.exe")
+    shutil.copytree(webui_source, package_root / "webui")
+    _copy_package_file(
+        rust_root / "emulebb-rust-settings.example.toml",
+        package_root,
+        Path("emulebb-rust-settings.example.toml"),
+    )
+    _copy_package_file(rust_root / "LICENSE", package_root, Path("LICENSE"))
+    _copy_package_file(
+        layout.tooling_repo_root / "docs" / "products" / "emulebb-rust" / "RELEASE-SCOPE.md",
+        package_root,
+        Path("RELEASE-SCOPE.md"),
+    )
+    _write_emulebb_rust_readme(package_root, package_options.release_version)
+    _write_emulebb_rust_sbom(
+        layout=layout,
+        rust_root=rust_root,
+        package_root=package_root,
+        release_root=release_root,
+        asset_name=zip_path.name,
+        version=package_options.release_version,
+    )
+
+    if zip_path.exists():
+        zip_path.unlink()
+    release_root.mkdir(parents=True, exist_ok=True)
+    _write_zip(staging_root, package_root, zip_path)
+    _assert_emulebb_rust_package_contents(zip_path)
+
+    zip_hash = _sha256(zip_path)
+    exe_hash = _sha256(package_root / "emulebb-rust.exe")
+    package_file_hashes = _zip_entry_hashes(zip_path)
+    shutil.copy2(package_root / "SBOM.spdx.json", sbom_path)
+    sbom_hash = _sha256(sbom_path)
+    manifest = _build_emulebb_rust_manifest(
+        layout=layout,
+        rust_root=rust_root,
+        workspace_options=workspace_options,
+        package_options=package_options,
+        zip_path=zip_path,
+        release_root=release_root,
+        zip_hash=zip_hash,
+        sbom_path=sbom_path,
+        sbom_hash=sbom_hash,
+        exe_hash=exe_hash,
+        package_file_hashes=package_file_hashes,
+    )
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8", newline="\n")
+    _write_sha256sums(sums_path, (zip_path, manifest_path, sbom_path))
+    print(f"eMuleBB Rust package: {zip_path}")
+    print(f"eMuleBB Rust manifest: {manifest_path}")
+    print(f"eMuleBB Rust SBOM: {sbom_path}")
+    print(f"SHA256: {zip_hash}")
+
+
 def _qbittorrentbb_license(qbt_root: Path) -> Path | None:
     """Returns the qBittorrentBB license file, if present in the fork checkout."""
 
@@ -435,6 +551,152 @@ def _package_repo_provenance(repo_path: Path) -> dict[str, str]:
         "branch": branch,
         "remote": _git_value(repo_path, "config", "--get", "remote.origin.url"),
     }
+
+
+def _emulebb_rust_release_root(layout: WorkspaceLayout, release_version: str) -> Path:
+    """Returns the Rust release artifact root for one version."""
+
+    return layout.output_release_root / f"rust-v{release_version}"
+
+
+def _assert_emulebb_rust_version_matches(rust_root: Path, release_version: str) -> None:
+    """Requires the Rust workspace version to match the requested package version."""
+
+    cargo_toml = rust_root / "Cargo.toml"
+    if not cargo_toml.is_file():
+        raise RuntimeError(f"Cannot package missing Rust workspace manifest: {cargo_toml}")
+    with cargo_toml.open("rb") as stream:
+        manifest = tomllib.load(stream)
+    version = str(manifest.get("workspace", {}).get("package", {}).get("version", ""))
+    if version != release_version:
+        raise RuntimeError(
+            f"package emulebb-rust version mismatch: --release-version is '{release_version}' "
+            f"but Cargo.toml workspace.package.version is '{version}'."
+        )
+
+
+def _assert_clean_emulebb_rust_package_inputs(layout: WorkspaceLayout, rust_root: Path) -> None:
+    """Requires clean source/provenance inputs before writing Rust release assets."""
+
+    dirty: list[str] = []
+    for label, repo in (
+        ("emulebb-rust", rust_root),
+        ("emulebb-build", layout.build_repo_root),
+        ("emulebb-tooling", layout.tooling_repo_root),
+    ):
+        lines = repo_status_lines(repo)
+        if lines:
+            dirty.append(f"{label} ({repo}):\n" + "\n".join(f"  {line}" for line in lines))
+    if dirty:
+        raise RuntimeError(
+            "package emulebb-rust requires clean provenance inputs before writing assets:\n"
+            + "\n\n".join(dirty)
+        )
+
+
+def _write_emulebb_rust_readme(package_root: Path, version: str) -> None:
+    """Writes the package-facing README for emulebb-rust."""
+
+    readme_path = package_root / "README.md"
+    _assert_path_under_root(readme_path, package_root, "emulebb-rust package README")
+    readme = (
+        f"eMuleBB Rust {version}\n"
+        "====================\n\n"
+        "This is the unsigned Windows x64 beta package for the headless emulebb-rust daemon.\n\n"
+        "Run `emulebb-rust.exe --profile <profile-dir>` from this directory or from a script that points at a profile.\n"
+        "The daemon serves the embedded browser WebUI from the packaged `webui` directory beside the executable.\n\n"
+        "Package contents:\n\n"
+        "- `emulebb-rust.exe` - regular headless daemon executable.\n"
+        "- `webui/` - packaged embedded SPA WebUI static assets.\n"
+        "- `emulebb-rust-settings.example.toml` - local settings example.\n"
+        "- `RELEASE-SCOPE.md` - beta scope, omissions, and platform support.\n"
+        "- `SBOM.spdx.json` - package file inventory and provenance.\n\n"
+        "The native Slint UI is not shipped in this package.\n"
+    )
+    readme_path.write_text(readme, encoding="utf-8", newline="\n")
+
+
+def _write_emulebb_rust_sbom(
+    *,
+    layout: WorkspaceLayout,
+    rust_root: Path,
+    package_root: Path,
+    release_root: Path,
+    asset_name: str,
+    version: str,
+) -> None:
+    """Writes a package-local SPDX SBOM for the Rust release asset."""
+
+    sbom_path = package_root / "SBOM.spdx.json"
+    _assert_path_under_root(sbom_path, package_root, "emulebb-rust package SBOM")
+    components = [
+        _repo_spdx_package("emulebb-rust source", rust_root, declared_license="GPL-2.0-only"),
+        _repo_spdx_package("eMule build orchestration", layout.build_repo_root),
+        _repo_spdx_package("eMule tooling docs", layout.tooling_repo_root),
+    ]
+    document = _build_spdx_sbom(
+        name=f"eMuleBB Rust {version} Windows x64 package",
+        namespace=f"https://github.com/emulebb/emulebb-rust/releases/download/rust-v{version}/{asset_name}.sbom",
+        package_name=f"emulebb-rust-{version}-windows-x64",
+        package_version=version,
+        package_license="GPL-2.0-only",
+        package_comment="Unsigned Windows x64 beta package for the headless Rust daemon and embedded WebUI.",
+        package_root=package_root,
+        release_root=release_root,
+        components=components,
+    )
+    sbom_path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8", newline="\n")
+
+
+def _build_emulebb_rust_manifest(
+    *,
+    layout: WorkspaceLayout,
+    rust_root: Path,
+    workspace_options: WorkspaceOptions,
+    package_options: EmulebbRustPackageOptions,
+    zip_path: Path,
+    release_root: Path,
+    zip_hash: str,
+    sbom_path: Path,
+    sbom_hash: str,
+    exe_hash: str,
+    package_file_hashes: dict[str, str],
+) -> dict[str, object]:
+    """Builds the machine-readable manifest for the Rust package ZIP."""
+
+    return {
+        "schema": "emulebb.rust.package/1",
+        "package": "emulebb-rust",
+        "version": package_options.release_version,
+        "tag": f"rust-v{package_options.release_version}",
+        "platform": workspace_options.platform,
+        "configuration": workspace_options.configuration,
+        "signed": False,
+        "builtUtc": datetime.now(timezone.utc).isoformat(),
+        "asset": zip_path.name,
+        "sha256": zip_hash,
+        "executable": f"{EMULEBB_RUST_PACKAGE_ROOT_NAME}/emulebb-rust.exe",
+        "executableSha256": exe_hash,
+        "webuiRoot": f"{EMULEBB_RUST_PACKAGE_ROOT_NAME}/webui",
+        "releaseScope": f"{EMULEBB_RUST_PACKAGE_ROOT_NAME}/RELEASE-SCOPE.md",
+        "settingsExample": f"{EMULEBB_RUST_PACKAGE_ROOT_NAME}/emulebb-rust-settings.example.toml",
+        "sbom": sbom_path.relative_to(release_root).as_posix(),
+        "sbomSha256": sbom_hash,
+        "perFileSha256": package_file_hashes,
+        "source": {
+            "emulebbRust": _package_repo_provenance(rust_root),
+            "emulebbBuild": _package_repo_provenance(layout.build_repo_root),
+            "emulebbTooling": _package_repo_provenance(layout.tooling_repo_root),
+        },
+    }
+
+
+def _write_sha256sums(sums_path: Path, paths: tuple[Path, ...]) -> None:
+    """Writes GNU-style SHA256SUMS for release assets."""
+
+    release_root = sums_path.parent
+    lines = [f"{_sha256(path)}  {path.relative_to(release_root).as_posix()}" for path in paths]
+    sums_path.write_text("\n".join(lines) + "\n", encoding="ascii", newline="\n")
 
 
 def _write_qbittorrentbb_readme(package_root: Path, version: str, asset_arch: str) -> None:
@@ -2000,6 +2262,45 @@ def _assert_release_package_contents(
             sample = "\n".join(forbidden_entries[:20])
             raise RuntimeError(f"Release package contains build/source artifacts:\n{sample}")
     print(f"Package content check: {zip_path} ({len(entry_names)} entries, {len(language_dlls)} language DLLs)")
+
+
+def _assert_emulebb_rust_package_contents(zip_path: Path) -> None:
+    """Checks the Rust package for required runtime files and forbidden UI artifacts."""
+
+    with zipfile.ZipFile(zip_path, "r") as archive:
+        entry_names = [name.replace("\\", "/") for name in archive.namelist()]
+        entry_set = set(entry_names)
+        required_entries = {
+            f"{EMULEBB_RUST_PACKAGE_ROOT_NAME}/emulebb-rust.exe",
+            EMULEBB_RUST_PACKAGE_REQUIRED_WEBUI_ENTRY,
+            f"{EMULEBB_RUST_PACKAGE_ROOT_NAME}/emulebb-rust-settings.example.toml",
+            f"{EMULEBB_RUST_PACKAGE_ROOT_NAME}/LICENSE",
+            f"{EMULEBB_RUST_PACKAGE_ROOT_NAME}/README.md",
+            f"{EMULEBB_RUST_PACKAGE_ROOT_NAME}/RELEASE-SCOPE.md",
+            f"{EMULEBB_RUST_PACKAGE_ROOT_NAME}/SBOM.spdx.json",
+        }
+        for required_entry in required_entries:
+            if required_entry not in entry_set:
+                raise RuntimeError(f"eMuleBB Rust package is missing required entry '{required_entry}': {zip_path}")
+        forbidden_entries = sorted(
+            name
+            for name in entry_names
+            if "emulebb-rust-ui" in Path(name).name or "emulebb-rust-diagnostics" in Path(name).name
+        )
+        if forbidden_entries:
+            sample = "\n".join(forbidden_entries[:20])
+            raise RuntimeError(f"eMuleBB Rust package contains forbidden UI/diagnostics artifacts:\n{sample}")
+        root_prefix = f"{EMULEBB_RUST_PACKAGE_ROOT_NAME}/"
+        outside_root = sorted(name for name in entry_names if not name.startswith(root_prefix))
+        if outside_root:
+            sample = "\n".join(outside_root[:20])
+            raise RuntimeError(f"eMuleBB Rust package contains entries outside {EMULEBB_RUST_PACKAGE_ROOT_NAME}/:\n{sample}")
+        _assert_pe_machine_bytes(
+            archive.read(f"{EMULEBB_RUST_PACKAGE_ROOT_NAME}/emulebb-rust.exe"),
+            "x64",
+            f"{EMULEBB_RUST_PACKAGE_ROOT_NAME}/emulebb-rust.exe",
+        )
+    print(f"eMuleBB Rust package content check: {zip_path} ({len(entry_names)} entries)")
 
 
 def _assert_amutorrent_package_contents(zip_path: Path) -> None:
