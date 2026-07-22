@@ -124,19 +124,28 @@ def test_build_emulebb_rust_client_runs_cargo_and_stages_runtime(
     repo_root = layout.emulebb_rust_repo_root
     assert repo_root is not None
     repo_root.mkdir(parents=True)
+    (repo_root / "webui").mkdir()
+    (repo_root / "webui" / "package.json").write_text("{}", encoding="utf-8")
     cargo = tmp_path / "cargo.exe"
     cargo.write_bytes(b"")
+    npm = tmp_path / "npm.cmd"
+    npm.write_bytes(b"")
     commands: list[tuple[list[str], Path, dict[str, str]]] = []
 
     def fake_run(command, *, cwd, stdout, stderr, text, check, env):
         commands.append((list(command), Path(cwd), dict(env)))
-        built = layout.output_rust_target_root / "x86_64-pc-windows-msvc" / "release"
-        built.mkdir(parents=True)
-        (built / "emulebb-rust.exe").write_bytes(b"exe")
-        (built / "emulebb_rust.pdb").write_bytes(b"pdb")
+        if command[0] == "cargo.exe":
+            built = layout.output_rust_target_root / "x86_64-pc-windows-msvc" / "release"
+            built.mkdir(parents=True)
+            (built / "emulebb-rust.exe").write_bytes(b"exe")
+            (built / "emulebb_rust.pdb").write_bytes(b"pdb")
+        else:
+            webui_dist = layout.output_build_root / "emulebb-rust" / "webui-dist"
+            webui_dist.mkdir(parents=True)
+            (webui_dist / "index.html").write_text("<div>webui</div>", encoding="utf-8")
         return subprocess.CompletedProcess(command, 0)
 
-    monkeypatch.setattr(build, "find_tool", lambda _names: cargo)
+    monkeypatch.setattr(build, "find_tool", lambda names: npm if "npm.cmd" in names else cargo)
     monkeypatch.setattr(build.subprocess, "run", fake_run)
     session = build.BuildSession(
         layout=layout,
@@ -147,6 +156,7 @@ def test_build_emulebb_rust_client_runs_cargo_and_stages_runtime(
     build.build_emulebb_rust_client(session, clean=True)
 
     command, cwd, env = commands[0]
+    webui_command, webui_cwd, _webui_env = commands[1]
     assert cwd == repo_root
     assert command == [
         "cargo.exe",
@@ -161,9 +171,21 @@ def test_build_emulebb_rust_client_runs_cargo_and_stages_runtime(
     ]
     assert env["EMULEBB_WORKSPACE_OUTPUT_ROOT"] == str(layout.output_root)
     assert env["CARGO_TARGET_DIR"] == str(layout.output_rust_target_root)
+    assert webui_cwd == repo_root / "webui"
+    assert webui_command == [
+        str(npm),
+        "run",
+        "build",
+        "--",
+        "--outDir",
+        str(layout.output_build_root / "emulebb-rust" / "webui-dist"),
+    ]
     assert (layout.output_tools_root / "emulebb-rust" / "bin" / "emulebb-rust.exe").read_bytes() == b"exe"
     assert (layout.output_tools_root / "emulebb-rust" / "bin" / "emulebb-rust.pdb").read_bytes() == b"pdb"
     assert (layout.output_tools_root / "emulebb-rust" / "bin" / "emulebb_rust.pdb").read_bytes() == b"pdb"
+    assert (layout.output_tools_root / "emulebb-rust" / "bin" / "webui" / "index.html").read_text(
+        encoding="utf-8"
+    ) == "<div>webui</div>"
     assert not (layout.output_rust_target_root / "x86_64-pc-windows-msvc" / "release" / "emulebb-rust.exe").exists()
     assert not (layout.output_rust_target_root / "x86_64-pc-windows-msvc" / "release" / "emulebb_rust.pdb").exists()
     assert not (layout.output_rust_target_root / "release" / "emulebb-rust.exe").exists()
@@ -197,8 +219,12 @@ def test_build_emulebb_rust_client_can_enable_packet_diagnostics(
     repo_root = layout.emulebb_rust_repo_root
     assert repo_root is not None
     repo_root.mkdir(parents=True)
+    (repo_root / "webui").mkdir()
+    (repo_root / "webui" / "package.json").write_text("{}", encoding="utf-8")
     cargo = tmp_path / "cargo.exe"
     cargo.write_bytes(b"")
+    npm = tmp_path / "npm.cmd"
+    npm.write_bytes(b"")
     commands: list[list[str]] = []
     staged_bin = layout.output_tools_root / "emulebb-rust" / "bin"
     staged_bin.mkdir(parents=True)
@@ -206,12 +232,17 @@ def test_build_emulebb_rust_client_can_enable_packet_diagnostics(
 
     def fake_run(command, *, cwd, stdout, stderr, text, check, env):
         commands.append(list(command))
-        built = layout.output_rust_target_root / "x86_64-pc-windows-msvc" / "release"
-        built.mkdir(parents=True)
-        (built / "emulebb-rust-diagnostics.exe").write_bytes(b"diag")
+        if command[0] == "cargo.exe":
+            built = layout.output_rust_target_root / "x86_64-pc-windows-msvc" / "release"
+            built.mkdir(parents=True)
+            (built / "emulebb-rust-diagnostics.exe").write_bytes(b"diag")
+        else:
+            webui_dist = layout.output_build_root / "emulebb-rust" / "webui-dist"
+            webui_dist.mkdir(parents=True)
+            (webui_dist / "index.html").write_text("<div>diagnostics webui</div>", encoding="utf-8")
         return subprocess.CompletedProcess(command, 0)
 
-    monkeypatch.setattr(build, "find_tool", lambda _names: cargo)
+    monkeypatch.setattr(build, "find_tool", lambda names: npm if "npm.cmd" in names else cargo)
     monkeypatch.setattr(build.subprocess, "run", fake_run)
     session = build.BuildSession(
         layout=layout,
@@ -226,6 +257,7 @@ def test_build_emulebb_rust_client_can_enable_packet_diagnostics(
     assert commands[0][-2:] == ["--features", "packet-diagnostics"]
     assert (staged_bin / "emulebb-rust.exe").read_bytes() == b"plain"
     assert (staged_bin / "emulebb-rust-diagnostics.exe").read_bytes() == b"diag"
+    assert (staged_bin / "webui" / "index.html").read_text(encoding="utf-8") == "<div>diagnostics webui</div>"
 
 
 def test_stage_emulebb_rust_runtime_requires_built_executable(tmp_path: Path) -> None:

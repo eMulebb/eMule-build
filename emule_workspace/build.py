@@ -312,6 +312,7 @@ def build_emulebb_rust_client(session: BuildSession, *, clean: bool, diagnostics
         if completed.returncode != 0:
             raise RuntimeError(f"eMuleBB Rust client build failed with exit code {completed.returncode}. See {log_path}")
         stage_emulebb_rust_runtime(session.layout, target, diagnostics=diagnostics)
+        build_emulebb_rust_webui(session, repo_root)
         session.add_step(
             name=f"CLIENT eMuleBB Rust{' diagnostics' if diagnostics else ''}",
             succeeded=True,
@@ -322,6 +323,62 @@ def build_emulebb_rust_client(session: BuildSession, *, clean: bool, diagnostics
     except Exception:
         session.add_step(
             name=f"CLIENT eMuleBB Rust{' diagnostics' if diagnostics else ''}",
+            succeeded=False,
+            log_path=log_path,
+            duration_seconds=time.monotonic() - started_at,
+            warning_count=0,
+        )
+        raise
+
+
+def build_emulebb_rust_webui(session: BuildSession, repo_root: Path) -> None:
+    """Builds and stages the embedded Rust WebUI bundle beside the staged daemon."""
+
+    webui_root = repo_root / "webui"
+    if not (webui_root / "package.json").is_file():
+        raise RuntimeError(f"eMuleBB Rust WebUI package.json was not found: {webui_root / 'package.json'}")
+    npm_path = find_tool(("npm.cmd", "npm.exe", "npm"))
+    if npm_path is None:
+        raise RuntimeError("build clients --client emulebb-rust requires Node npm on PATH to build the WebUI.")
+
+    build_root = session.layout.output_build_root / "emulebb-rust" / "webui-dist"
+    remove_tree_if_present(build_root)
+    build_root.parent.mkdir(parents=True, exist_ok=True)
+    log_path = session.log_directory / f"client-emulebb-rust-webui-{session.options.platform.lower()}.log"
+    npm_command = str(npm_path)
+    command = [npm_command, "run", "build", "--", "--outDir", str(build_root)]
+    started_at = time.monotonic()
+    try:
+        with log_path.open("w", encoding="utf-8", newline="\n") as stream:
+            stream.write(f"npm: {npm_path}\n")
+            stream.write(f"WebUI output: {build_root}\n")
+            stream.write(" ".join(shlex.quote(part) for part in command) + "\n\n")
+            completed = subprocess.run(
+                command,
+                cwd=webui_root,
+                stdout=stream,
+                stderr=subprocess.STDOUT,
+                text=True,
+                check=False,
+                env=subprocess_os_environ(),
+            )
+        if completed.returncode != 0:
+            raise RuntimeError(f"eMuleBB Rust WebUI build failed with exit code {completed.returncode}. See {log_path}")
+        if not (build_root / "index.html").is_file():
+            raise RuntimeError(f"eMuleBB Rust WebUI build did not produce index.html: {build_root / 'index.html'}")
+        staged_webui = staged_emulebb_rust_root(session.layout) / "bin" / "webui"
+        remove_tree_if_present(staged_webui)
+        shutil.copytree(build_root, staged_webui)
+        session.add_step(
+            name="CLIENT eMuleBB Rust WebUI",
+            succeeded=True,
+            log_path=log_path,
+            duration_seconds=time.monotonic() - started_at,
+            warning_count=0,
+        )
+    except Exception:
+        session.add_step(
+            name="CLIENT eMuleBB Rust WebUI",
             succeeded=False,
             log_path=log_path,
             duration_seconds=time.monotonic() - started_at,
