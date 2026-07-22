@@ -584,7 +584,7 @@ def _assert_clean_emulebb_rust_package_inputs(layout: WorkspaceLayout, rust_root
         ("emulebb-build", layout.build_repo_root),
         ("emulebb-tooling", layout.tooling_repo_root),
     ):
-        lines = repo_status_lines(repo)
+        lines = [line for line in repo_status_lines(repo) if not line.startswith("## ")]
         if lines:
             dirty.append(f"{label} ({repo}):\n" + "\n".join(f"  {line}" for line in lines))
     if dirty:

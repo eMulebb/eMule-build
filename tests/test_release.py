@@ -1108,7 +1108,7 @@ def test_emulebb_rust_package_reuses_staged_regular_runtime(
 ) -> None:
     layout = _make_rust_package_layout(tmp_path)
     _stage_rust_package_inputs(layout)
-    monkeypatch.setattr(release, "repo_status_lines", lambda _repo: [])
+    monkeypatch.setattr(release, "repo_status_lines", lambda _repo: ["## main...origin/main [ahead 1]"])
     monkeypatch.setattr(
         release,
         "_package_repo_provenance",
