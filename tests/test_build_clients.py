@@ -200,13 +200,18 @@ def test_stage_emulebb_rust_runtime_copies_rustc_underscore_pdb_name(tmp_path: P
     stale = layout.output_rust_target_root / "release"
     stale.mkdir(parents=True)
     (stale / "emulebb-rust.exe").write_bytes(b"stale")
+    staged_bin = layout.output_tools_root / "emulebb-rust" / "bin"
+    staged_bin.mkdir(parents=True)
+    (staged_bin / "emulebb-rust-ui.exe").write_bytes(b"dead-ui")
+    (staged_bin / "emulebb_rust_ui.pdb").write_bytes(b"dead-ui-pdb")
 
     build.stage_emulebb_rust_runtime(layout, "x86_64-pc-windows-msvc", diagnostics=True)
 
-    staged_bin = layout.output_tools_root / "emulebb-rust" / "bin"
     assert (staged_bin / "emulebb-rust-diagnostics.exe").read_bytes() == b"diag"
     assert (staged_bin / "emulebb-rust-diagnostics.pdb").read_bytes() == b"diag-pdb"
     assert (staged_bin / "emulebb_rust_diagnostics.pdb").read_bytes() == b"diag-pdb"
+    assert not (staged_bin / "emulebb-rust-ui.exe").exists()
+    assert not (staged_bin / "emulebb_rust_ui.pdb").exists()
     assert not (built / "emulebb-rust-diagnostics.exe").exists()
     assert not (built / "emulebb_rust_diagnostics.pdb").exists()
     assert not (stale / "emulebb-rust.exe").exists()

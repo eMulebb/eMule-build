@@ -253,6 +253,11 @@ RUST_CLIENT_TARGETS = {
     "x64": "x86_64-pc-windows-msvc",
     "ARM64": "aarch64-pc-windows-msvc",
 }
+STALE_EMULEBB_RUST_UI_ARTIFACTS = (
+    "emulebb-rust-ui.exe",
+    "emulebb-rust-ui.pdb",
+    "emulebb_rust_ui.pdb",
+)
 
 
 def build_emulebb_rust_client(session: BuildSession, *, clean: bool, diagnostics: bool = False) -> None:
@@ -643,6 +648,8 @@ def stage_emulebb_rust_runtime(layout: WorkspaceLayout, target: str, *, diagnost
     target_root = staged_emulebb_rust_root(layout)
     bin_root = target_root / "bin"
     bin_root.mkdir(parents=True, exist_ok=True)
+    for stale_artifact in STALE_EMULEBB_RUST_UI_ARTIFACTS:
+        (bin_root / stale_artifact).unlink(missing_ok=True)
     shutil.copy2(exe, bin_root / exe_name)
     staged_pdb_source = None
     for pdb_source_name in rust_pdb_source_names(pdb_name):
