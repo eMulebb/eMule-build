@@ -93,7 +93,7 @@ def test_controlled_smoke_uses_reusable_core_offline_and_lan_suite() -> None:
     assert "Hosted runner: windows-11-arm" in text
     assert 'node_version: "24"' in text
     assert "app_ref: ${{ github.sha }}" in text
-    assert "timeout_minutes: 360" in text
+    assert "timeout_minutes: 90" in text
     assert "python -m emule_workspace package-release" in text
     assert "python -m emule_workspace package-amutorrent" in text
     assert "python -m emule_workspace build app" in text
