@@ -38,6 +38,7 @@ from .process import get_python_invocation, run_native
 MATERIALIZED_ARR_SERVICE_WAIT_SECONDS = 120.0
 MATERIALIZED_ARR_SERVICE_POLL_SECONDS = 1.0
 TRACING_HARNESS_EXE_NAMES = ("emule.exe", APP_EXE_NAME)
+MAIN_CLIENT2_SUITE_NAMES = frozenset({"deterministic-two-client-transfer"})
 
 # Native doctest suites run by ``test all`` across every certification tier. The
 # core three (parity, protocol-parity, web_api) carry the bulk of parity/REST
@@ -413,7 +414,7 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
             _resolve_workspace_path_argument(layout, live_options.live_process_monitor_profile_dir)
         )
     resolved_app_exe = _resolve_live_e2e_app_exe(layout, app_root, app_exe, options)
-    resolved_client2_app_exe = _resolve_live_e2e_client2_app_exe(layout, options)
+    resolved_client2_app_exe = _resolve_live_e2e_client2_app_exe(layout, options, live_options)
     _ensure_hide_me_split_tunnel_for_live(
         test_network=live_options.test_network,
         p2p_bind_interface_name=live_options.p2p_bind_interface_name,
@@ -1289,8 +1290,23 @@ def _resolve_live_e2e_app_exe(
     )
 
 
-def _resolve_live_e2e_client2_app_exe(layout: WorkspaceLayout, options: WorkspaceOptions) -> Path | None:
-    """Returns the built tracing-harness executable when staged under the output root."""
+def _resolve_live_e2e_client2_app_exe(
+    layout: WorkspaceLayout,
+    options: WorkspaceOptions,
+    live_options: LiveE2eOptions,
+) -> Path | None:
+    """Returns the built client2 executable when staged under the output root."""
+
+    if _live_e2e_prefers_main_client2(live_options):
+        candidate = app_build_binary_path(
+            layout,
+            layout.test_targets.test_run_variant,
+            options.configuration,
+            options.platform,
+            executable_name=APP_EXE_NAME,
+        )
+        if candidate.is_file():
+            return candidate
 
     try:
         variant = layout.get_app_variant("tracing-harness")
@@ -1307,6 +1323,14 @@ def _resolve_live_e2e_client2_app_exe(layout: WorkspaceLayout, options: Workspac
         if candidate.is_file():
             return candidate
     return None
+
+
+def _live_e2e_prefers_main_client2(options: LiveE2eOptions) -> bool:
+    """Reports whether the selected suite needs the native REST-capable main client."""
+
+    selected = set(options.suites)
+    selected.update(options.campaign_scenario_local_suites)
+    return any(suite_name in MAIN_CLIENT2_SUITE_NAMES for suite_name in selected)
 
 
 def _resolve_workspace_argument(layout: WorkspaceLayout, value: str) -> str:

@@ -1360,6 +1360,44 @@ def test_live_e2e_forwards_output_root_tracing_harness_when_available(tmp_path: 
     assert option_values(command, "--client2-app-exe") == [str(harness_exe)]
 
 
+def test_live_e2e_deterministic_transfer_prefers_output_root_main_client2(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_native(command, *, label, cwd, env=None, allow_failure=False):
+        captured["command"] = list(command)
+
+    layout = make_layout(tmp_path)
+    tracing_root = layout.workspace_root / "app" / "emulebb-community-tracing-harness"
+    tracing_root.mkdir(parents=True)
+    layout = replace(
+        layout,
+        app_variants=(
+            *layout.app_variants,
+            AppVariant(name="tracing-harness", path=tracing_root, branch="tracing-harness/community-0.72a"),
+        ),
+    )
+    harness_exe = layout.output_root / "builds" / "app" / "tracing-harness" / "x64" / "Release" / "standard" / "bin" / "emule.exe"
+    harness_exe.parent.mkdir(parents=True)
+    harness_exe.write_bytes(b"exe")
+    main_exe = layout.output_root / "builds" / "app" / "main" / "x64" / "Release" / "standard" / "bin" / "emulebb.exe"
+    main_exe.parent.mkdir(parents=True)
+    main_exe.write_bytes(b"exe")
+    monkeypatch.setattr(test_runs, "run_native", fake_run_native)
+
+    test_runs.invoke_live_e2e_suite(
+        layout,
+        WorkspaceOptions(workspace_root=tmp_path, platform="x64"),
+        LiveE2eOptions(suites=("deterministic-two-client-transfer",)),
+    )
+
+    command = captured["command"]
+    assert isinstance(command, list)
+    assert option_values(command, "--client2-app-exe") == [str(main_exe)]
+
+
 def test_live_e2e_forwards_standardized_output_root_tracing_harness_name(
     tmp_path: Path,
     monkeypatch,
