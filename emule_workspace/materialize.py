@@ -197,6 +197,18 @@ def branch_ref_exists(repo_path: Path, ref: str, root: Path, repo_name: str) -> 
     return result.returncode == 0
 
 
+def print_repo_provenance(root: Path, repo_path: Path, repo_name: str) -> None:
+    """Prints the checked-out commit for CI materialization logs."""
+
+    head = run_captured(["git", "-C", repo_path, "rev-parse", "HEAD"], label=f"provenance {repo_name}", cwd=root)
+    branch = run_captured(
+        ["git", "-C", repo_path, "branch", "--show-current"],
+        label=f"provenance branch {repo_name}",
+        cwd=root,
+    )
+    print(f"Managed repository '{repo_name}' at {head.strip()} ({branch.strip() or 'detached'}).")
+
+
 def ensure_managed_repo_branch(root: Path, repo_path: Path, repo: ManagedRepo) -> None:
     """Checks out and fast-forwards a non-app managed repository branch."""
 
@@ -253,12 +265,14 @@ def ensure_repo_clone(root: Path, repo: ManagedRepo) -> Path:
         clone_args.extend([repo.url, str(repo_path)])
         run_native(clone_args, label=f"clone {repo.name}", cwd=root)
         ensure_repo_additional_remotes(repo_path, repo)
+        print_repo_provenance(root, repo_path, repo.name)
         return repo_path
 
     run_native(["git", "-C", repo_path, "fetch", "origin", "--prune"], label=f"fetch {repo.name}", cwd=root)
     ensure_repo_additional_remotes(repo_path, repo)
     if not isinstance(repo, AppRepo):
         ensure_managed_repo_branch(root, repo_path, repo)
+        print_repo_provenance(root, repo_path, repo.name)
     if repo.has_submodules:
         run_native(
             ["git", "-C", repo_path, "submodule", "update", "--init", "--recursive"],

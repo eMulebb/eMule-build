@@ -57,6 +57,25 @@ def test_optional_missing_branch_leaves_checkout_unchanged(tmp_path: Path, monke
     assert calls == []
 
 
+def test_print_repo_provenance_reports_head_and_branch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    repo = tmp_path / "repo"
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run_captured(command, **_kwargs):
+        calls.append(tuple(str(part) for part in command))
+        return "abc123\n" if command[-1] == "HEAD" else "main\n"
+
+    monkeypatch.setattr(materialize, "run_captured", fake_run_captured)
+
+    materialize.print_repo_provenance(tmp_path, repo, "emulebb-build-tests")
+
+    assert calls == [
+        ("git", "-C", str(repo), "rev-parse", "HEAD"),
+        ("git", "-C", str(repo), "branch", "--show-current"),
+    ]
+    assert "Managed repository 'emulebb-build-tests' at abc123 (main)." in capsys.readouterr().out
+
+
 def test_seed_overlay_tracks_and_removes_stale_seed_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     topology = WorkspaceTopology(
         root_directories=(),
