@@ -118,6 +118,12 @@ jobs:
           $ErrorActionPreference = "Stop"
           python -m emule_workspace materialize
 
+      - name: Checkout aMuTorrent source
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.amutorrent_repository }}
+          path: repos/amutorrent
+
       - name: Align requested source refs
         shell: pwsh
         env:

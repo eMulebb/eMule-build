@@ -45,6 +45,9 @@ def test_reusable_workspace_command_owns_materialized_ci_setup() -> None:
     assert "EMULEBB_WORKSPACE_OUTPUT_ROOT=$outputRoot" in text
     assert "Resolve-ArtifactPathInput" in text
     assert "python -m emule_workspace materialize" in text
+    assert "Checkout aMuTorrent source" in text
+    assert "repository: ${{ inputs.amutorrent_repository }}" in text
+    assert "path: repos/amutorrent" in text
     assert "python -m emule_workspace audit-artifacts" in text
     assert "materialize --workspace-root" not in text
     assert (
