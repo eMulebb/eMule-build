@@ -91,6 +91,11 @@ jobs:
           $outputRoot = [System.IO.Path]::GetFullPath((Join-Path $env:EMULEBB_WORKSPACE_ROOT '..\emulebb-output'))
           New-Item -ItemType Directory -Force -Path $outputRoot | Out-Null
           "EMULEBB_WORKSPACE_OUTPUT_ROOT=$outputRoot" | Add-Content -LiteralPath $env:GITHUB_ENV
+          if ([string]::IsNullOrWhiteSpace($env:CARGO_TARGET_DIR)) {
+            $cargoTargetDir = Join-Path $outputRoot "builds\rust\target"
+            New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
+            "CARGO_TARGET_DIR=$cargoTargetDir" | Add-Content -LiteralPath $env:GITHUB_ENV
+          }
 
       - name: Checkout build orchestration
         uses: actions/checkout@v6

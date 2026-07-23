@@ -43,6 +43,8 @@ def test_reusable_workspace_command_owns_materialized_ci_setup() -> None:
     assert "EMULEBB_WORKSPACE_ROOT: ${{ github.workspace }}" in text
     assert "Join-Path $env:EMULEBB_WORKSPACE_ROOT '..\\emulebb-output'" in text
     assert "EMULEBB_WORKSPACE_OUTPUT_ROOT=$outputRoot" in text
+    assert 'Join-Path $outputRoot "builds\\rust\\target"' in text
+    assert "CARGO_TARGET_DIR=$cargoTargetDir" in text
     assert "Resolve-ArtifactPathInput" in text
     assert "python -m emule_workspace materialize" in text
     assert "Checkout aMuTorrent source" in text
