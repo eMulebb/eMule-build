@@ -68,6 +68,7 @@ def build_libs(layout: WorkspaceLayout, options: WorkspaceOptions, *, clean: boo
         third_party = layout.resolve_workspace_path("repos/third_party")
         target = "Rebuild" if clean else "Build"
         toolset_property = default_platform_toolset_property(layout)
+        dependency_max_cpu_count = 1 if options.platform == "ARM64" else None
         if options.platform == "ARM64":
             ensure_arm64_override_targets(layout)
 
@@ -78,6 +79,7 @@ def build_libs(layout: WorkspaceLayout, options: WorkspaceOptions, *, clean: boo
             environment_overrides=crypto_pp_environment(options.platform),
             target=target,
             step_name="DEP cryptopp",
+            max_cpu_count=dependency_max_cpu_count,
         )
         invoke_msbuild_project(
             session,
@@ -85,6 +87,7 @@ def build_libs(layout: WorkspaceLayout, options: WorkspaceOptions, *, clean: boo
             extra_properties=(toolset_property, *id3lib_properties(options.configuration, options.platform)),
             target=target,
             step_name="DEP id3lib",
+            max_cpu_count=dependency_max_cpu_count,
         )
         invoke_msbuild_project(
             session,
@@ -92,6 +95,7 @@ def build_libs(layout: WorkspaceLayout, options: WorkspaceOptions, *, clean: boo
             extra_properties=(toolset_property,),
             target=target,
             step_name="DEP miniupnp",
+            max_cpu_count=dependency_max_cpu_count,
         )
         if clean:
             remove_tree_if_present(libpcpnatpmp_build_root(layout, options.platform))
@@ -109,6 +113,7 @@ def build_libs(layout: WorkspaceLayout, options: WorkspaceOptions, *, clean: boo
             extra_properties=(toolset_property,),
             target=target,
             step_name="DEP ResizableLib",
+            max_cpu_count=dependency_max_cpu_count,
         )
         if clean and options.platform == "x64":
             remove_stale_generated_artifacts(third_party / "emulebb-zlib", "zlib")
@@ -119,6 +124,7 @@ def build_libs(layout: WorkspaceLayout, options: WorkspaceOptions, *, clean: boo
             extra_properties=(toolset_property, f"/p:WorkspaceCMakeExe={get_cmake_path()}"),
             target=target,
             step_name="DEP zlib",
+            max_cpu_count=dependency_max_cpu_count,
         )
         invoke_msbuild_project(
             session,
@@ -130,6 +136,7 @@ def build_libs(layout: WorkspaceLayout, options: WorkspaceOptions, *, clean: boo
             ),
             target=target,
             step_name="DEP mbedtls",
+            max_cpu_count=dependency_max_cpu_count,
         )
         stage_app_dependency_artifacts(layout, options.configuration, options.platform)
         prune_repo_local_dependency_outputs(layout)

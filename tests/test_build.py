@@ -42,6 +42,16 @@ def test_build_libs_clean_release_x64_removes_generated_dependency_outputs(
     assert [kind for _repo, kind in removed] == ["zlib", "mbedtls"]
 
 
+def test_build_libs_serializes_arm64_msbuild_dependencies(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured = capture_build_libs_msbuild_calls(tmp_path, monkeypatch, platform="ARM64")
+
+    assert captured
+    assert {call["max_cpu_count"] for call in captured} == {1}
+
+
 def test_build_apps_forwards_startup_diagnostics_option(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -223,6 +233,7 @@ def capture_build_libs_msbuild_calls(
     monkeypatch: pytest.MonkeyPatch,
     *,
     clean: bool = False,
+    platform: str = "x64",
     removed_generated: list[tuple[Path, str]] | None = None,
 ) -> list[dict[str, object]]:
     layout = make_layout(tmp_path)
@@ -247,6 +258,7 @@ def capture_build_libs_msbuild_calls(
                 "project_path": kwargs["project_path"],
                 "extra_properties": tuple(kwargs.get("extra_properties") or ()),
                 "step_name": kwargs["step_name"],
+                "max_cpu_count": kwargs.get("max_cpu_count"),
             }
         )
 
@@ -254,7 +266,7 @@ def capture_build_libs_msbuild_calls(
 
     build.build_libs(
         layout,
-        WorkspaceOptions(workspace_root=layout.emule_workspace_root, configuration="Release", platform="x64"),
+        WorkspaceOptions(workspace_root=layout.emule_workspace_root, configuration="Release", platform=platform),
         clean=clean,
     )
 
