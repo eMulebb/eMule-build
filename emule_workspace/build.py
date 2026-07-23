@@ -1054,6 +1054,7 @@ def ensure_arm64_override_targets(layout: WorkspaceLayout) -> None:
         """<Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemDefinitionGroup Condition="'$(Platform)'=='ARM64'">
     <ClCompile>
+      <MultiProcessorCompilation>false</MultiProcessorCompilation>
       <AdditionalOptions>/DCRYPTOPP_DISABLE_ASM /DCRYPTOPP_NO_CPU_FEATURE_PROBES %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
   </ItemDefinitionGroup>

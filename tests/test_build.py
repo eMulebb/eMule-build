@@ -52,6 +52,16 @@ def test_build_libs_serializes_arm64_msbuild_dependencies(
     assert {call["max_cpu_count"] for call in captured} == {1}
 
 
+def test_arm64_crypto_overrides_disable_compiler_multiprocessing(tmp_path: Path) -> None:
+    layout = make_layout(tmp_path)
+
+    build.ensure_arm64_override_targets(layout)
+
+    props_text = build.arm64_overrides_props_path(layout).read_text(encoding="utf-8")
+    assert "<MultiProcessorCompilation>false</MultiProcessorCompilation>" in props_text
+    assert "/DCRYPTOPP_DISABLE_ASM /DCRYPTOPP_NO_CPU_FEATURE_PROBES" in props_text
+
+
 def test_build_apps_forwards_startup_diagnostics_option(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
