@@ -545,7 +545,6 @@ def invoke_live_e2e_suite(layout: WorkspaceLayout, options: WorkspaceOptions, li
     args.extend(["--godzilla-emulebb-files", live_options.godzilla_emulebb_files])
     args.extend(["--godzilla-extra-emulebb-files", live_options.godzilla_extra_emulebb_files])
     args.extend(["--godzilla-harness-files", live_options.godzilla_harness_files])
-    args.extend(["--godzilla-amule-files", live_options.godzilla_amule_files])
     args.extend(["--godzilla-adverse-kill-cycles", live_options.godzilla_adverse_kill_cycles])
     args.extend(["--godzilla-adverse-kill-warmup-seconds", live_options.godzilla_adverse_kill_warmup_seconds])
     args.extend(["--godzilla-adverse-recovery-timeout-seconds", live_options.godzilla_adverse_recovery_timeout_seconds])

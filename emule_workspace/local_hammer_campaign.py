@@ -158,7 +158,7 @@ def build_hammer_phase_plan(campaign_options: LocalHammerCampaignOptions) -> tup
                 campaign_options,
                 "--suite godzilla-local-swarm --test-network lan --admin-volume-fixtures --godzilla-stage launch-scale "
                 "--godzilla-total-client-count 4 --godzilla-peer-transfer-count 24 --godzilla-harness-transfer-count 24 "
-                "--godzilla-emulebb-files 80 --godzilla-extra-emulebb-files 8 --godzilla-harness-files 60 --godzilla-amule-files 20 "
+                "--godzilla-emulebb-files 80 --godzilla-extra-emulebb-files 8 --godzilla-harness-files 60 "
                 "--fail-fast",
             ),
             live_options=_godzilla_options(
@@ -183,7 +183,7 @@ def build_hammer_phase_plan(campaign_options: LocalHammerCampaignOptions) -> tup
                 campaign_options,
                 "--suite godzilla-local-swarm --test-network lan --admin-volume-fixtures --godzilla-stage launch-scale "
                 "--godzilla-total-client-count 10 --godzilla-peer-transfer-count 120 --godzilla-harness-transfer-count 120 "
-                "--godzilla-emulebb-files 240 --godzilla-extra-emulebb-files 24 --godzilla-harness-files 180 --godzilla-amule-files 60 "
+                "--godzilla-emulebb-files 240 --godzilla-extra-emulebb-files 24 --godzilla-harness-files 180 "
                 "--godzilla-cpu-profile",
             ),
             live_options=_godzilla_options(
@@ -209,7 +209,7 @@ def build_hammer_phase_plan(campaign_options: LocalHammerCampaignOptions) -> tup
                 campaign_options,
                 "--suite godzilla-local-swarm --test-network lan --admin-volume-fixtures --godzilla-stage full "
                 "--godzilla-total-client-count 18 --godzilla-peer-transfer-count 360 --godzilla-harness-transfer-count 360 "
-                "--godzilla-emulebb-files 720 --godzilla-extra-emulebb-files 72 --godzilla-harness-files 480 --godzilla-amule-files 120 "
+                "--godzilla-emulebb-files 720 --godzilla-extra-emulebb-files 72 --godzilla-harness-files 480 "
                 "--godzilla-adverse-kill-cycles 2 --godzilla-cpu-profile",
             ),
             live_options=_godzilla_options(

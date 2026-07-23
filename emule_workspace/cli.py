@@ -288,7 +288,6 @@ def _live_e2e_options(function: F) -> F:
     @click.option("--godzilla-emulebb-files", default=600, show_default=True, type=int)
     @click.option("--godzilla-extra-emulebb-files", default=50, show_default=True, type=int)
     @click.option("--godzilla-harness-files", default=400, show_default=True, type=int)
-    @click.option("--godzilla-amule-files", default=100, show_default=True, type=int)
     @click.option("--godzilla-adverse-kill-cycles", default=2, show_default=True, type=int)
     @click.option("--godzilla-adverse-kill-warmup-seconds", default=45.0, show_default=True, type=float)
     @click.option("--godzilla-adverse-recovery-timeout-seconds", default=300.0, show_default=True, type=float)
