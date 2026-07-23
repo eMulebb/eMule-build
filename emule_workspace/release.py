@@ -1500,6 +1500,7 @@ def _build_package_app(
         session,
         project_path=app_root / "srchybrid" / "emule.vcxproj",
         extra_properties=extra_properties,
+        max_cpu_count=1 if session.options.platform == "ARM64" else None,
         target=target,
         step_name=f"APP main {flavor.name} package binary",
     )

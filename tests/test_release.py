@@ -280,7 +280,35 @@ def test_package_build_disables_startup_diagnostics(
     assert "/p:EnableKadDiagnostics=false" in captured["extra_properties"]
     assert f"/p:OutDir={release.with_trailing_separator(package_app_output_root)}" in captured["extra_properties"]
     assert f"/p:IntDir={release.with_trailing_separator(package_app_intermediate_root)}" in captured["extra_properties"]
+    assert captured["max_cpu_count"] is None
     assert cfg_checks == [package_app_output_root / "emulebb.exe"]
+
+
+def test_arm64_package_build_serializes_app_msbuild(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+    session = SimpleNamespace(
+        layout=SimpleNamespace(toolset_override_variable="EMULEBB_TEST_TOOLSET"),
+        options=SimpleNamespace(configuration="Release", platform="ARM64"),
+    )
+
+    monkeypatch.setattr(release, "ensure_app_dependency_artifacts", lambda _layout, _options, *, clean: None)
+    monkeypatch.setattr(release, "app_property_overrides", lambda _layout, _platform: ())
+    monkeypatch.setattr(release, "env_override", lambda _name: None)
+    monkeypatch.setattr(release, "verify_app_control_flow_guard", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(release, "invoke_msbuild_project", lambda *_args, **kwargs: captured.update(kwargs))
+
+    release._build_package_app(
+        session,
+        tmp_path / "app",
+        package_app_output_root=tmp_path / "out",
+        package_app_intermediate_root=tmp_path / "obj",
+        clean=True,
+    )
+
+    assert captured["max_cpu_count"] == 1
 
 
 def test_diagnostics_package_build_enables_diagnostic_features(
