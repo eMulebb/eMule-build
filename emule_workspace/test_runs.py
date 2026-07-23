@@ -1298,13 +1298,7 @@ def _resolve_live_e2e_client2_app_exe(
     """Returns the built client2 executable when staged under the output root."""
 
     if _live_e2e_prefers_main_client2(live_options):
-        candidate = app_build_binary_path(
-            layout,
-            layout.test_targets.test_run_variant,
-            options.configuration,
-            options.platform,
-            executable_name=APP_EXE_NAME,
-        )
+        candidate = _resolve_live_e2e_main_client2_app_exe(layout, options, live_options)
         if candidate.is_file():
             return candidate
 
@@ -1323,6 +1317,34 @@ def _resolve_live_e2e_client2_app_exe(
         if candidate.is_file():
             return candidate
     return None
+
+
+def _resolve_live_e2e_main_client2_app_exe(
+    layout: WorkspaceLayout,
+    options: WorkspaceOptions,
+    live_options: LiveE2eOptions,
+) -> Path:
+    """Returns the native REST-capable main client preferred by deterministic transfer."""
+
+    arch = "arm64" if options.platform == "ARM64" else "x64"
+    package_candidate = (
+        layout.output_packages_root
+        / "build"
+        / f"emulebb-v{live_options.materialize_test_install_release_version}"
+        / arch
+        / "standard"
+        / "app"
+        / APP_EXE_NAME
+    )
+    if package_candidate.is_file():
+        return package_candidate
+    return app_build_binary_path(
+        layout,
+        layout.test_targets.test_run_variant,
+        options.configuration,
+        options.platform,
+        executable_name=APP_EXE_NAME,
+    )
 
 
 def _live_e2e_prefers_main_client2(options: LiveE2eOptions) -> bool:
